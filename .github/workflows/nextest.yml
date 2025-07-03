@@ -128,7 +128,7 @@ jobs:
 
       - name: Install eth-rpc proxy (if not cached)
         if: steps.cache-ethrpc.outputs.cache-hit != 'true' && !contains(matrix.runner_label, 'windows')
-        run: cargo install pallet-revive-eth-rpc --version ${{env.ETH_RPC_VERSION}}
+        run: cargo install pallet-revive-eth-rpc --version ${{env.ETH_RPC_VERSION}} --locked
         shell: bash
 
       # Temporary hack to make the tests work on macOS.
