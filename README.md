@@ -64,6 +64,9 @@ Resolc configuration:
 
       --stack-size <SIZE>
           Set the contracts total stack size in bytes
+
+  -g
+          Generate source based debug information in the output code file
 ```
 
 ## 3. Command-Line Interface
