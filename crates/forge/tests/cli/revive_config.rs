@@ -56,7 +56,7 @@ forgetest_init!(can_set_resolc_config_values, |prj, _cmd| {
 
 // checks that we can set debug info flag
 forgetest_init!(can_set_resolc_debug_info, |prj, _cmd| {
-    let config = prj.config_from_output(["--resolc", "-g"]);
+    let config = prj.config_from_output(["--resolc", "-d"]);
     assert!(config.resolc.resolc_compile);
     assert_eq!(config.resolc.debug_information, Some(true));
 });
