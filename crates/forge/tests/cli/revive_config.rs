@@ -64,15 +64,15 @@ forgetest_init!(can_set_resolc_debug_info, |prj, _cmd| {
 // checks that we can set debug info flag from foundry.toml
 forgetest_init!(can_set_resolc_debug_info_from_toml, |prj, _cmd| {
     use std::fs;
-    
+
     let toml_config = r#"
 [profile.default.resolc]
 resolc_compile = true
 debug_information = true
 "#;
-    
+
     fs::write(prj.root().join("foundry.toml"), toml_config).unwrap();
-    
+
     let config = foundry_config::Config::load_with_root(prj.root()).unwrap();
     assert!(config.resolc.resolc_compile);
     assert_eq!(config.resolc.debug_information, Some(true));
