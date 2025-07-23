@@ -56,7 +56,7 @@ pub struct ResolcOpts {
 
     /// Generate source based debug information in the output code file.
     #[arg(
-        short = 'd',
+        long = "debug-info",
         help = "Generate source based debug information in the output code file",
         action = clap::ArgAction::SetTrue
     )]
