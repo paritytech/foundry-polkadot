@@ -88,7 +88,10 @@ impl ResolcOpts {
         );
         set_if_some!(self.heap_size, resolc.heap_size);
         set_if_some!(self.stack_size, resolc.stack_size);
-        set_if_some!(self.debug_information, resolc.debug_information);
+        set_if_some!(
+            self.debug_information.and_then(|v| if v { Some(true) } else { None }),
+            resolc.debug_information
+        );
 
         resolc
     }
