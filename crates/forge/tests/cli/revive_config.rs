@@ -100,3 +100,31 @@ Compiler run successful!
 
 "#]]);
 });
+
+// checks that debug info increases bytecode size
+forgetest_init!(debug_info_increases_bytecode_size, |prj, cmd| {
+    prj.add_source(
+        "Greeter.sol",
+        r"
+pragma solidity *;
+contract Greeter {}
+   ",
+    )
+    .unwrap();
+
+    cmd.args(["build", "--resolc", "--force"]).assert_success();
+    
+    let artifact_path = prj.artifacts().join("Greeter.sol/Greeter.json");
+    let artifact_no_debug = std::fs::read_to_string(&artifact_path).unwrap();
+    let json_no_debug: serde_json::Value = serde_json::from_str(&artifact_no_debug).unwrap();
+    let bytecode_no_debug = json_no_debug["bytecode"]["object"].as_str().unwrap();
+    
+    cmd.forge_fuse().args(["build", "--resolc", "--debug-info", "--force"]).assert_success();
+    
+    let artifact_with_debug = std::fs::read_to_string(&artifact_path).unwrap();
+    let json_with_debug: serde_json::Value = serde_json::from_str(&artifact_with_debug).unwrap();
+    let bytecode_with_debug = json_with_debug["bytecode"]["object"].as_str().unwrap();
+    
+    // Debug bytecode should be larger than non-debug bytecode
+    assert!(bytecode_with_debug.len() > bytecode_no_debug.len());
+});
