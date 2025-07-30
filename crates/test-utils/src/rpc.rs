@@ -48,7 +48,7 @@ static DRPC_KEYS: LazyLock<Vec<String>> = LazyLock::new(|| {
 
 // List of etherscan keys.
 static ETHERSCAN_KEYS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    let mut keys = vec![
+    /*let mut keys = vec![
         // Fallback hardcoded keys (remove these after setting up ETHERSCAN_API_KEYS env var)
         "MCAUM7WPE9XP5UQMZPCKIBUJHPM1C24FP6".to_string(),
         "JW6RWCG2C5QF8TANH4KC7AYIF1CX7RB5D1".to_string(),
@@ -60,17 +60,21 @@ static ETHERSCAN_KEYS: LazyLock<Vec<String>> = LazyLock::new(|| {
         "A15KZUMZXXCK1P25Y1VP1WGIVBBHIZDS74".to_string(),
         "3IA6ASNQXN8WKN7PNFX7T72S9YG56X9FPG".to_string(),
         "ZUB97R31KSYX7NYVW6224Q6EYY6U56H591".to_string(),
-    ];
+    ];*/
     
     // Fetch from GitHub Actions environment variable (comma-separated)
-    if let Ok(env_keys) = std::env::var("ETHERSCAN_API_KEYS") {
-        keys = env_keys
+    let mut keys = if let Ok(env_keys) = std::env::var("ETHERSCAN_API_KEYS") {
+        env_keys
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .collect();
-    }
+            .collect()
+    } else {
+        Vec::new()
+    };
     
+    // print keys
+    println!("keys: {:?}", keys);
     keys.shuffle(&mut rand::thread_rng());
     keys
 });
