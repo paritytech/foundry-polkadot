@@ -68,7 +68,11 @@ static ETHERSCAN_KEYS: LazyLock<Vec<String>> = LazyLock::new(|| {
     let mut keys = std::env::var("ETHERSCAN_API_KEYS")
         .ok()
         .map(|env_keys| {
-            env_keys.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<String>>()
+            env_keys
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<String>>()
         })
         .filter(|keys| !keys.is_empty())
         .unwrap_or_else(fallback_etherscan_keys);
