@@ -59,6 +59,8 @@ pub use strategy::{
     CheatcodeInspectorStrategyRunner, CheatcodesStrategy,
 };
 
+mod pvm;
+
 mod string;
 
 mod test;

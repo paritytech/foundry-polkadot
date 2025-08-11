@@ -123,13 +123,15 @@ impl CheatsConfig {
 
     /// Returns a new `CheatsConfig` configured with the given `Config` and `EvmOpts`.
     pub fn clone_with(&self, config: &Config, evm_opts: EvmOpts) -> Self {
-        Self::new(
+        let mut new_config = Self::new(
             self.strategy.clone(),
             config,
             evm_opts,
             self.available_artifacts.clone(),
             self.running_artifact.clone(),
-        )
+        );
+        new_config.pvm_enabled = self.pvm_enabled;
+        new_config
     }
 
     /// Attempts to canonicalize (see [std::fs::canonicalize]) the path.

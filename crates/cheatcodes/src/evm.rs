@@ -1274,26 +1274,3 @@ impl Cheatcode for pvmCall {
         Ok(Default::default())
     }
 }
-
-impl Cheatcode for getPvmInfoCall {
-    fn apply(&self, state: &mut Cheatcodes) -> Result {
-        // Get PVM context from strategy
-        let ctx = state
-            .strategy
-            .context
-            .as_any_ref()
-            .downcast_ref::<crate::strategy::PvmCheatcodeInspectorStrategyContext>();
-
-        if let Some(ctx) = ctx {
-            let info = format!(
-                "PVM Mode: {}\nVM Mode: {}\nLast Operation: {}",
-                ctx.using_pvm,
-                ctx.pvm_state.custom_state.get("vm_mode").unwrap_or(&"unknown".to_string()),
-                ctx.pvm_state.custom_state.get("last_operation").unwrap_or(&"none".to_string())
-            );
-            Ok(info.abi_encode())
-        } else {
-            Ok("PVM context not available".to_string().abi_encode())
-        }
-    }
-}
