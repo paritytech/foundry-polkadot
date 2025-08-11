@@ -112,7 +112,6 @@ test-doc:
 
 .PHONY: test
 test: ## Run all tests.
-	clear && \
 	make test-foundry && \
 	make test-doc
 

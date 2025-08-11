@@ -66,7 +66,12 @@ impl crate::strategy::CheatcodeInspectorStrategyRunner for PvmCheatcodeInspector
         // Only intercept PVM-specific calls when needed in future implementations
         crate::strategy::EvmCheatcodeInspectorStrategyRunner
             .record_broadcastable_create_transactions(
-                _ctx, config, input, ecx_inner, broadcast, broadcastable_transactions,
+                _ctx,
+                config,
+                input,
+                ecx_inner,
+                broadcast,
+                broadcastable_transactions,
             );
     }
 
@@ -84,7 +89,13 @@ impl crate::strategy::CheatcodeInspectorStrategyRunner for PvmCheatcodeInspector
         // Only intercept PVM-specific calls when needed in future implementations
         crate::strategy::EvmCheatcodeInspectorStrategyRunner
             .record_broadcastable_call_transactions(
-                _ctx, config, call, ecx_inner, broadcast, broadcastable_transactions, active_delegation,
+                _ctx,
+                config,
+                call,
+                ecx_inner,
+                broadcast,
+                broadcastable_transactions,
+                active_delegation,
             );
     }
 
@@ -109,5 +120,3 @@ impl crate::strategy::CheatcodeInspectorStrategyRunner for PvmCheatcodeInspector
         false // Let EVM handle all operations
     }
 }
-
-
