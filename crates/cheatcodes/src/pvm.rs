@@ -68,7 +68,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     ) {
         // Use EVM implementation for now
         // Only intercept PVM-specific calls when needed in future implementations
-        EvmCheatcodeInspectorStrategyRunnerrecord_broadcastable_create_transactions(
+        EvmCheatcodeInspectorStrategyRunner.record_broadcastable_create_transactions(
             _ctx,
             config,
             input,
