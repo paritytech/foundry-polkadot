@@ -8,7 +8,11 @@ use revm::{
 use crate::{
     inspector::{CommonCreateInput, Ecx, InnerEcx},
     script::Broadcast,
-    strategy::{CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, EvmCheatcodeInspectorStrategyRunner},
+    strategy::{
+        CheatcodeInspectorStrategyContext,
+        CheatcodeInspectorStrategyRunner,
+        EvmCheatcodeInspectorStrategyRunner,
+    },
     BroadcastableTransactions, CheatsConfig,
 };
 
@@ -64,15 +68,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     ) {
         // Use EVM implementation for now
         // Only intercept PVM-specific calls when needed in future implementations
-        EvmCheatcodeInspectorStrategyRunner
-            .record_broadcastable_create_transactions(
-                _ctx,
-                config,
-                input,
-                ecx_inner,
-                broadcast,
-                broadcastable_transactions,
-            );
+        EvmCheatcodeInspectorStrategyRunnerrecord_broadcastable_create_transactions(
+            _ctx,
+            config,
+            input,
+            ecx_inner,
+            broadcast,
+            broadcastable_transactions,
+        );
     }
 
     fn record_broadcastable_call_transactions(
@@ -87,16 +90,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     ) {
         // Use EVM implementation for now
         // Only intercept PVM-specific calls when needed in future implementations
-        EvmCheatcodeInspectorStrategyRunner
-            .record_broadcastable_call_transactions(
-                _ctx,
-                config,
-                call,
-                ecx_inner,
-                broadcast,
-                broadcastable_transactions,
-                active_delegation,
-            );
+        EvmCheatcodeInspectorStrategyRunner.record_broadcastable_call_transactions(
+            _ctx,
+            config,
+            call,
+            ecx_inner,
+            broadcast,
+            broadcastable_transactions,
+            active_delegation,
+        );
     }
 
     fn post_initialize_interp(
