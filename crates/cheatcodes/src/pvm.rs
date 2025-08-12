@@ -8,7 +8,7 @@ use revm::{
 use crate::{
     inspector::{CommonCreateInput, Ecx, InnerEcx},
     script::Broadcast,
-    strategy::CheatcodeInspectorStrategyContext,
+    strategy::{CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, EvmCheatcodeInspectorStrategyRunner},
     BroadcastableTransactions, CheatsConfig,
 };
 
@@ -47,7 +47,7 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
 
-impl crate::strategy::CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
+impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     fn base_contract_deployed(&self, _ctx: &mut dyn CheatcodeInspectorStrategyContext) {
         // PVM mode is enabled, but no special handling needed for now
         // Only intercept PVM-specific calls when needed in future implementations
@@ -64,7 +64,7 @@ impl crate::strategy::CheatcodeInspectorStrategyRunner for PvmCheatcodeInspector
     ) {
         // Use EVM implementation for now
         // Only intercept PVM-specific calls when needed in future implementations
-        crate::strategy::EvmCheatcodeInspectorStrategyRunner
+        EvmCheatcodeInspectorStrategyRunner
             .record_broadcastable_create_transactions(
                 _ctx,
                 config,
@@ -87,7 +87,7 @@ impl crate::strategy::CheatcodeInspectorStrategyRunner for PvmCheatcodeInspector
     ) {
         // Use EVM implementation for now
         // Only intercept PVM-specific calls when needed in future implementations
-        crate::strategy::EvmCheatcodeInspectorStrategyRunner
+        EvmCheatcodeInspectorStrategyRunner
             .record_broadcastable_call_transactions(
                 _ctx,
                 config,
