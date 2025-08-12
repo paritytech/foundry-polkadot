@@ -9,8 +9,7 @@ use crate::{
     inspector::{CommonCreateInput, Ecx, InnerEcx},
     script::Broadcast,
     strategy::{
-        CheatcodeInspectorStrategyContext,
-        CheatcodeInspectorStrategyRunner,
+        CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner,
         EvmCheatcodeInspectorStrategyRunner,
     },
     BroadcastableTransactions, CheatsConfig,
