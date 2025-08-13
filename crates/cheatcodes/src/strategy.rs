@@ -76,7 +76,7 @@ pub trait CheatcodeInspectorStrategyRunner: Debug + Send + Sync {
     fn record_broadcastable_call_transactions(
         &self,
         _ctx: &mut dyn CheatcodeInspectorStrategyContext,
-        config: Arc<CheatsConfig>,
+        _config: Arc<CheatsConfig>,
         input: &CallInputs,
         ecx_inner: InnerEcx,
         broadcast: &Broadcast,
@@ -151,31 +151,37 @@ impl CheatcodeInspectorStrategyRunner for EvmCheatcodeInspectorStrategyRunner {
         &self,
         _ctx: &mut dyn CheatcodeInspectorStrategyContext,
         _config: Arc<CheatsConfig>,
-        call: &CallInputs,
+        input: &CallInputs,
         ecx_inner: InnerEcx,
         broadcast: &Broadcast,
         broadcastable_transactions: &mut BroadcastableTransactions,
         active_delegation: &mut Option<SignedAuthorization>,
     ) {
-        let is_fixed_gas_limit = check_if_fixed_gas_limit(ecx_inner, call.gas_limit);
+        let is_fixed_gas_limit = check_if_fixed_gas_limit(ecx_inner, input.gas_limit);
 
         let account = ecx_inner.journaled_state.state().get_mut(&broadcast.new_origin).unwrap();
 
         let mut tx_req = TransactionRequest {
             from: Some(broadcast.new_origin),
-            to: Some(TxKind::from(Some(call.target_address))),
-            value: call.transfer_value(),
-            input: TransactionInput::new(call.input.clone()),
+            to: Some(TxKind::from(Some(input.target_address))),
+            value: input.transfer_value(),
+            input: TransactionInput::new(input.input.clone()),
             nonce: Some(account.info.nonce),
             chain_id: Some(ecx_inner.env.cfg.chain_id),
-            gas: if is_fixed_gas_limit { Some(call.gas_limit) } else { None },
+            gas: if is_fixed_gas_limit { Some(input.gas_limit) } else { None },
             ..Default::default()
         };
 
+        // Handle delegation if present
         if let Some(auth_list) = active_delegation.take() {
             tx_req.authorization_list = Some(vec![auth_list]);
+            tx_req.sidecar = None;
+
+            // Increment nonce to reflect the signed authorization.
+            account.info.nonce += 1;
         } else {
             tx_req.authorization_list = None;
+            tx_req.sidecar = None;
         }
 
         broadcastable_transactions.push_back(BroadcastableTransaction {

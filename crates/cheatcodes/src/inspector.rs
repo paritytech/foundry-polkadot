@@ -1115,6 +1115,19 @@ where {
                         });
                     }
 
+                    // Check for delegation and blob compatibility
+                    if self.active_delegation.is_some() && self.active_blob_sidecar.is_some() {
+                        let msg = "both delegation and blob are active; `attachBlob` and `attachDelegation` are not compatible";
+                        return Some(CallOutcome {
+                            result: InterpreterResult {
+                                result: InstructionResult::Revert,
+                                output: Error::encode(msg),
+                                gas,
+                            },
+                            memory_offset: call.return_memory_offset.clone(),
+                        });
+                    }
+
                     self.strategy.runner.record_broadcastable_call_transactions(
                         self.strategy.context.as_mut(),
                         self.config.clone(),
