@@ -26,7 +26,6 @@ use serde_json::value::RawValue;
 use std::fmt::Write;
 
 /// Different sender kinds used by [`CastTxBuilder`].
-#[expect(clippy::large_enum_variant)]
 pub enum SenderKind<'a> {
     /// An address without signer. Used for read-only calls and transactions sent through unlocked
     /// accounts.
@@ -371,8 +370,8 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
             self.tx.max_fee_per_blob_gas = Some(self.provider.get_blob_base_fee().await?)
         }
 
-        if !self.legacy &&
-            (self.tx.max_fee_per_gas.is_none() || self.tx.max_priority_fee_per_gas.is_none())
+        if !self.legacy
+            && (self.tx.max_fee_per_gas.is_none() || self.tx.max_priority_fee_per_gas.is_none())
         {
             let estimate = self.provider.estimate_eip1559_fees().await?;
 
@@ -477,7 +476,7 @@ async fn decode_execution_revert(data: &RawValue) -> Result<Option<String>> {
                 write!(decoded_error, "({})", format_tokens(&error.body).format(", "))?;
             }
         }
-        return Ok(Some(decoded_error))
+        return Ok(Some(decoded_error));
     }
     Ok(None)
 }

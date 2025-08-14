@@ -1,5 +1,3 @@
-use std::u128;
-
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
 use foundry_evm::{
@@ -97,7 +95,7 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         let backend = get_backend_ref(executor.backend().strategy.context.as_ref());
         let mut ext = backend.revive_test_externalities.lock().unwrap();
         ext.execute_with(|| {
-            let current_nonce = System::account_nonce(&AccountId::to_fallback_account_id(
+            let current_nonce = System::account_nonce(AccountId::to_fallback_account_id(
                 &H160::from_slice(address.as_slice()),
             ));
 
@@ -105,12 +103,12 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
                 todo!("Cannot set nonce lower than current nonce");
             }
 
-            while (System::account_nonce(&AccountId::to_fallback_account_id(&H160::from_slice(
+            while (System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
                 address.as_slice(),
-            ))) as u64) <
-                nonce
+            ))) as u64)
+                < nonce
             {
-                System::inc_account_nonce(&AccountId::to_fallback_account_id(&H160::from_slice(
+                System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
                     address.as_slice(),
                 )));
             }
@@ -127,7 +125,7 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         let backend = get_backend_ref(executor.backend().strategy.context.as_ref());
         let mut ext = backend.revive_test_externalities.lock().unwrap();
         let revive_nonce = ext.execute_with(|| {
-            System::account_nonce(&AccountId::to_fallback_account_id(&H160::from_slice(
+            System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
                 address.as_slice(),
             )))
         });
