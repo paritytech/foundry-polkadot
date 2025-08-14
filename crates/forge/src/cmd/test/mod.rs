@@ -38,8 +38,7 @@ use foundry_config::{
         Metadata, Profile, Provider,
     },
     filter::GlobMatcher,
-    revive,
-    Config,
+    revive, Config,
 };
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
@@ -328,7 +327,8 @@ impl TestArgs {
 
         // Apply revive size limits if revive compilation is enabled
         if config.resolc.resolc_compile {
-            compiler = compiler.size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
+            compiler =
+                compiler.size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
         }
 
         let output = compiler.compile(&project)?;
