@@ -1,6 +1,5 @@
 use polkadot_sdk::{
-    frame_support::traits::IsType,
-    frame_support::weights::Weight,
+    frame_support::{traits::IsType, weights::Weight},
     pallet_revive::{
         evm::{CallTrace, CallTracer, PrestateTrace, PrestateTracer, PrestateTracerConfig},
         tracing::trace as trace_revive,
@@ -10,7 +9,8 @@ use polkadot_sdk::{
 };
 
 // Traces the execution inside pallet_revive.
-// This is a temporary solution to the fact that cusotm Tracer is not implementable for the time being.
+// This is a temporary solution to the fact that cusotm Tracer is not implementable for the time
+// being.
 pub fn trace<T: Config, R, F: FnOnce() -> R>(f: F) -> (R, Option<CallTrace<U256>>, PrestateTrace)
 where
     BalanceOf<T>: Into<U256> + TryFrom<U256> + Bounded,

@@ -370,8 +370,8 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
             self.tx.max_fee_per_blob_gas = Some(self.provider.get_blob_base_fee().await?)
         }
 
-        if !self.legacy
-            && (self.tx.max_fee_per_gas.is_none() || self.tx.max_priority_fee_per_gas.is_none())
+        if !self.legacy &&
+            (self.tx.max_fee_per_gas.is_none() || self.tx.max_priority_fee_per_gas.is_none())
         {
             let estimate = self.provider.estimate_eip1559_fees().await?;
 

@@ -105,8 +105,8 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
 
             while (System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
                 address.as_slice(),
-            ))) as u64)
-                < nonce
+            ))) as u64) <
+                nonce
             {
                 System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
                     address.as_slice(),
