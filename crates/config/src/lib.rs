@@ -333,6 +333,8 @@ pub struct Config {
     pub ffi: bool,
     /// Whether to allow `expectRevert` for internal functions.
     pub allow_internal_expect_revert: bool,
+    /// Whether to enable pallet-revive (resolc) compilation for tests.
+    pub revive: bool,
     /// Use the create 2 factory in all cases including tests and non-broadcasting scripts.
     pub always_use_create_2_factory: bool,
     /// Sets a timeout in seconds for vm.prompt cheatcodes
@@ -2434,6 +2436,7 @@ impl Default for Config {
             always_use_create_2_factory: false,
             ffi: false,
             allow_internal_expect_revert: false,
+            revive: false,
             prompt_timeout: 120,
             sender: Self::DEFAULT_SENDER,
             tx_origin: Self::DEFAULT_SENDER,

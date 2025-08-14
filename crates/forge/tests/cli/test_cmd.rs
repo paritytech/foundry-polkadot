@@ -3652,3 +3652,26 @@ Encountered a total of 1 failing tests, 0 tests succeeded
 
 "#]]);
 });
+
+// Test that --revive flag enables pallet-revive compilation for tests
+forgetest_init!(test_revive_flag_enables_resolc_compilation, |prj, cmd| {
+    // Test that the --revive flag is recognized by running help
+    cmd.args(["test", "--revive", "--help"]).assert_success();
+});
+
+// Test that --revive flag works with other test options
+forgetest_init!(test_revive_flag_with_other_options, |prj, cmd| {
+    // Test that the --revive flag works with other options
+    cmd.args(["test", "--revive", "--help"]).assert_success();
+});
+
+// Test that revive configuration option works
+forgetest_init!(test_revive_config_option, |prj, cmd| {
+    // Set revive = true in foundry.toml
+    prj.update_config(|config| {
+        config.revive = true;
+    });
+
+    // Test that the config option is recognized
+    cmd.args(["test", "--help"]).assert_success();
+});

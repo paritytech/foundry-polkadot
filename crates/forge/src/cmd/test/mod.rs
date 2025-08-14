@@ -38,6 +38,7 @@ use foundry_config::{
         Metadata, Profile, Provider,
     },
     filter::GlobMatcher,
+    revive,
     Config,
 };
 use foundry_debugger::Debugger;
@@ -198,6 +199,10 @@ pub struct TestArgs {
 
     #[command(flatten)]
     pub watch: WatchArgs,
+
+    /// Enable compilation using pallet-revive (resolc) for tests.
+    #[arg(long)]
+    pub revive: bool,
 }
 
 impl TestArgs {
@@ -288,6 +293,11 @@ impl TestArgs {
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
         let strategy = utils::get_executor_strategy(&config);
 
+        // Enable revive compilation if --revive flag is set or config.revive is true
+        if self.revive || config.revive {
+            config.resolc.resolc_compile = true;
+        }
+
         // Explicitly enable isolation for gas reports for more correct gas accounting.
         if self.gas_report {
             evm_opts.isolate = true;
@@ -311,10 +321,15 @@ impl TestArgs {
 
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
-        let compiler = ProjectCompiler::new()
+        let mut compiler = ProjectCompiler::new()
             .dynamic_test_linking(config.dynamic_test_linking)
             .quiet(shell::is_json() || self.junit)
             .files(sources_to_compile);
+
+        // Apply revive size limits if revive compilation is enabled
+        if config.resolc.resolc_compile {
+            compiler = compiler.size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
+        }
 
         let output = compiler.compile(&project)?;
 
