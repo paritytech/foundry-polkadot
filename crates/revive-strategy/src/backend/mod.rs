@@ -75,7 +75,7 @@ impl BackendStrategyRunner for ReviveBackendStrategyRunner {
     }
 }
 
-/// Context for [reviveBackendStrategyRunner].
+/// Context for [ReviveBackendStrategyRunner].
 #[derive(Debug, Clone)]
 pub struct ReviveBackendStrategyContext {
     pub revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
