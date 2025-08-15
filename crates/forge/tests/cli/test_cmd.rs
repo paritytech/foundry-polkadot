@@ -3657,7 +3657,7 @@ Encountered a total of 1 failing tests, 0 tests succeeded
 forgetest_init!(test_resolc_flag_enables_resolc_compilation, |prj, cmd| {
     // Test that the --resolc flag is recognized by running help
     cmd.args(["test", "--resolc", "--help"]).assert_success();
-    
+
     // Create a simple test contract
     prj.add_test(
         "Counter.t.sol",

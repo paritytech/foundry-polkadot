@@ -286,12 +286,12 @@ impl TestArgs {
     pub async fn execute_tests(mut self) -> Result<TestOutcome> {
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
-        
+
         // Enable resolc compilation if --resolc flag is set
         if self.build.compiler.resolc_opts.resolc_compile.unwrap_or(false) {
             config.resolc.resolc_compile = true;
         }
-        
+
         let strategy = utils::get_executor_strategy(&config);
 
         // Explicitly enable isolation for gas reports for more correct gas accounting.
