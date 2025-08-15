@@ -95,7 +95,6 @@ forgetest!(can_extract_config_values, |prj, cmd| {
         },
         ffi: true,
         allow_internal_expect_revert: false,
-        revive: false,
         always_use_create_2_factory: false,
         prompt_timeout: 0,
         sender: "00a329c0648769A73afAc7F9381D08FB43dBEA72".parse().unwrap(),
@@ -1007,7 +1006,6 @@ test_failures_file = "cache/test-failures"
 show_progress = false
 ffi = false
 allow_internal_expect_revert = false
-revive = false
 always_use_create_2_factory = false
 prompt_timeout = 120
 sender = "0x1804c8ab1f12e6bbf3894d4083f33e07309d1f38"
@@ -1222,7 +1220,6 @@ exclude = []
   },
   "ffi": false,
   "allow_internal_expect_revert": false,
-  "revive": false,
   "always_use_create_2_factory": false,
   "prompt_timeout": 120,
   "sender": "0x1804c8ab1f12e6bbf3894d4083f33e07309d1f38",

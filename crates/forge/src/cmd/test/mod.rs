@@ -199,9 +199,7 @@ pub struct TestArgs {
     #[command(flatten)]
     pub watch: WatchArgs,
 
-    /// Enable compilation using pallet-revive (resolc) for tests.
-    #[arg(long)]
-    pub revive: bool,
+
 }
 
 impl TestArgs {
@@ -292,10 +290,7 @@ impl TestArgs {
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
         let strategy = utils::get_executor_strategy(&config);
 
-        // Enable revive compilation if --revive flag is set or config.revive is true
-        if self.revive || config.revive {
-            config.resolc.resolc_compile = true;
-        }
+
 
         // Explicitly enable isolation for gas reports for more correct gas accounting.
         if self.gas_report {
