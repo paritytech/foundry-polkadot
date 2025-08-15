@@ -198,8 +198,6 @@ pub struct TestArgs {
 
     #[command(flatten)]
     pub watch: WatchArgs,
-
-
 }
 
 impl TestArgs {
@@ -288,9 +286,13 @@ impl TestArgs {
     pub async fn execute_tests(mut self) -> Result<TestOutcome> {
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
+        
+        // Enable resolc compilation if --resolc flag is set
+        if self.build.compiler.resolc_opts.resolc_compile.unwrap_or(false) {
+            config.resolc.resolc_compile = true;
+        }
+        
         let strategy = utils::get_executor_strategy(&config);
-
-
 
         // Explicitly enable isolation for gas reports for more correct gas accounting.
         if self.gas_report {
@@ -895,6 +897,13 @@ impl Provider for TestArgs {
 
         if self.show_progress {
             dict.insert("show_progress".to_string(), true.into());
+        }
+
+        // Add resolc configuration if --resolc flag is set
+        if self.build.compiler.resolc_opts.resolc_compile.unwrap_or(false) {
+            let mut resolc_dict = Dict::default();
+            resolc_dict.insert("resolc_compile".to_string(), true.into());
+            dict.insert("resolc".to_string(), resolc_dict.into());
         }
 
         Ok(Map::from([(Config::selected_profile(), dict)]))

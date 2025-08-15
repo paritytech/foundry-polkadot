@@ -3657,6 +3657,49 @@ Encountered a total of 1 failing tests, 0 tests succeeded
 forgetest_init!(test_resolc_flag_enables_resolc_compilation, |prj, cmd| {
     // Test that the --resolc flag is recognized by running help
     cmd.args(["test", "--resolc", "--help"]).assert_success();
+    
+    // Create a simple test contract
+    prj.add_test(
+        "Counter.t.sol",
+        r#"
+import "forge-std/Test.sol";
+
+contract Counter {
+    uint256 public number;
+
+    function setNumber(uint256 newNumber) public {
+        number = newNumber;
+    }
+
+    function increment() public {
+        number++;
+    }
+}
+
+contract CounterTest is Test {
+    Counter counter;
+
+    function setUp() public {
+        counter = new Counter();
+    }
+
+    function testSetNumber() public {
+        counter.setNumber(42);
+        assertEq(counter.number(), 42);
+    }
+
+    function testIncrement() public {
+        counter.setNumber(0);
+        counter.increment();
+        assertEq(counter.number(), 1);
+    }
+}
+    "#,
+    )
+    .unwrap();
+
+    // Test that the --resolc flag works for actual compilation and testing
+    cmd.args(["test", "--resolc"]).assert_success();
 });
 
 // Test that resolc configuration option works
