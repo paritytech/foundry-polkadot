@@ -11,7 +11,6 @@ use crate::executor::{
 };
 
 mod backend;
-mod cheatcode;
 mod executor;
 mod tracing;
 

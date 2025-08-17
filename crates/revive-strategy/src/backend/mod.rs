@@ -38,8 +38,11 @@ impl BackendStrategyRunner for ReviveBackendStrategyRunner {
         inspector: &mut dyn foundry_evm::InspectorExt,
         inspect_ctx: Box<dyn std::any::Any>,
     ) -> eyre::Result<revm::primitives::ResultAndState> {
-        // todo!(): Need to decide the context switching here
-        EvmBackendStrategyRunner.inspect(backend, env, inspector, inspect_ctx)
+        if !is_revive_inspect_context(inspect_ctx.as_ref()) {
+            return EvmBackendStrategyRunner.inspect(backend, env, inspector, inspect_ctx);
+        }
+
+        todo!()
     }
 
     fn update_fork_db(
@@ -79,7 +82,6 @@ impl BackendStrategyRunner for ReviveBackendStrategyRunner {
 #[derive(Debug, Clone)]
 pub struct ReviveBackendStrategyContext {
     pub revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
-    // todo!() add things necessary for the backend strategy.
 }
 
 impl ReviveBackendStrategyContext {
@@ -110,4 +112,11 @@ impl BackendStrategyContext for ReviveBackendStrategyContext {
 
 pub fn get_backend_ref(ctx: &dyn BackendStrategyContext) -> &ReviveBackendStrategyContext {
     ctx.as_any_ref().downcast_ref().expect("expected ReviveExecutorStrategyContext")
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ReviveInspectContext;
+
+fn is_revive_inspect_context(ctx: &dyn Any) -> bool {
+    ctx.downcast_ref::<ReviveInspectContext>().is_some()
 }

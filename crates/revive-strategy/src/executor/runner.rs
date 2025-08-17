@@ -1,5 +1,6 @@
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
+use foundry_common::sh_err;
 use foundry_evm::{
     backend::BackendStrategy,
     executors::{EvmExecutorStrategyRunner, ExecutorStrategyContext, ExecutorStrategyRunner},
@@ -16,7 +17,7 @@ use revive_env::{AccountId, Runtime, System};
 use revm::primitives::{EnvWithHandlerCfg, ResultAndState};
 
 use crate::{
-    backend::{get_backend_ref, ReviveBackendStrategyBuilder},
+    backend::{get_backend_ref, ReviveBackendStrategyBuilder, ReviveInspectContext},
     executor::context::ReviveExecutorStrategyContext,
 };
 
@@ -25,43 +26,43 @@ use crate::{
 pub struct ReviveExecutorStrategyRunner;
 
 impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
-    fn new_backend_strategy(
-        &self,
-        _ctx: &dyn foundry_evm::executors::ExecutorStrategyContext,
-    ) -> foundry_evm::backend::BackendStrategy {
+    fn new_backend_strategy(&self, _ctx: &dyn ExecutorStrategyContext) -> BackendStrategy {
         BackendStrategy::new_revive()
     }
 
     fn new_cheatcodes_strategy(
         &self,
-        ctx: &dyn foundry_evm::executors::ExecutorStrategyContext,
+        ctx: &dyn ExecutorStrategyContext,
     ) -> foundry_cheatcodes::CheatcodesStrategy {
         let _ctx = get_context_ref(ctx);
-        // todo!("Context should be used to configure the cheatcodes strategy");
         CheatcodeInspectorStrategy::new_pvm()
     }
 
+    /// Sets the balance of an account.
+    ///
+    /// Amount should be in the range of [0, u128::MAX] despite the type
+    /// because Ethereum balances are u256 while Polkadot balances are u128.
     fn set_balance(
         &self,
         executor: &mut foundry_evm::executors::Executor,
         address: Address,
         amount: U256,
     ) -> foundry_evm::backend::BackendResult<()> {
-        // todo!(): This should be done in client places, this is just a workaround for now, because
-        // ethereum supports U256::MAX while polkadot does not.
-        let amount = if amount == U256::MAX { U256::from(u128::MAX) } else { amount };
-        EvmExecutorStrategyRunner.set_balance(executor, address, amount)?;
+        let amount_pvm =
+            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+        let amount_pvm = U256ToBalance::convert(amount_pvm);
+        let amount_evm = U256::from(amount_pvm);
+        if amount != amount_evm {
+            let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect.");
+        }
+        EvmExecutorStrategyRunner.set_balance(executor, address, amount_evm)?;
 
         let backend = get_backend_ref(executor.backend().strategy.context.as_ref());
         let mut ext = backend.revive_test_externalities.lock().unwrap();
-
-        // todo!(), not sure this is the right call, with the right conversion
-        let amount = sp_core::U256::from_little_endian(&amount.as_le_bytes());
-        let amount = U256ToBalance::convert(amount);
         ext.execute_with(|| {
             pallet_balances::Pallet::<Runtime>::set_balance(
                 &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
-                amount,
+                amount_pvm,
             );
         });
         Ok(())
@@ -95,22 +96,17 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         let backend = get_backend_ref(executor.backend().strategy.context.as_ref());
         let mut ext = backend.revive_test_externalities.lock().unwrap();
         ext.execute_with(|| {
-            let current_nonce = System::account_nonce(AccountId::to_fallback_account_id(
-                &H160::from_slice(address.as_slice()),
-            ));
+            let account_id =
+                AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
+            let current_nonce = System::account_nonce(&account_id);
 
-            if current_nonce as u64 > nonce {
-                todo!("Cannot set nonce lower than current nonce");
-            }
+            assert!(
+                current_nonce as u64 <= nonce,
+                "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
+            );
 
-            while (System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                address.as_slice(),
-            ))) as u64) <
-                nonce
-            {
-                System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                    address.as_slice(),
-                )));
+            while (System::account_nonce(&account_id) as u64) < nonce {
+                System::inc_account_nonce(&account_id);
             }
         });
         Ok(())
@@ -130,35 +126,49 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
             )))
         });
 
-        assert_eq!(evm_nonce, revive_nonce as u64,);
+        assert_eq!(evm_nonce, revive_nonce as u64);
         Ok(evm_nonce)
     }
 
     fn call(
         &self,
-        ctx: &dyn foundry_evm::executors::ExecutorStrategyContext,
+        ctx: &dyn ExecutorStrategyContext,
         backend: &mut foundry_evm::backend::CowBackend<'_>,
         env: &mut EnvWithHandlerCfg,
         executor_env: &EnvWithHandlerCfg,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
-        // todo!(): Needs to decide if it should use revive depending on the context.
-        EvmExecutorStrategyRunner.call(ctx, backend, env, executor_env, inspector)
+        let ctx = get_context_ref(ctx);
+        if ctx.wip_in_pvm {
+            backend.inspect(env, inspector, Box::new(ReviveInspectContext))
+        } else {
+            EvmExecutorStrategyRunner.call(ctx, backend, env, executor_env, inspector)
+        }
     }
 
     fn transact(
         &self,
-        ctx: &mut dyn foundry_evm::executors::ExecutorStrategyContext,
+        ctx: &mut dyn ExecutorStrategyContext,
         backend: &mut foundry_evm::backend::Backend,
         env: &mut EnvWithHandlerCfg,
         executor_env: &EnvWithHandlerCfg,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
-        // todo!(): Needs to decide if it should use revive depending on the context.
-        EvmExecutorStrategyRunner.transact(ctx, backend, env, executor_env, inspector)
+        let ctx = get_context_ref_mut(ctx);
+        if ctx.wip_in_pvm {
+            backend.inspect(env, inspector, Box::new(ReviveInspectContext))
+        } else {
+            EvmExecutorStrategyRunner.transact(ctx, backend, env, executor_env, inspector)
+        }
     }
 }
 
 fn get_context_ref(ctx: &dyn ExecutorStrategyContext) -> &ReviveExecutorStrategyContext {
     ctx.as_any_ref().downcast_ref().expect("expected ReviveExecutorStrategyContext")
+}
+
+fn get_context_ref_mut(
+    ctx: &mut dyn ExecutorStrategyContext,
+) -> &mut ReviveExecutorStrategyContext {
+    ctx.as_any_mut().downcast_mut().expect("expected ReviveExecutorStrategyContext")
 }
