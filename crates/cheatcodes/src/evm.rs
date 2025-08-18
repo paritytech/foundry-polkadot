@@ -2,6 +2,7 @@
 
 use crate::{
     inspector::{InnerEcx, RecordDebugStepInfo},
+    pvm::PvmCheatcodeInspectorStrategyContext,
     strategy::CheatcodeInspectorStrategy,
     BroadcastableTransaction, Cheatcode, Cheatcodes, CheatcodesExecutor, CheatsCtxt, Error, Result,
     Vm::*,
@@ -1273,4 +1274,23 @@ impl Cheatcode for pvmCall {
 
         Ok(Default::default())
     }
+
+    fn apply_full(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result {
+        let Self { enabled } = self;
+        if *enable {
+            let ctx = get_context(ccx.state.strategy.context.as_mut());
+            todo!("select_pvm(ctx, ccx.ecx, None)");
+            tracing::info!("PVM mode enabled");
+        } else {
+            todo!("Switch back to EVM");
+            tracing::info!("PVM mode disabled, using EVM");
+        }
+    }
+}
+
+// TODO: why it's in evm module?
+fn get_context(
+    ctx: &mut dyn CheatcodeInspectorStrategyContext,
+) -> &mut PvmCheatcodeInspectorStrategyContext {
+    ctx.as_any_mut().downcast_mut().expect("expected PvmCheatcodeInspectorStrategyContext")
 }
