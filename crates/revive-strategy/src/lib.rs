@@ -12,6 +12,9 @@ use crate::executor::{
 
 mod backend;
 mod executor;
+mod tracing;
+
+pub use tracing::trace;
 
 /// Create Revive strategy for [ExecutorStrategy].
 pub trait ReviveExecutorStrategyBuilder {
