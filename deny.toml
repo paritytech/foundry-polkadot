@@ -82,17 +82,17 @@ exceptions = [
     { allow = ["CC0-1.0"], name = "secp256k1-sys" },
 
     # GPL-3.0 is allowed only for crates owned by Parity
-    { allow = ["GPL-3.0"], name = "polkadot-core-primitives" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "polkadot-parachain-primitives" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "polkadot-primitives" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "polkadot-runtime-common" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "polkadot-runtime-metrics" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "polkadot-runtime-parachains" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "slot-range-helper" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "staging-xcm-builder" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "staging-xcm-executor" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "staging-xcm" }, # Polkadot SDK
-    { allow = ["GPL-3.0"], name = "xcm-procedural" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "polkadot-core-primitives" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "polkadot-parachain-primitives" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "polkadot-primitives" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "polkadot-runtime-common" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "polkadot-runtime-metrics" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "polkadot-runtime-parachains" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "slot-range-helper" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "staging-xcm-builder" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "staging-xcm-executor" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "staging-xcm" }, # Polkadot SDK
+    { allow = ["GPL-3.0-only"], name = "xcm-procedural" }, # Polkadot SDK
 ]
 #copyleft = "deny"
 
