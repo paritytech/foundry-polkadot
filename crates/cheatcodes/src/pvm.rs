@@ -4,6 +4,7 @@ use revm::{
     interpreter::{CallInputs, Interpreter},
     primitives::SignedAuthorization,
 };
+use spec::Vm::pvmCall;
 
 use crate::{
     inspector::{CommonCreateInput, Ecx, InnerEcx},
@@ -12,7 +13,7 @@ use crate::{
         CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner,
         EvmCheatcodeInspectorStrategyRunner,
     },
-    BroadcastableTransactions, CheatsConfig,
+    BroadcastableTransactions, Cheatcode, CheatcodesExecutor, CheatsConfig, CheatsCtxt, Result,
 };
 
 /// PVM-specific strategy context.
@@ -120,4 +121,24 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         // Only intercept PVM-specific calls when needed in future implementations
         false // Let EVM handle all operations
     }
+}
+
+impl Cheatcode for pvmCall {
+    fn apply_full(&self, ccx: &mut CheatsCtxt, _executor: &mut dyn CheatcodesExecutor) -> Result {
+        let Self { enabled } = self;
+        if *enabled {
+            let _ctx = get_context(ccx.state.strategy.context.as_mut());
+            tracing::info!("PVM mode enabled");
+            todo!("select_pvm(ctx, ccx.ecx, None)");
+        } else {
+            tracing::info!("PVM mode disabled, using EVM");
+            todo!("Switch back to EVM");
+        }
+    }
+}
+
+fn get_context(
+    ctx: &mut dyn CheatcodeInspectorStrategyContext,
+) -> &mut PvmCheatcodeInspectorStrategyContext {
+    ctx.as_any_mut().downcast_mut().expect("expected PvmCheatcodeInspectorStrategyContext")
 }
