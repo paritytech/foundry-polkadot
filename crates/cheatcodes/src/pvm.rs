@@ -127,14 +127,24 @@ impl Cheatcode for pvmCall {
     fn apply_full(&self, ccx: &mut CheatsCtxt, _executor: &mut dyn CheatcodesExecutor) -> Result {
         let Self { enabled } = self;
         if *enabled {
-            let _ctx = get_context(ccx.state.strategy.context.as_mut());
-            tracing::info!("PVM mode enabled");
-            todo!("select_pvm(ctx, ccx.ecx, None)");
+            let ctx = get_context(ccx.state.strategy.context.as_mut());
+            select_pvm(ctx, ccx.ecx);
         } else {
-            tracing::info!("PVM mode disabled, using EVM");
             todo!("Switch back to EVM");
         }
     }
+}
+
+fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, _data: Ecx<'_, '_, '_>) {
+    if ctx.using_pvm {
+        tracing::info!("already in PVM");
+        return;
+    }
+
+    tracing::info!("switching to PVM");
+    ctx.using_pvm = true;
+
+    todo!()
 }
 
 fn get_context(
