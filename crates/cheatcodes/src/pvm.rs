@@ -132,6 +132,8 @@ impl Cheatcode for pvmCall {
         } else {
             todo!("Switch back to EVM");
         }
+
+        Ok(Default::default())
     }
 }
 
