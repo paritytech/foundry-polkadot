@@ -1,9 +1,12 @@
 use std::{
     any::{Any, TypeId},
     fmt::Debug,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
+use alloy_primitives::U256;
+use foundry_common::sh_err;
+use revive_env::{AccountId, Runtime};
 use revm::{
     interpreter::{CallInputs, Interpreter},
     primitives::SignedAuthorization,
@@ -15,15 +18,25 @@ use foundry_cheatcodes::{
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, InnerEcx, Result, Vm::pvmCall,
 };
 
+use polkadot_sdk::{
+    frame_support::traits::fungible::Mutate,
+    pallet_balances,
+    pallet_revive::AddressMapper,
+    polkadot_runtime_common::U256ToBalance,
+    sp_core::{self, H160},
+    sp_io,
+    sp_runtime::traits::Convert,
+};
+
 pub trait PvmCheatcodeInspectorStrategyBuilder {
-    fn new_pvm() -> Self;
+    fn new_pvm(test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self;
 }
 impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
     // Creates a new PVM strategy
-    fn new_pvm() -> Self {
+    fn new_pvm(test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self {
         Self {
             runner: &PvmCheatcodeInspectorStrategyRunner,
-            context: Box::new(PvmCheatcodeInspectorStrategyContext::new()),
+            context: Box::new(PvmCheatcodeInspectorStrategyContext::new(test_externalities)),
         }
     }
 }
@@ -33,14 +46,15 @@ impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
 pub struct PvmCheatcodeInspectorStrategyContext {
     /// Whether we're using PVM mode
     /// Currently unused but kept for future PVM-specific logic
-    #[allow(dead_code)]
     pub using_pvm: bool,
+    pub revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
-    pub fn new() -> Self {
+    pub fn new(test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self {
         Self {
             using_pvm: false, // Start in EVM mode by default
+            revive_test_externalities: test_externalities,
         }
     }
 }
@@ -162,7 +176,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     }
 }
 
-fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, _data: InnerEcx<'_, '_, '_>) {
+fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_, '_, '_>) {
     if ctx.using_pvm {
         tracing::info!("already in PVM");
         return;
@@ -170,8 +184,28 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, _data: InnerEcx<'_
 
     tracing::info!("switching to PVM");
     ctx.using_pvm = true;
+    let persistent_accounts = data.db.persistent_accounts().clone();
 
-    todo!()
+    // Dirty Balance translation
+    for address in persistent_accounts {
+        let acc = data.load_account(address).expect("msg");
+        let amount = acc.data.info.balance;
+
+        let amount_pvm =
+            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+        let amount_pvm = U256ToBalance::convert(amount_pvm);
+        let amount_evm = U256::from(amount_pvm);
+        if amount != amount_evm {
+            let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect.");
+        }
+
+        ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+            pallet_balances::Pallet::<Runtime>::set_balance(
+                &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
+                amount_pvm,
+            );
+        })
+    }
 }
 
 fn get_context(

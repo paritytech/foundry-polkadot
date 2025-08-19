@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
 use foundry_common::sh_err;
@@ -11,9 +13,10 @@ use polkadot_sdk::{
     pallet_revive::AddressMapper,
     polkadot_runtime_common::U256ToBalance,
     sp_core::{self, H160},
+    sp_io,
     sp_runtime::traits::Convert,
 };
-use revive_env::{AccountId, Runtime, System};
+use revive_env::{AccountId, ExtBuilder, Runtime, System};
 use revm::primitives::{EnvWithHandlerCfg, ResultAndState};
 
 use crate::{
@@ -24,11 +27,25 @@ use crate::{
 
 /// Defines the [ExecutorStrategyRunner] strategy for Revive.
 #[derive(Debug, Default, Clone)]
-pub struct ReviveExecutorStrategyRunner;
+pub struct ReviveExecutorStrategyRunner {
+    pub revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
+}
+
+impl ReviveExecutorStrategyRunner {
+    pub fn new() -> Self {
+        Self {
+            revive_test_externalities: Arc::new(Mutex::new(
+                ExtBuilder::default()
+                    .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
+                    .build(),
+            )),
+        }
+    }
+}
 
 impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
     fn new_backend_strategy(&self, _ctx: &dyn ExecutorStrategyContext) -> BackendStrategy {
-        BackendStrategy::new_revive()
+        BackendStrategy::new_revive(self.revive_test_externalities.clone())
     }
 
     fn new_cheatcodes_strategy(
@@ -36,7 +53,7 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         ctx: &dyn ExecutorStrategyContext,
     ) -> foundry_cheatcodes::CheatcodesStrategy {
         let _ctx = get_context_ref(ctx);
-        CheatcodeInspectorStrategy::new_pvm()
+        CheatcodeInspectorStrategy::new_pvm(self.revive_test_externalities.clone())
     }
 
     /// Sets the balance of an account.
