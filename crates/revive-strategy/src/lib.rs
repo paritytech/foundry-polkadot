@@ -11,6 +11,7 @@ use crate::executor::{
 };
 
 mod backend;
+mod cheatcodes;
 mod executor;
 
 /// Create Revive strategy for [ExecutorStrategy].

@@ -1,20 +1,32 @@
-use std::{any::Any, fmt::Debug, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    fmt::Debug,
+    sync::Arc,
+};
 
 use revm::{
     interpreter::{CallInputs, Interpreter},
     primitives::SignedAuthorization,
 };
-use spec::Vm::pvmCall;
 
-use crate::{
-    inspector::{CommonCreateInput, Ecx, InnerEcx},
-    script::Broadcast,
-    strategy::{
-        CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner,
-        EvmCheatcodeInspectorStrategyRunner,
-    },
-    BroadcastableTransactions, Cheatcode, CheatcodesExecutor, CheatsConfig, CheatsCtxt, Result,
+use foundry_cheatcodes::{
+    Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
+    CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
+    CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, InnerEcx, Result, Vm::pvmCall,
 };
+
+pub trait PvmCheatcodeInspectorStrategyBuilder {
+    fn new_pvm() -> Self;
+}
+impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
+    // Creates a new PVM strategy
+    fn new_pvm() -> Self {
+        Self {
+            runner: &PvmCheatcodeInspectorStrategyRunner,
+            context: Box::new(PvmCheatcodeInspectorStrategyContext::new()),
+        }
+    }
+}
 
 /// PVM-specific strategy context.
 #[derive(Debug, Default, Clone)]
@@ -52,6 +64,33 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
 pub struct PvmCheatcodeInspectorStrategyRunner;
 
 impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
+    fn apply_full(
+        &self,
+        cheatcode: &dyn foundry_cheatcodes::DynCheatcode,
+        ccx: &mut CheatsCtxt<'_, '_, '_, '_>,
+        executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
+    ) -> Result {
+        fn is<T: std::any::Any>(t: TypeId) -> bool {
+            TypeId::of::<T>() == t
+        }
+
+        match cheatcode.as_any().type_id() {
+            t if is::<pvmCall>(t) => {
+                let pvmCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
+                if *enabled {
+                    let ctx = get_context(ccx.state.strategy.context.as_mut());
+                    select_pvm(ctx, ccx.ecx);
+                } else {
+                    todo!("Switch back to EVM");
+                }
+
+                Ok(Default::default())
+            }
+            // Not custom, just invoke the default behavior
+            _ => cheatcode.dyn_apply(ccx, executor),
+        }
+    }
+
     fn base_contract_deployed(&self, _ctx: &mut dyn CheatcodeInspectorStrategyContext) {
         // PVM mode is enabled, but no special handling needed for now
         // Only intercept PVM-specific calls when needed in future implementations
@@ -62,7 +101,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         _ctx: &mut dyn CheatcodeInspectorStrategyContext,
         config: Arc<CheatsConfig>,
         input: &dyn CommonCreateInput,
-        ecx_inner: InnerEcx,
+        ecx_inner: InnerEcx<'_, '_, '_>,
         broadcast: &Broadcast,
         broadcastable_transactions: &mut BroadcastableTransactions,
     ) {
@@ -83,7 +122,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         _ctx: &mut dyn CheatcodeInspectorStrategyContext,
         config: Arc<CheatsConfig>,
         call: &CallInputs,
-        ecx_inner: InnerEcx,
+        ecx_inner: InnerEcx<'_, '_, '_>,
         broadcast: &Broadcast,
         broadcastable_transactions: &mut BroadcastableTransactions,
         active_delegation: &mut Option<SignedAuthorization>,
@@ -105,7 +144,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         &self,
         _ctx: &mut dyn CheatcodeInspectorStrategyContext,
         _interpreter: &mut Interpreter,
-        _ecx: Ecx,
+        _ecx: Ecx<'_, '_, '_>,
     ) {
         // PVM mode is enabled, but no special initialization needed for now
         // Only intercept PVM-specific calls when needed in future implementations
@@ -115,7 +154,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         &self,
         _ctx: &mut dyn CheatcodeInspectorStrategyContext,
         _interpreter: &mut Interpreter,
-        _ecx: Ecx,
+        _ecx: Ecx<'_, '_, '_>,
     ) -> bool {
         // No PVM-specific opcode handling needed for now
         // Only intercept PVM-specific calls when needed in future implementations
@@ -123,21 +162,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     }
 }
 
-impl Cheatcode for pvmCall {
-    fn apply_full(&self, ccx: &mut CheatsCtxt, _executor: &mut dyn CheatcodesExecutor) -> Result {
-        let Self { enabled } = self;
-        if *enabled {
-            let ctx = get_context(ccx.state.strategy.context.as_mut());
-            select_pvm(ctx, ccx.ecx);
-        } else {
-            todo!("Switch back to EVM");
-        }
-
-        Ok(Default::default())
-    }
-}
-
-fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, _data: Ecx<'_, '_, '_>) {
+fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, _data: InnerEcx<'_, '_, '_>) {
     if ctx.using_pvm {
         tracing::info!("already in PVM");
         return;

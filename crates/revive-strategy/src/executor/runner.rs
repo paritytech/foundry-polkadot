@@ -18,6 +18,7 @@ use revm::primitives::{EnvWithHandlerCfg, ResultAndState};
 
 use crate::{
     backend::{get_backend_ref, ReviveBackendStrategyBuilder, ReviveInspectContext},
+    cheatcodes::PvmCheatcodeInspectorStrategyBuilder,
     executor::context::ReviveExecutorStrategyContext,
 };
 
