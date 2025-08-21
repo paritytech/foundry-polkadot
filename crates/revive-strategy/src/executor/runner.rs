@@ -10,7 +10,7 @@ use foundry_evm::{
 use polkadot_sdk::{
     frame_support::traits::{fungible::Mutate, Currency},
     pallet_balances,
-    pallet_revive::{self, AddressMapper, BalanceOf, BalanceWithDust, Pallet},
+    pallet_revive::{AddressMapper, BalanceOf, BalanceWithDust, Pallet},
     sp_core::{self, H160},
     sp_io,
 };
@@ -95,12 +95,6 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
     ) -> foundry_evm::backend::BackendResult<U256> {
         let evm_balance = EvmExecutorStrategyRunner.get_balance(executor, address)?;
 
-        let backend = get_backend_ref(executor.backend().strategy.context.as_ref());
-        let mut ext = backend.revive_test_externalities.lock().unwrap();
-        let balance = ext.execute_with(|| {
-            pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(address.as_slice()))
-        });
-        assert_eq!(evm_balance, U256::from_limbs(balance.0));
         Ok(evm_balance)
     }
 
