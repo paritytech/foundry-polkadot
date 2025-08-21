@@ -37,15 +37,14 @@ contract BalanceTranslationTest is DSTest {
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
-Ran 2 tests for src/BalanceTranslationTest.t.sol:BalanceTranslationTest
+Ran 1 test for src/BalanceTranslationTest.t.sol:BalanceTranslationTest
 [PASS] test_BalanceTranslationRevmPvm() ([GAS])
 Logs:
   10000000000000000000 10000000000000000000
 
-[PASS] test_nonce() ([GAS])
-Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
 
-Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 
 "#]]);
 });
