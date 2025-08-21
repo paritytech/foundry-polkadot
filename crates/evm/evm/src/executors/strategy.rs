@@ -3,8 +3,9 @@ use std::{any::Any, fmt::Debug};
 use alloy_primitives::{Address, U256};
 use eyre::Result;
 use foundry_cheatcodes::CheatcodesStrategy;
-use foundry_compilers::ProjectCompileOutput;
-use foundry_compilers::compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
+use foundry_compilers::{
+    compilers::resolc::dual_compiled_contracts::DualCompiledContracts, ProjectCompileOutput,
+};
 use foundry_evm_core::backend::{Backend, BackendResult, BackendStrategy, CowBackend};
 use revm::{
     primitives::{EnvWithHandlerCfg, ResultAndState},

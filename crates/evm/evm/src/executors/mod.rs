@@ -55,7 +55,8 @@ pub use trace::TracingExecutor;
 
 pub mod strategy;
 pub use strategy::{
-    EvmExecutorStrategyRunner, ExecutorStrategy, ExecutorStrategyContext, ExecutorStrategyRunner, ExecutorStrategyExt,
+    EvmExecutorStrategyRunner, ExecutorStrategy, ExecutorStrategyContext, ExecutorStrategyExt,
+    ExecutorStrategyRunner,
 };
 
 sol! {
