@@ -20,13 +20,11 @@ pub trait ReviveExecutorStrategyBuilder {
     fn new_revive() -> Self;
 }
 
-static REVIVE_RUNNER: std::sync::LazyLock<ReviveExecutorStrategyRunner> =
-    std::sync::LazyLock::new(|| ReviveExecutorStrategyRunner::new());
-
 impl ReviveExecutorStrategyBuilder for ExecutorStrategy {
     fn new_revive() -> Self {
         Self {
-            runner: &*REVIVE_RUNNER,
+            // TODO: we need to spawn test externalities for each test
+            runner: Box::leak(Box::new(ReviveExecutorStrategyRunner::new())),
             context: Box::new(ReviveExecutorStrategyContext::default()),
         }
     }
