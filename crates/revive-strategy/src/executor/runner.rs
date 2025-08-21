@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
-use foundry_common::sh_err;
 use foundry_evm::{
     backend::BackendStrategy,
     executors::{EvmExecutorStrategyRunner, ExecutorStrategyContext, ExecutorStrategyRunner},
@@ -10,7 +9,7 @@ use foundry_evm::{
 use polkadot_sdk::{
     frame_support::traits::{fungible::Mutate, Currency},
     pallet_balances,
-    pallet_revive::{AddressMapper, BalanceOf, BalanceWithDust, Pallet},
+    pallet_revive::{AddressMapper, BalanceOf, BalanceWithDust},
     sp_core::{self, H160},
     sp_io,
 };

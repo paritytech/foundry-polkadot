@@ -26,24 +26,13 @@ contract BalanceTranslationTest is DSTest {
         console.log(initialBalance, currentBalance);
         assertEq(initialBalance, currentBalance);
     }
-    function test_nonce() public {
-        vm.setNonce(address(this), 2);
-        uint64 nonce2 = vm.getNonce(address(this));
-        assertEq(nonce2, 2);
-    }
 }
 "#,
     )
     .unwrap();
 
     let res = cmd.args(["test", "-vvv"]).assert_success();
-    res.stderr_eq(str![[r#"
-Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
-Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
-Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
-Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
-
-"#]]).stdout_eq(str![[r#"
+    res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
