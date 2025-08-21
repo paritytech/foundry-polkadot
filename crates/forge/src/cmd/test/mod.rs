@@ -26,6 +26,7 @@ use foundry_compilers::{
     artifacts::output_selection::OutputSelection,
     compilers::{
         multi::{MultiCompiler, MultiCompilerLanguage},
+        resolc::dual_compiled_contracts::DualCompiledContracts,
         Language,
     },
     utils::source_files_iter,
@@ -42,7 +43,6 @@ use foundry_config::{
 };
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
-use foundry_compilers::compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use regex::Regex;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -288,7 +288,7 @@ impl TestArgs {
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
 
-        let strategy = utils::get_executor_strategy(&config);
+        let mut strategy = utils::get_executor_strategy(&config);
 
         // Explicitly enable isolation for gas reports for more correct gas accounting.
         if self.gas_report {
@@ -314,12 +314,14 @@ impl TestArgs {
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
         // Handle compilation based on whether dual compilation is enabled
-        let (output, _dual_compiled_contracts) = if config.resolc.resolc_compile {
+        let (output, dual_compiled_contracts) = if config.resolc.resolc_compile {
             // Dual compilation mode: compile both solc and resolc
 
             // Compile with solc to a subdirectory
             let mut solc_config = config.clone();
             solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
+            solc_config.resolc = Default::default();
+            solc_config.build_info_path = Some(solc_config.out.join("build-info"));
             let solc_project = solc_config.project()?;
 
             let compiler = ProjectCompiler::new()
@@ -333,7 +335,6 @@ impl TestArgs {
             let resolc_project = config.clone().project()?;
 
             let resolc_compiler = ProjectCompiler::new()
-                .dynamic_test_linking(config.dynamic_test_linking)
                 .quiet(shell::is_json() || self.junit)
                 .files(sources_to_compile)
                 .size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
@@ -392,6 +393,13 @@ impl TestArgs {
 
         // Prepare the test builder.
         let config = Arc::new(config);
+
+        // Set dual compiled contracts on the strategy
+        strategy.runner.revive_set_dual_compiled_contracts(
+            strategy.context.as_mut(),
+            dual_compiled_contracts.unwrap_or_default(),
+        );
+
         let runner = MultiContractRunnerBuilder::new(config.clone())
             .set_debug(should_debug)
             .set_decode_internal(decode_internal)

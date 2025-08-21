@@ -1,10 +1,13 @@
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
 use foundry_common::sh_err;
+use foundry_compilers::ProjectCompileOutput;
+use foundry_compilers::compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use foundry_evm::{
     backend::BackendStrategy,
     executors::{EvmExecutorStrategyRunner, ExecutorStrategyContext, ExecutorStrategyRunner},
 };
+use foundry_evm::executors::strategy::ExecutorStrategyExt;
 use polkadot_sdk::{
     frame_support::traits::fungible::Mutate,
     pallet_balances,
@@ -171,4 +174,24 @@ fn get_context_ref_mut(
     ctx: &mut dyn ExecutorStrategyContext,
 ) -> &mut ReviveExecutorStrategyContext {
     ctx.as_any_mut().downcast_mut().expect("expected ReviveExecutorStrategyContext")
+}
+
+impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
+    fn revive_set_dual_compiled_contracts(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _dual_compiled_contracts: DualCompiledContracts,
+    ) {
+        // TODO: Implement dual compiled contracts support for Revive
+        // This would store the dual compiled contracts in the context for use during execution
+    }
+
+    fn revive_set_compilation_output(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _output: ProjectCompileOutput,
+    ) {
+        // TODO: Implement compilation output support for Revive
+        // This would store the compilation output in the context for use during execution
+    }
 }
