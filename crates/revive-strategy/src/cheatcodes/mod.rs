@@ -202,8 +202,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
         };
 
-        // No PVM-specific opcode handling needed for now
-        // Only intercept PVM-specific calls when needed in future implementations
         false // Let EVM handle all operations
     }
 }
@@ -219,7 +217,7 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_,
     let persistent_accounts = data.db.persistent_accounts().clone();
 
     for address in persistent_accounts {
-        let acc = data.load_account(address).expect("msg");
+        let acc = data.load_account(address).expect("just loaded above");
         let amount = acc.data.info.balance;
 
         let amount_pvm =
