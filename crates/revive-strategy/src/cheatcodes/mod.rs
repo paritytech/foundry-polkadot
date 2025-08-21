@@ -4,8 +4,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use alloy_primitives::U256;
-use foundry_common::sh_err;
 use revive_env::{AccountId, Runtime};
 use revm::{
     interpreter::{CallInputs, Interpreter},
@@ -20,12 +18,9 @@ use foundry_cheatcodes::{
 
 use polkadot_sdk::{
     frame_support::traits::fungible::Mutate,
-    pallet_balances,
-    pallet_revive::AddressMapper,
-    polkadot_runtime_common::U256ToBalance,
+    pallet_revive::{AddressMapper, BalanceOf, BalanceWithDust, Config},
     sp_core::{self, H160},
     sp_io,
-    sp_runtime::traits::Convert,
 };
 
 pub trait PvmCheatcodeInspectorStrategyBuilder {
@@ -186,23 +181,19 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_,
     ctx.using_pvm = true;
     let persistent_accounts = data.db.persistent_accounts().clone();
 
-    // Dirty Balance translation
     for address in persistent_accounts {
-        let acc = data.load_account(address).expect("msg");
-        let amount = acc.data.info.balance;
-
-        let amount_pvm =
-            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-        let amount_pvm = U256ToBalance::convert(amount_pvm);
-        let amount_evm = U256::from(amount_pvm);
-        if amount != amount_evm {
-            let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect.");
-        }
+        let acc = data.load_account(address).expect("expected to exist");
+        let balance = acc.data.info.balance;
+        let balance_pvm = sp_core::U256::from_little_endian(&balance.as_le_bytes());
+        let balance_native =
+            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(balance_pvm).unwrap();
 
         ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
-            pallet_balances::Pallet::<Runtime>::set_balance(
+            // TODO: set `dust` after we have access to `AccountInfo`.
+            let (value, _dust) = balance_native.deconstruct();
+            <Runtime as Config>::Currency::set_balance(
                 &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
-                amount_pvm,
+                value,
             );
         })
     }
