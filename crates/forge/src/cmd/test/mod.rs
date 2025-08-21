@@ -349,7 +349,7 @@ impl TestArgs {
                 &resolc_project.paths,
             );
 
-            (resolc_output, Some(dual_compiled_contracts))
+            (solc_output, Some(dual_compiled_contracts))
         } else {
             // Single compilation mode: compile only with solc
 
