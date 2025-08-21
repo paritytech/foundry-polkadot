@@ -6,7 +6,7 @@ use std::{
 
 use alloy_primitives::{Address, B256, U256};
 use foundry_common::sh_err;
-use revive_env::{AccountId, Runtime};
+use revive_env::{AccountId, Runtime, System};
 
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
@@ -219,6 +219,7 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_,
     for address in persistent_accounts {
         let acc = data.load_account(address).expect("just loaded above");
         let amount = acc.data.info.balance;
+        let nonce = acc.data.info.nonce;
 
         let amount_pvm =
             sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
@@ -231,9 +232,22 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_,
         }
         let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
         ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+            let account_id =
+                AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
+            let current_nonce = System::account_nonce(&account_id);
+
+            assert!(
+                current_nonce as u64 <= nonce,
+                "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
+            );
+
+            while (System::account_nonce(&account_id) as u64) < nonce {
+                System::inc_account_nonce(&account_id);
+            }
+
             // TODO: set `dust` after we have access to `AccountInfo`.
             <Runtime as Config>::Currency::set_balance(
-                &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
+                &account_id,
                 balance_native.into_rounded_balance().saturating_add(min_balance),
             );
         })

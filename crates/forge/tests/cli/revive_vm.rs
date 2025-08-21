@@ -26,6 +26,11 @@ contract BalanceTranslationTest is DSTest {
         console.log(initialBalance, currentBalance);
         assertEq(initialBalance, currentBalance);
     }
+    function test_nonce() public {
+        vm.setNonce(address(this), 2);
+        uint64 nonce2 = vm.getNonce(address(this));
+        assertEq(nonce2, 2);
+    }
 }
 "#,
     )
@@ -43,14 +48,15 @@ Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
-Ran 1 test for src/BalanceTranslationTest.t.sol:BalanceTranslationTest
+Ran 2 tests for src/BalanceTranslationTest.t.sol:BalanceTranslationTest
 [PASS] test_BalanceTranslationRevmPvm() ([GAS])
 Logs:
   10000000000000000000 10000000000000000000
 
-Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+[PASS] test_nonce() ([GAS])
+Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
 
-Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
 
 "#]]);
 });
