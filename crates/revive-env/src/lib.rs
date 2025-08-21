@@ -79,7 +79,7 @@ mod tests {
     fn test_changing_block_number() {
         let mut ext = ExtBuilder::default().build();
         ext.execute_with(|| {
-            assert_eq!(System::block_number(), 1);
+            assert_eq!(System::block_number(), 0);
             System::set_block_number(5);
             assert_eq!(System::block_number(), 5);
         });

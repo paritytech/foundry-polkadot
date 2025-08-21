@@ -72,8 +72,8 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
 
         // code below breaks tests
         // if amount != amount_evm {
-        //     let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect.");
-        // }
+        //     let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are
+        // u128. Test results may be incorrect."); }
 
         EvmExecutorStrategyRunner.set_balance(executor, address, amount)?;
 
