@@ -122,4 +122,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     }
 }
 
-impl crate::strategy::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {}
+impl crate::strategy::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
+    fn revive_try_create(
+        &self,
+        _state: &mut crate::Cheatcodes,
+        _ecx: InnerEcx,
+        _input: &dyn CommonCreateInput,
+        _executor: &mut dyn crate::CheatcodesExecutor,
+    ) -> Option<revm::interpreter::CreateOutcome> {
+        None
+    }
+}
