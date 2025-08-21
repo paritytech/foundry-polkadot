@@ -774,8 +774,12 @@ impl Cheatcodes {
             }]);
         }
 
-        todo!();
-        if let Some(result) = self.strategy.runner.revive_try_create() {
+        if let Some(result) = self.strategy.runner.revive_try_create(
+            self,
+            ecx,
+            &input,
+            &mut TransparentCheatcodesExecutor,
+        ) {
             return Some(result);
         }
 

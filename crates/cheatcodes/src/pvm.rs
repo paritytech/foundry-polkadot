@@ -121,3 +121,5 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         false // Let EVM handle all operations
     }
 }
+
+impl crate::strategy::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {}
