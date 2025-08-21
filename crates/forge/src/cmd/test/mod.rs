@@ -42,6 +42,7 @@ use foundry_config::{
 };
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
+use foundry_compilers::compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use regex::Regex;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -312,18 +313,54 @@ impl TestArgs {
 
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
-        let mut compiler = ProjectCompiler::new()
-            .dynamic_test_linking(config.dynamic_test_linking)
-            .quiet(shell::is_json() || self.junit)
-            .files(sources_to_compile);
+        // Handle compilation based on whether dual compilation is enabled
+        let (output, _dual_compiled_contracts) = if config.resolc.resolc_compile {
+            // Dual compilation mode: compile both solc and resolc
 
-        // Apply revive size limits if revive compilation is enabled
-        if config.resolc.resolc_compile {
-            compiler =
-                compiler.size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
-        }
+            // Compile with solc to a subdirectory
+            let mut solc_config = config.clone();
+            solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
+            let solc_project = solc_config.project()?;
 
-        let output = compiler.compile(&project)?;
+            let compiler = ProjectCompiler::new()
+                .dynamic_test_linking(config.dynamic_test_linking)
+                .quiet(shell::is_json() || self.junit)
+                .files(sources_to_compile.clone());
+
+            let solc_output = compiler.compile(&solc_project)?;
+
+            // Compile with resolc to the main output directory
+            let resolc_project = config.clone().project()?;
+
+            let resolc_compiler = ProjectCompiler::new()
+                .dynamic_test_linking(config.dynamic_test_linking)
+                .quiet(shell::is_json() || self.junit)
+                .files(sources_to_compile)
+                .size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
+
+            let resolc_output = resolc_compiler.compile(&resolc_project)?;
+
+            // Create dual compiled contracts
+            let dual_compiled_contracts = DualCompiledContracts::new(
+                &solc_output,
+                &resolc_output,
+                &solc_project.paths,
+                &resolc_project.paths,
+            );
+
+            (resolc_output, Some(dual_compiled_contracts))
+        } else {
+            // Single compilation mode: compile only with solc
+
+            let compiler: ProjectCompiler = ProjectCompiler::new()
+                .dynamic_test_linking(config.dynamic_test_linking)
+                .quiet(shell::is_json() || self.junit)
+                .files(sources_to_compile.clone());
+
+            let solc_output = compiler.compile(&project)?;
+
+            (solc_output, None)
+        };
 
         // Create test options from general project settings and compiler output.
         let project_root = &project.paths.root;
@@ -852,7 +889,8 @@ impl TestArgs {
     pub(crate) fn watchexec_config(&self) -> Result<watchexec::Config> {
         self.watch.watchexec_config(|| {
             let config = self.load_config()?;
-            Ok([config.src, config.test])
+            let foundry_toml: PathBuf = config.root.join(Config::FILE_NAME);
+            Ok([config.src, config.test, config.script, foundry_toml])
         })
     }
 }
