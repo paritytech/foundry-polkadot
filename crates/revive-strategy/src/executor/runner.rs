@@ -8,13 +8,11 @@ use foundry_evm::{
     executors::{EvmExecutorStrategyRunner, ExecutorStrategyContext, ExecutorStrategyRunner},
 };
 use polkadot_sdk::{
-    frame_support::traits::fungible::Mutate,
+    frame_support::traits::{fungible::Mutate, Currency},
     pallet_balances,
-    pallet_revive::AddressMapper,
-    polkadot_runtime_common::U256ToBalance,
+    pallet_revive::{self, AddressMapper, BalanceOf, BalanceWithDust, Pallet},
     sp_core::{self, H160},
     sp_io,
-    sp_runtime::traits::Convert,
 };
 use revive_env::{AccountId, ExtBuilder, Runtime, System};
 use revm::primitives::{EnvWithHandlerCfg, ResultAndState};
@@ -68,19 +66,23 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
     ) -> foundry_evm::backend::BackendResult<()> {
         let amount_pvm =
             sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-        let amount_pvm = U256ToBalance::convert(amount_pvm);
-        let amount_evm = U256::from(amount_pvm);
+        let balance_native =
+            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
+        let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
+        let amount_evm = U256::from_limbs(balance.0);
         if amount != amount_evm {
             let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect.");
         }
-        EvmExecutorStrategyRunner.set_balance(executor, address, amount_evm)?;
+        EvmExecutorStrategyRunner.set_balance(executor, address, amount)?;
 
         let backend = get_backend_ref(executor.backend().strategy.context.as_ref());
         let mut ext = backend.revive_test_externalities.lock().unwrap();
+        let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
+
         ext.execute_with(|| {
             pallet_balances::Pallet::<Runtime>::set_balance(
                 &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
-                amount_pvm,
+                balance_native.into_rounded_balance().saturating_add(min_balance),
             );
         });
         Ok(())
@@ -96,11 +98,9 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         let backend = get_backend_ref(executor.backend().strategy.context.as_ref());
         let mut ext = backend.revive_test_externalities.lock().unwrap();
         let balance = ext.execute_with(|| {
-            pallet_balances::Pallet::<Runtime>::free_balance(AccountId::to_fallback_account_id(
-                &H160::from_slice(address.as_slice()),
-            ))
+            pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(address.as_slice()))
         });
-        assert_eq!(evm_balance, U256::from(balance));
+        assert_eq!(evm_balance, U256::from_limbs(balance.0));
         Ok(evm_balance)
     }
 

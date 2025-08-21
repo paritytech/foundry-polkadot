@@ -2,25 +2,28 @@
 forgetest!(can_translate_balances_after_switch_to_pvm, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
-
+    prj.insert_console();
     prj.add_source(
         "BalanceTranslationTest.t.sol",
         r#"
 import "./test.sol";
 import "./Vm.sol";
+import {console} from "./console.sol";
 
 contract BalanceTranslationTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function test_BalanceTranslationRevmPvm() public {
-        uint256 amount = 100 ether;
+        uint256 amount = 10 ether;
         vm.deal(address(this), amount);
+
         uint256 initialBalance = address(this).balance;
         assertEq(initialBalance, amount);
 
         vm.pvm(true);
 
         uint256 currentBalance = address(this).balance;
+        console.log(initialBalance, currentBalance);
         assertEq(initialBalance, currentBalance);
     }
 }
@@ -28,5 +31,26 @@ contract BalanceTranslationTest is DSTest {
     )
     .unwrap();
 
-    cmd.args(["test"]).assert_success();
+    let res = cmd.args(["test", "-vvv"]).assert_success();
+    res.stderr_eq(str![[r#"
+Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
+Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
+Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
+Error: Amount mismatch 115792089237316195423570985008687907853269984665640564039457584007913129639935 != 340282366920938463463374607431768211455, Polkadot balances are u128. Test results may be incorrect.
+
+"#]]).stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/BalanceTranslationTest.t.sol:BalanceTranslationTest
+[PASS] test_BalanceTranslationRevmPvm() ([GAS])
+Logs:
+  10000000000000000000 10000000000000000000
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
 });

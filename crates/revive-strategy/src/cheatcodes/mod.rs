@@ -4,11 +4,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use alloy_primitives::{Address, B256, U256};
+use foundry_common::sh_err;
 use revive_env::{AccountId, Runtime};
-use revm::{
-    interpreter::{CallInputs, Interpreter},
-    primitives::SignedAuthorization,
-};
 
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
@@ -17,12 +15,17 @@ use foundry_cheatcodes::{
 };
 
 use polkadot_sdk::{
-    frame_support::traits::fungible::Mutate,
-    pallet_revive::{AddressMapper, BalanceOf, BalanceWithDust, Config},
+    frame_support::traits::{fungible::Mutate, Currency},
+    pallet_balances,
+    pallet_revive::{self, AddressMapper, BalanceOf, BalanceWithDust, Config, Pallet},
     sp_core::{self, H160},
     sp_io,
 };
 
+use revm::{
+    interpreter::{opcode as op, CallInputs, InstructionResult, Interpreter},
+    primitives::SignedAuthorization,
+};
 pub trait PvmCheatcodeInspectorStrategyBuilder {
     fn new_pvm(test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self;
 }
@@ -161,10 +164,44 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
     fn pre_step_end(
         &self,
-        _ctx: &mut dyn CheatcodeInspectorStrategyContext,
-        _interpreter: &mut Interpreter,
+        ctx: &mut dyn CheatcodeInspectorStrategyContext,
+        interpreter: &mut Interpreter,
         _ecx: Ecx<'_, '_, '_>,
     ) -> bool {
+        let ctx = get_context(ctx);
+
+        if !ctx.using_pvm {
+            return false;
+        }
+
+        let address = match interpreter.current_opcode() {
+            op::SELFBALANCE => interpreter.contract().target_address,
+            op::BALANCE => {
+                if interpreter.stack.is_empty() {
+                    interpreter.instruction_result = InstructionResult::StackUnderflow;
+                    return true;
+                }
+
+                Address::from_word(B256::from(unsafe { interpreter.stack.pop_unsafe() }))
+            }
+            _ => return true,
+        };
+
+        let balance = ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+            pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(address.as_slice()))
+        });
+        let balance = U256::from_limbs(balance.0);
+
+        // Skip the current BALANCE instruction since we've already handled it
+        match interpreter.stack.push(balance) {
+            Ok(_) => unsafe {
+                interpreter.instruction_pointer = interpreter.instruction_pointer.add(1);
+            },
+            Err(e) => {
+                interpreter.instruction_result = e;
+            }
+        };
+
         // No PVM-specific opcode handling needed for now
         // Only intercept PVM-specific calls when needed in future implementations
         false // Let EVM handle all operations
@@ -182,18 +219,24 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_,
     let persistent_accounts = data.db.persistent_accounts().clone();
 
     for address in persistent_accounts {
-        let acc = data.load_account(address).expect("expected to exist");
-        let balance = acc.data.info.balance;
-        let balance_pvm = sp_core::U256::from_little_endian(&balance.as_le_bytes());
-        let balance_native =
-            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(balance_pvm).unwrap();
+        let acc = data.load_account(address).expect("msg");
+        let amount = acc.data.info.balance;
 
+        let amount_pvm =
+            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+        let balance_native =
+            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
+        let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
+        let amount_evm = U256::from_limbs(balance.0);
+        if amount != amount_evm {
+            let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect.");
+        }
+        let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
         ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
             // TODO: set `dust` after we have access to `AccountInfo`.
-            let (value, _dust) = balance_native.deconstruct();
             <Runtime as Config>::Currency::set_balance(
                 &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
-                value,
+                balance_native.into_rounded_balance().saturating_add(min_balance),
             );
         })
     }
