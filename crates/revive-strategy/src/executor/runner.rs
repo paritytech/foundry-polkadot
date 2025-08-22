@@ -73,13 +73,6 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
             sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
         let balance_native =
             BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-        // let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
-        // let amount_evm = U256::from_limbs(balance.0);
-
-        // code below breaks tests
-        // if amount != amount_evm {
-        //     let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are
-        // u128. Test results may be incorrect."); }
 
         EvmExecutorStrategyRunner.set_balance(executor, address, amount)?;
 
