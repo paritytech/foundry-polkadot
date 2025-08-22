@@ -189,19 +189,19 @@ fn get_context_ref_mut(
 impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
     fn revive_set_dual_compiled_contracts(
         &self,
-        _ctx: &mut dyn ExecutorStrategyContext,
-        _dual_compiled_contracts: DualCompiledContracts,
+        ctx: &mut dyn ExecutorStrategyContext,
+        dual_compiled_contracts: DualCompiledContracts,
     ) {
-        // TODO: Implement dual compiled contracts support for Revive
-        // This would store the dual compiled contracts in the context for use during execution
+        let ctx = get_context_ref_mut(ctx);
+        ctx.dual_compiled_contracts = dual_compiled_contracts;
     }
 
     fn revive_set_compilation_output(
         &self,
-        _ctx: &mut dyn ExecutorStrategyContext,
-        _output: ProjectCompileOutput,
+        ctx: &mut dyn ExecutorStrategyContext,
+        output: ProjectCompileOutput,
     ) {
-        // TODO: Implement compilation output support for Revive
-        // This would store the compilation output in the context for use during execution
+        let ctx = get_context_ref_mut(ctx);
+        ctx.compilation_output.replace(output);
     }
 }
