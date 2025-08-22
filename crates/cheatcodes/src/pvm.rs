@@ -2,7 +2,7 @@ use std::{any::Any, fmt::Debug, sync::Arc};
 
 use revm::{
     interpreter::{CallInputs, Interpreter},
-    primitives::SignedAuthorization,
+    primitives::{CreateScheme, SignedAuthorization},
 };
 
 use crate::{
@@ -123,13 +123,40 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 }
 
 impl crate::strategy::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
+    /// Try handling the `CREATE` within PVM.
+    ///
+    /// If `Some` is returned then the result must be returned immediately, else the call must be
+    /// handled in EVM.
     fn revive_try_create(
         &self,
-        _state: &mut crate::Cheatcodes,
-        _ecx: InnerEcx,
-        _input: &dyn CommonCreateInput,
+        state: &mut crate::Cheatcodes,
+        ecx: InnerEcx,
+        input: &dyn CommonCreateInput,
         _executor: &mut dyn crate::CheatcodesExecutor,
     ) -> Option<revm::interpreter::CreateOutcome> {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        if !ctx.using_pvm {
+            return None;
+        }
+
+        if let Some(CreateScheme::Create) = input.scheme() {
+            let caller = input.caller();
+            let nonce =
+                ecx.load_account(input.caller()).expect("to load caller account").info.nonce;
+            let address = caller.create(nonce);
+            if ecx.db.get_test_contract_address().map(|addr| address == addr).unwrap_or_default() {
+                info!("running create in EVM, instead of PVM (Test Contract) {:#?}", address);
+                return None;
+            }
+        }
+
         None
     }
+}
+
+fn get_context_ref_mut(
+    ctx: &mut dyn CheatcodeInspectorStrategyContext,
+) -> &mut PvmCheatcodeInspectorStrategyContext {
+    ctx.as_any_mut().downcast_mut().expect("expected PvmCheatcodeInspectorStrategyContext")
 }
