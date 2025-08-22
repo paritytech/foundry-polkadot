@@ -28,5 +28,5 @@ contract BalanceTranslationTest is DSTest {
     )
     .unwrap();
 
-    cmd.args(["test"]).assert_success();
+    cmd.args(["test", "--resolc"]).assert_success();
 });

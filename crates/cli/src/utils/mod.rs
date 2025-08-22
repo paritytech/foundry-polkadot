@@ -120,13 +120,12 @@ pub fn get_provider_builder(config: &Config) -> Result<ProviderBuilder> {
 pub fn get_executor_strategy(config: &Config) -> ExecutorStrategy {
     // TODO: using resolc compiler: `[FAIL: EvmError: StackUnderflow] constructor() (gas: 0)`
     if config.resolc.resolc_compile {
-        info!("using resolc compile");
+        info!("using revive strategy");
+        use revive_strategy::ReviveExecutorStrategyBuilder;
+        ExecutorStrategy::new_revive()
+    } else {
+        ExecutorStrategy::new_evm()
     }
-    // TODO: Temporary workaround to use right strategy for switching vm.pvm(true)
-    //       We need to switch it based on config.resolc.resolc_compile
-    use revive_strategy::ReviveExecutorStrategyBuilder;
-    info!("using revive strategy");
-    ExecutorStrategy::new_revive()
 }
 
 pub async fn get_chain<P>(chain: Option<Chain>, provider: P) -> Result<Chain>
