@@ -31,7 +31,7 @@ contract BalanceTranslationTest is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "-vvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
