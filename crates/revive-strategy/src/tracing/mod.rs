@@ -9,7 +9,7 @@ use polkadot_sdk::{
 };
 
 // Traces the execution inside pallet_revive.
-// This is a temporary solution to the fact that cusotm Tracer is not implementable for the time
+// This is a temporary solution to the fact that custom Tracer is not implementable for the time
 // being.
 pub fn trace<T: Config, R, F: FnOnce() -> R>(f: F) -> (R, Option<CallTrace<U256>>, PrestateTrace)
 where
