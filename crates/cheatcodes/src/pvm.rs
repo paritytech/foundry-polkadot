@@ -1,5 +1,6 @@
 use std::{any::Any, fmt::Debug, sync::Arc};
 
+use foundry_evm_core::constants::DEFAULT_CREATE2_DEPLOYER_CODE;
 use revm::{
     interpreter::{CallInputs, Interpreter},
     primitives::{CreateScheme, SignedAuthorization},
@@ -150,6 +151,14 @@ impl crate::strategy::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStr
                 return None;
             }
         }
+
+        let init_code = input.init_code();
+        if init_code.0 == DEFAULT_CREATE2_DEPLOYER_CODE {
+            info!("running create in EVM, instead of PVM (DEFAULT_CREATE2_DEPLOYER_CODE)");
+            return None;
+        }
+
+        info!("running create in PVM");
 
         None
     }
