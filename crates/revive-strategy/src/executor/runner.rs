@@ -55,8 +55,11 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         &self,
         ctx: &dyn ExecutorStrategyContext,
     ) -> foundry_cheatcodes::CheatcodesStrategy {
-        let _ctx = get_context_ref(ctx);
-        CheatcodeInspectorStrategy::new_pvm(self.revive_test_externalities.clone())
+        let ctx = get_context_ref(ctx);
+        CheatcodeInspectorStrategy::new_pvm(
+            self.revive_test_externalities.clone(),
+            ctx.dual_compiled_contracts.clone(),
+        )
     }
 
     /// Sets the balance of an account.

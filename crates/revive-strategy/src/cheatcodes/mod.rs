@@ -6,6 +6,7 @@ use std::{
 
 use alloy_primitives::{Address, B256, U256};
 use foundry_common::sh_err;
+use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System};
 
 use foundry_cheatcodes::{
@@ -18,9 +19,14 @@ use foundry_evm_core::constants::DEFAULT_CREATE2_DEPLOYER_CODE;
 use polkadot_sdk::{
     frame_support::traits::{fungible::Mutate, Currency},
     pallet_balances,
-    pallet_revive::{self, AddressMapper, BalanceOf, BalanceWithDust, Config, Pallet},
+    pallet_revive::{
+        evm::GasEncoder, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
+        DepositLimit, Pallet,
+    },
+    polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
     sp_io,
+    sp_weights::Weight,
 };
 
 use revm::{
@@ -28,14 +34,23 @@ use revm::{
     primitives::{CreateScheme, SignedAuthorization},
 };
 pub trait PvmCheatcodeInspectorStrategyBuilder {
-    fn new_pvm(test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self;
+    fn new_pvm(
+        test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
+        dual_compiled_contracts: DualCompiledContracts,
+    ) -> Self;
 }
 impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
     // Creates a new PVM strategy
-    fn new_pvm(test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self {
+    fn new_pvm(
+        test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
+        dual_compiled_contracts: DualCompiledContracts,
+    ) -> Self {
         Self {
             runner: &PvmCheatcodeInspectorStrategyRunner,
-            context: Box::new(PvmCheatcodeInspectorStrategyContext::new(test_externalities)),
+            context: Box::new(PvmCheatcodeInspectorStrategyContext::new(
+                test_externalities,
+                dual_compiled_contracts,
+            )),
         }
     }
 }
@@ -47,13 +62,18 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     /// Currently unused but kept for future PVM-specific logic
     pub using_pvm: bool,
     pub revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
+    pub dual_compiled_contracts: DualCompiledContracts,
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
-    pub fn new(test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self {
+    pub fn new(
+        revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
+        dual_compiled_contracts: DualCompiledContracts,
+    ) -> Self {
         Self {
             using_pvm: false, // Start in EVM mode by default
-            revive_test_externalities: test_externalities,
+            revive_test_externalities,
+            dual_compiled_contracts,
         }
     }
 }
@@ -188,9 +208,10 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             _ => return true,
         };
 
-        let balance = ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
-            pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(address.as_slice()))
-        });
+        let balance =
+            ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+                Pallet::<Runtime>::evm_balance(&H160::from_slice(address.as_slice()))
+            });
         let balance = U256::from_limbs(balance.0);
 
         // Skip the current BALANCE instruction since we've already handled it
@@ -294,6 +315,48 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         tracing::info!("running create in PVM");
+
+        let find_contract = ctx
+            .dual_compiled_contracts
+            .find_bytecode(&init_code.0)
+            .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
+
+        let constructor_args = find_contract.constructor_args();
+        let contract = find_contract.contract();
+
+        let res = ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+            let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+                &H160::from_slice(input.caller().as_slice()),
+            ));
+            let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
+            let max_gas =
+                <() as GasEncoder<u128>>::encode(Default::default(), Weight::MAX, 1u128 << 99);
+            let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
+            let (gas_limit, storage_deposit_limit) =
+                <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::decode(
+                    gas_limit,
+                )
+                .expect("gas limit is valid");
+            let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
+            let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
+            let data = constructor_args.to_vec();
+            // Above we declared that CREATE2 redirects to EVM, CREATE does not require a salt
+            let salt = None;
+            let bump_nonce = BumpNonce::No;
+
+            Pallet::<Runtime>::bare_instantiate(
+                origin,
+                evm_value,
+                gas_limit,
+                storage_deposit_limit,
+                code,
+                data,
+                salt,
+                bump_nonce,
+            )
+        });
+
+        println!("res: {:#?}", res);
 
         None
     }
