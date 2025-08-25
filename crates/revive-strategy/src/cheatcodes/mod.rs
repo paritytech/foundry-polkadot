@@ -379,7 +379,27 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             Ok(result) => {
                 let _ = gas.record_cost(gas_used.as_u64());
 
-                None
+                let outcome = if result.result.did_revert() {
+                    CreateOutcome {
+                        result: InterpreterResult {
+                            result: InstructionResult::Revert,
+                            output: result.result.data.into(),
+                            gas,
+                        },
+                        address: None,
+                    }
+                } else {
+                    CreateOutcome {
+                        result: InterpreterResult {
+                            result: InstructionResult::Return,
+                            output: result.result.data.into(),
+                            gas,
+                        },
+                        address: Some(Address::from_slice(result.addr.as_bytes())),
+                    }
+                };
+
+                Some(outcome)
             }
             Err(e) => {
                 tracing::error!("Contract creation failed: {:#?}", e);
