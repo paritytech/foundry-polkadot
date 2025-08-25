@@ -14,7 +14,6 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, InnerEcx, Result, Vm::pvmCall,
 };
-use foundry_evm_core::constants::DEFAULT_CREATE2_DEPLOYER_CODE;
 
 use polkadot_sdk::{
     frame_support::traits::{fungible::Mutate, Currency},
@@ -309,11 +308,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         let init_code = input.init_code();
-        if init_code.0 == DEFAULT_CREATE2_DEPLOYER_CODE {
-            tracing::info!("running create in EVM, instead of PVM (DEFAULT_CREATE2_DEPLOYER_CODE)");
-            return None;
-        }
-
         tracing::info!("running create in PVM");
 
         let find_contract = ctx
@@ -340,8 +334,17 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
             let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
             let data = constructor_args.to_vec();
-            // Above we declared that CREATE2 redirects to EVM, CREATE does not require a salt
-            let salt = None;
+            let salt = match input.scheme() {
+                Some(CreateScheme::Create2 { salt }) => Some(
+                    salt.as_limbs()
+                        .iter()
+                        .flat_map(|&x| x.to_le_bytes())
+                        .collect::<Vec<u8>>()
+                        .try_into()
+                        .unwrap(),
+                ),
+                _ => None,
+            };
             let bump_nonce = BumpNonce::No;
 
             Pallet::<Runtime>::bare_instantiate(
