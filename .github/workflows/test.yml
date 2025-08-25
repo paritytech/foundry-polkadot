@@ -34,8 +34,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
-          rustup target add wasm32-unknown-unknown
-          rustup component add rust-src --toolchain stable
+          rustup target add wasm32-unknown-unknown --toolchain stable
       - name: Build documentation
         run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
@@ -61,8 +60,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
-          rustup target add wasm32-unknown-unknown
-          rustup component add rust-src --toolchain stable
+          rustup target add wasm32-unknown-unknown --toolchain stable
       - run: cargo test --workspace --doc
 
   codespell:
@@ -87,8 +85,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
-          rustup target add wasm32-unknown-unknown
-          rustup component add rust-src --toolchain stable
+          rustup target add wasm32-unknown-unknown --toolchain stable
       - run: cargo clippy --workspace --all-targets --all-features
         env:
           RUSTFLAGS: -Dwarnings
@@ -131,8 +128,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
-          rustup target add wasm32-unknown-unknown
-          rustup component add rust-src --toolchain stable
+          rustup target add wasm32-unknown-unknown --toolchain stable
       - run: cargo hack check --each-feature --exclude-features isolate-by-default
 
   deny:
