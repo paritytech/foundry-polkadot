@@ -402,12 +402,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Some(outcome)
             }
             Err(e) => {
-                tracing::error!("Contract creation failed: {:#?}", e);
+                tracing::error!("Contract creation failed: {e:#?}");
                 Some(CreateOutcome {
                     result: InterpreterResult {
                         result: InstructionResult::Revert,
                         output: Bytes::from_iter(
-                            format!("Contract creation failed: {:#?}", e).as_bytes(),
+                            format!("Contract creation failed: {e:#?}").as_bytes(),
                         ),
                         gas,
                     },
