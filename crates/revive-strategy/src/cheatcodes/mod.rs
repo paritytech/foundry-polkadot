@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, Bytes, B256, U256};
 use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System};
@@ -29,7 +29,10 @@ use polkadot_sdk::{
 };
 
 use revm::{
-    interpreter::{opcode as op, CallInputs, InstructionResult, Interpreter},
+    interpreter::{
+        opcode as op, CallInputs, CreateOutcome, Gas, InstructionResult, Interpreter,
+        InterpreterResult,
+    },
     primitives::{CreateScheme, SignedAuthorization},
 };
 pub trait PvmCheatcodeInspectorStrategyBuilder {
@@ -286,7 +289,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         ecx: InnerEcx<'_, '_, '_>,
         input: &dyn CommonCreateInput,
         _executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
-    ) -> Option<revm::interpreter::CreateOutcome> {
+    ) -> Option<CreateOutcome> {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         if !ctx.using_pvm {
@@ -361,7 +364,23 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         println!("res: {:#?}", res);
 
-        None
+        let mut gas = Gas::new(input.gas_limit());
+        match res.result {
+            Err(e) => {
+                tracing::error!("Contract creation failed: {:#?}", e);
+                Some(CreateOutcome {
+                    result: InterpreterResult {
+                        result: InstructionResult::Revert,
+                        output: Bytes::from_iter(
+                            format!("Contract creation failed: {:#?}", e).as_bytes(),
+                        ),
+                        gas,
+                    },
+                    address: None,
+                })
+            }
+            _ => None,
+        }
     }
 }
 
