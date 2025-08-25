@@ -62,7 +62,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
           rustup target add wasm32-unknown-unknown
-          rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+          rustup component add rust-src --toolchain stable
       - run: cargo test --workspace --doc
 
   codespell:
