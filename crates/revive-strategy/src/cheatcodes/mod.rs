@@ -321,14 +321,20 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let constructor_args = find_contract.constructor_args();
         let contract = find_contract.contract();
 
+        let max_gas =
+            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
+                Default::default(),
+                Weight::MAX,
+                1u128 << 99,
+            );
+        let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
+
         let res = ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
             let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
                 &H160::from_slice(input.caller().as_slice()),
             ));
             let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
-            let max_gas =
-                <() as GasEncoder<u128>>::encode(Default::default(), Weight::MAX, 1u128 << 99);
-            let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
+
             let (gas_limit, storage_deposit_limit) =
                 <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::decode(
                     gas_limit,
@@ -362,10 +368,19 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             )
         });
 
-        println!("res: {:#?}", res);
-
         let mut gas = Gas::new(input.gas_limit());
+        let gas_used =
+            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
+                gas_limit,
+                res.gas_required,
+                res.storage_deposit.charge_or_zero(),
+            );
         match res.result {
+            Ok(result) => {
+                let _ = gas.record_cost(gas_used.as_u64());
+
+                None
+            }
             Err(e) => {
                 tracing::error!("Contract creation failed: {:#?}", e);
                 Some(CreateOutcome {
@@ -379,7 +394,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     address: None,
                 })
             }
-            _ => None,
         }
     }
 }
