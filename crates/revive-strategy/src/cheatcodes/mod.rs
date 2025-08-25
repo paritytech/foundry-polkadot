@@ -392,7 +392,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     CreateOutcome {
                         result: InterpreterResult {
                             result: InstructionResult::Return,
-                            output: result.result.data.into(),
+                            output: contract.resolc_bytecode.as_bytes().unwrap().clone(),
                             gas,
                         },
                         address: Some(Address::from_slice(result.addr.as_bytes())),
