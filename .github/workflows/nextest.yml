@@ -99,23 +99,7 @@ jobs:
           path: ~/.cargo/bin/eth-rpc
           key: eth-rpc-${{ matrix.runner_label }}-${{ env.ETH_RPC_VERSION }}
 
-      - name: Install system deps (Linux)
-        if:
-          contains(matrix.runner_label, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-
-      - name: Install system deps (macOS)
-        if:
-          contains(matrix.runner_label, 'macos')
-        run: |
-          brew update
-          brew install protobuf
-
-      - name: Install system deps (Windows)
-        if:
-          contains(matrix.runner_label, 'windows')
+      - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
 
       - name: Build substrate-node (if not cached)
