@@ -101,6 +101,8 @@ jobs:
 
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build substrate-node (if not cached)
         if: steps.cache-substrate.outputs.cache-hit != 'true' && !contains(matrix.runner_label, 'windows')
