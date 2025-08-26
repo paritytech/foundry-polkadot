@@ -177,8 +177,9 @@ type Executive = frame_executive::Executive<
     AllPalletsWithSystem,
 >;
 
-// Composes the runtime by adding all the used pallets and deriving necessary types.
+#[allow(clippy::disallowed_macros)]
 #[frame_construct_runtime]
+// Composes the runtime by adding all the used pallets and deriving necessary types.
 mod runtime {
     /// The main runtime type.
     #[runtime::runtime]
@@ -298,12 +299,13 @@ impl pallet_transaction_payment::Config for Runtime {
 
 parameter_types! {
     pub CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(30);
+    pub storage ChainId: u64 = 420_420_420;
 }
 
 #[derive_impl(pallet_revive::config_preludes::TestDefaultConfig)]
 impl pallet_revive::Config for Runtime {
     type AddressMapper = AccountId32Mapper<Self>;
-    type ChainId = ConstU64<420_420_420>;
+    type ChainId = ChainId;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type Currency = Balances;
     type NativeToEthRatio = ConstU32<1_000_000>;

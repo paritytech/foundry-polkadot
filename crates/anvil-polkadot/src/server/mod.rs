@@ -13,7 +13,7 @@ use crate::api_server::ApiHandle;
 pub mod error;
 mod handler;
 
-/// Configures a server that handles [`EthApi`] related JSON-RPC calls via HTTP and WS.
+/// Configures a server that handles JSON-RPC calls via HTTP and WS.
 ///
 /// The returned future creates a new server, binding it to the given address, which returns another
 /// future that runs it.
@@ -26,7 +26,7 @@ pub async fn serve(
     Ok(serve_on(tcp_listener, config, api_handle))
 }
 
-/// Configures a server that handles [`EthApi`] related JSON-RPC calls via HTTP and WS.
+/// Configures a server that handles JSON-RPC calls via HTTP and WS.
 pub async fn serve_on(
     tcp_listener: TcpListener,
     config: ServerConfig,
@@ -35,7 +35,7 @@ pub async fn serve_on(
     axum::serve(tcp_listener, router(api_handle, config).into_make_service()).await
 }
 
-/// Configures an [`axum::Router`] that handles [`EthApi`] related JSON-RPC calls via HTTP and WS.
+/// Configures an [`axum::Router`] that handles JSON-RPC calls via HTTP and WS.
 pub fn router(api_handle: ApiHandle, config: ServerConfig) -> Router {
     let http = HttpEthRpcHandler::new(api_handle.clone());
     let ws = PubSubEthRpcHandler::new(api_handle);

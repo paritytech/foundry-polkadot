@@ -113,8 +113,6 @@ pub async fn spawn(
 }
 
 pub async fn spawn_anvil_tasks(anvil_config: AnvilNodeConfig, service: &Service) -> Result<()> {
-    let logger = if anvil_config.enable_tracing { init_tracing() } else { Default::default() };
-    logger.set_enabled(!anvil_config.silent);
     let mut addresses = Vec::with_capacity(anvil_config.host.len());
 
     // Spawn the api server.

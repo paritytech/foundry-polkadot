@@ -1258,7 +1258,6 @@ dependencies = [
  "substrate-runtime",
  "tempfile",
  "thiserror 2.0.12",
- "tikv-jemallocator",
  "tokio",
  "tracing",
  "tracing-subscriber",

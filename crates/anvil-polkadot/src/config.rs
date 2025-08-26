@@ -163,7 +163,7 @@ impl SubstrateCliConfiguration for SubstrateNodeConfig {
     }
 
     fn rpc_cors(&self, _is_dev: bool) -> sc_cli::Result<Option<Vec<String>>> {
-        Ok(self.rpc_params.rpc_cors.clone().unwrap_or_else(|| Cors::All).into())
+        Ok(self.rpc_params.rpc_cors.clone().unwrap_or(Cors::All).into())
     }
 
     fn rpc_addr(

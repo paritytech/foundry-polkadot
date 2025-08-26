@@ -122,6 +122,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: forge fmt
         shell: bash
         run: ./.github/scripts/format.sh --check

@@ -170,7 +170,7 @@ fn spawn_rpc_server(
 
     let listen_addrs = rpc_server_handle
         .listen_addrs()
-        .into_iter()
+        .iter()
         .map(|socket_addr| {
             let mut multiaddr: Multiaddr = socket_addr.ip().into();
             multiaddr.push(sc_network_types::multiaddr::Protocol::Tcp(socket_addr.port()));
