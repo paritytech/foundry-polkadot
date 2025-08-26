@@ -30,10 +30,8 @@ pub mod server;
 mod api_server;
 
 /// contains cli command
-#[cfg(feature = "cmd")]
 pub mod cmd;
 
-#[cfg(feature = "cmd")]
 pub mod opts;
 
 #[macro_use]
@@ -43,7 +41,6 @@ use clap::{CommandFactory, Parser};
 use foundry_cli::utils;
 
 /// Run the `anvil` command line interface.
-#[cfg(feature = "cmd")]
 pub fn run() -> Result<()> {
     setup()?;
 
@@ -84,8 +81,6 @@ pub fn run_command(args: Anvil) -> Result<()> {
         }
         return Ok(())
     }
-
-    let _ = fdlimit::raise_fd_limit();
 
     let (anvil_config, substrate_config) = args.node.clone().into_node_config()?;
     let logger = if anvil_config.enable_tracing { init_tracing() } else { Default::default() };

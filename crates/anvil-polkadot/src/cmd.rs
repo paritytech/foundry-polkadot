@@ -99,12 +99,7 @@ pub struct NodeArgs {
     pub server_config: ServerConfig,
 }
 
-#[cfg(windows)]
-const IPC_HELP: &str =
-    "Launch an ipc server at the given path or default path = `\\.\\pipe\\anvil.ipc`";
-
 /// The default IPC endpoint
-#[cfg(not(windows))]
 const IPC_HELP: &str = "Launch an ipc server at the given path or default path = `/tmp/anvil.ipc`";
 
 impl NodeArgs {

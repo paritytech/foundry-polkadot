@@ -16,7 +16,6 @@ workspace = true
 [[bin]]
 name = "anvil-polkadot"
 path = "bin/main.rs"
-required-features = ["cli"]
 
 [dependencies]
 # foundry internal
@@ -60,7 +59,7 @@ polkadot-sdk = { workspace = true, features = [
 	"substrate-wasm-builder",
 ] }
 anvil-core.workspace = true
-anvil-server.workspace = true
+anvil-server = { workspace = true, features = ["clap"] }
 anvil-rpc.workspace = true
 foundry-cli.workspace = true
 foundry-common.workspace = true
@@ -123,11 +122,9 @@ clap = { version = "4", features = [
     "derive",
     "env",
     "wrap_help",
-], optional = true }
-clap_complete = { version = "4", optional = true }
+] }
+clap_complete = { version = "4" }
 chrono.workspace = true
-ctrlc = { version = "3", optional = true }
-fdlimit = { version = "0.3", optional = true }
 clap_complete_fig = "4"
 
 [dev-dependencies]
@@ -139,14 +136,5 @@ tokio = { workspace = true, features = ["full"] }
 op-alloy-rpc-types.workspace = true
 
 [features]
-default = ["cli"]
+default = []
 asm-keccak = ["alloy-primitives/asm-keccak"]
-cli = ["cmd"]
-cmd = [
-    "clap",
-    "clap_complete",
-    "dep:fdlimit",
-    "dep:ctrlc",
-    "anvil-server/clap",
-    "tokio/signal",
-]

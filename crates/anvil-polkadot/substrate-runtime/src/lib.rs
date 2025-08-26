@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::disallowed_macros)]
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -177,7 +178,6 @@ type Executive = frame_executive::Executive<
     AllPalletsWithSystem,
 >;
 
-#[allow(clippy::disallowed_macros)]
 #[frame_construct_runtime]
 // Composes the runtime by adding all the used pallets and deriving necessary types.
 mod runtime {
