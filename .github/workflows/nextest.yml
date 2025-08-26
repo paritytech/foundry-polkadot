@@ -113,6 +113,11 @@ jobs:
           brew update
           brew install protobuf
 
+      - name: Install system deps (Windows)
+        if:
+          contains(matrix.runner_label, 'windows')
+        uses: arduino/setup-protoc@v3
+
       - name: Build substrate-node (if not cached)
         if: steps.cache-substrate.outputs.cache-hit != 'true' && !contains(matrix.runner_label, 'windows')
         run: |
