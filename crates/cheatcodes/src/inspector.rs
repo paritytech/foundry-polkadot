@@ -774,6 +774,15 @@ impl Cheatcodes {
             }]);
         }
 
+        if let Some(result) = self.strategy.runner.revive_try_create(
+            self,
+            ecx,
+            &input,
+            &mut TransparentCheatcodesExecutor,
+        ) {
+            return Some(result);
+        }
+
         None
     }
 
@@ -1351,6 +1360,10 @@ impl Inspector<&mut dyn DatabaseExt> for Cheatcodes {
 
     #[inline]
     fn step_end(&mut self, interpreter: &mut Interpreter, ecx: Ecx) {
+        if self.strategy.runner.pre_step_end(self.strategy.context.as_mut(), interpreter, ecx) {
+            return;
+        }
+
         if self.gas_metering.paused {
             self.meter_gas_end(interpreter);
         }
@@ -1452,7 +1465,7 @@ impl Inspector<&mut dyn DatabaseExt> for Cheatcodes {
                             outcome.result.output = error.abi_encode().into();
                             outcome
                         }
-                    }
+                    };
                 } else {
                     // Call didn't revert, reset `assume_no_revert` state.
                     self.assume_no_revert = None;
@@ -1904,7 +1917,7 @@ impl Cheatcodes {
         let (key, target_address) = if interpreter.current_opcode() == op::SLOAD {
             (try_or_return!(interpreter.stack().peek(0)), interpreter.contract().target_address)
         } else {
-            return
+            return;
         };
 
         let Ok(value) = ecx.sload(target_address, key) else {

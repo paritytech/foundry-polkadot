@@ -252,6 +252,10 @@ impl DatabaseExt for CowBackend<'_> {
         self.backend.to_mut().add_persistent_account(account)
     }
 
+    fn persistent_accounts(&self) -> &std::collections::HashSet<Address> {
+        self.backend.persistent_accounts()
+    }
+
     fn allow_cheatcode_access(&mut self, account: Address) -> bool {
         self.backend.to_mut().allow_cheatcode_access(account)
     }
@@ -266,6 +270,10 @@ impl DatabaseExt for CowBackend<'_> {
 
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
         self.backend.to_mut().set_blockhash(block_number, block_hash);
+    }
+
+    fn get_test_contract_address(&self) -> Option<Address> {
+        self.backend.get_test_contract_address()
     }
 }
 
