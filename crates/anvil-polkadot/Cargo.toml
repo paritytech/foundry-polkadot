@@ -20,7 +20,7 @@ path = "bin/main.rs"
 [dependencies]
 # foundry internal
 substrate-runtime = { path = "substrate-runtime"}
-polkadot-sdk = { workspace = true, features = [
+polkadot-sdk = { version = "2507.1.0", default-features = false, features = [
     "sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
@@ -108,7 +108,7 @@ futures-timer = { version = "3.0.3" }
 
 # misc
 flate2 = "1.0"
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 yansi.workspace = true

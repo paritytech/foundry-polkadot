@@ -77,7 +77,7 @@ async-trait.workspace = true
 
 # misc
 flate2 = "1.0"
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 yansi.workspace = true

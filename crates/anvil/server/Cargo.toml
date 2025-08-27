@@ -33,7 +33,7 @@ bytes = { workspace = true, optional = true }
 tokio-util = { version = "0.7", features = ["codec"], optional = true }
 
 # misc
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true

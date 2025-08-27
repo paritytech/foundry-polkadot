@@ -69,7 +69,7 @@ parking_lot.workspace = true
 regex = { workspace = true, default-features = false }
 reqwest = { workspace = true, features = ["json"] }
 semver.workspace = true
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 similar = { version = "2", features = ["inline"] }
 solang-parser.workspace = true
 solar-parse.workspace = true

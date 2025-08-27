@@ -23,7 +23,7 @@ serde.workspace = true
 schemars = { version = "0.8", optional = true }
 
 [dev-dependencies]
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 
 [features]
 schema = ["dep:schemars"]

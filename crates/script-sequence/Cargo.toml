@@ -20,7 +20,7 @@ foundry-compilers = { workspace = true, features = ["full"] }
 
 serde.workspace = true
 eyre.workspace = true
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 walkdir.workspace = true
 
 revm-inspectors.workspace = true

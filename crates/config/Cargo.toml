@@ -36,7 +36,7 @@ number_prefix = "0.4"
 regex.workspace = true
 reqwest.workspace = true
 semver = { workspace = true, features = ["serde"] }
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 serde.workspace = true
 soldeer-core.workspace = true
 thiserror.workspace = true

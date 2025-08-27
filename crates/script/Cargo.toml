@@ -28,7 +28,7 @@ forge-script-sequence.workspace = true
 
 serde.workspace = true
 eyre.workspace = true
-serde_json = { workspace = true, features = ["std"] }
+serde_json.workspace = true
 dunce.workspace = true
 foundry-compilers = { workspace = true, features = ["full"] }
 tracing.workspace = true
