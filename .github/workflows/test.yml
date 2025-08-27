@@ -152,6 +152,8 @@ jobs:
       # Exclude substrate-runtime because it can only be compiled for wasm32 without the std feature.
       # It's anyway compiled without std when building anvil-polkadot (by the wasm builder).
       - run: cargo hack check --each-feature --exclude-features isolate-by-default --exclude substrate-runtime
+      # Add another step for running cargo check on substrate runtime (without excluding the default std feature)
+      - run: cargo hack check -p substrate-runtime --each-feature --exclude-no-default-features
 
   deny:
     uses: ithacaxyz/ci/.github/workflows/deny.yml@main
