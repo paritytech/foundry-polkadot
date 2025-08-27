@@ -24,7 +24,7 @@ polkadot-sdk = { version = "2507.1.0", default-features = false, features = [
 	"with-tracing",
 ] }
 scale-info = { version = "2.11.6", default-features = false }
-serde_json = { workspace = true, default-features = false, features = ["alloc"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [build-dependencies]
 polkadot-sdk = { version = "2507.1.0", default-features = false, optional = true, features = ["substrate-wasm-builder"] }

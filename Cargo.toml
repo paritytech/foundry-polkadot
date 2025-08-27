@@ -309,7 +309,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 rustls = "0.23"
 semver = "1"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["arbitrary_precision"], default-features = false }
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 similar-asserts = "1.6"
 soldeer-commands = "=0.5.4"
 soldeer-core = { version = "=0.5.4", features = ["serde"] }
