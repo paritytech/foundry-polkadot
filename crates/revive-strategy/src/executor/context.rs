@@ -18,10 +18,7 @@ pub struct ReviveExecutorStrategyContext {
 
 impl ReviveExecutorStrategyContext {
     pub fn new(resolc_startup: bool) -> Self {
-        Self {
-            resolc_startup,
-            ..Default::default()
-        }
+        Self { resolc_startup, ..Default::default() }
     }
 }
 
