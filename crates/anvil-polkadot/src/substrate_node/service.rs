@@ -1,4 +1,4 @@
-use super::mining_engine::{MiningEngine, MiningMode};
+use super::mining_engine::{run_mining_engine, MiningEngine, MiningMode};
 use crate::AnvilNodeConfig;
 use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
@@ -62,8 +62,11 @@ pub fn new(
 
     let (mut sink, commands_stream) = futures::channel::mpsc::channel(1024);
 
-    let mining_engine =
-        Arc::new(MiningEngine::new(MiningMode::None, transaction_pool.clone(), sink.clone()));
+    let mining_engine = Arc::new(MiningEngine::new(
+        MiningMode::Interval { tick: 10 },
+        transaction_pool.clone(),
+        sink.clone(),
+    ));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
@@ -74,6 +77,12 @@ pub fn new(
         mining_engine.clone(),
     )?;
 
+    task_manager.spawn_handle().spawn(
+        "mining_engine_task",
+        Some("consensus"),
+        run_mining_engine(mining_engine.clone(), sink),
+    );
+
     let proposer = sc_basic_authorship::ProposerFactory::new(
         task_manager.spawn_handle(),
         client.clone(),
@@ -82,21 +91,6 @@ pub fn new(
         None,
     );
 
-    // Implement a dummy block production mechanism for now, just build an instantly finalized block
-    // every 6 seconds. This will have to change.
-    let default_block_time = 1000000;
-    task_manager.spawn_handle().spawn("block_authoring", "anvil-polkadot", async move {
-        loop {
-            futures_timer::Delay::new(std::time::Duration::from_millis(default_block_time)).await;
-            sink.try_send(sc_consensus_manual_seal::EngineCommand::SealNewBlock {
-                create_empty: true,
-                finalize: true,
-                parent_hash: None,
-                sender: None,
-            })
-            .unwrap();
-        }
-    });
     let params = sc_consensus_manual_seal::ManualSealParams {
         block_import: client.clone(),
         env: proposer,

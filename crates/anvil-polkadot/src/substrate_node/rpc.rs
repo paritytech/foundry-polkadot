@@ -40,9 +40,7 @@ where
         + 'static,
 
     C::Api: sp_block_builder::BlockBuilder<OpaqueBlock>,
-
     C::Api: substrate_frame_rpc_system::AccountNonceApi<OpaqueBlock, AccountId, Nonce>,
-
     P: TransactionPool + 'static,
 {
     use polkadot_sdk::substrate_frame_rpc_system::{System, SystemApiServer};

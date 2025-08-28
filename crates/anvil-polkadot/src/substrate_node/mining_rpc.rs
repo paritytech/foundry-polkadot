@@ -1,4 +1,4 @@
-use super::mining_engine::MiningEngine;
+use super::mining_engine::{MiningEngine, MiningMode};
 use alloy_primitives::U256;
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 use std::sync::Arc;
@@ -61,11 +61,19 @@ impl AnvilPolkadotMiningRpcServer for RpcApiServer {
     }
 
     async fn get_interval_mining(&self) -> RpcResult<Option<u64>> {
-        todo!()
+        let mode = self.mining_engine.mining_mode.read();
+        if let MiningMode::Interval { tick: interval } = *mode {
+            return Ok(Some(interval))
+        }
+        Ok(None)
     }
 
-    async fn set_interval_mining(&self, _interval: u64) -> RpcResult<()> {
-        todo!()
+    async fn set_interval_mining(&self, interval: u64) -> RpcResult<()> {
+        let new_mode =
+            if interval <= 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
+        *self.mining_engine.mining_mode.write() = new_mode;
+        self.mining_engine.wake();
+        Ok(())
     }
 
     async fn set_block_timestamp_interval(&self, _interval: u64) -> RpcResult<()> {
