@@ -438,7 +438,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .db
             .get_test_contract_address()
             .map(|addr| call.bytecode_address == addr)
-            .unwrap_or_default() {
+            .unwrap_or_default()
+        {
             tracing::info!(
                 "running call in EVM, instead of PVM (Test Contract) {:#?}",
                 call.bytecode_address
