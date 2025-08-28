@@ -1,3 +1,5 @@
+use super::mining_engine::{MiningEngine, MiningMode};
+use crate::AnvilNodeConfig;
 use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
     sc_executor::WasmExecutor,
@@ -9,20 +11,14 @@ use polkadot_sdk::{
     sp_io,
     sp_keystore::KeystorePtr,
     sp_timestamp,
-    substrate_frame_rpc_system::SystemApiServer,
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
 
-use crate::AnvilNodeConfig;
-
 pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>;
-
 pub type Backend = sc_service::TFullBackend<Block>;
-
 pub type TransactionPoolHandle = sc_transaction_pool::TransactionPoolHandle<Block, FullClient>;
-
 type SelectChain = sc_consensus::LongestChain<Backend, Block>;
 
 pub struct Service {
@@ -31,6 +27,7 @@ pub struct Service {
     pub backend: Arc<Backend>,
     pub tx_pool: Arc<TransactionPoolHandle>,
     pub rpc_handlers: RpcHandlers,
+    pub mining_engine: Arc<MiningEngine>,
 }
 
 /// Builds a new service for a full client.
@@ -63,6 +60,10 @@ pub fn new(
         sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
     );
 
+    let (mut sink, commands_stream) = futures::channel::mpsc::channel(1024);
+
+    let mining_engine =
+        Arc::new(MiningEngine::new(MiningMode::None, transaction_pool.clone(), sink.clone()));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
@@ -70,6 +71,7 @@ pub fn new(
         transaction_pool.clone(),
         keystore_container.keystore(),
         backend.clone(),
+        mining_engine.clone(),
     )?;
 
     let proposer = sc_basic_authorship::ProposerFactory::new(
@@ -82,8 +84,7 @@ pub fn new(
 
     // Implement a dummy block production mechanism for now, just build an instantly finalized block
     // every 6 seconds. This will have to change.
-    let default_block_time = 6000;
-    let (mut sink, commands_stream) = futures::channel::mpsc::channel(1024);
+    let default_block_time = 1000000;
     task_manager.spawn_handle().spawn("block_authoring", "anvil-polkadot", async move {
         loop {
             futures_timer::Delay::new(std::time::Duration::from_millis(default_block_time)).await;
@@ -96,7 +97,6 @@ pub fn new(
             .unwrap();
         }
     });
-
     let params = sc_consensus_manual_seal::ManualSealParams {
         block_import: client.clone(),
         env: proposer,
@@ -117,7 +117,14 @@ pub fn new(
         authorship_future,
     );
 
-    Ok(Service { task_manager, client, backend, tx_pool: transaction_pool, rpc_handlers })
+    Ok(Service {
+        task_manager,
+        client,
+        backend,
+        tx_pool: transaction_pool,
+        rpc_handlers,
+        mining_engine,
+    })
 }
 
 fn spawn_rpc_server(
@@ -127,14 +134,21 @@ fn spawn_rpc_server(
     transaction_pool: Arc<TransactionPoolWrapper<Block, FullClient>>,
     keystore: KeystorePtr,
     backend: Arc<Backend>,
+    mining_engine: Arc<MiningEngine>,
 ) -> Result<RpcHandlers, ServiceError> {
+    use super::rpc::{create_full, FullDeps};
     let rpc_extensions_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();
+        let mining_engine = mining_engine.clone();
 
         Box::new(move |_| {
-            Ok(polkadot_sdk::substrate_frame_rpc_system::System::new(client.clone(), pool.clone())
-                .into_rpc())
+            let deps = FullDeps {
+                client: client.clone(),
+                pool: pool.clone(),
+                mining_engine: mining_engine.clone(),
+            };
+            create_full(deps).map_err(Into::into)
         })
     };
 
