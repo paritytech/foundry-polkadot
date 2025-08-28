@@ -64,7 +64,7 @@ pub async fn new(
     let (sink, commands_stream) = futures::channel::mpsc::channel(1024);
 
     let mining_engine =
-        Arc::new(MiningEngine::new(MiningMode::AutoMining, transaction_pool.clone(), sink.clone()));
+        Arc::new(MiningEngine::new(MiningMode::MixedMining { tick: 40 }, transaction_pool.clone(), sink.clone()));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),

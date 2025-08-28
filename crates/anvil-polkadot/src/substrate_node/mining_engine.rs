@@ -19,6 +19,10 @@ pub enum MiningMode {
     Interval { tick: u64 },
     /// Create a new block every time there is a transaction.
     AutoMining,
+    /// A mix of the two mining modes above. We create a block
+    /// either every tick seconds or anytime there is a new
+    /// transaction
+    MixedMining { tick: u64},
 }
 
 pub struct MiningEngine {
@@ -110,7 +114,7 @@ pub async fn run_mining_engine(
             _ = rebuild_streams_future.next() => {
                 let mode = current_mode.clone().unwrap_or(MiningMode::None);
                 interval_mining_stream = if let Some(tick) = match mode {
-                    MiningMode::Interval {tick} => Some(tick),
+                    MiningMode::Interval {tick} | MiningMode::MixedMining { tick } => Some(tick),
                     _ => None,
                 } {
                     let stream = unfold(interval(Duration::from_secs(tick)), |mut interval| async {
@@ -123,7 +127,7 @@ pub async fn run_mining_engine(
                 else {
                     None
                 };
-                auto_mining_stream = if matches!(mode, MiningMode::AutoMining) {
+                auto_mining_stream = if matches!(mode, MiningMode::AutoMining | MiningMode::MixedMining { .. }) {
                     let stream = engine.transaction_pool.import_notification_stream().map(|_| EngineCommand::SealNewBlock { create_empty: false, finalize: true, parent_hash: None, sender: None })
                         .fuse();
                     Some(Box::pin(stream))
