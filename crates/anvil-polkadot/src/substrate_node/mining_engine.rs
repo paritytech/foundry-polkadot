@@ -158,7 +158,7 @@ pub async fn run_mining_engine(
     loop {
         let mut rebuild_streams_future = futures::stream::poll_fn(|cx| {
             let mode = { *engine.mining_mode.read() };
-            let mode_changed = current_mode.as_ref().is_none_or( |m| *m != mode);
+            let mode_changed = current_mode.as_ref().is_none_or(|m| *m != mode);
 
             if mode_changed {
                 current_mode = Some(mode);

@@ -68,7 +68,7 @@ impl TimeManager {
     }
 
     /// Converts a value from milliseconds to the manager's `precision`.
-    fn from_milliseconds(&self, value_ms: u64) -> u64 {
+    fn convert_from_milliseconds(&self, value_ms: u64) -> u64 {
         match self.precision {
             Timeprecision::Seconds => value_ms.saturating_div(1000),
             Timeprecision::Milliseconds => value_ms,
@@ -118,7 +118,7 @@ impl TimeManager {
         if timestamp < *self.last_timestamp.read() {
             return Err(BlockchainError::TimestampError(format!(
                 "{} is lower than previous block's timestamp",
-                self.from_milliseconds(timestamp)
+                self.convert_from_milliseconds(timestamp)
             )))
         }
         self.next_exact_timestamp.write().replace(timestamp);
@@ -175,13 +175,13 @@ impl TimeManager {
             *self.offset.write() = next_offset;
         }
         *self.last_timestamp.write() = next_timestamp;
-        self.from_milliseconds(next_timestamp)
+        self.convert_from_milliseconds(next_timestamp)
     }
 
     /// Returns the current timestamp for a call that does _not_ update the value
     pub fn current_call_timestamp(&self) -> u64 {
         let (next_timestamp, _) = self.compute_next_timestamp();
-        self.from_milliseconds(next_timestamp)
+        self.convert_from_milliseconds(next_timestamp)
     }
 }
 
