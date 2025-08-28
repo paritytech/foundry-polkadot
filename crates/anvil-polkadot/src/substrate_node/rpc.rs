@@ -44,7 +44,7 @@ where
 
     let mut module = RpcModule::new(());
     let FullDeps { client, pool } = deps;
-    module.merge(System::new(client.clone(), pool.clone()).into_rpc())?;
+    module.merge(System::new(client, pool).into_rpc())?;
 
     Ok(module)
 }

@@ -17,7 +17,7 @@ pub enum MiningMode {
     /// We are only producing blocks as an answer to the
     /// mine family of RPCs
     None,
-    /// Create a new block every <tick> seconds.
+    /// Create a new block every tick seconds.
     Interval { tick: u64 },
     /// Create a new block every time there is a transaction.
     AutoMining,
@@ -94,10 +94,10 @@ impl MiningEngine {
 
     pub fn set_interval_mining(&self, interval: u64) -> ResponseResult {
         let new_mode =
-            if interval <= 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
+            if interval == 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
         *self.mining_mode.write() = new_mode;
         self.wake();
-        return ResponseResult::success(());
+        ResponseResult::success(())
     }
 
     pub fn get_interval_mining(&self) -> ResponseResult {
@@ -158,7 +158,7 @@ pub async fn run_mining_engine(
     loop {
         let mut rebuild_streams_future = futures::stream::poll_fn(|cx| {
             let mode = { *engine.mining_mode.read() };
-            let mode_changed = current_mode.as_ref().map_or(true, |m| *m != mode);
+            let mode_changed = current_mode.as_ref().is_none_or( |m| *m != mode);
 
             if mode_changed {
                 current_mode = Some(mode);
@@ -170,7 +170,7 @@ pub async fn run_mining_engine(
         });
         tokio::select! {
             _ = rebuild_streams_future.next() => {
-                let mode = current_mode.clone().unwrap_or(MiningMode::None);
+                let mode = current_mode.unwrap_or(MiningMode::None);
                 interval_mining_stream = if let Some(tick) = match mode {
                     MiningMode::Interval {tick} | MiningMode::MixedMining { tick } => Some(tick),
                     _ => None,
