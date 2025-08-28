@@ -63,8 +63,11 @@ pub async fn new(
 
     let (sink, commands_stream) = futures::channel::mpsc::channel(1024);
 
-    let mining_engine =
-        Arc::new(MiningEngine::new(MiningMode::MixedMining { tick: 40 }, transaction_pool.clone(), sink.clone()));
+    let mining_engine = Arc::new(MiningEngine::new(
+        MiningMode::AutoMining,
+        transaction_pool.clone(),
+        sink.clone(),
+    ));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
@@ -72,7 +75,6 @@ pub async fn new(
         transaction_pool.clone(),
         keystore_container.keystore(),
         backend.clone(),
-        mining_engine.clone(),
     )?;
 
     task_manager.spawn_handle().spawn(
@@ -153,20 +155,14 @@ fn spawn_rpc_server(
     transaction_pool: Arc<TransactionPoolWrapper<Block, FullClient>>,
     keystore: KeystorePtr,
     backend: Arc<Backend>,
-    mining_engine: Arc<MiningEngine>,
 ) -> Result<RpcHandlers, ServiceError> {
     use super::rpc::{create_full, FullDeps};
     let rpc_extensions_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();
-        let mining_engine = mining_engine.clone();
 
         Box::new(move |_| {
-            let deps = FullDeps {
-                client: client.clone(),
-                pool: pool.clone(),
-                mining_engine: mining_engine.clone(),
-            };
+            let deps = FullDeps { client: client.clone(), pool: pool.clone() };
             create_full(deps).map_err(Into::into)
         })
     };

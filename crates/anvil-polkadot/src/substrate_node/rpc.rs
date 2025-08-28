@@ -1,6 +1,4 @@
 #![warn(missing_docs)]
-use super::{mining_engine::MiningEngine, mining_rpc::AnvilPolkadotMiningRpcServer};
-use crate::substrate_node::mining_rpc::RpcApiServer;
 use interface::{AccountId, Nonce, OpaqueBlock};
 use jsonrpsee::RpcModule;
 use polkadot_sdk::{
@@ -23,7 +21,6 @@ pub struct FullDeps<C, P> {
     pub client: Arc<C>,
     /// Transaction pool instance.
     pub pool: Arc<P>,
-    pub mining_engine: Arc<MiningEngine>,
 }
 
 /// Instantiate all full RPC extensions.
@@ -46,9 +43,8 @@ where
     use polkadot_sdk::substrate_frame_rpc_system::{System, SystemApiServer};
 
     let mut module = RpcModule::new(());
-    let FullDeps { client, pool, mining_engine } = deps;
+    let FullDeps { client, pool } = deps;
     module.merge(System::new(client.clone(), pool.clone()).into_rpc())?;
-    module.merge(RpcApiServer::new(mining_engine.clone()).into_rpc())?;
 
     Ok(module)
 }

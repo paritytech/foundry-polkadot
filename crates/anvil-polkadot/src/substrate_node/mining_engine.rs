@@ -1,4 +1,6 @@
 use super::service::TransactionPoolHandle;
+use alloy_primitives::U256;
+use anvil_rpc::response::ResponseResult;
 use chrono::Local;
 use futures::{
     stream::{unfold, FusedStream},
@@ -22,7 +24,7 @@ pub enum MiningMode {
     /// A mix of the two mining modes above. We create a block
     /// either every tick seconds or anytime there is a new
     /// transaction
-    MixedMining { tick: u64},
+    MixedMining { tick: u64 },
 }
 
 pub struct MiningEngine {
@@ -68,6 +70,62 @@ impl MiningEngine {
 
     pub fn is_automine(&self) -> bool {
         matches!(*self.mining_mode.read(), MiningMode::AutoMining)
+    }
+
+    // ---------------- RPC ----------------------
+
+    pub async fn mine(&self, num_blocks: Option<U256>, interval: Option<U256>) -> ResponseResult {
+        info!("anvil_polkadot_mine");
+        let interval = interval.map(|i| i.to::<u64>());
+        let blocks = num_blocks.unwrap_or(U256::from(1));
+        if blocks.is_zero() {
+            return ResponseResult::success(());
+        }
+        for _ in 0..blocks.to::<u64>() {
+            // After we invent the time machine skip forward in time
+            // instead of sleeping so we can match the anvil behavior
+            if let Some(interval) = interval {
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval)).await;
+            }
+            self.seal_now();
+        }
+        ResponseResult::success(())
+    }
+
+    pub fn set_interval_mining(&self, interval: u64) -> ResponseResult {
+        let new_mode =
+            if interval <= 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
+        *self.mining_mode.write() = new_mode;
+        self.wake();
+        return ResponseResult::success(());
+    }
+
+    pub fn get_interval_mining(&self) -> ResponseResult {
+        let mode = self.mining_mode.read();
+        let return_val =
+            if let MiningMode::Interval { tick: interval } = *mode { Some(interval) } else { None };
+        ResponseResult::success(return_val)
+    }
+
+    pub fn get_auto_mine(&self) -> ResponseResult {
+        ResponseResult::success(self.is_automine())
+    }
+
+    pub fn set_auto_mine(&self, enabled: bool) -> ResponseResult {
+        let mining_mode = if self.is_automine() {
+            if enabled {
+                MiningMode::AutoMining
+            } else {
+                MiningMode::None
+            }
+        } else if enabled {
+            MiningMode::AutoMining
+        } else {
+            MiningMode::None
+        };
+        *self.mining_mode.write() = mining_mode;
+        self.wake();
+        ResponseResult::success(())
     }
 }
 
