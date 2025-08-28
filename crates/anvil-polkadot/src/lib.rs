@@ -83,35 +83,49 @@ pub fn run_command(args: Anvil) -> Result<()> {
     }
 
     let (anvil_config, substrate_config) = args.node.clone().into_node_config()?;
-    let logger = if anvil_config.enable_tracing { init_tracing() } else { Default::default() };
-    logger.set_enabled(!anvil_config.silent);
 
-    let runner = args.create_runner(&substrate_config)?;
+    let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("anvil-polkadot")
+        .build()
+        .map_err(|e| sc_cli::Error::Application(e.into()))?;
 
-    Ok(runner.run_node_until_exit(|config| async move { spawn(anvil_config, config).await })?)
+    let signals = tokio_runtime.block_on(async { sc_cli::Signals::capture() })?;
+    let config = args.create_configuration(&substrate_config, tokio_runtime.handle().clone())?;
+    let logging_manager = init_tracing();
+    let runner: sc_cli::Runner<Anvil> = sc_cli::Runner::new(config, tokio_runtime, signals)?;
+
+    Ok(runner.run_node_until_exit(|config| async move {
+        spawn(anvil_config, config, logging_manager).await
+    })?)
 }
 
 pub async fn spawn(
     anvil_config: AnvilNodeConfig,
     substrate_config: sc_service::Configuration,
+    logging_manager: LoggingManager,
 ) -> Result<TaskManager, sc_cli::Error> {
     // Spawn the substrate node.
     let substrate_service = substrate_node::service::new(&anvil_config, substrate_config)
         .map_err(sc_cli::Error::Service)?;
 
     // Spawn the other tasks.
-    spawn_anvil_tasks(anvil_config, &substrate_service)
+    spawn_anvil_tasks(anvil_config, &substrate_service, logging_manager)
         .await
         .map_err(|err| sc_cli::Error::Application(err.into()))?;
 
     Ok(substrate_service.task_manager)
 }
 
-pub async fn spawn_anvil_tasks(anvil_config: AnvilNodeConfig, service: &Service) -> Result<()> {
+pub async fn spawn_anvil_tasks(
+    anvil_config: AnvilNodeConfig,
+    service: &Service,
+    logging_manager: LoggingManager,
+) -> Result<()> {
     let mut addresses = Vec::with_capacity(anvil_config.host.len());
 
     // Spawn the api server.
-    let api_handle = api_server::spawn(service);
+    let api_handle = api_server::spawn(service, logging_manager);
 
     // Spawn the network servers.
     for addr in &anvil_config.host {
@@ -143,28 +157,25 @@ pub async fn spawn_anvil_tasks(anvil_config: AnvilNodeConfig, service: &Service)
     Ok(())
 }
 
-// TODO: this tracing initialisation conflicts with the one in substrate.
+#[doc(hidden)]
 fn init_tracing() -> LoggingManager {
     use tracing_subscriber::prelude::*;
 
     let manager = LoggingManager::default();
-    // check whether `RUST_LOG` is explicitly set
-    let _ = if std::env::var("RUST_LOG").is_ok() {
-        tracing_subscriber::Registry::default()
-            .with(tracing_subscriber::EnvFilter::from_default_env())
-            .with(tracing_subscriber::fmt::layer())
-            .try_init()
+
+    // Always include an EnvFilter. If RUST_LOG is not set, use sensible defaults.
+    let env_filter = if std::env::var("RUST_LOG").is_ok() {
+        tracing_subscriber::EnvFilter::from_default_env()
     } else {
-        tracing_subscriber::Registry::default()
-            .with(NodeLogLayer::new(manager.clone()))
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .without_time()
-                    .with_target(false)
-                    .with_level(false),
-            )
-            .try_init()
+        // Default filter: show substrate warnings/errors and our node targets
+        tracing_subscriber::EnvFilter::new("substrate=warn,node=debug")
     };
+
+    let _ = tracing_subscriber::Registry::default()
+        .with(NodeLogLayer::new(manager.clone()))
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer())
+        .try_init();
 
     manager
 }
