@@ -1226,6 +1226,7 @@ dependencies = [
  "alloy-sol-types 0.8.25",
  "alloy-transport",
  "alloy-trie",
+ "anvil",
  "anvil-core",
  "anvil-rpc",
  "anvil-server",

@@ -59,6 +59,7 @@ polkadot-sdk = { version = "2507.1.0", default-features = false, features = [
 	"substrate-rpc-client",
 	"substrate-wasm-builder",
 ] }
+anvil.workspace = true
 anvil-core.workspace = true
 anvil-server = { workspace = true, features = ["clap"] }
 anvil-rpc.workspace = true

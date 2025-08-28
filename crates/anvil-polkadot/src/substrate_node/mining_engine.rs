@@ -6,7 +6,7 @@ use futures::{
     SinkExt, StreamExt,
 };
 use parking_lot::{Mutex, RwLock};
-use polkadot_sdk::{sc_consensus_manual_seal::EngineCommand, sp_core};
+use polkadot_sdk::{sc_consensus_manual_seal::EngineCommand, sc_service::TransactionPool, sp_core};
 use std::{pin::Pin, sync::Arc};
 use tokio::time::{interval, Duration, MissedTickBehavior};
 
@@ -17,6 +17,8 @@ pub enum MiningMode {
     None,
     /// Create a new block every <tick> seconds.
     Interval { tick: u64 },
+    /// Create a new block every time there is a transaction.
+    AutoMining,
 }
 
 pub struct MiningEngine {
@@ -59,6 +61,10 @@ impl MiningEngine {
     pub fn wake(&self) {
         self.inner.wake();
     }
+
+    pub fn is_automine(&self) -> bool {
+        matches!(*self.mining_mode.read(), MiningMode::AutoMining)
+    }
 }
 
 #[derive(Default)]
@@ -84,7 +90,9 @@ pub async fn run_mining_engine(
     let mut interval_mining_stream: Option<
         Pin<Box<dyn FusedStream<Item = EngineCommand<sp_core::H256>> + Send>>,
     > = None;
-
+    let mut auto_mining_stream: Option<
+        Pin<Box<dyn FusedStream<Item = EngineCommand<sp_core::H256>> + Send>>,
+    > = None;
     loop {
         let mut rebuild_streams_future = futures::stream::poll_fn(|cx| {
             let mode = { *engine.mining_mode.read() };
@@ -114,7 +122,14 @@ pub async fn run_mining_engine(
                 }
                 else {
                     None
-                }
+                };
+                auto_mining_stream = if matches!(mode, MiningMode::AutoMining) {
+                    let stream = engine.transaction_pool.import_notification_stream().map(|_| EngineCommand::SealNewBlock { create_empty: false, finalize: true, parent_hash: None, sender: None })
+                        .fuse();
+                    Some(Box::pin(stream))
+                } else {
+                    None
+                };
             },
             // Poll the interval stream if it exists
             maybe_cmd = async {
@@ -131,6 +146,20 @@ pub async fn run_mining_engine(
                     }
                 }
             },
+            // Poll the automining stream if it exists
+            maybe_cmd = async {
+                match auto_mining_stream.as_mut() {
+                    Some(stream) => stream.next().await,
+                    None => futures::future::pending().await,
+                }
+                } => {
+                    if let Some(seal_command) = maybe_cmd {
+                        if command_sink.send(seal_command).await.is_err(){
+                            break;
+                        }
+                    }
+                }
+
         }
     }
 }

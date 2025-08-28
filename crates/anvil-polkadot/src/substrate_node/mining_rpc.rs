@@ -53,11 +53,21 @@ impl RpcApiServer {
 #[async_trait::async_trait]
 impl AnvilPolkadotMiningRpcServer for RpcApiServer {
     async fn get_auto_mine(&self) -> RpcResult<bool> {
-        todo!()
+        Ok(self.mining_engine.is_automine())
     }
 
-    async fn set_auto_mine(&self, _enabled: bool) -> RpcResult<()> {
-        todo!()
+    async fn set_auto_mine(&self, enabled: bool) -> RpcResult<()> {
+        if self.mining_engine.is_automine() {
+            if enabled {
+                return Ok(());
+            }
+            *self.mining_engine.mining_mode.write() = MiningMode::None;
+            self.mining_engine.wake();
+        } else if enabled{
+            *self.mining_engine.mining_mode.write() = MiningMode::AutoMining;
+            self.mining_engine.wake();
+        }
+        Ok(())
     }
 
     async fn get_interval_mining(&self) -> RpcResult<Option<u64>> {

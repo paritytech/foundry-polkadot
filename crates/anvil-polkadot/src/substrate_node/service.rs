@@ -1,5 +1,6 @@
 use super::mining_engine::{run_mining_engine, MiningEngine, MiningMode};
 use crate::AnvilNodeConfig;
+use anvil::eth::backend::time::TimeManager;
 use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
     sc_executor::WasmExecutor,
@@ -31,7 +32,7 @@ pub struct Service {
 }
 
 /// Builds a new service for a full client.
-pub fn new(
+pub async fn new(
     _anvil_config: &AnvilNodeConfig,
     config: Configuration,
 ) -> Result<Service, ServiceError> {
@@ -60,13 +61,10 @@ pub fn new(
         sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
     );
 
-    let (mut sink, commands_stream) = futures::channel::mpsc::channel(1024);
+    let (sink, commands_stream) = futures::channel::mpsc::channel(1024);
 
-    let mining_engine = Arc::new(MiningEngine::new(
-        MiningMode::Interval { tick: 10 },
-        transaction_pool.clone(),
-        sink.clone(),
-    ));
+    let mining_engine =
+        Arc::new(MiningEngine::new(MiningMode::AutoMining, transaction_pool.clone(), sink.clone()));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
@@ -83,13 +81,42 @@ pub fn new(
         run_mining_engine(mining_engine.clone(), sink),
     );
 
-    let proposer = sc_basic_authorship::ProposerFactory::new(
+    let mut proposer = sc_basic_authorship::ProposerFactory::new(
         task_manager.spawn_handle(),
         client.clone(),
         transaction_pool.clone(),
         None,
         None,
     );
+
+    // For some reason when using AutoMining we have to seal the first block :shrug:
+    // Think at a method to clean this up.
+    let select_chain = SelectChain::new(backend.clone());
+    let mut client_mut = client.clone();
+
+    let time_manager =
+        TimeManager::new_with_milliseconds(sp_timestamp::Timestamp::current().into());
+    let create_inherent_data_providers = {
+        let time_manager = time_manager.clone();
+        move |_, ()| {
+            let next_timestamp = time_manager.next_timestamp();
+            async move { Ok(sp_timestamp::InherentDataProvider::new(next_timestamp.into())) }
+        }
+    };
+    let seal_params = sc_consensus_manual_seal::SealBlockParams {
+        sender: None,
+        parent_hash: None,
+        finalize: true,
+        create_empty: true,
+        env: &mut proposer,
+        select_chain: &select_chain,
+        block_import: &mut client_mut,
+        consensus_data_provider: None,
+        pool: transaction_pool.clone(),
+        client: client.clone(),
+        create_inherent_data_providers: &create_inherent_data_providers,
+    };
+    sc_consensus_manual_seal::seal_block(seal_params).await;
 
     let params = sc_consensus_manual_seal::ManualSealParams {
         block_import: client.clone(),
@@ -99,9 +126,7 @@ pub fn new(
         select_chain: SelectChain::new(backend.clone()),
         commands_stream: Box::pin(commands_stream),
         consensus_data_provider: None,
-        create_inherent_data_providers: move |_, ()| async move {
-            Ok(sp_timestamp::InherentDataProvider::from_system_time())
-        },
+        create_inherent_data_providers,
     };
     let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);
 
