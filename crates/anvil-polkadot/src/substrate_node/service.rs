@@ -9,7 +9,7 @@ use polkadot_sdk::{
     sc_service::{self, error::Error as ServiceError, Configuration, RpcHandlers, TaskManager},
     sc_transaction_pool::{self, TransactionPoolWrapper},
     sc_utils::mpsc::tracing_unbounded,
-    sp_io,
+    sp_core, sp_io,
     sp_keystore::KeystorePtr,
     sp_timestamp,
 };
@@ -29,6 +29,8 @@ pub struct Service {
     pub tx_pool: Arc<TransactionPoolHandle>,
     pub rpc_handlers: RpcHandlers,
     pub mining_engine: Arc<MiningEngine>,
+    pub seal_command_sender:
+        futures::channel::mpsc::Sender<sc_consensus_manual_seal::EngineCommand<sp_core::H256>>,
 }
 
 /// Builds a new service for a full client.
@@ -61,15 +63,14 @@ pub async fn new(
         sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
     );
 
-    let (sink, commands_stream) = futures::channel::mpsc::channel(1024);
+    let (seal_engine_command_sender, commands_stream) = futures::channel::mpsc::channel(1024);
 
     let mining_mode = MiningMode::get_mode(
         anvil_config.block_time,
         anvil_config.mixed_mining,
         anvil_config.no_mining,
     );
-    let mining_engine =
-        Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone(), sink.clone()));
+    let mining_engine = Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone()));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
@@ -82,7 +83,7 @@ pub async fn new(
     task_manager.spawn_handle().spawn(
         "mining_engine_task",
         Some("consensus"),
-        run_mining_engine(mining_engine.clone(), sink),
+        run_mining_engine(mining_engine.clone(), seal_engine_command_sender.clone()),
     );
 
     let mut proposer = sc_basic_authorship::ProposerFactory::new(
@@ -147,6 +148,7 @@ pub async fn new(
         tx_pool: transaction_pool,
         rpc_handlers,
         mining_engine,
+        seal_command_sender: seal_engine_command_sender.clone(),
     })
 }
 
@@ -158,14 +160,14 @@ fn spawn_rpc_server(
     keystore: KeystorePtr,
     backend: Arc<Backend>,
 ) -> Result<RpcHandlers, ServiceError> {
-    use super::rpc::{create_full, FullDeps};
+    use polkadot_sdk::substrate_frame_rpc_system::SystemApiServer;
     let rpc_extensions_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();
 
         Box::new(move |_| {
-            let deps = FullDeps { client: client.clone(), pool: pool.clone() };
-            create_full(deps).map_err(Into::into)
+            Ok(polkadot_sdk::substrate_frame_rpc_system::System::new(client.clone(), pool.clone())
+                .into_rpc())
         })
     };
 
