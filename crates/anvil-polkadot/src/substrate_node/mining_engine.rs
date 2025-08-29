@@ -34,6 +34,21 @@ pub struct MiningEngine {
     manual_command_sender: Mutex<futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>>,
 }
 
+impl MiningMode {
+    pub fn get_mode(block_time: Option<Duration>, mixed_mining: bool, no_mining: bool) -> Self {
+        block_time.map_or_else(
+            || if no_mining { Self::None } else { Self::AutoMining },
+            |time| {
+                if mixed_mining {
+                    Self::MixedMining { tick: time.as_secs() }
+                } else {
+                    Self::Interval { tick: time.as_secs() }
+                }
+            },
+        )
+    }
+}
+
 impl MiningEngine {
     pub fn new(
         mining_mode: MiningMode,

@@ -33,7 +33,7 @@ pub struct Service {
 
 /// Builds a new service for a full client.
 pub async fn new(
-    _anvil_config: &AnvilNodeConfig,
+    anvil_config: &AnvilNodeConfig,
     config: Configuration,
 ) -> Result<Service, ServiceError> {
     let (client, backend, keystore_container, mut task_manager) =
@@ -63,8 +63,13 @@ pub async fn new(
 
     let (sink, commands_stream) = futures::channel::mpsc::channel(1024);
 
+    let mining_mode = MiningMode::get_mode(
+        anvil_config.block_time,
+        anvil_config.mixed_mining,
+        anvil_config.no_mining,
+    );
     let mining_engine =
-        Arc::new(MiningEngine::new(MiningMode::AutoMining, transaction_pool.clone(), sink.clone()));
+        Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone(), sink.clone()));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
