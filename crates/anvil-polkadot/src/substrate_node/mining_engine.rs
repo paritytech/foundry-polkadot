@@ -1,5 +1,6 @@
 use super::{error::Error, service::TransactionPoolHandle};
 use alloy_primitives::U256;
+use anvil::eth::backend::time::TimeManager;
 use futures::{
     channel::oneshot,
     stream::{unfold, FusedStream},
@@ -41,6 +42,7 @@ pub struct MiningEngine {
     inner: Arc<MinnerInner>,
     pub mining_mode: Arc<RwLock<MiningMode>>,
     transaction_pool: Arc<TransactionPoolHandle>,
+    time_manager: Arc<TimeManager>,
 }
 
 impl MiningMode {
@@ -59,11 +61,16 @@ impl MiningMode {
 }
 
 impl MiningEngine {
-    pub fn new(mining_mode: MiningMode, transaction_pool: Arc<TransactionPoolHandle>) -> Self {
+    pub fn new(
+        mining_mode: MiningMode,
+        transaction_pool: Arc<TransactionPoolHandle>,
+        time_manager: Arc<TimeManager>,
+    ) -> Self {
         Self {
             inner: Default::default(),
             mining_mode: Arc::new(RwLock::new(mining_mode)),
             transaction_pool,
+            time_manager,
         }
     }
 
@@ -151,6 +158,32 @@ impl MiningEngine {
             self.wake();
         }
         Ok(())
+    }
+
+    pub fn set_next_block_timestamp(&self, time_in_seconds: u64) -> Result<(), Error> {
+        self.time_manager
+            .set_next_block_timestamp(time_in_seconds)
+            .map_err(|_| Error::TimestampError)
+    }
+
+    pub fn increase_time(&self, time_in_seconds: u64) -> Result<i64, Error> {
+        Ok(self.time_manager.increase_time(time_in_seconds) as i64)
+    }
+
+    pub fn set_time(&self, timestamp: u64) -> Result<u64, Error> {
+        let now = self.time_manager.current_call_timestamp();
+        self.time_manager.reset(timestamp);
+        let offset = timestamp.saturating_sub(now);
+        Ok(Duration::from_millis(offset).as_millis() as u64)
+    }
+
+    pub fn set_block_timestamp_interval(&self, interval_in_seconds: u64) -> Result<(), Error> {
+        self.time_manager.set_block_timestamp_interval(interval_in_seconds);
+        Ok(())
+    }
+
+    pub fn remove_block_timestamp_interval(&self) -> Result<bool, Error> {
+        Ok(self.time_manager.remove_block_timestamp_interval())
     }
 }
 

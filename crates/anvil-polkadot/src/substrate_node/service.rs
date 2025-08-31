@@ -70,7 +70,10 @@ pub async fn new(
         anvil_config.mixed_mining,
         anvil_config.no_mining,
     );
-    let mining_engine = Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone()));
+    let time_manager =
+        Arc::new(TimeManager::new_with_milliseconds(sp_timestamp::Timestamp::current().into()));
+    let mining_engine =
+        Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone(), time_manager.clone()));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
@@ -99,8 +102,6 @@ pub async fn new(
     let select_chain = SelectChain::new(backend.clone());
     let mut client_mut = client.clone();
 
-    let time_manager =
-        TimeManager::new_with_milliseconds(sp_timestamp::Timestamp::current().into());
     let create_inherent_data_providers = {
         let time_manager = time_manager.clone();
         move |_, ()| {

@@ -2,6 +2,7 @@ use super::ApiRequest;
 use crate::substrate_node::{
     error::ToRpcResponseResult, mining_engine::MiningEngine, service::Service,
 };
+use alloy_primitives::U256;
 use anvil_core::eth::EthRequest;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use foundry_common::sh_println;
@@ -51,6 +52,38 @@ impl ApiServer {
             EthRequest::GetAutoMine(()) => self.mining_engine.get_auto_mine().to_rpc_result(),
             EthRequest::SetAutomine(enabled) => {
                 self.mining_engine.set_auto_mine(enabled).to_rpc_result()
+            }
+            EthRequest::EvmMine(_mine) => ResponseResult::Error(RpcError::internal_error()),
+            EthRequest::EvmMineDetailed(_mine) => ResponseResult::Error(RpcError::internal_error()),
+            //------- TimeMachine---------
+            EthRequest::EvmSetBlockTimeStampInterval(time) => {
+                self.mining_engine.set_block_timestamp_interval(time).to_rpc_result()
+            }
+            EthRequest::EvmRemoveBlockTimeStampInterval(()) => {
+                self.mining_engine.remove_block_timestamp_interval().to_rpc_result()
+            }
+            EthRequest::EvmSetNextBlockTimeStamp(time) => {
+                if time >= U256::from(u64::MAX) {
+                    return ResponseResult::Error(RpcError::invalid_params(
+                        "The timestamp is too big",
+                    ))
+                }
+                let time = time.to::<u64>();
+                self.mining_engine.set_next_block_timestamp(time).to_rpc_result()
+            }
+            EthRequest::EvmIncreaseTime(time) => self
+                .mining_engine
+                .increase_time(time.try_into().unwrap_or(u64::MAX))
+                .to_rpc_result(),
+            EthRequest::EvmSetTime(timestamp) => {
+                if timestamp >= U256::from(u64::MAX) {
+                    return ResponseResult::Error(RpcError::invalid_params(
+                        "The timestamp is too big",
+                    ))
+                }
+                // Make sure here we are not traveling back in time.
+                let time = timestamp.to::<u64>();
+                self.mining_engine.set_time(time).to_rpc_result()
             }
             _ => ResponseResult::Error(RpcError::internal_error()),
         }

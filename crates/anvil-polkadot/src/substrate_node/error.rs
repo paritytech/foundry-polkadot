@@ -8,6 +8,8 @@ pub enum Error {
     BlockProducingError(BlockProducingError),
     #[error("Current mining mode can not answer this query.")]
     MiningModeMismatch,
+    #[error("Current timestamp is newer.")]
+    TimestampError,
 }
 
 impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for Error {
@@ -42,6 +44,9 @@ impl<T: Serialize> ToRpcResponseResult for Result<T, Error> {
                 Error::MiningModeMismatch => {
                     RpcError::invalid_params("Current mining mode can not answer this query.")
                 }
+                Error::TimestampError => RpcError::invalid_params(
+                    "Timestamp parameter is older than the timestamp of the last produced block.",
+                ),
             }
             .into(),
         }
