@@ -134,7 +134,9 @@ impl MiningEngine {
     pub fn get_interval_mining(&self) -> Result<u64, Error> {
         let mode = *self.mining_mode.read();
         match mode {
-            MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => Ok(tick.saturating_div(1000)),
+            MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => {
+                Ok(tick.saturating_div(1000))
+            }
             _ => Err(Error::Mining(MiningError::MiningModeMismatch)),
         }
     }

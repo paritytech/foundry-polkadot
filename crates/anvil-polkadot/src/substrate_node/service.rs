@@ -38,10 +38,7 @@ pub struct Service {
 }
 
 /// Builds a new service for a full client.
-pub fn new(
-    anvil_config: &AnvilNodeConfig,
-    config: Configuration,
-) -> Result<Service, ServiceError> {
+pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Service, ServiceError> {
     let (client, backend, keystore_container, mut task_manager) =
         sc_service::new_full_parts::<Block, RuntimeApi, _>(
             &config,
@@ -98,9 +95,7 @@ pub fn new(
         None,
     );
 
-
     let create_inherent_data_providers = {
-        let time_manager = time_manager.clone();
         move |_, ()| {
             let next_timestamp = time_manager.next_timestamp();
             async move { Ok(sp_timestamp::InherentDataProvider::new(next_timestamp.into())) }
@@ -132,7 +127,7 @@ pub fn new(
         tx_pool: transaction_pool,
         rpc_handlers,
         mining_engine,
-        seal_command_sender: seal_engine_command_sender.clone(),
+        seal_command_sender: seal_engine_command_sender,
     })
 }
 
