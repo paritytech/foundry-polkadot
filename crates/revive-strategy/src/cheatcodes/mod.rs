@@ -36,7 +36,7 @@ use revm::{
     primitives::{CreateScheme, SignedAuthorization},
 };
 
-use crate::{backend::get_backend_mut, trace, tracing::apply_prestate_trace};
+use crate::{trace, tracing::apply_prestate_trace};
 pub trait PvmCheatcodeInspectorStrategyBuilder {
     fn new_pvm(
         test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
@@ -241,8 +241,6 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_,
     tracing::info!("switching to PVM");
     ctx.using_pvm = true;
     let persistent_accounts = data.db.persistent_accounts().clone();
-    let backend_strategy = get_backend_mut(&mut (*data.db.get_strategy().context));
-    backend_strategy.in_pvm = true;
     for address in persistent_accounts {
         let acc = data.load_account(address).expect("just loaded above");
         let amount = acc.data.info.balance;
@@ -420,6 +418,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 })
             }
         };
+
         apply_prestate_trace(prestate_trace, ecx);
 
         result
@@ -504,6 +503,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             Ok(result) => {
                 let _ = gas.record_cost(gas_used.as_u64());
                 let outcome = if result.did_revert() {
+                    tracing::error!("Contract call reverted");
                     CallOutcome {
                         result: InterpreterResult {
                             result: InstructionResult::Revert,

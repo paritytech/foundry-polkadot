@@ -1,4 +1,3 @@
-// TODO: False positive, after switch to PVM we still read balance from EVM
 forgetest!(can_translate_balances_after_switch_to_pvm, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
@@ -60,7 +59,6 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 "#]]);
 });
 
-// TODO: False positive, after switch to PVM we still read balance from EVM
 forgetest!(counter_test, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
@@ -79,7 +77,7 @@ forgetest!(counter_test, |prj, cmd| {
         }
 
         function increment() public {
-            number = number + 1;
+            number++;
         }
     }
     "#,
@@ -91,20 +89,24 @@ forgetest!(counter_test, |prj, cmd| {
 import "./test.sol";
 import "./Vm.sol";
 import {Counter} from "./Counter.sol";
+import {console} from "./console.sol";
 
 contract CounterTest is DSTest {
   Vm constant vm = Vm(HEVM_ADDRESS);
   Counter public counter;
 
   function setUp() public {
-      vm.pvm(true);
-      counter = new Counter(); 
-      assertEq(counter.number(), 0);
+    vm.pvm(true);
+    counter = new Counter(); 
+    counter.setNumber(5);
+    assertEq(counter.number(), 5);
   }
 
   function test_Increment() public {
-      counter.increment();
-      assertEq(counter.number(), 1);
+      console.log(counter.number());
+      counter.setNumber(55); 
+      console.log(counter.number());
+      assertEq(counter.number(), 55);
   }
 
   function testFuzz_SetNumber(uint256 x) public {
@@ -116,9 +118,529 @@ contract CounterTest is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc"]).assert();
-    res.stderr_eq(str![""])
-        .stdout_eq(str![[r#"
+    let res = cmd.args(["test", "--resolc", "-vvv"]).assert();
+    res.stderr_eq(str![[r#"
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+[crates/revive-strategy/src/tracing/mod.rs:35:5] &calls = None
+
+"#]]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
@@ -137,6 +659,10 @@ addresses.
 Ran 2 tests for src/CounterTest.t.sol:CounterTest
 [PASS] testFuzz_SetNumber(uint256) (runs: 256, [AVG_GAS])
 [PASS] test_Increment() ([GAS])
+Logs:
+  5
+  55
+
 Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)

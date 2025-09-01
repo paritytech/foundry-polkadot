@@ -23,7 +23,7 @@ use revive_env::{AccountId, ExtBuilder, Runtime, System};
 use revm::primitives::{EnvWithHandlerCfg, ResultAndState};
 
 use crate::{
-    backend::{get_backend_ref, ReviveBackendStrategyBuilder, ReviveInspectContext},
+    backend::{get_backend_ref, ReviveBackendStrategyBuilder},
     cheatcodes::PvmCheatcodeInspectorStrategyBuilder,
     executor::context::ReviveExecutorStrategyContext,
 };
@@ -154,16 +154,7 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         executor_env: &EnvWithHandlerCfg,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
-        let in_pvm = {
-            let backend = get_backend_ref(backend.backend.to_mut().strategy.context.as_mut());
-            backend.in_pvm
-        };
-
-        if in_pvm {
-            backend.inspect(env, inspector, Box::new(ReviveInspectContext))
-        } else {
-            EvmExecutorStrategyRunner.call(ctx, backend, env, executor_env, inspector)
-        }
+        EvmExecutorStrategyRunner.call(ctx, backend, env, executor_env, inspector)
     }
 
     fn transact(
@@ -174,15 +165,7 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         executor_env: &EnvWithHandlerCfg,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
-        let in_pvm = {
-            let backend = get_backend_ref(backend.strategy.context.as_mut());
-            backend.in_pvm
-        };
-        if in_pvm {
-            backend.inspect(env, inspector, Box::new(ReviveInspectContext))
-        } else {
-            EvmExecutorStrategyRunner.transact(ctx, backend, env, executor_env, inspector)
-        }
+        EvmExecutorStrategyRunner.transact(ctx, backend, env, executor_env, inspector)
     }
 }
 

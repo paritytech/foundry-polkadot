@@ -29,9 +29,10 @@ pub fn trace<T: Config, R, F: FnOnce() -> R>(f: F) -> (R, Option<CallTrace<U256>
             disable_code: false,
         });
 
-    let result = trace_revive(&mut call_tracer, || trace_revive(&mut prestate_tracer, f));
+    let result = trace_revive(&mut prestate_tracer, || trace_revive(&mut call_tracer, || f()));
     let prestate_trace = prestate_tracer.collect_trace();
-    (result, call_tracer.collect_trace(), prestate_trace)
+    let calls = call_tracer.collect_trace();
+    (result, calls, prestate_trace)
 }
 
 /// Applies `PrestateTrace` diffs to the revm state
@@ -60,6 +61,8 @@ pub fn apply_prestate_trace<DB: revm::Database<Error = DatabaseError>>(
                 };
 
                 if let Some(code) = code {
+                    let account =
+                        ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
                     let bytecode = Bytecode::new_raw(Bytes::from(code.0));
                     account.info.code_hash = bytecode.hash_slow();
                     account.info.code = Some(bytecode);
