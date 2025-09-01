@@ -53,7 +53,11 @@ impl ApiServer {
             EthRequest::SetAutomine(enabled) => {
                 self.mining_engine.set_auto_mine(enabled).to_rpc_result()
             }
-            EthRequest::EvmMine(_mine) => ResponseResult::Error(RpcError::internal_error()),
+            EthRequest::EvmMine(mine) => self
+                .mining_engine
+                .evm_mine(mine.and_then(|p| p.params), self.seal_command_sender.clone())
+                .await
+                .to_rpc_result(),
             EthRequest::EvmMineDetailed(_mine) => ResponseResult::Error(RpcError::internal_error()),
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {

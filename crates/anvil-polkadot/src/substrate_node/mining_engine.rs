@@ -1,5 +1,6 @@
 use super::{error::Error, service::TransactionPoolHandle};
 use alloy_primitives::U256;
+use alloy_rpc_types::anvil::MineOptions;
 use anvil::eth::backend::time::TimeManager;
 use futures::{
     channel::oneshot,
@@ -116,16 +117,55 @@ impl MiningEngine {
             return Ok(());
         }
         for _ in 0..blocks.to::<u64>() {
-            // After we invent the time machine skip forward in time
-            // instead of sleeping so we can match the anvil behavior
             if let Some(interval) = interval {
-                tokio::time::sleep(tokio::time::Duration::from_secs(interval)).await;
+                self.time_manager.increase_time(interval);
             }
             self.seal_now(seal_command_sender.clone()).await?;
         }
         Ok(())
     }
 
+    async fn do_evm_mine(
+        &self,
+        opts: Option<MineOptions>,
+        seal_command_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
+    ) -> Result<u64, Error> {
+        let mut blocks_to_mine = 1u64;
+
+        if let Some(opts) = opts {
+            let timestamp = match opts {
+                MineOptions::Timestamp(timestamp) => timestamp,
+                MineOptions::Options { timestamp, blocks } => {
+                    if let Some(blocks) = blocks {
+                        blocks_to_mine = blocks;
+                    }
+                    timestamp
+                }
+            };
+            if let Some(timestamp) = timestamp {
+                // timestamp was explicitly provided to be the next timestamp
+                self.time_manager
+                    .set_next_block_timestamp(timestamp)
+                    .map_err(|_| Error::Timestamp)?;
+            }
+        }
+
+        for _ in 0..blocks_to_mine {
+            self.seal_now(seal_command_sender.clone()).await?;
+        }
+
+        Ok(blocks_to_mine)
+    }
+
+    pub async fn evm_mine(
+        &self,
+        opts: Option<MineOptions>,
+        seal_command_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
+    ) -> Result<String, Error> {
+        info!("evm_mine");
+        self.do_evm_mine(opts, seal_command_sender).await?;
+        Ok("0x0".to_string())
+    }
     pub fn set_interval_mining(&self, interval: u64) -> Result<(), Error> {
         let new_mode =
             if interval == 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
@@ -161,9 +201,7 @@ impl MiningEngine {
     }
 
     pub fn set_next_block_timestamp(&self, time_in_seconds: u64) -> Result<(), Error> {
-        self.time_manager
-            .set_next_block_timestamp(time_in_seconds)
-            .map_err(|_| Error::Timestamp)
+        self.time_manager.set_next_block_timestamp(time_in_seconds).map_err(|_| Error::Timestamp)
     }
 
     pub fn increase_time(&self, time_in_seconds: u64) -> Result<i64, Error> {
