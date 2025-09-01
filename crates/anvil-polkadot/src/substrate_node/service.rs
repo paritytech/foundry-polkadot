@@ -1,5 +1,7 @@
-use super::mining_engine::{run_mining_engine, MiningEngine, MiningMode};
-use crate::AnvilNodeConfig;
+use super::{
+    super::AnvilNodeConfig,
+    mining_engine::{run_mining_engine, MiningEngine, MiningMode},
+};
 use anvil::eth::backend::time::TimeManager;
 use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
@@ -12,12 +14,14 @@ use polkadot_sdk::{
     sp_core, sp_io,
     sp_keystore::KeystorePtr,
     sp_timestamp,
+    substrate_frame_rpc_system::SystemApiServer,
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
 
 pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>;
+
 pub type Backend = sc_service::TFullBackend<Block>;
 pub type TransactionPoolHandle = sc_transaction_pool::TransactionPoolHandle<Block, FullClient>;
 type SelectChain = sc_consensus::LongestChain<Backend, Block>;
@@ -65,11 +69,8 @@ pub async fn new(
 
     let (seal_engine_command_sender, commands_stream) = futures::channel::mpsc::channel(1024);
 
-    let mining_mode = MiningMode::get_mode(
-        anvil_config.block_time,
-        anvil_config.mixed_mining,
-        anvil_config.no_mining,
-    );
+    let mining_mode =
+        MiningMode::new(anvil_config.block_time, anvil_config.mixed_mining, anvil_config.no_mining);
     let time_manager =
         Arc::new(TimeManager::new_with_milliseconds(sp_timestamp::Timestamp::current().into()));
     let mining_engine =
@@ -161,7 +162,6 @@ fn spawn_rpc_server(
     keystore: KeystorePtr,
     backend: Arc<Backend>,
 ) -> Result<RpcHandlers, ServiceError> {
-    use polkadot_sdk::substrate_frame_rpc_system::SystemApiServer;
     let rpc_extensions_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();

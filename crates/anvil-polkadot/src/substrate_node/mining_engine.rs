@@ -3,7 +3,7 @@ use alloy_primitives::U256;
 use alloy_rpc_types::anvil::MineOptions;
 use anvil::eth::backend::time::TimeManager;
 use futures::{
-    channel::oneshot,
+    channel::{mpsc::Sender, oneshot},
     stream::{unfold, FusedStream},
     task::AtomicWaker,
     SinkExt, StreamExt,
@@ -18,7 +18,23 @@ use std::{pin::Pin, sync::Arc};
 use tokio::time::{interval_at, Duration, Instant, MissedTickBehavior};
 
 use substrate_runtime::Runtime;
-pub type Hash = <Runtime as frame_system::Config>::Hash;
+type Hash = <Runtime as frame_system::Config>::Hash;
+
+#[derive(Debug, thiserror::Error)]
+pub enum MiningError {
+    #[error("Block production failed: {0:?}")]
+    BlockProducing(BlockProducingError),
+    #[error("Current mining mode can not answer this query.")]
+    MiningModeMismatch,
+    #[error("Current timestamp is newer.")]
+    Timestamp,
+}
+
+impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for MiningError {
+    fn from(err: polkadot_sdk::sc_consensus_manual_seal::Error) -> Self {
+        Self::BlockProducing(err)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MiningMode {
@@ -35,30 +51,30 @@ pub enum MiningMode {
     MixedMining { tick: u64 },
 }
 
-pub struct MiningEngine {
-    /// Coordination mechanism between the MiningEngine and the background
-    /// task that runs the "polling" loop from `run_mining_engine`.
-    /// Calls to inner.wake() will unpark the background task and force a
-    /// receck of the current mining mode and rebuild of the polled streams.
-    inner: Arc<MinnerInner>,
-    pub mining_mode: Arc<RwLock<MiningMode>>,
-    transaction_pool: Arc<TransactionPoolHandle>,
-    time_manager: Arc<TimeManager>,
-}
-
 impl MiningMode {
-    pub fn get_mode(block_time: Option<Duration>, mixed_mining: bool, no_mining: bool) -> Self {
+    pub fn new(block_time: Option<Duration>, mixed_mining: bool, no_mining: bool) -> Self {
         block_time.map_or_else(
             || if no_mining { Self::None } else { Self::AutoMining },
             |time| {
                 if mixed_mining {
-                    Self::MixedMining { tick: time.as_secs() }
+                    Self::MixedMining { tick: time.as_millis() as u64 }
                 } else {
-                    Self::Interval { tick: time.as_secs() }
+                    Self::Interval { tick: time.as_millis() as u64 }
                 }
             },
         )
     }
+}
+
+pub struct MiningEngine {
+    /// Coordination mechanism between the MiningEngine and the background
+    /// task that runs the "polling" loop from `run_mining_engine`.
+    /// Calls to waker.wake() will unpark the background task and force a
+    /// recheck of the current mining mode and rebuild of the polled streams.
+    waker: Arc<AtomicWaker>,
+    mining_mode: Arc<RwLock<MiningMode>>,
+    transaction_pool: Arc<TransactionPoolHandle>,
+    time_manager: Arc<TimeManager>,
 }
 
 impl MiningEngine {
@@ -68,47 +84,18 @@ impl MiningEngine {
         time_manager: Arc<TimeManager>,
     ) -> Self {
         Self {
-            inner: Default::default(),
+            waker: Default::default(),
             mining_mode: Arc::new(RwLock::new(mining_mode)),
             transaction_pool,
             time_manager,
         }
     }
 
-    pub async fn seal_now(
-        &self,
-        mut seal_command_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
-    ) -> Result<CreatedBlock<Hash>, BlockProducingError> {
-        let (sender, receiver) = oneshot::channel();
-        let seal_command = EngineCommand::SealNewBlock {
-            create_empty: true,
-            finalize: true,
-            parent_hash: None,
-            sender: Some(sender),
-        };
-        seal_command_sender.send(seal_command).await?;
-        match receiver.await {
-            Ok(Ok(rx)) => Ok(rx),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    pub fn wake(&self) {
-        self.inner.wake();
-    }
-
-    pub fn is_automine(&self) -> bool {
-        matches!(*self.mining_mode.read(), MiningMode::AutoMining)
-    }
-
-    // ---------------- RPC ----------------------
-
     pub async fn mine(
         &self,
         num_blocks: Option<U256>,
         interval: Option<U256>,
-        seal_command_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
+        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
     ) -> Result<(), Error> {
         info!("anvil_polkadot_mine");
         let interval = interval.map(|i| i.to::<u64>());
@@ -120,52 +107,21 @@ impl MiningEngine {
             if let Some(interval) = interval {
                 self.time_manager.increase_time(interval);
             }
-            self.seal_now(seal_command_sender.clone()).await?;
+            self.seal_now(seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
         }
         Ok(())
-    }
-
-    async fn do_evm_mine(
-        &self,
-        opts: Option<MineOptions>,
-        seal_command_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
-    ) -> Result<u64, Error> {
-        let mut blocks_to_mine = 1u64;
-
-        if let Some(opts) = opts {
-            let timestamp = match opts {
-                MineOptions::Timestamp(timestamp) => timestamp,
-                MineOptions::Options { timestamp, blocks } => {
-                    if let Some(blocks) = blocks {
-                        blocks_to_mine = blocks;
-                    }
-                    timestamp
-                }
-            };
-            if let Some(timestamp) = timestamp {
-                // timestamp was explicitly provided to be the next timestamp
-                self.time_manager
-                    .set_next_block_timestamp(timestamp)
-                    .map_err(|_| Error::Timestamp)?;
-            }
-        }
-
-        for _ in 0..blocks_to_mine {
-            self.seal_now(seal_command_sender.clone()).await?;
-        }
-
-        Ok(blocks_to_mine)
     }
 
     pub async fn evm_mine(
         &self,
         opts: Option<MineOptions>,
-        seal_command_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
+        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
     ) -> Result<String, Error> {
         info!("evm_mine");
         self.do_evm_mine(opts, seal_command_sender).await?;
         Ok("0x0".to_string())
     }
+
     pub fn set_interval_mining(&self, interval: u64) -> Result<(), Error> {
         let new_mode =
             if interval == 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
@@ -178,7 +134,7 @@ impl MiningEngine {
         let mode = *self.mining_mode.read();
         match mode {
             MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => Ok(tick),
-            _ => Err(Error::MiningModeMismatch),
+            _ => Err(Error::Mining(MiningError::MiningModeMismatch)),
         }
     }
 
@@ -188,7 +144,7 @@ impl MiningEngine {
 
     pub fn set_auto_mine(&self, enabled: bool) -> Result<(), Error> {
         let mining_mode = match (self.is_automine(), enabled) {
-            (true, true) => Some(MiningMode::AutoMining),
+            (true, true) => None,
             (true, false) => Some(MiningMode::None),
             (false, true) => Some(MiningMode::AutoMining),
             (false, false) => None,
@@ -201,7 +157,9 @@ impl MiningEngine {
     }
 
     pub fn set_next_block_timestamp(&self, time_in_seconds: u64) -> Result<(), Error> {
-        self.time_manager.set_next_block_timestamp(time_in_seconds).map_err(|_| Error::Timestamp)
+        self.time_manager
+            .set_next_block_timestamp(time_in_seconds)
+            .map_err(|_| Error::Mining(MiningError::Timestamp))
     }
 
     pub fn increase_time(&self, time_in_seconds: u64) -> Result<i64, Error> {
@@ -223,20 +181,66 @@ impl MiningEngine {
     pub fn remove_block_timestamp_interval(&self) -> Result<bool, Error> {
         Ok(self.time_manager.remove_block_timestamp_interval())
     }
-}
 
-#[derive(Default)]
-struct MinnerInner {
-    waker: AtomicWaker,
-}
+    //---------- Helpers ---------------
 
-impl MinnerInner {
-    pub fn wake(&self) {
+    async fn seal_now(
+        &self,
+        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
+    ) -> Result<CreatedBlock<Hash>, BlockProducingError> {
+        let (sender, receiver) = oneshot::channel();
+        let seal_command = EngineCommand::SealNewBlock {
+            create_empty: true,
+            finalize: true,
+            parent_hash: None,
+            sender: Some(sender),
+        };
+        seal_command_sender.send(seal_command).await?;
+        match receiver.await {
+            Ok(Ok(rx)) => Ok(rx),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn wake(&self) {
         self.waker.wake();
     }
 
-    pub fn register(&self, cx: &std::task::Context<'_>) {
-        self.waker.register(cx.waker());
+    fn is_automine(&self) -> bool {
+        matches!(*self.mining_mode.read(), MiningMode::AutoMining)
+    }
+
+    async fn do_evm_mine(
+        &self,
+        opts: Option<MineOptions>,
+        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
+    ) -> Result<u64, Error> {
+        let mut blocks_to_mine = 1u64;
+
+        if let Some(opts) = opts {
+            let timestamp = match opts {
+                MineOptions::Timestamp(timestamp) => timestamp,
+                MineOptions::Options { timestamp, blocks } => {
+                    if let Some(blocks) = blocks {
+                        blocks_to_mine = blocks;
+                    }
+                    timestamp
+                }
+            };
+            if let Some(timestamp) = timestamp {
+                // timestamp was explicitly provided to be the next timestamp
+                self.time_manager
+                    .set_next_block_timestamp(timestamp)
+                    .map_err(|_| Error::Mining(MiningError::Timestamp))?;
+            }
+        }
+
+        for _ in 0..blocks_to_mine {
+            self.seal_now(seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
+        }
+
+        Ok(blocks_to_mine)
     }
 }
 
@@ -244,7 +248,7 @@ impl MinnerInner {
 type SealCommandStream = Pin<Box<dyn FusedStream<Item = ()> + Send>>;
 
 fn build_interval_stream(interval: u64) -> SealCommandStream {
-    let interval = Duration::from_secs(interval);
+    let interval = Duration::from_millis(interval);
     let mut interval_ticker = interval_at(Instant::now() + interval, interval);
     interval_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -260,7 +264,7 @@ fn build_auto_stream(engine: &Arc<MiningEngine>) -> SealCommandStream {
     Box::pin(stream.fuse())
 }
 
-fn build_stream_for_mode(
+fn build_streams_for_mode(
     mode: MiningMode,
     engine: &Arc<MiningEngine>,
 ) -> (Option<SealCommandStream>, Option<SealCommandStream>) {
@@ -283,7 +287,7 @@ async fn wait_for_mode_change(
         if current.as_ref().is_none_or(|m| *m != mode) {
             return std::task::Poll::Ready(mode);
         }
-        engine.inner.register(cx);
+        engine.waker.register(cx.waker());
         std::task::Poll::Pending
     })
     .await
@@ -298,11 +302,11 @@ async fn next_or_pending(stream: Option<&mut SealCommandStream>) -> Option<()> {
 
 async fn poll_and_seal(
     engine: Arc<MiningEngine>,
-    command_seal_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
+    mut command_seal_sender: Sender<EngineCommand<sp_core::H256>>,
     stream: Option<&mut SealCommandStream>,
 ) -> bool {
     if next_or_pending(stream).await.is_some() {
-        match engine.seal_now(command_seal_sender).await {
+        match engine.seal_now(&mut command_seal_sender).await {
             Ok(block) => {
                 debug!(hash=?block.hash, "sealed");
             }
@@ -313,14 +317,13 @@ async fn poll_and_seal(
                 error!(?e, "block production failed");
             }
         }
-        true
-    } else {
-        true
     }
+    true
 }
+
 pub async fn run_mining_engine(
     engine: Arc<MiningEngine>,
-    command_sink: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
+    command_sink: Sender<EngineCommand<sp_core::H256>>,
 ) {
     let mut current_mode = None;
     let mut interval_mining_stream: Option<SealCommandStream> = None;
@@ -330,7 +333,7 @@ pub async fn run_mining_engine(
         tokio::select! {
             new_mode = wait_for_mode_change(&engine, current_mode) => {
                 current_mode = Some(new_mode);
-                let (interval_stream, auto_stream) = build_stream_for_mode(new_mode, &engine);
+                let (interval_stream, auto_stream) = build_streams_for_mode(new_mode, &engine);
                 interval_mining_stream = interval_stream;
                 auto_mining_stream = auto_stream;
             }

@@ -79,7 +79,7 @@ pub fn run_command(args: Anvil) -> Result<()> {
                 &mut std::io::stdout(),
             ),
         }
-        return Ok(());
+        return Ok(())
     }
 
     let (anvil_config, substrate_config) = args.node.clone().into_node_config()?;

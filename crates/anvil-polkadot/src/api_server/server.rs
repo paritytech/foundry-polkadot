@@ -40,7 +40,7 @@ impl ApiServer {
         match req {
             EthRequest::Mine(blocks, interval) => self
                 .mining_engine
-                .mine(blocks, interval, self.seal_command_sender.clone())
+                .mine(blocks, interval, &mut self.seal_command_sender)
                 .await
                 .to_rpc_result(),
             EthRequest::SetIntervalMining(interval) => {
@@ -55,7 +55,7 @@ impl ApiServer {
             }
             EthRequest::EvmMine(mine) => self
                 .mining_engine
-                .evm_mine(mine.and_then(|p| p.params), self.seal_command_sender.clone())
+                .evm_mine(mine.and_then(|p| p.params), &mut self.seal_command_sender)
                 .await
                 .to_rpc_result(),
             EthRequest::EvmMineDetailed(_mine) => ResponseResult::Error(RpcError::internal_error()),

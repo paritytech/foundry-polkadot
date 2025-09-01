@@ -264,7 +264,6 @@ impl frame_system::Config for Runtime {
     type Nonce = Nonce;
     type AccountData = pallet_balances::AccountData<<Runtime as pallet_balances::Config>::Balance>;
 }
-
 parameter_types! {
     pub const ExistentialDeposit: Balance = DOLLARS;
 }

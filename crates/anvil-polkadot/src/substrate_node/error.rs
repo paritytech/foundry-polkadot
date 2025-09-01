@@ -1,21 +1,11 @@
+use super::mining_engine::MiningError;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
-use polkadot_sdk::sc_consensus_manual_seal::Error as BlockProducingError;
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Block production failed: {0:?}")]
-    BlockProducing(BlockProducingError),
-    #[error("Current mining mode can not answer this query.")]
-    MiningModeMismatch,
-    #[error("Current timestamp is newer.")]
-    Timestamp,
-}
-
-impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for Error {
-    fn from(err: polkadot_sdk::sc_consensus_manual_seal::Error) -> Self {
-        Self::BlockProducing(err)
-    }
+    #[error("Block mining failed: {0:?}")]
+    Mining(MiningError),
 }
 
 pub(crate) trait ToRpcResponseResult {
@@ -38,15 +28,9 @@ impl<T: Serialize> ToRpcResponseResult for Result<T, Error> {
         match self {
             Ok(val) => to_rpc_result(val),
             Err(err) => match err {
-                Error::BlockProducing(block_error) => RpcError::internal_error_with(format!(
-                    "Block production failed: {block_error:?}"
-                )),
-                Error::MiningModeMismatch => {
-                    RpcError::invalid_params("Current mining mode can not answer this query.")
+                Error::Mining(mining_error) => {
+                    RpcError::internal_error_with(format!("Block mining failed: {mining_error:?}"))
                 }
-                Error::Timestamp => RpcError::invalid_params(
-                    "Timestamp parameter is older than the timestamp of the last produced block.",
-                ),
             }
             .into(),
         }
