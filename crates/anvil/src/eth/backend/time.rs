@@ -55,16 +55,14 @@ impl TimeManager {
             interval: Default::default(),
             precision: Timeprecision::Milliseconds,
         };
+        let start_timestamp = start_timestamp.saturating_div(1000);
         time_manager.reset(start_timestamp);
         time_manager
     }
 
     /// Converts a value from the manager's `precision` to milliseconds.
     fn to_milliseconds(&self, value: u64) -> u64 {
-        match self.precision {
-            Timeprecision::Seconds => value.saturating_mul(1000),
-            Timeprecision::Milliseconds => value,
-        }
+        value.saturating_mul(1000)
     }
 
     /// Converts a value from milliseconds to the manager's `precision`.
@@ -107,7 +105,7 @@ impl TimeManager {
     ///
     /// This will apply a permanent offset to the natural UNIX Epoch timestamp
     pub fn increase_time(&self, seconds: u64) -> i128 {
-        self.add_offset(seconds as i128)
+        self.add_offset(self.to_milliseconds(seconds) as i128)
     }
 
     /// Sets the exact timestamp to use in the next block

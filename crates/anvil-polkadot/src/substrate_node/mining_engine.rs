@@ -163,7 +163,7 @@ impl MiningEngine {
     pub fn set_next_block_timestamp(&self, time_in_seconds: u64) -> Result<(), Error> {
         self.time_manager
             .set_next_block_timestamp(time_in_seconds)
-            .map_err(|_| Error::TimestampError)
+            .map_err(|_| Error::Timestamp)
     }
 
     pub fn increase_time(&self, time_in_seconds: u64) -> Result<i64, Error> {

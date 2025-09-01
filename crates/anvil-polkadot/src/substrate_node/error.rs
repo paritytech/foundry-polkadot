@@ -5,16 +5,16 @@ use serde::Serialize;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Block production failed: {0:?}")]
-    BlockProducingError(BlockProducingError),
+    BlockProducing(BlockProducingError),
     #[error("Current mining mode can not answer this query.")]
     MiningModeMismatch,
     #[error("Current timestamp is newer.")]
-    TimestampError,
+    Timestamp,
 }
 
 impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for Error {
     fn from(err: polkadot_sdk::sc_consensus_manual_seal::Error) -> Self {
-        Self::BlockProducingError(err)
+        Self::BlockProducing(err)
     }
 }
 
@@ -38,13 +38,13 @@ impl<T: Serialize> ToRpcResponseResult for Result<T, Error> {
         match self {
             Ok(val) => to_rpc_result(val),
             Err(err) => match err {
-                Error::BlockProducingError(block_error) => RpcError::internal_error_with(format!(
+                Error::BlockProducing(block_error) => RpcError::internal_error_with(format!(
                     "Block production failed: {block_error:?}"
                 )),
                 Error::MiningModeMismatch => {
                     RpcError::invalid_params("Current mining mode can not answer this query.")
                 }
-                Error::TimestampError => RpcError::invalid_params(
+                Error::Timestamp => RpcError::invalid_params(
                     "Timestamp parameter is older than the timestamp of the last produced block.",
                 ),
             }
