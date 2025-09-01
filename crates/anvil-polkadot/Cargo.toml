@@ -19,7 +19,6 @@ path = "bin/main.rs"
 
 [dependencies]
 # foundry internal
-jsonrpsee = { version = "0.24.3", features = ["server"] }
 substrate-runtime = { path = "substrate-runtime" }
 polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "foundry-polkadot", default-features = false, features = [
     "sc-allocator",

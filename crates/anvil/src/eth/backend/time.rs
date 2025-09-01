@@ -11,7 +11,7 @@ pub fn utc_from_secs(secs: u64) -> DateTime<Utc> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Timeprecision {
+pub enum TimePrecision {
     /// Make time manager return the timestamp in seconds.
     Seconds,
     /// Make the time manager return the timestamp in milliseconds.
@@ -31,7 +31,7 @@ pub struct TimeManager {
     next_exact_timestamp: Arc<RwLock<Option<u64>>>,
     /// The interval to use when determining the next block's timestamp
     interval: Arc<RwLock<Option<u64>>>,
-    precision: Timeprecision,
+    precision: TimePrecision,
 }
 
 impl TimeManager {
@@ -41,7 +41,7 @@ impl TimeManager {
             offset: Default::default(),
             next_exact_timestamp: Default::default(),
             interval: Default::default(),
-            precision: Timeprecision::Seconds,
+            precision: TimePrecision::Seconds,
         };
         time_manager.reset(start_timestamp);
         time_manager
@@ -53,7 +53,7 @@ impl TimeManager {
             offset: Default::default(),
             next_exact_timestamp: Default::default(),
             interval: Default::default(),
-            precision: Timeprecision::Milliseconds,
+            precision: TimePrecision::Milliseconds,
         };
         let start_timestamp = start_timestamp.saturating_div(1000);
         time_manager.reset(start_timestamp);
@@ -68,8 +68,8 @@ impl TimeManager {
     /// Converts a value from milliseconds to the manager's `precision`.
     fn convert_from_milliseconds(&self, value_ms: u64) -> u64 {
         match self.precision {
-            Timeprecision::Seconds => value_ms.saturating_div(1000),
-            Timeprecision::Milliseconds => value_ms,
+            TimePrecision::Seconds => value_ms.saturating_div(1000),
+            TimePrecision::Milliseconds => value_ms,
         }
     }
 
@@ -90,8 +90,8 @@ impl TimeManager {
     /// Adds the given `offset` to the already tracked offset and returns the result
     fn add_offset(&self, offset: i128) -> i128 {
         let offset = match self.precision {
-            Timeprecision::Seconds => offset.saturating_mul(1000),
-            Timeprecision::Milliseconds => offset,
+            TimePrecision::Seconds => offset.saturating_mul(1000),
+            TimePrecision::Milliseconds => offset,
         };
 
         let mut current = self.offset.write();
