@@ -123,6 +123,7 @@ impl MiningEngine {
     }
 
     pub fn set_interval_mining(&self, interval: u64) -> Result<(), Error> {
+        let interval = interval.saturating_mul(1000);
         let new_mode =
             if interval == 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
         *self.mining_mode.write() = new_mode;
@@ -133,7 +134,7 @@ impl MiningEngine {
     pub fn get_interval_mining(&self) -> Result<u64, Error> {
         let mode = *self.mining_mode.read();
         match mode {
-            MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => Ok(tick),
+            MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => Ok(tick.saturating_div(1000)),
             _ => Err(Error::Mining(MiningError::MiningModeMismatch)),
         }
     }

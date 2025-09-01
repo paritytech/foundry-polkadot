@@ -38,7 +38,7 @@ pub struct Service {
 }
 
 /// Builds a new service for a full client.
-pub async fn new(
+pub fn new(
     anvil_config: &AnvilNodeConfig,
     config: Configuration,
 ) -> Result<Service, ServiceError> {
@@ -90,7 +90,7 @@ pub async fn new(
         run_mining_engine(mining_engine.clone(), seal_engine_command_sender.clone()),
     );
 
-    let mut proposer = sc_basic_authorship::ProposerFactory::new(
+    let proposer = sc_basic_authorship::ProposerFactory::new(
         task_manager.spawn_handle(),
         client.clone(),
         transaction_pool.clone(),
@@ -98,10 +98,6 @@ pub async fn new(
         None,
     );
 
-    // For some reason when using AutoMining we have to seal the first block :shrug:
-    // Think at a method to clean this up.
-    let select_chain = SelectChain::new(backend.clone());
-    let mut client_mut = client.clone();
 
     let create_inherent_data_providers = {
         let time_manager = time_manager.clone();
@@ -110,20 +106,6 @@ pub async fn new(
             async move { Ok(sp_timestamp::InherentDataProvider::new(next_timestamp.into())) }
         }
     };
-    let seal_params = sc_consensus_manual_seal::SealBlockParams {
-        sender: None,
-        parent_hash: None,
-        finalize: true,
-        create_empty: true,
-        env: &mut proposer,
-        select_chain: &select_chain,
-        block_import: &mut client_mut,
-        consensus_data_provider: None,
-        pool: transaction_pool.clone(),
-        client: client.clone(),
-        create_inherent_data_providers: &create_inherent_data_providers,
-    };
-    sc_consensus_manual_seal::seal_block(seal_params).await;
 
     let params = sc_consensus_manual_seal::ManualSealParams {
         block_import: client.clone(),
