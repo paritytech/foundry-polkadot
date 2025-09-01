@@ -154,8 +154,12 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         executor_env: &EnvWithHandlerCfg,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
-        let ctx = get_context_ref(ctx);
-        if ctx.wip_in_pvm {
+        let in_pvm = {
+            let backend = get_backend_ref(backend.backend.to_mut().strategy.context.as_mut());
+            backend.in_pvm
+        };
+
+        if in_pvm {
             backend.inspect(env, inspector, Box::new(ReviveInspectContext))
         } else {
             EvmExecutorStrategyRunner.call(ctx, backend, env, executor_env, inspector)
@@ -170,8 +174,11 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         executor_env: &EnvWithHandlerCfg,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
-        let ctx = get_context_ref_mut(ctx);
-        if ctx.wip_in_pvm {
+        let in_pvm = {
+            let backend = get_backend_ref(backend.strategy.context.as_mut());
+            backend.in_pvm
+        };
+        if in_pvm {
             backend.inspect(env, inspector, Box::new(ReviveInspectContext))
         } else {
             EvmExecutorStrategyRunner.transact(ctx, backend, env, executor_env, inspector)

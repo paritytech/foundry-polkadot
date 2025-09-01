@@ -3,10 +3,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+mod ops;
+
 use foundry_evm::backend::{
     BackendStrategy, BackendStrategyContext, BackendStrategyRunner, EvmBackendStrategyRunner,
     ForkDB,
 };
+use ops::try_call;
 use polkadot_sdk::sp_io;
 use serde::{Deserialize, Serialize};
 
@@ -41,7 +44,11 @@ impl BackendStrategyRunner for ReviveBackendStrategyRunner {
             return EvmBackendStrategyRunner.inspect(backend, env, inspector, inspect_ctx);
         }
 
-        todo!()
+        if env.tx.transact_to.is_call() {
+            return try_call(backend, env);
+        }
+
+        todo!();
     }
 
     fn update_fork_db(
@@ -81,11 +88,12 @@ impl BackendStrategyRunner for ReviveBackendStrategyRunner {
 #[derive(Debug, Clone)]
 pub struct ReviveBackendStrategyContext {
     pub revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
+    pub in_pvm: bool,
 }
 
 impl ReviveBackendStrategyContext {
     fn new(revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>) -> Self {
-        Self { revive_test_externalities }
+        Self { revive_test_externalities, in_pvm: false }
     }
 }
 
@@ -105,6 +113,10 @@ impl BackendStrategyContext for ReviveBackendStrategyContext {
 
 pub fn get_backend_ref(ctx: &dyn BackendStrategyContext) -> &ReviveBackendStrategyContext {
     ctx.as_any_ref().downcast_ref().expect("expected ReviveExecutorStrategyContext")
+}
+
+pub fn get_backend_mut(ctx: &mut dyn BackendStrategyContext) -> &mut ReviveBackendStrategyContext {
+    ctx.as_any_mut().downcast_mut().expect("expected ReviveExecutorStrategyContext")
 }
 
 #[derive(Clone, Debug, Default)]
