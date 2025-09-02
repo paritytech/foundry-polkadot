@@ -77,7 +77,7 @@ forgetest!(counter_test, |prj, cmd| {
         }
 
         function increment() public {
-            number++;
+            number = number + 1;
         }
     }
     "#,
@@ -103,10 +103,10 @@ contract CounterTest is DSTest {
   }
 
   function test_Increment() public {
-      console.log(counter.number());
       counter.setNumber(55); 
-      console.log(counter.number());
       assertEq(counter.number(), 55);
+      counter.increment(); 
+      assertEq(counter.number(), 56);
   }
 
   function testFuzz_SetNumber(uint256 x) public {
@@ -138,10 +138,6 @@ addresses.
 Ran 2 tests for src/CounterTest.t.sol:CounterTest
 [PASS] testFuzz_SetNumber(uint256) (runs: 256, [AVG_GAS])
 [PASS] test_Increment() ([GAS])
-Logs:
-  5
-  55
-
 Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)

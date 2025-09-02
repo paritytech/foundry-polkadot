@@ -29,7 +29,7 @@ pub fn trace<T: Config, R, F: FnOnce() -> R>(f: F) -> (R, Option<CallTrace<U256>
             disable_code: false,
         });
 
-    let result = trace_revive(&mut prestate_tracer, || trace_revive(&mut call_tracer, || f()));
+    let result = trace_revive(&mut prestate_tracer, || trace_revive(&mut call_tracer, f));
     let prestate_trace = prestate_tracer.collect_trace();
     let calls = call_tracer.collect_trace();
     (result, calls, prestate_trace)
@@ -43,7 +43,7 @@ pub fn apply_prestate_trace<DB: revm::Database<Error = DatabaseError>>(
     match prestate_trace {
         polkadot_sdk::pallet_revive::evm::PrestateTrace::DiffMode { pre: _, post } => {
             for (key, PrestateTraceInfo { balance, nonce, code, storage }) in post {
-                let address = Address::from_slice(&key.as_bytes());
+                let address = Address::from_slice(key.as_bytes());
                 let account = ecx
                     .journaled_state
                     .load_account(address, &mut ecx.db)
