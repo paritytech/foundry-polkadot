@@ -10,7 +10,7 @@ use crate::{
 use eyre::Result;
 use opts::{Anvil, AnvilSubcommand};
 use polkadot_sdk::{
-    sc_cli::{self, SubstrateCli},
+    sc_cli::{self, build_runtime, SubstrateCli},
     sc_service::{self, TaskManager},
 };
 use server::try_spawn_ipc;
@@ -86,11 +86,7 @@ pub fn run_command(args: Anvil) -> Result<()> {
 
     let (anvil_config, substrate_config) = args.node.clone().into_node_config()?;
 
-    let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .thread_name("anvil-polkadot")
-        .build()
-        .map_err(|e| sc_cli::Error::Application(e.into()))?;
+    let tokio_runtime = build_runtime()?;
 
     let signals = tokio_runtime.block_on(async { sc_cli::Signals::capture() })?;
     let config = args.create_configuration(&substrate_config, tokio_runtime.handle().clone())?;

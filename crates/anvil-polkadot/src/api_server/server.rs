@@ -30,8 +30,6 @@ impl ApiServer {
         match req {
             EthRequest::SetLogging(enabled) => {
                 // Update the logging manager state
-                tracing::warn!(target = "anvil::rpc", "anvil_setLoggingEnabled({})", enabled);
-
                 self.logging_manager.set_enabled(enabled);
                 node_info!("anvil_setLoggingEnabled");
 
