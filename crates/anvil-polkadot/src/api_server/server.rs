@@ -1,8 +1,7 @@
 use super::ApiRequest;
-use crate::{logging::LoggingManager, substrate_node::service::Service};
+use crate::{logging::LoggingManager, macros::node_info, substrate_node::service::Service};
 use anvil_core::eth::EthRequest;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
-use foundry_common::sh_println;
 use futures::{channel::mpsc, StreamExt};
 
 pub struct ApiServer {
@@ -21,8 +20,6 @@ impl ApiServer {
 
     pub async fn run(mut self) {
         while let Some(msg) = self.req_receiver.next().await {
-            sh_println!("GOT REQUEST: {:?}", msg.req).unwrap();
-
             let resp = self.execute(msg.req).await;
 
             msg.resp_sender.send(resp).expect("Dropped receiver");
@@ -32,14 +29,11 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         match req {
             EthRequest::SetLogging(enabled) => {
-                sh_println!("anvil_setLoggingEnabled called with enabled = {}", enabled).unwrap();
-
                 // Update the logging manager state
-                self.logging_manager.set_enabled(enabled);
+                tracing::warn!(target = "anvil::rpc", "anvil_setLoggingEnabled({})", enabled);
 
-                // Log the state change using the appropriate targets
-                tracing::warn!(target: "node::user", "anvil_setLoggingEnabled logging set to {}", enabled);
-                tracing::warn!(target: "node::console", "Console logging enabled = {}", enabled);
+                self.logging_manager.set_enabled(enabled);
+                node_info!("anvil_setLoggingEnabled");
 
                 ResponseResult::Success(serde_json::Value::Bool(true))
             }

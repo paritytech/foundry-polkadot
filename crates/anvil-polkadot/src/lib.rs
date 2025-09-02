@@ -26,6 +26,8 @@ pub mod logging;
 pub mod pubsub;
 /// axum RPC server implementations
 pub mod server;
+//node_info
+pub mod macros;
 
 mod api_server;
 
@@ -157,25 +159,34 @@ pub async fn spawn_anvil_tasks(
     Ok(())
 }
 
-#[doc(hidden)]
 fn init_tracing() -> LoggingManager {
     use tracing_subscriber::prelude::*;
 
     let manager = LoggingManager::default();
 
-    // Always include an EnvFilter. If RUST_LOG is not set, use sensible defaults.
-    let env_filter = if std::env::var("RUST_LOG").is_ok() {
-        tracing_subscriber::EnvFilter::from_default_env()
+    if std::env::var("RUST_LOG").is_ok() {
+        let env_filter = tracing_subscriber::EnvFilter::from_default_env();
+
+        let _ = tracing_subscriber::Registry::default()
+            .with(NodeLogLayer::new(manager.clone()))
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            .try_init();
     } else {
         // Default filter: show substrate warnings/errors and our node targets
-        tracing_subscriber::EnvFilter::new("substrate=warn,node=debug")
-    };
+        let env_filter = tracing_subscriber::EnvFilter::new("substrate=warn,node=debug");
 
-    let _ = tracing_subscriber::Registry::default()
-        .with(NodeLogLayer::new(manager.clone()))
-        .with(env_filter)
-        .with(tracing_subscriber::fmt::layer())
-        .try_init();
+        let _ = tracing_subscriber::Registry::default()
+            .with(NodeLogLayer::new(manager.clone()))
+            .with(env_filter)
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .without_time()
+                    .with_target(false)
+                    .with_level(false),
+            )
+            .try_init();
+    };
 
     manager
 }
