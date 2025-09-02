@@ -41,12 +41,12 @@ pub enum MiningMode {
     /// We are only producing blocks as an answer to the
     /// mine family of RPCs
     None,
-    /// Create a new block every tick seconds.
+    /// Create a new block every tick milliseconds.
     Interval { tick: u64 },
     /// Create a new block every time there is a transaction.
     AutoMining,
     /// A mix of the two mining modes above. We create a block
-    /// either every tick seconds or anytime there is a new
+    /// either every tick milliseconds or anytime there is a new
     /// transaction
     MixedMining { tick: u64 },
 }
