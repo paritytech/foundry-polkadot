@@ -3555,7 +3555,7 @@ contract CounterTest is Test {
         // Temporary workaround for `https://eth.llamarpc.com/` being down
         setChain("mainnet", ChainData({
             name: "mainnet",
-            rpcUrl: "https://reth-ethereum.ithaca.xyz/rpc",
+            rpcUrl: "https://eth.llamarpc.com/",
             chainId: 1
         }));
 
