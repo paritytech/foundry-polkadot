@@ -92,6 +92,12 @@ jobs:
           make
           sudo make install
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}, wasm32-unknown-unknown
+          components: rust-src
+
       # Build substrate-node (if not cached)
       - name: Build substrate-node
         if: steps.cache-substrate.outputs.cache-hit != 'true' && matrix.os != 'windows'
@@ -130,10 +136,6 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: 0
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          target: ${{ matrix.target }}, wasm32-unknown-unknown
-          components: rust-src
       - uses: taiki-e/install-action@nextest
 
       - name: Restore substrate-node binary
