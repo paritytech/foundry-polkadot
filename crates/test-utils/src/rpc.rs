@@ -19,7 +19,7 @@ fn shuffled<T>(mut vec: Vec<T>) -> Vec<T> {
 static RETH_ARCHIVE_HOSTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     shuffled(vec![
         //
-        "https://eth.llamarpc.com",
+        "reth-ethereum.ithaca.xyz",
     ])
 });
 
@@ -27,7 +27,8 @@ static RETH_ARCHIVE_HOSTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
 static RETH_HOSTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     shuffled(vec![
         //
-        "https://eth.llamarpc.com",
+        "reth-ethereum.ithaca.xyz",
+        "reth-ethereum-full.ithaca.xyz",
     ])
 });
 
