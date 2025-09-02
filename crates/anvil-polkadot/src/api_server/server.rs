@@ -1,6 +1,6 @@
-use super::ApiRequest;
-use crate::substrate_node::{
-    error::ToRpcResponseResult, mining_engine::MiningEngine, service::Service,
+use crate::{
+    api_server::ApiRequest,
+    substrate_node::{error::ToRpcResponseResult, mining_engine::MiningEngine, service::Service},
 };
 use alloy_primitives::U256;
 use anvil_core::eth::EthRequest;
@@ -9,21 +9,14 @@ use foundry_common::sh_println;
 use futures::{channel::mpsc, StreamExt};
 use std::sync::Arc;
 
-use polkadot_sdk::{sc_consensus_manual_seal::EngineCommand, sp_core};
-
 pub struct ApiServer {
     req_receiver: mpsc::Receiver<ApiRequest>,
     mining_engine: Arc<MiningEngine>,
-    seal_command_sender: futures::channel::mpsc::Sender<EngineCommand<sp_core::H256>>,
 }
 
 impl ApiServer {
     pub fn new(substrate_service: &Service, req_receiver: mpsc::Receiver<ApiRequest>) -> Self {
-        Self {
-            req_receiver,
-            mining_engine: substrate_service.mining_engine.clone(),
-            seal_command_sender: substrate_service.seal_command_sender.clone(),
-        }
+        Self { req_receiver, mining_engine: substrate_service.mining_engine.clone() }
     }
 
     pub async fn run(mut self) {
@@ -38,11 +31,9 @@ impl ApiServer {
 
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         match req {
-            EthRequest::Mine(blocks, interval) => self
-                .mining_engine
-                .mine(blocks, interval, &mut self.seal_command_sender)
-                .await
-                .to_rpc_result(),
+            EthRequest::Mine(blocks, interval) => {
+                self.mining_engine.mine(blocks, interval).await.to_rpc_result()
+            }
             EthRequest::SetIntervalMining(interval) => {
                 self.mining_engine.set_interval_mining(interval).to_rpc_result()
             }
@@ -53,11 +44,9 @@ impl ApiServer {
             EthRequest::SetAutomine(enabled) => {
                 self.mining_engine.set_auto_mine(enabled).to_rpc_result()
             }
-            EthRequest::EvmMine(mine) => self
-                .mining_engine
-                .evm_mine(mine.and_then(|p| p.params), &mut self.seal_command_sender)
-                .await
-                .to_rpc_result(),
+            EthRequest::EvmMine(mine) => {
+                self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await.to_rpc_result()
+            }
             EthRequest::EvmMineDetailed(_mine) => ResponseResult::Error(RpcError::internal_error()),
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {

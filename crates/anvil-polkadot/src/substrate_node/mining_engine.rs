@@ -1,4 +1,4 @@
-use super::{error::Error, service::TransactionPoolHandle};
+use crate::substrate_node::{error::Error, service::TransactionPoolHandle};
 use alloy_primitives::U256;
 use alloy_rpc_types::anvil::MineOptions;
 use anvil::eth::backend::time::TimeManager;
@@ -75,6 +75,7 @@ pub struct MiningEngine {
     mining_mode: Arc<RwLock<MiningMode>>,
     transaction_pool: Arc<TransactionPoolHandle>,
     time_manager: Arc<TimeManager>,
+    seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
 }
 
 impl MiningEngine {
@@ -82,12 +83,14 @@ impl MiningEngine {
         mining_mode: MiningMode,
         transaction_pool: Arc<TransactionPoolHandle>,
         time_manager: Arc<TimeManager>,
+        seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
     ) -> Self {
         Self {
             waker: Default::default(),
             mining_mode: Arc::new(RwLock::new(mining_mode)),
             transaction_pool,
             time_manager,
+            seal_command_sender,
         }
     }
 
@@ -95,7 +98,6 @@ impl MiningEngine {
         &self,
         num_blocks: Option<U256>,
         interval: Option<U256>,
-        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
     ) -> Result<(), Error> {
         info!("anvil_polkadot_mine");
         let interval = interval.map(|i| i.to::<u64>());
@@ -107,18 +109,14 @@ impl MiningEngine {
             if let Some(interval) = interval {
                 self.time_manager.increase_time(interval);
             }
-            self.seal_now(seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
+            self.seal_now().await.map_err(|e| Error::Mining(e.into()))?;
         }
         Ok(())
     }
 
-    pub async fn evm_mine(
-        &self,
-        opts: Option<MineOptions>,
-        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
-    ) -> Result<String, Error> {
+    pub async fn evm_mine(&self, opts: Option<MineOptions>) -> Result<String, Error> {
         info!("evm_mine");
-        self.do_evm_mine(opts, seal_command_sender).await?;
+        self.do_evm_mine(opts).await?;
         Ok("0x0".to_string())
     }
 
@@ -161,6 +159,8 @@ impl MiningEngine {
 
     pub fn set_next_block_timestamp(&self, time_in_seconds: u64) -> Result<(), Error> {
         self.time_manager
+            // this will convert the time_in_seconds in milliseconds. It is transparent
+            // to the user
             .set_next_block_timestamp(time_in_seconds)
             .map_err(|_| Error::Mining(MiningError::Timestamp))
     }
@@ -187,10 +187,7 @@ impl MiningEngine {
 
     //---------- Helpers ---------------
 
-    async fn seal_now(
-        &self,
-        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
-    ) -> Result<CreatedBlock<Hash>, BlockProducingError> {
+    async fn seal_now(&self) -> Result<CreatedBlock<Hash>, BlockProducingError> {
         let (sender, receiver) = oneshot::channel();
         let seal_command = EngineCommand::SealNewBlock {
             create_empty: true,
@@ -198,7 +195,7 @@ impl MiningEngine {
             parent_hash: None,
             sender: Some(sender),
         };
-        seal_command_sender.send(seal_command).await?;
+        self.seal_command_sender.clone().send(seal_command).await?;
         match receiver.await {
             Ok(Ok(rx)) => Ok(rx),
             Ok(Err(e)) => Err(e),
@@ -214,11 +211,7 @@ impl MiningEngine {
         matches!(*self.mining_mode.read(), MiningMode::AutoMining)
     }
 
-    async fn do_evm_mine(
-        &self,
-        opts: Option<MineOptions>,
-        seal_command_sender: &mut Sender<EngineCommand<sp_core::H256>>,
-    ) -> Result<u64, Error> {
+    async fn do_evm_mine(&self, opts: Option<MineOptions>) -> Result<u64, Error> {
         let mut blocks_to_mine = 1u64;
 
         if let Some(opts) = opts {
@@ -240,7 +233,7 @@ impl MiningEngine {
         }
 
         for _ in 0..blocks_to_mine {
-            self.seal_now(seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
+            self.seal_now().await.map_err(|e| Error::Mining(e.into()))?;
         }
 
         Ok(blocks_to_mine)
@@ -303,13 +296,9 @@ async fn next_or_pending(stream: Option<&mut SealCommandStream>) -> Option<()> {
     }
 }
 
-async fn poll_and_seal(
-    engine: Arc<MiningEngine>,
-    mut command_seal_sender: Sender<EngineCommand<sp_core::H256>>,
-    stream: Option<&mut SealCommandStream>,
-) -> bool {
+async fn poll_and_seal(engine: Arc<MiningEngine>, stream: Option<&mut SealCommandStream>) -> bool {
     if next_or_pending(stream).await.is_some() {
-        match engine.seal_now(&mut command_seal_sender).await {
+        match engine.seal_now().await {
             Ok(block) => {
                 debug!(hash=?block.hash, "sealed");
             }
@@ -324,10 +313,7 @@ async fn poll_and_seal(
     true
 }
 
-pub async fn run_mining_engine(
-    engine: Arc<MiningEngine>,
-    command_sink: Sender<EngineCommand<sp_core::H256>>,
-) {
+pub async fn run_mining_engine(engine: Arc<MiningEngine>) {
     let mut current_mode = None;
     let mut interval_mining_stream: Option<SealCommandStream> = None;
     let mut auto_mining_stream: Option<SealCommandStream> = None;
@@ -341,13 +327,13 @@ pub async fn run_mining_engine(
                 auto_mining_stream = auto_stream;
             }
             // Poll the interval stream if it exists
-            continue_loop = poll_and_seal(engine.clone(), command_sink.clone(), interval_mining_stream.as_mut()) => {
+            continue_loop = poll_and_seal(engine.clone(), interval_mining_stream.as_mut()) => {
                 if !continue_loop {
                     break;
                 }
             }
             // Poll the automining stream if it exists
-            continue_loop = poll_and_seal(engine.clone(), command_sink.clone(), auto_mining_stream.as_mut()) => {
+            continue_loop = poll_and_seal(engine.clone(), auto_mining_stream.as_mut()) => {
                 if !continue_loop {
                     break;
                 }

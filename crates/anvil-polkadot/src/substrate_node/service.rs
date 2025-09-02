@@ -1,6 +1,6 @@
-use super::{
-    super::AnvilNodeConfig,
-    mining_engine::{run_mining_engine, MiningEngine, MiningMode},
+use crate::{
+    substrate_node::mining_engine::{run_mining_engine, MiningEngine, MiningMode},
+    AnvilNodeConfig,
 };
 use anvil::eth::backend::time::TimeManager;
 use polkadot_sdk::{
@@ -70,8 +70,12 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         MiningMode::new(anvil_config.block_time, anvil_config.mixed_mining, anvil_config.no_mining);
     let time_manager =
         Arc::new(TimeManager::new_with_milliseconds(sp_timestamp::Timestamp::current().into()));
-    let mining_engine =
-        Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone(), time_manager.clone()));
+    let mining_engine = Arc::new(MiningEngine::new(
+        mining_mode,
+        transaction_pool.clone(),
+        time_manager.clone(),
+        seal_engine_command_sender.clone(),
+    ));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
         client.clone(),
@@ -84,7 +88,7 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
     task_manager.spawn_handle().spawn(
         "mining_engine_task",
         Some("consensus"),
-        run_mining_engine(mining_engine.clone(), seal_engine_command_sender.clone()),
+        run_mining_engine(mining_engine.clone()),
     );
 
     let proposer = sc_basic_authorship::ProposerFactory::new(
