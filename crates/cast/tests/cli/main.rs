@@ -1277,7 +1277,7 @@ casttest!(tx_raw, |_prj, cmd| {
 
 casttest!(
     #[ignore = "reth is currently slightly broken"]
-    tx_using_sender_and_nonce, 
+    tx_using_sender_and_nonce,
     |_prj, cmd| {
     let rpc = "https://reth-ethereum.ithaca.xyz/rpc";
     // <https://etherscan.io/tx/0x5bcd22734cca2385dc25b2d38a3d33a640c5961bd46d390dff184c894204b594>
@@ -1815,10 +1815,7 @@ Transaction successfully executed.
     }
 });
 
-casttest!(
-    #[ignore = "reth is currently slightly broken"]
-    send_eip7702,
-    async |_prj, cmd| {
+casttest!(send_eip7702, async |_prj, cmd| {
     let (_api, handle) =
         anvil::spawn(NodeConfig::test().with_hardfork(Some(EthereumHardfork::PragueEOF.into())))
             .await;
