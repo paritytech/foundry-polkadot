@@ -411,41 +411,43 @@ impl<'a> ContractRunner<'a> {
             let fail =  TestResult::fail("`testFail*` has been removed. Consider changing to test_Revert[If|When]_Condition and expecting a revert".to_string());
             return SuiteResult::new(start.elapsed(), [(instances, fail)].into(), warnings);
         }
+        let f = |func: &Function| {
+            let start = Instant::now();
 
-        let test_results = functions
-            .par_iter()
-            .map(|&func| {
-                let start = Instant::now();
+            let _guard = self.tokio_handle.enter();
 
-                let _guard = self.tokio_handle.enter();
+            let _guard;
+            let current_span = tracing::Span::current();
+            if current_span.is_none() || current_span.id() != self.span.id() {
+                _guard = self.span.enter();
+            }
 
-                let _guard;
-                let current_span = tracing::Span::current();
-                if current_span.is_none() || current_span.id() != self.span.id() {
-                    _guard = self.span.enter();
-                }
+            let sig = func.signature();
+            let kind = func.test_function_kind();
 
-                let sig = func.signature();
-                let kind = func.test_function_kind();
+            let _guard = debug_span!(
+                "test",
+                %kind,
+                name = %if enabled!(tracing::Level::TRACE) { &sig } else { &func.name },
+            )
+            .entered();
 
-                let _guard = debug_span!(
-                    "test",
-                    %kind,
-                    name = %if enabled!(tracing::Level::TRACE) { &sig } else { &func.name },
-                )
-                .entered();
+            let mut res = FunctionRunner::new(&self, &setup).run(
+                func,
+                kind,
+                call_after_invariant,
+                identified_contracts.as_ref(),
+            );
+            res.duration = start.elapsed();
 
-                let mut res = FunctionRunner::new(&self, &setup).run(
-                    func,
-                    kind,
-                    call_after_invariant,
-                    identified_contracts.as_ref(),
-                );
-                res.duration = start.elapsed();
+            (sig, res)
+        };
 
-                (sig, res)
-            })
-            .collect::<BTreeMap<_, _>>();
+        let test_results = if self.config.resolc.resolc_compile {
+            functions.into_iter().map(f).collect::<BTreeMap<_, _>>()
+        } else {
+            functions.into_par_iter().map(f).collect::<BTreeMap<_, _>>()
+        };
 
         let duration = start.elapsed();
         SuiteResult::new(duration, test_results, warnings)
@@ -547,9 +549,10 @@ impl<'a> FunctionRunner<'a> {
         if self.prepare_test(func).is_err() {
             return self.result;
         }
-
+        let mut binding = self.executor.clone();
+        let executor = binding.to_mut();
         // Run current unit test.
-        let (mut raw_call_result, reason) = match self.executor.call(
+        let (mut raw_call_result, reason) = match executor.call(
             self.sender,
             self.address,
             func,
@@ -582,8 +585,10 @@ impl<'a> FunctionRunner<'a> {
         identified_contracts: &ContractsByAddress,
         test_bytecode: &Bytes,
     ) -> TestResult {
+        let mut binding = self.executor.clone();
+        let executor = binding.to_mut();
         // First, run the test normally to see if it needs to be skipped.
-        if let Err(EvmError::Skip(reason)) = self.executor.call(
+        if let Err(EvmError::Skip(reason)) = executor.call(
             self.sender,
             self.address,
             func,

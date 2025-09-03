@@ -113,6 +113,16 @@ contract CounterTest is DSTest {
       counter.setNumber(x); 
       assertEq(counter.number(), x);
   }
+  
+  function testFuzz_SetNumber2(uint256 x) public {
+    counter.setNumber(x); 
+    assertEq(counter.number(), x);
+  }
+
+  function testFuzz_SetNumber3(uint256 x) public {
+    counter.setNumber(x); 
+    assertEq(counter.number(), x);
+  }
 }
 "#,
     )
@@ -135,12 +145,14 @@ coverned by code), and you should avoid differentiating between contracts and no
 addresses.
 [FILE]
 
-Ran 2 tests for src/CounterTest.t.sol:CounterTest
+Ran 4 tests for src/CounterTest.t.sol:CounterTest
 [PASS] testFuzz_SetNumber(uint256) (runs: 256, [AVG_GAS])
+[PASS] testFuzz_SetNumber2(uint256) (runs: 256, [AVG_GAS])
+[PASS] testFuzz_SetNumber3(uint256) (runs: 256, [AVG_GAS])
 [PASS] test_Increment() ([GAS])
-Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
+Suite result: ok. 4 passed; 0 failed; 0 skipped; [ELAPSED]
 
-Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
+Ran 1 test suite [ELAPSED]: 4 tests passed, 0 failed, 0 skipped (4 total tests)
 
 "#]]);
 });
