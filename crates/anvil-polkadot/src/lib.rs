@@ -81,7 +81,7 @@ pub fn run_command(args: Anvil) -> Result<()> {
                 &mut std::io::stdout(),
             ),
         }
-        return Ok(())
+        return Ok(());
     }
 
     let (anvil_config, substrate_config) = args.node.clone().into_node_config()?;
@@ -90,8 +90,11 @@ pub fn run_command(args: Anvil) -> Result<()> {
 
     let signals = tokio_runtime.block_on(async { sc_cli::Signals::capture() })?;
     let config = args.create_configuration(&substrate_config, tokio_runtime.handle().clone())?;
-    let logging_manager =
-        if anvil_config.enable_tracing { init_tracing(anvil_config.silent) } else { LoggingManager::default() };
+    let logging_manager = if anvil_config.enable_tracing {
+        init_tracing(anvil_config.silent)
+    } else {
+        LoggingManager::default()
+    };
     let runner: sc_cli::Runner<Anvil> = sc_cli::Runner::new(config, tokio_runtime, signals)?;
 
     Ok(runner.run_node_until_exit(|config| async move {
@@ -156,7 +159,7 @@ pub async fn spawn_anvil_tasks(
     Ok(())
 }
 
-fn init_tracing(silent:bool) -> LoggingManager {
+fn init_tracing(silent: bool) -> LoggingManager {
     use tracing_subscriber::prelude::*;
 
     let manager = LoggingManager::default();
