@@ -16,7 +16,7 @@ use polkadot_sdk::{
 use server::try_spawn_ipc;
 use std::net::SocketAddr;
 
-mod substrate_node;
+pub mod substrate_node;
 
 mod config;
 
@@ -27,7 +27,7 @@ pub mod pubsub;
 /// axum RPC server implementations
 pub mod server;
 
-mod api_server;
+pub mod api_server;
 
 /// contains cli command
 pub mod cmd;
@@ -39,6 +39,8 @@ extern crate tracing;
 
 use clap::{CommandFactory, Parser};
 use foundry_cli::utils;
+
+use self::api_server::ApiHandle;
 
 /// Run the `anvil` command line interface.
 pub fn run() -> Result<()> {
@@ -107,7 +109,10 @@ pub async fn spawn(
     Ok(substrate_service.task_manager)
 }
 
-pub async fn spawn_anvil_tasks(anvil_config: AnvilNodeConfig, service: &Service) -> Result<()> {
+pub async fn spawn_anvil_tasks(
+    anvil_config: AnvilNodeConfig,
+    service: &Service,
+) -> Result<ApiHandle> {
     let mut addresses = Vec::with_capacity(anvil_config.host.len());
 
     // Spawn the api server.
@@ -135,12 +140,12 @@ pub async fn spawn_anvil_tasks(anvil_config: AnvilNodeConfig, service: &Service)
     // If configured, spawn the IPC server.
     anvil_config
         .get_ipc_path()
-        .map(|path| try_spawn_ipc(&service.task_manager, path, api_handle))
+        .map(|path| try_spawn_ipc(&service.task_manager, path, api_handle.clone()))
         .transpose()?;
 
     anvil_config.print()?;
 
-    Ok(())
+    Ok(api_handle)
 }
 
 // TODO: this tracing initialisation conflicts with the one in substrate.

@@ -100,6 +100,10 @@ impl SubstrateNodeConfig {
 
         Self { shared_params, rpc_params }
     }
+
+    pub fn set_base_path(&mut self, base_path: Option<PathBuf>) {
+        self.shared_params.base_path = base_path;
+    }
 }
 
 impl SubstrateCliConfiguration for SubstrateNodeConfig {

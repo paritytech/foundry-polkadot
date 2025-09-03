@@ -1,0 +1,121 @@
+use crate::utils::TestNode;
+use anvil_core::eth::EthRequest;
+use anvil_rpc::{
+    error::{ErrorCode, RpcError},
+    response::ResponseResult,
+};
+use tokio::time::{sleep, Duration};
+
+#[tokio::test(flavor = "multi_thread")]
+async fn demo_test() {
+    let mut node = TestNode::new().await.unwrap();
+
+    // Test system methods
+    let _chain_name = node.system_chain().await.unwrap();
+    let s = r#"{"method": "anvil_mine", "params": []}"#;
+    let value: serde_json::Value = serde_json::from_str(s).unwrap();
+    let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
+
+    // Call the eth endpoint
+    let response = node.call_eth(mine_req).await.unwrap();
+    assert!(matches!(
+        response,
+        ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })
+    ));
+
+    while node.get_best_block_number().await.unwrap() < 3 {
+        sleep(Duration::from_secs(8)).await;
+    }
+    let hash3 = node.block_hash_by_number(3).await.unwrap();
+    let hash2 = node.block_hash_by_number(2).await.unwrap();
+    let timestamp2 = node.get_decoded_timestamp(Some(hash2)).await;
+    let timestamp3 = node.get_decoded_timestamp(Some(hash3)).await;
+    let timestamp_diff = timestamp3.saturating_sub(timestamp2);
+    let expected_block_time = 6000;
+    let tolerance = 2000;
+    assert!(
+        timestamp_diff >= expected_block_time - tolerance,
+        "❌ Block time too fast! Got {timestamp_diff}ms, expected ≥4000ms",
+    );
+
+    assert!(
+        timestamp_diff <= expected_block_time + tolerance,
+        "❌ Block time too slow! Got {timestamp_diff}ms, expected ≤8000ms",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn demo_test1() {
+    let mut node = TestNode::new().await.unwrap();
+
+    // Test system methods
+    let _chain_name = node.system_chain().await.unwrap();
+    let s = r#"{"method": "anvil_mine", "params": []}"#;
+    let value: serde_json::Value = serde_json::from_str(s).unwrap();
+    let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
+
+    // Call the eth endpoint
+    let response = node.call_eth(mine_req).await.unwrap();
+    assert!(matches!(
+        response,
+        ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })
+    ));
+
+    while node.get_best_block_number().await.unwrap() < 3 {
+        sleep(Duration::from_secs(8)).await;
+    }
+    let hash3 = node.block_hash_by_number(3).await.unwrap();
+    let hash2 = node.block_hash_by_number(2).await.unwrap();
+    let timestamp2 = node.get_decoded_timestamp(Some(hash2)).await;
+    let timestamp3 = node.get_decoded_timestamp(Some(hash3)).await;
+    let timestamp_diff = timestamp3.saturating_sub(timestamp2);
+    let expected_block_time = 6000;
+    let tolerance = 2000;
+    assert!(
+        timestamp_diff >= expected_block_time - tolerance,
+        "❌ Block time too fast! Got {timestamp_diff}ms, expected ≥4000ms",
+    );
+
+    assert!(
+        timestamp_diff <= expected_block_time + tolerance,
+        "❌ Block time too slow! Got {timestamp_diff}ms, expected ≤8000ms",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn demo_test2() {
+    let mut node = TestNode::new().await.unwrap();
+
+    // Test system methods
+    let _chain_name = node.system_chain().await.unwrap();
+    let s = r#"{"method": "anvil_mine", "params": []}"#;
+    let value: serde_json::Value = serde_json::from_str(s).unwrap();
+    let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
+
+    // Call the eth endpoint
+    let response = node.call_eth(mine_req).await.unwrap();
+    assert!(matches!(
+        response,
+        ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })
+    ));
+
+    while node.get_best_block_number().await.unwrap() < 3 {
+        sleep(Duration::from_secs(8)).await;
+    }
+    let hash3 = node.block_hash_by_number(3).await.unwrap();
+    let hash2 = node.block_hash_by_number(2).await.unwrap();
+    let timestamp2 = node.get_decoded_timestamp(Some(hash2)).await;
+    let timestamp3 = node.get_decoded_timestamp(Some(hash3)).await;
+    let timestamp_diff = timestamp3.saturating_sub(timestamp2);
+    let expected_block_time = 6000;
+    let tolerance = 2000;
+    assert!(
+        timestamp_diff >= expected_block_time - tolerance,
+        "❌ Block time too fast! Got {timestamp_diff}ms, expected ≥4000ms",
+    );
+
+    assert!(
+        timestamp_diff <= expected_block_time + tolerance,
+        "❌ Block time too slow! Got {timestamp_diff}ms, expected ≤8000ms",
+    );
+}
