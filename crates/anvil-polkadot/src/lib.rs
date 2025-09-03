@@ -90,7 +90,8 @@ pub fn run_command(args: Anvil) -> Result<()> {
 
     let signals = tokio_runtime.block_on(async { sc_cli::Signals::capture() })?;
     let config = args.create_configuration(&substrate_config, tokio_runtime.handle().clone())?;
-    let logging_manager = init_tracing();
+    let logging_manager =
+        if anvil_config.enable_tracing { init_tracing(anvil_config.silent) } else { LoggingManager::default() };
     let runner: sc_cli::Runner<Anvil> = sc_cli::Runner::new(config, tokio_runtime, signals)?;
 
     Ok(runner.run_node_until_exit(|config| async move {
@@ -155,33 +156,35 @@ pub async fn spawn_anvil_tasks(
     Ok(())
 }
 
-fn init_tracing() -> LoggingManager {
+fn init_tracing(silent:bool) -> LoggingManager {
     use tracing_subscriber::prelude::*;
 
     let manager = LoggingManager::default();
+    manager.set_enabled(!silent);
 
-    if std::env::var("RUST_LOG").is_ok() {
-        let env_filter = tracing_subscriber::EnvFilter::from_default_env();
+    let env_filter = if !silent && std::env::var("RUST_LOG").is_ok() {
+        tracing_subscriber::EnvFilter::from_default_env()
+    } else {
+        tracing_subscriber::EnvFilter::new("substrate=warn,node=debug")
+    };
 
-        let _ = tracing_subscriber::Registry::default()
-            .with(NodeLogLayer::new(manager.clone()))
+    let _ = if std::env::var("RUST_LOG").is_ok() {
+        tracing_subscriber::Registry::default()
             .with(env_filter)
             .with(tracing_subscriber::fmt::layer())
-            .try_init();
+            .try_init()
     } else {
         // Default filter: show substrate warnings/errors and our node targets
-        let env_filter = tracing_subscriber::EnvFilter::new("substrate=warn,node=debug");
-
-        let _ = tracing_subscriber::Registry::default()
-            .with(NodeLogLayer::new(manager.clone()))
+        tracing_subscriber::Registry::default()
             .with(env_filter)
+            .with(NodeLogLayer::new(manager.clone()))
             .with(
                 tracing_subscriber::fmt::layer()
                     .without_time()
                     .with_target(false)
                     .with_level(false),
             )
-            .try_init();
+            .try_init()
     };
 
     manager

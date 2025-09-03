@@ -29,10 +29,8 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         match req {
             EthRequest::SetLogging(enabled) => {
-                // Update the logging manager state
-                self.logging_manager.set_enabled(enabled);
                 node_info!("anvil_setLoggingEnabled");
-
+                self.logging_manager.set_enabled(enabled);
                 ResponseResult::Success(serde_json::Value::Bool(true))
             }
             _ => ResponseResult::Error(RpcError::internal_error()),
