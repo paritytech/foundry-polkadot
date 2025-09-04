@@ -450,6 +450,10 @@ Genesis Number
           "genesis_timestamp": format!("{}", self.get_genesis_timestamp()),
         })
     }
+
+    pub fn test_config() -> Self {
+        Self { port: 0, no_mining: true, mixed_mining: false, ..Default::default() }
+    }
 }
 
 impl Default for AnvilNodeConfig {

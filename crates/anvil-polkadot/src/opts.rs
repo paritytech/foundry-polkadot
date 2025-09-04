@@ -31,8 +31,10 @@ pub enum AnvilSubcommand {
     GenerateFigSpec,
 }
 
+pub struct SubstrateClient;
+
 // Implementation of the SubstrateCli, which enables us to launch an in-process substrate node.
-impl SubstrateCli for Anvil {
+impl SubstrateCli for SubstrateClient {
     fn impl_name() -> String {
         "Anvil Substrate Node".into()
     }

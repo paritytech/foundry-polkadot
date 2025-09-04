@@ -2,9 +2,8 @@ use alloy_primitives::hex;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{self, ApiHandle},
-    cmd::NodeArgs,
     config::{AnvilNodeConfig, SubstrateNodeConfig},
-    opts::Anvil,
+    opts::SubstrateClient,
     spawn,
     substrate_node::service::Service,
 };
@@ -18,54 +17,47 @@ use polkadot_sdk::{
     sp_core::{storage::StorageKey, twox_128, H256},
 };
 use serde_json::{json, Value};
+use tempfile::TempDir;
 
 pub struct TestNode {
     pub service: Service,
     pub api: ApiHandle,
-    pub _runtime_handle: tokio::runtime::Handle,
+    _temp_dir: Option<TempDir>,
 }
 
 impl TestNode {
-    pub async fn new_custom<F>(anvil_args: Anvil, config_modifier: F) -> Result<Self>
-    where
-        F: FnOnce(&mut AnvilNodeConfig, &mut SubstrateNodeConfig),
-    {
+    pub async fn new(
+        mut anvil_config: AnvilNodeConfig,
+        mut substrate_config: SubstrateNodeConfig,
+    ) -> Result<Self> {
         let handle = tokio::runtime::Handle::current();
 
-        let (mut anvil_config, mut substrate_config) =
-            anvil_args.node.clone().into_node_config()?;
+        let mut temp_dir = None;
+        match substrate_config
+            .base_path()
+            .expect("We are in dev mode and failed to create a temp dir")
+        {
+            None => {
+                let temp = tempfile::tempdir().expect("Failed to create temp dir");
+                let db_path = temp.path().join("db");
+                temp_dir = Some(temp);
+                substrate_config.set_base_path(Some(db_path));
+            }
+            Some(_) if substrate_config.shared_params().is_dev() => {
+                let temp = tempfile::tempdir().expect("Failed to create temp dir");
+                let db_path = temp.path().join("db");
+                temp_dir = Some(temp);
+                substrate_config.set_base_path(Some(db_path));
+            }
+            Some(_) => {}
+        }
 
-        config_modifier(&mut anvil_config, &mut substrate_config);
-        let config = substrate_config.create_configuration(&anvil_args, handle.clone())?;
-        let (service, api) = spawn(anvil_config, config).await?;
-
-        Ok(Self { service, api, _runtime_handle: handle.clone() })
-    }
-
-    pub async fn new_default() -> Result<Self> {
-        let handle = tokio::runtime::Handle::current();
-
-        let mut anvil_args = Anvil {
-            global: foundry_cli::opts::GlobalArgs::default(),
-            node: NodeArgs::default(),
-            cmd: None,
-        };
-
-        anvil_args.node.no_mining = true;
-        anvil_args.node.mixed_mining = false;
-        anvil_args.node.port = 0; // auto-assign
-
-        let (mut anvil_config, mut substrate_config) =
-            anvil_args.node.clone().into_node_config()?;
         anvil_config = anvil_config.set_silent(true);
-
-        let temp_dir = tempfile::tempdir()?;
-        let db_path = temp_dir.path().join("db");
-        substrate_config.set_base_path(Some(db_path));
-        let config = substrate_config.create_configuration(&anvil_args, handle.clone())?;
+        let substrate_client = SubstrateClient {};
+        let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
         let (service, api) = spawn(anvil_config, config).await?;
 
-        Ok(Self { service, api, _runtime_handle: handle.clone() })
+        Ok(Self { service, api, _temp_dir: temp_dir })
     }
 
     pub async fn call_eth(&mut self, req: EthRequest) -> Result<ResponseResult> {

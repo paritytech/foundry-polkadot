@@ -40,7 +40,7 @@ extern crate tracing;
 use clap::{CommandFactory, Parser};
 use foundry_cli::utils;
 
-use self::api_server::ApiHandle;
+use self::{api_server::ApiHandle, opts::SubstrateClient};
 
 /// Run the `anvil` command line interface.
 pub fn run() -> Result<()> {
@@ -84,11 +84,12 @@ pub fn run_command(args: Anvil) -> Result<()> {
         return Ok(())
     }
 
-    let (anvil_config, substrate_config) = args.node.clone().into_node_config()?;
+    let (anvil_config, substrate_config) = args.node.into_node_config()?;
     let logger = if anvil_config.enable_tracing { init_tracing() } else { Default::default() };
     logger.set_enabled(!anvil_config.silent);
 
-    let runner = args.create_runner(&substrate_config)?;
+    let substrate_client = SubstrateClient {};
+    let runner = substrate_client.create_runner(&substrate_config)?;
 
     Ok(runner.run_node_until_exit(|config| async move {
         let (service, _api_handler) = spawn(anvil_config, config).await?;

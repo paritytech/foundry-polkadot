@@ -1,6 +1,6 @@
 use crate::utils::TestNode;
 use anvil_core::eth::EthRequest;
-use anvil_polkadot::{cmd::NodeArgs, opts::Anvil};
+use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
 use anvil_rpc::{
     error::{ErrorCode, RpcError},
     response::ResponseResult,
@@ -9,26 +9,9 @@ use tokio::time::{sleep, Duration};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn demo_test() {
-    let mut anvil_args = Anvil {
-        global: foundry_cli::opts::GlobalArgs::default(),
-        node: NodeArgs::default(),
-        cmd: None,
-    };
-
-    anvil_args.node.no_mining = true;
-    anvil_args.node.mixed_mining = false;
-    anvil_args.node.port = 0; // auto-assign
-    let mut node = TestNode::new_custom(anvil_args, |anvil_config, substrate_config| {
-        *anvil_config = anvil_config.clone().set_silent(true);
-
-        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
-        let db_path = temp_dir.path().join("db");
-        substrate_config.set_base_path(Some(db_path));
-        // Keep temp dir alive for the test
-        std::mem::forget(temp_dir);
-    })
-    .await
-    .unwrap();
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
     let _chain_name = node.system_chain().await.unwrap();
 
@@ -63,7 +46,9 @@ async fn demo_test() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn demo_test1() {
-    let mut node = TestNode::new_default().await.unwrap();
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
     let _chain_name = node.system_chain().await.unwrap();
 
@@ -98,7 +83,9 @@ async fn demo_test1() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn demo_test2() {
-    let mut node = TestNode::new_default().await.unwrap();
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
     let mine_req = EthRequest::Mine(None, None);
 
