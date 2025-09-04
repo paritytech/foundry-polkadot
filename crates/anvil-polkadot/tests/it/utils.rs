@@ -3,9 +3,10 @@ use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{self, ApiHandle},
     cmd::NodeArgs,
+    config::{AnvilNodeConfig, SubstrateNodeConfig},
     opts::Anvil,
-    spawn_anvil_tasks,
-    substrate_node::service::{self, Service},
+    spawn,
+    substrate_node::service::Service,
 };
 use anvil_rpc::response::ResponseResult;
 use eyre::{Result, WrapErr};
@@ -25,7 +26,23 @@ pub struct TestNode {
 }
 
 impl TestNode {
-    pub async fn new() -> Result<Self> {
+    pub async fn new_custom<F>(anvil_args: Anvil, config_modifier: F) -> Result<Self>
+    where
+        F: FnOnce(&mut AnvilNodeConfig, &mut SubstrateNodeConfig),
+    {
+        let handle = tokio::runtime::Handle::current();
+
+        let (mut anvil_config, mut substrate_config) =
+            anvil_args.node.clone().into_node_config()?;
+
+        config_modifier(&mut anvil_config, &mut substrate_config);
+        let config = substrate_config.create_configuration(&anvil_args, handle.clone())?;
+        let (service, api) = spawn(anvil_config, config).await?;
+
+        Ok(Self { service, api, _runtime_handle: handle.clone() })
+    }
+
+    pub async fn new_default() -> Result<Self> {
         let handle = tokio::runtime::Handle::current();
 
         let mut anvil_args = Anvil {
@@ -38,16 +55,15 @@ impl TestNode {
         anvil_args.node.mixed_mining = false;
         anvil_args.node.port = 0; // auto-assign
 
-        let (anvil_config, mut substrate_config) = anvil_args.node.clone().into_node_config()?;
-        let anvil_config = anvil_config.set_silent(true);
+        let (mut anvil_config, mut substrate_config) =
+            anvil_args.node.clone().into_node_config()?;
+        anvil_config = anvil_config.set_silent(true);
 
         let temp_dir = tempfile::tempdir()?;
         let db_path = temp_dir.path().join("db");
-
         substrate_config.set_base_path(Some(db_path));
         let config = substrate_config.create_configuration(&anvil_args, handle.clone())?;
-        let service = service::new(&anvil_config, config)?;
-        let api = spawn_anvil_tasks(anvil_config, &service).await?;
+        let (service, api) = spawn(anvil_config, config).await?;
 
         Ok(Self { service, api, _runtime_handle: handle.clone() })
     }

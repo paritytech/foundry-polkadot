@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 
 pub mod substrate_node;
 
-mod config;
+pub mod config;
 
 /// commandline output
 pub mod logging;
@@ -90,23 +90,26 @@ pub fn run_command(args: Anvil) -> Result<()> {
 
     let runner = args.create_runner(&substrate_config)?;
 
-    Ok(runner.run_node_until_exit(|config| async move { spawn(anvil_config, config).await })?)
+    Ok(runner.run_node_until_exit(|config| async move {
+        let (service, _api_handler) = spawn(anvil_config, config).await?;
+        Ok::<TaskManager, sc_cli::Error>(service.task_manager)
+    })?)
 }
 
 pub async fn spawn(
     anvil_config: AnvilNodeConfig,
     substrate_config: sc_service::Configuration,
-) -> Result<TaskManager, sc_cli::Error> {
+) -> Result<(Service, ApiHandle), sc_cli::Error> {
     // Spawn the substrate node.
     let substrate_service = substrate_node::service::new(&anvil_config, substrate_config)
         .map_err(sc_cli::Error::Service)?;
 
     // Spawn the other tasks.
-    spawn_anvil_tasks(anvil_config, &substrate_service)
+    let api_handle = spawn_anvil_tasks(anvil_config, &substrate_service)
         .await
         .map_err(|err| sc_cli::Error::Application(err.into()))?;
 
-    Ok(substrate_service.task_manager)
+    Ok((substrate_service, api_handle))
 }
 
 pub async fn spawn_anvil_tasks(
