@@ -61,11 +61,11 @@ pub fn with_externalities<R, F: FnOnce() -> R>(mut backend: Backend, f: F) -> R 
 }
 
 pub fn get_externalities_backend() -> Backend {
-    TEST_EXTERNALITIES.with_borrow_mut(|f| Backend(f.as_backend().clone()))
+    TEST_EXTERNALITIES.with_borrow_mut(|f| Backend(f.as_backend()))
 }
 
 fn save_checkpoint() {
-    TEST_EXTERNALITIES.with_borrow_mut(|f| CHECKPOINT.set(f.as_backend().clone()))
+    TEST_EXTERNALITIES.with_borrow_mut(|f| CHECKPOINT.set(f.as_backend()))
 }
 
 fn return_to_checkpoint() {
