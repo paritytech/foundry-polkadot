@@ -11,9 +11,8 @@ async fn demo_test() {
     let mut node = TestNode::new().await.unwrap();
 
     let _chain_name = node.system_chain().await.unwrap();
-    let s = r#"{"method": "anvil_mine", "params": []}"#;
-    let value: serde_json::Value = serde_json::from_str(s).unwrap();
-    let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
+
+    let mine_req = EthRequest::Mine(None, None);
 
     let response = node.call_eth(mine_req).await.unwrap();
     assert!(matches!(
@@ -47,9 +46,8 @@ async fn demo_test1() {
     let mut node = TestNode::new().await.unwrap();
 
     let _chain_name = node.system_chain().await.unwrap();
-    let s = r#"{"method": "anvil_mine", "params": []}"#;
-    let value: serde_json::Value = serde_json::from_str(s).unwrap();
-    let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
+
+    let mine_req = EthRequest::Mine(None, None);
 
     let response = node.call_eth(mine_req).await.unwrap();
     assert!(matches!(
@@ -82,10 +80,7 @@ async fn demo_test1() {
 async fn demo_test2() {
     let mut node = TestNode::new().await.unwrap();
 
-    let _chain_name = node.system_chain().await.unwrap();
-    let s = r#"{"method": "anvil_mine", "params": []}"#;
-    let value: serde_json::Value = serde_json::from_str(s).unwrap();
-    let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
+    let mine_req = EthRequest::Mine(None, None);
 
     let response = node.call_eth(mine_req).await.unwrap();
     assert!(matches!(

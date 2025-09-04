@@ -48,7 +48,6 @@ impl TestNode {
         let config = substrate_config.create_configuration(&anvil_args, handle.clone())?;
         let service = service::new(&anvil_config, config)?;
         let api = spawn_anvil_tasks(anvil_config, &service).await?;
-        tokio::task::yield_now().await;
 
         Ok(Self { service, api, _runtime_handle: handle.clone() })
     }
