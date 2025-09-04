@@ -37,14 +37,17 @@ use revm::{
 
 use crate::{execute_with_externalities, trace, tracing::apply_prestate_trace};
 pub trait PvmCheatcodeInspectorStrategyBuilder {
-    fn new_pvm(dual_compiled_contracts: DualCompiledContracts) -> Self;
+    fn new_pvm(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self;
 }
 impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
     // Creates a new PVM strategy
-    fn new_pvm(dual_compiled_contracts: DualCompiledContracts) -> Self {
+    fn new_pvm(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self {
         Self {
             runner: &PvmCheatcodeInspectorStrategyRunner,
-            context: Box::new(PvmCheatcodeInspectorStrategyContext::new(dual_compiled_contracts)),
+            context: Box::new(PvmCheatcodeInspectorStrategyContext::new(
+                dual_compiled_contracts,
+                resolc_startup,
+            )),
         }
     }
 }
@@ -55,13 +58,16 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     /// Whether we're using PVM mode
     /// Currently unused but kept for future PVM-specific logic
     pub using_pvm: bool,
+    /// Whether to start in PVM mode (from config)
+    pub resolc_startup: bool,
     pub dual_compiled_contracts: DualCompiledContracts,
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
-    pub fn new(dual_compiled_contracts: DualCompiledContracts) -> Self {
+    pub fn new(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self {
         Self {
             using_pvm: false, // Start in EVM mode by default
+            resolc_startup,
             dual_compiled_contracts,
         }
     }
@@ -164,12 +170,17 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
     fn post_initialize_interp(
         &self,
-        _ctx: &mut dyn CheatcodeInspectorStrategyContext,
+        ctx: &mut dyn CheatcodeInspectorStrategyContext,
         _interpreter: &mut Interpreter,
-        _ecx: Ecx<'_, '_, '_>,
+        ecx: Ecx<'_, '_, '_>,
     ) {
-        // PVM mode is enabled, but no special initialization needed for now
-        // Only intercept PVM-specific calls when needed in future implementations
+        let ctx = get_context_ref_mut(ctx);
+
+        if ctx.resolc_startup && !ctx.using_pvm {
+            tracing::info!("startup PVM migration initiated");
+            select_pvm(ctx, ecx);
+            tracing::info!("startup PVM migration completed");
+        }
     }
 
     fn pre_step_end(

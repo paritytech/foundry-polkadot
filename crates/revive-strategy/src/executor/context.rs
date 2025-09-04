@@ -6,10 +6,18 @@ use foundry_evm::executors::ExecutorStrategyContext;
 /// Defines the context for [crate::ReviveExecutorStrategyRunner].
 #[derive(Debug, Default, Clone)]
 pub struct ReviveExecutorStrategyContext {
+    /// Whether to start in PVM mode (from config)
+    pub(crate) resolc_startup: bool,
     /// Dual compiled contracts.
     pub(crate) dual_compiled_contracts: DualCompiledContracts,
     /// Compilation output.
     pub(crate) compilation_output: Option<ProjectCompileOutput>,
+}
+
+impl ReviveExecutorStrategyContext {
+    pub fn new(resolc_startup: bool) -> Self {
+        Self { resolc_startup, ..Default::default() }
+    }
 }
 
 impl ExecutorStrategyContext for ReviveExecutorStrategyContext {
