@@ -172,5 +172,4 @@ unknown-registry = "warn"
 unknown-git = "deny"
 allow-git = [
     "https://github.com/paritytech/foundry-compilers-polkadot",
-    "https://github.com/paritytech/polkadot-sdk.git",
 ]
