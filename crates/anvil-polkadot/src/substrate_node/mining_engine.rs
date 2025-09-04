@@ -99,7 +99,7 @@ impl MiningEngine {
         num_blocks: Option<U256>,
         interval: Option<U256>,
     ) -> Result<(), Error> {
-        info!("anvil_polkadot_mine");
+        info!("anvil_mine");
         let interval = interval.map(|i| i.to::<u64>());
         let blocks = num_blocks.unwrap_or(U256::from(1));
         if blocks.is_zero() {
