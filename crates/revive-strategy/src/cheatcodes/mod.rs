@@ -1,7 +1,7 @@
 use std::{
     any::{Any, TypeId},
     fmt::Debug,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use alloy_primitives::{ruint::aliases::U256, Address, Bytes, B256};
@@ -24,7 +24,6 @@ use polkadot_sdk::{
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
-    sp_io::{self},
     sp_weights::Weight,
 };
 
@@ -36,25 +35,16 @@ use revm::{
     primitives::{CreateScheme, SignedAuthorization},
 };
 
-use crate::{trace, tracing::apply_prestate_trace};
+use crate::{execute_with_externalities, trace, tracing::apply_prestate_trace};
 pub trait PvmCheatcodeInspectorStrategyBuilder {
-    fn new_pvm(
-        test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
-        dual_compiled_contracts: DualCompiledContracts,
-    ) -> Self;
+    fn new_pvm(dual_compiled_contracts: DualCompiledContracts) -> Self;
 }
 impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
     // Creates a new PVM strategy
-    fn new_pvm(
-        test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
-        dual_compiled_contracts: DualCompiledContracts,
-    ) -> Self {
+    fn new_pvm(dual_compiled_contracts: DualCompiledContracts) -> Self {
         Self {
             runner: &PvmCheatcodeInspectorStrategyRunner,
-            context: Box::new(PvmCheatcodeInspectorStrategyContext::new(
-                test_externalities,
-                dual_compiled_contracts,
-            )),
+            context: Box::new(PvmCheatcodeInspectorStrategyContext::new(dual_compiled_contracts)),
         }
     }
 }
@@ -65,18 +55,13 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     /// Whether we're using PVM mode
     /// Currently unused but kept for future PVM-specific logic
     pub using_pvm: bool,
-    pub revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
     pub dual_compiled_contracts: DualCompiledContracts,
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
-    pub fn new(
-        revive_test_externalities: Arc<Mutex<sp_io::TestExternalities>>,
-        dual_compiled_contracts: DualCompiledContracts,
-    ) -> Self {
+    pub fn new(dual_compiled_contracts: DualCompiledContracts) -> Self {
         Self {
             using_pvm: false, // Start in EVM mode by default
-            revive_test_externalities,
             dual_compiled_contracts,
         }
     }
@@ -212,10 +197,11 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             _ => return true,
         };
 
-        let balance =
-            ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+        let balance = execute_with_externalities(|externalities| {
+            externalities.execute_with(|| {
                 Pallet::<Runtime>::evm_balance(&H160::from_slice(address.as_slice()))
-            });
+            })
+        });
         let balance = U256::from_limbs(balance.0);
 
         // Skip the current BALANCE instruction since we've already handled it
@@ -256,25 +242,27 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: InnerEcx<'_,
             let _ = sh_err!("Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect.");
         }
         let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
-        ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
-            let account_id =
-                AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-            let current_nonce = System::account_nonce(&account_id);
+        execute_with_externalities(|externalities| {
+            externalities.execute_with(|| {
+                let account_id =
+                    AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
+                let current_nonce = System::account_nonce(&account_id);
 
-            assert!(
-                current_nonce as u64 <= nonce,
-                "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-            );
+                assert!(
+                    current_nonce as u64 <= nonce,
+                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
+                );
 
-            while (System::account_nonce(&account_id) as u64) < nonce {
-                System::inc_account_nonce(&account_id);
-            }
+                while (System::account_nonce(&account_id) as u64) < nonce {
+                    System::inc_account_nonce(&account_id);
+                }
 
-            <Runtime as Config>::Currency::set_balance(
-                &account_id,
-                balance_native.into_rounded_balance().saturating_add(min_balance),
-            );
-        })
+                <Runtime as Config>::Currency::set_balance(
+                    &account_id,
+                    balance_native.into_rounded_balance().saturating_add(min_balance),
+                );
+            })
+        });
     }
 }
 
@@ -329,8 +317,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             );
         let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
 
-        let (res, _call_trace, prestate_trace) =
-            ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+        let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
+            externalities.execute_with(|| {
                 crate::tracing::trace::<Runtime, _, _>(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
                         &H160::from_slice(input.caller().as_slice()),
@@ -369,7 +357,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         bump_nonce,
                     )
                 })
-            });
+            })
+        });
 
         let mut gas = Gas::new(input.gas_limit());
         let gas_used =
@@ -464,8 +453,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             );
         let gas_limit = sp_core::U256::from(call.gas_limit).min(max_gas);
 
-        let (res, _call_trace, prestate_trace) =
-            ctx.revive_test_externalities.lock().unwrap().execute_with(|| {
+        let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
+            externalities.execute_with(|| {
                 trace::<Runtime, _, _>(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
                         &H160::from_slice(call.caller.as_slice()),
@@ -490,7 +479,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         call.input.to_vec(),
                     )
                 })
-            });
+            })
+        });
 
         let mut gas = Gas::new(call.gas_limit);
         let gas_used =

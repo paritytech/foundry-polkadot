@@ -411,43 +411,45 @@ impl<'a> ContractRunner<'a> {
             let fail =  TestResult::fail("`testFail*` has been removed. Consider changing to test_Revert[If|When]_Condition and expecting a revert".to_string());
             return SuiteResult::new(start.elapsed(), [(instances, fail)].into(), warnings);
         }
-        let f = |func: &Function| {
-            let start = Instant::now();
+        let f = |backend: &mut revive_strategy::Backend, func: &Function| {
+            revive_strategy::with_externalities(backend.clone(), || {
+                let start = Instant::now();
 
-            let _guard = self.tokio_handle.enter();
+                let _guard = self.tokio_handle.enter();
 
-            let _guard;
-            let current_span = tracing::Span::current();
-            if current_span.is_none() || current_span.id() != self.span.id() {
-                _guard = self.span.enter();
-            }
+                let _guard;
+                let current_span = tracing::Span::current();
+                if current_span.is_none() || current_span.id() != self.span.id() {
+                    _guard = self.span.enter();
+                }
 
-            let sig = func.signature();
-            let kind = func.test_function_kind();
+                let sig = func.signature();
+                let kind = func.test_function_kind();
 
-            let _guard = debug_span!(
-                "test",
-                %kind,
-                name = %if enabled!(tracing::Level::TRACE) { &sig } else { &func.name },
-            )
-            .entered();
+                let _guard = debug_span!(
+                    "test",
+                    %kind,
+                    name = %if enabled!(tracing::Level::TRACE) { &sig } else { &func.name },
+                )
+                .entered();
 
-            let mut res = FunctionRunner::new(&self, &setup).run(
-                func,
-                kind,
-                call_after_invariant,
-                identified_contracts.as_ref(),
-            );
-            res.duration = start.elapsed();
+                let mut res = FunctionRunner::new(&self, &setup).run(
+                    func,
+                    kind,
+                    call_after_invariant,
+                    identified_contracts.as_ref(),
+                );
+                res.duration = start.elapsed();
 
-            (sig, res)
+                (sig, res)
+            })
         };
+        let backend = revive_strategy::get_externalities_backend();
 
-        let test_results = if self.config.resolc.resolc_compile {
-            functions.into_iter().map(f).collect::<BTreeMap<_, _>>()
-        } else {
-            functions.into_par_iter().map(f).collect::<BTreeMap<_, _>>()
-        };
+        let test_results = functions
+            .into_par_iter()
+            .map(|item| f(&mut backend.clone(), item))
+            .collect::<BTreeMap<_, _>>();
 
         let duration = start.elapsed();
         SuiteResult::new(duration, test_results, warnings)
@@ -705,8 +707,8 @@ impl<'a> FunctionRunner<'a> {
         match invariant_result.error {
             // If invariants were broken, replay the error to collect logs and traces
             Some(error) => match error {
-                InvariantFuzzError::BrokenInvariant(case_data) |
-                InvariantFuzzError::Revert(case_data) => {
+                InvariantFuzzError::BrokenInvariant(case_data)
+                | InvariantFuzzError::Revert(case_data) => {
                     // Replay error to create counterexample and to collect logs, traces and
                     // coverage.
                     match replay_error(
@@ -837,8 +839,8 @@ impl<'a> FunctionRunner<'a> {
         let address = self.setup.address;
 
         // Apply before test configured functions (if any).
-        if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count() ==
-            1
+        if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count()
+            == 1
         {
             for calldata in self
                 .executor

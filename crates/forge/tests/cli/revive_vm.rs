@@ -103,6 +103,7 @@ contract CounterTest is DSTest {
   }
 
   function test_Increment() public {
+      assertEq(counter.number(), 5);
       counter.setNumber(55); 
       assertEq(counter.number(), 55);
       counter.increment(); 
@@ -110,16 +111,19 @@ contract CounterTest is DSTest {
   }
 
   function testFuzz_SetNumber(uint256 x) public {
+      assertEq(counter.number(), 5);
       counter.setNumber(x); 
       assertEq(counter.number(), x);
   }
   
   function testFuzz_SetNumber2(uint256 x) public {
+    assertEq(counter.number(), 5);
     counter.setNumber(x); 
     assertEq(counter.number(), x);
   }
 
   function testFuzz_SetNumber3(uint256 x) public {
+    assertEq(counter.number(), 5);
     counter.setNumber(x); 
     assertEq(counter.number(), x);
   }
