@@ -56,10 +56,7 @@ impl TestNode {
     pub async fn call_eth(&mut self, req: EthRequest) -> Result<ResponseResult> {
         let (tx, rx) = oneshot::channel();
         self.api
-            .try_send(api_server::ApiRequest {
-                req: req.clone(),
-                resp_sender: tx,
-            })
+            .try_send(api_server::ApiRequest { req: req.clone(), resp_sender: tx })
             .map_err(|e| eyre::eyre!("failed to send EthRequest {:?}: {}", req, e))?;
 
         rx.await.map_err(|e| eyre::eyre!("ApiRequest receiver dropped: {}", e))
