@@ -149,18 +149,4 @@ impl TestNode {
         let mut input = &bytes[..];
         Decode::decode(&mut input).unwrap()
     }
-    //pub async fn get_timestamp(&self) {
-    //
-    //let key = "0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb";
-    //    match self.state_get_storage(timestamp_key.clone(), Some(block_hash)).await? {
-    //            Some(raw_data) => {
-    //                if let Ok(timestamp) = decode_timestamp(&raw_data) {
-    //                    println!("   Block #{}: {} ms", block_number, timestamp);
-    //                }
-    //            }
-    //            None => {
-    //                println!("   Block #{}: No timestamp found", block_number);
-    //            }
-    //        }
-    //}
 }
