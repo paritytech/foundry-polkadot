@@ -10,13 +10,11 @@ use tokio::time::{sleep, Duration};
 async fn demo_test() {
     let mut node = TestNode::new().await.unwrap();
 
-    // Test system methods
     let _chain_name = node.system_chain().await.unwrap();
     let s = r#"{"method": "anvil_mine", "params": []}"#;
     let value: serde_json::Value = serde_json::from_str(s).unwrap();
     let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
 
-    // Call the eth endpoint
     let response = node.call_eth(mine_req).await.unwrap();
     assert!(matches!(
         response,
@@ -48,13 +46,11 @@ async fn demo_test() {
 async fn demo_test1() {
     let mut node = TestNode::new().await.unwrap();
 
-    // Test system methods
     let _chain_name = node.system_chain().await.unwrap();
     let s = r#"{"method": "anvil_mine", "params": []}"#;
     let value: serde_json::Value = serde_json::from_str(s).unwrap();
     let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
 
-    // Call the eth endpoint
     let response = node.call_eth(mine_req).await.unwrap();
     assert!(matches!(
         response,
@@ -86,13 +82,11 @@ async fn demo_test1() {
 async fn demo_test2() {
     let mut node = TestNode::new().await.unwrap();
 
-    // Test system methods
     let _chain_name = node.system_chain().await.unwrap();
     let s = r#"{"method": "anvil_mine", "params": []}"#;
     let value: serde_json::Value = serde_json::from_str(s).unwrap();
     let mine_req = serde_json::from_value::<EthRequest>(value).unwrap();
 
-    // Call the eth endpoint
     let response = node.call_eth(mine_req).await.unwrap();
     assert!(matches!(
         response,

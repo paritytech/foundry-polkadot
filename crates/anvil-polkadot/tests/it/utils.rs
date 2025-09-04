@@ -53,12 +53,11 @@ impl TestNode {
         Ok(Self { service, api, _runtime_handle: handle.clone() })
     }
 
-    /// Send an `EthRequest` to your API server and await `ResponseResult`.
     pub async fn call_eth(&mut self, req: EthRequest) -> Result<ResponseResult> {
         let (tx, rx) = oneshot::channel();
         self.api
             .try_send(api_server::ApiRequest {
-                req: req.clone(), // Clone for error reporting
+                req: req.clone(),
                 resp_sender: tx,
             })
             .map_err(|e| eyre::eyre!("failed to send EthRequest {:?}: {}", req, e))?;
@@ -67,7 +66,6 @@ impl TestNode {
     }
 
     async fn call_rpc(&self, method: &str, params: Value) -> Result<Value> {
-        // Use the in-memory RPC handler from the service
         let rpc = &self.service.rpc_handlers;
 
         let request = json!({
@@ -95,7 +93,6 @@ impl TestNode {
             .ok_or_else(|| eyre::eyre!("No result in RPC response"))
     }
 
-    /// Call RPC method with no parameters
     async fn call_rpc_no_params(&self, method: &str) -> Result<Value> {
         self.call_rpc(method, json!([])).await
     }
