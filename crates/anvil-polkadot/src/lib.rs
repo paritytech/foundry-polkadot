@@ -27,7 +27,7 @@ pub mod pubsub;
 /// axum RPC server implementations
 pub mod server;
 //node_info
-pub mod macros;
+mod macros;
 
 mod api_server;
 
@@ -168,7 +168,7 @@ fn init_tracing(silent: bool) -> LoggingManager {
     let env_filter = if !silent && std::env::var("RUST_LOG").is_ok() {
         tracing_subscriber::EnvFilter::from_default_env()
     } else {
-        tracing_subscriber::EnvFilter::new("substrate=warn,node=debug")
+        tracing_subscriber::EnvFilter::new("warn,node=debug")
     };
 
     let _ = if std::env::var("RUST_LOG").is_ok() {
