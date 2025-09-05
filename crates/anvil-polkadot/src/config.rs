@@ -100,6 +100,10 @@ impl SubstrateNodeConfig {
 
         Self { shared_params, rpc_params }
     }
+
+    pub fn set_base_path(&mut self, base_path: Option<PathBuf>) {
+        self.shared_params.base_path = base_path;
+    }
 }
 
 impl SubstrateCliConfiguration for SubstrateNodeConfig {
@@ -446,6 +450,17 @@ Genesis Number
           "genesis_timestamp": format!("{}", self.get_genesis_timestamp()),
         })
     }
+
+    pub fn test_config() -> Self {
+        Self {
+            port: 0,
+            no_mining: true,
+            mixed_mining: false,
+            enable_tracing: true,
+            silent: true,
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for AnvilNodeConfig {
@@ -473,8 +488,7 @@ impl Default for AnvilNodeConfig {
             account_generator: None,
             base_fee: None,
             disable_min_priority_fee: false,
-            // TODO: we shouldn't need to do this. see init_tracing()
-            enable_tracing: false,
+            enable_tracing: true,
             enable_steps_tracing: false,
             print_logs: true,
             print_traces: false,

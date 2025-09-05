@@ -1,28 +1,36 @@
 use crate::{
     api_server::ApiRequest,
+    logging::LoggingManager,
+    macros::node_info,
     substrate_node::{error::ToRpcResponseResult, mining_engine::MiningEngine, service::Service},
 };
 use alloy_primitives::U256;
 use anvil_core::eth::EthRequest;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
-use foundry_common::sh_println;
 use futures::{channel::mpsc, StreamExt};
 use std::sync::Arc;
 
 pub struct ApiServer {
     req_receiver: mpsc::Receiver<ApiRequest>,
+    logging_manager: LoggingManager,
     mining_engine: Arc<MiningEngine>,
 }
 
 impl ApiServer {
-    pub fn new(substrate_service: &Service, req_receiver: mpsc::Receiver<ApiRequest>) -> Self {
-        Self { req_receiver, mining_engine: substrate_service.mining_engine.clone() }
+    pub fn new(
+        substrate_service: &Service,
+        req_receiver: mpsc::Receiver<ApiRequest>,
+        logging_manager: LoggingManager,
+    ) -> Self {
+        Self {
+            req_receiver,
+            logging_manager,
+            mining_engine: substrate_service.mining_engine.clone(),
+        }
     }
 
     pub async fn run(mut self) {
         while let Some(msg) = self.req_receiver.next().await {
-            sh_println!("GOT REQUEST: {:?}", msg.req).unwrap();
-
             let resp = self.execute(msg.req).await;
 
             msg.resp_sender.send(resp).expect("Dropped receiver");
@@ -77,6 +85,11 @@ impl ApiServer {
                 // Make sure here we are not traveling back in time.
                 let time = timestamp.to::<u64>();
                 self.mining_engine.set_time(time).to_rpc_result()
+            }
+            EthRequest::SetLogging(enabled) => {
+                node_info!("anvil_setLoggingEnabled");
+                self.logging_manager.set_enabled(enabled);
+                ResponseResult::Success(serde_json::Value::Bool(true))
             }
             _ => ResponseResult::Error(RpcError::internal_error()),
         }
