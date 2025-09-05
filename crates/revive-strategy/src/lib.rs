@@ -60,10 +60,6 @@ pub fn with_externalities<R, F: FnOnce() -> R>(mut backend: Backend, f: F) -> R 
     f()
 }
 
-pub fn get_externalities_backend() -> Backend {
-    TEST_EXTERNALITIES.with_borrow_mut(|f| Backend(f.as_backend()))
-}
-
 fn save_checkpoint() {
     TEST_EXTERNALITIES.with_borrow_mut(|f| CHECKPOINT.set(f.as_backend()))
 }
@@ -80,3 +76,10 @@ fn return_to_checkpoint() {
 
 #[derive(Clone)]
 pub struct Backend(InMemoryBackend<sp_core::Blake2Hasher>);
+
+impl Backend {
+    /// Get the backend of test_externalities
+    pub fn get() -> Self {
+        TEST_EXTERNALITIES.with_borrow_mut(|f| Backend(f.as_backend()))
+    }
+}

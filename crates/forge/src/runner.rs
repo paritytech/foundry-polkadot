@@ -411,8 +411,8 @@ impl<'a> ContractRunner<'a> {
             let fail =  TestResult::fail("`testFail*` has been removed. Consider changing to test_Revert[If|When]_Condition and expecting a revert".to_string());
             return SuiteResult::new(start.elapsed(), [(instances, fail)].into(), warnings);
         }
-        let f = |backend: &mut revive_strategy::Backend, func: &Function| {
-            revive_strategy::with_externalities(backend.clone(), || {
+        let f = |backend: Option<revive_strategy::Backend>, func: &Function| {
+            let f = || {
                 let start = Instant::now();
 
                 let _guard = self.tokio_handle.enter();
@@ -442,13 +442,22 @@ impl<'a> ContractRunner<'a> {
                 res.duration = start.elapsed();
 
                 (sig, res)
-            })
+            };
+            if let Some(backend) = backend {
+                revive_strategy::with_externalities(backend, f)
+            } else {
+                f()
+            }
         };
-        let backend = revive_strategy::get_externalities_backend();
+        let backend = if self.config.resolc.resolc_compile {
+            Some(revive_strategy::Backend::get())
+        } else {
+            None
+        };
 
         let test_results = functions
             .into_par_iter()
-            .map(|item| f(&mut backend.clone(), item))
+            .map(|item| f(backend.clone(), item))
             .collect::<BTreeMap<_, _>>();
 
         let duration = start.elapsed();
@@ -707,8 +716,8 @@ impl<'a> FunctionRunner<'a> {
         match invariant_result.error {
             // If invariants were broken, replay the error to collect logs and traces
             Some(error) => match error {
-                InvariantFuzzError::BrokenInvariant(case_data) |
-                InvariantFuzzError::Revert(case_data) => {
+                InvariantFuzzError::BrokenInvariant(case_data)
+                | InvariantFuzzError::Revert(case_data) => {
                     // Replay error to create counterexample and to collect logs, traces and
                     // coverage.
                     match replay_error(
@@ -839,8 +848,8 @@ impl<'a> FunctionRunner<'a> {
         let address = self.setup.address;
 
         // Apply before test configured functions (if any).
-        if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count() ==
-            1
+        if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count()
+            == 1
         {
             for calldata in self
                 .executor
