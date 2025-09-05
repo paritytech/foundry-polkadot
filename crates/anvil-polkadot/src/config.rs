@@ -452,7 +452,14 @@ Genesis Number
     }
 
     pub fn test_config() -> Self {
-        Self { port: 0, no_mining: true, mixed_mining: false, ..Default::default() }
+        Self {
+            port: 0,
+            no_mining: true,
+            mixed_mining: false,
+            enable_tracing: true,
+            silent: true,
+            ..Default::default()
+        }
     }
 }
 

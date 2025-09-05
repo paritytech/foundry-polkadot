@@ -4,7 +4,7 @@ use anvil_polkadot::{
     api_server::{self, ApiHandle},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
     logging::LoggingManager,
-    opts::SubstrateClient,
+    opts::SubstrateCli,
     spawn,
     substrate_node::service::Service,
 };
@@ -28,7 +28,7 @@ pub struct TestNode {
 
 impl TestNode {
     pub async fn new(
-        mut anvil_config: AnvilNodeConfig,
+        anvil_config: AnvilNodeConfig,
         mut substrate_config: SubstrateNodeConfig,
     ) -> Result<Self> {
         let handle = tokio::runtime::Handle::current();
@@ -53,15 +53,14 @@ impl TestNode {
             Some(_) => {}
         }
 
-        anvil_config = anvil_config.set_silent(true);
-        let substrate_client = SubstrateClient {};
+        let substrate_client = SubstrateCli {};
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
         let (service, api) = spawn(anvil_config, config, LoggingManager::default()).await?;
 
         Ok(Self { service, api, _temp_dir: temp_dir })
     }
 
-    pub async fn call_eth(&mut self, req: EthRequest) -> Result<ResponseResult> {
+    pub async fn eth_rpc(&mut self, req: EthRequest) -> Result<ResponseResult> {
         let (tx, rx) = oneshot::channel();
         self.api
             .try_send(api_server::ApiRequest { req: req.clone(), resp_sender: tx })
@@ -70,7 +69,7 @@ impl TestNode {
         rx.await.map_err(|e| eyre::eyre!("ApiRequest receiver dropped: {}", e))
     }
 
-    async fn call_rpc(&self, method: &str, params: Value) -> Result<Value> {
+    async fn substrate_rpc(&self, method: &str, params: Value) -> Result<Value> {
         let rpc = &self.service.rpc_handlers;
 
         let request = json!({
@@ -97,18 +96,9 @@ impl TestNode {
             .cloned()
             .ok_or_else(|| eyre::eyre!("No result in RPC response"))
     }
-
-    async fn call_rpc_no_params(&self, method: &str) -> Result<Value> {
-        self.call_rpc(method, json!([])).await
-    }
 }
 
 impl TestNode {
-    pub async fn system_chain(&self) -> Result<String> {
-        let result = self.call_rpc_no_params("system_chain").await?;
-        Ok(result.as_str().unwrap_or("").to_string())
-    }
-
     pub async fn get_best_block_number(&self) -> Result<u32> {
         let best_number = self.service.client.info().best_number;
         Ok(best_number)
@@ -136,8 +126,8 @@ impl TestNode {
     ) -> Result<Option<String>> {
         let key_hex = format!("0x{}", hex::encode(&key.0));
         let result = match at {
-            Some(hash) => self.call_rpc("state_getStorageAt", json!([key_hex, hash])).await?,
-            None => self.call_rpc("state_getStorage", json!([key_hex])).await?,
+            Some(hash) => self.substrate_rpc("state_getStorageAt", json!([key_hex, hash])).await?,
+            None => self.substrate_rpc("state_getStorage", json!([key_hex])).await?,
         };
 
         Ok(result.as_str().map(|s| s.to_string()))

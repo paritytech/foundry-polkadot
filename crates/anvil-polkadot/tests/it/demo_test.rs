@@ -13,11 +13,9 @@ async fn demo_test() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
-    let _chain_name = node.system_chain().await.unwrap();
-
     let mine_req = EthRequest::Mine(None, None);
 
-    let response = node.call_eth(mine_req).await.unwrap();
+    let response = node.eth_rpc(mine_req).await.unwrap();
     assert!(matches!(
         response,
         ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })
@@ -50,11 +48,9 @@ async fn demo_test1() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
-    let _chain_name = node.system_chain().await.unwrap();
-
     let mine_req = EthRequest::Mine(None, None);
 
-    let response = node.call_eth(mine_req).await.unwrap();
+    let response = node.eth_rpc(mine_req).await.unwrap();
     assert!(matches!(
         response,
         ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })
@@ -89,7 +85,7 @@ async fn demo_test2() {
 
     let mine_req = EthRequest::Mine(None, None);
 
-    let response = node.call_eth(mine_req).await.unwrap();
+    let response = node.eth_rpc(mine_req).await.unwrap();
     assert!(matches!(
         response,
         ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })

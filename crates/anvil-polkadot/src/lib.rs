@@ -3,11 +3,14 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use crate::{
+    api_server::ApiHandle,
     config::AnvilNodeConfig,
     logging::{LoggingManager, NodeLogLayer},
     substrate_node::service::Service,
 };
+use clap::{CommandFactory, Parser};
 use eyre::Result;
+use foundry_cli::utils;
 use opts::{Anvil, AnvilSubcommand};
 use polkadot_sdk::{
     sc_cli::{self, build_runtime, SubstrateCli},
@@ -38,11 +41,6 @@ pub mod opts;
 
 #[macro_use]
 extern crate tracing;
-
-use clap::{CommandFactory, Parser};
-use foundry_cli::utils;
-
-use self::{api_server::ApiHandle, opts::SubstrateClient};
 
 /// Run the `anvil` command line interface.
 pub fn run() -> Result<()> {
@@ -85,7 +83,7 @@ pub fn run_command(args: Anvil) -> Result<()> {
         }
         return Ok(());
     }
-    let substrate_client = SubstrateClient {};
+    let substrate_client = opts::SubstrateCli {};
 
     let (anvil_config, substrate_config) = args.node.into_node_config()?;
 
@@ -99,11 +97,11 @@ pub fn run_command(args: Anvil) -> Result<()> {
     } else {
         LoggingManager::default()
     };
-    let runner: sc_cli::Runner<SubstrateClient> =
+    let runner: sc_cli::Runner<opts::SubstrateCli> =
         sc_cli::Runner::new(config, tokio_runtime, signals)?;
 
     Ok(runner.run_node_until_exit(|config| async move {
-        let (service, _api_handler) = spawn(anvil_config, config, logging_manager).await?;
+        let (service, ..) = spawn(anvil_config, config, logging_manager).await?;
         Ok::<TaskManager, sc_cli::Error>(service.task_manager)
     })?)
 }

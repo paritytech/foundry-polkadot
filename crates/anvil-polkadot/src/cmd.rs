@@ -11,7 +11,7 @@ use foundry_config::Chain;
 use rand::{rngs::StdRng, SeedableRng};
 use std::{net::IpAddr, path::PathBuf, time::Duration};
 
-#[derive(Clone, Debug, Parser, Default)]
+#[derive(Clone, Debug, Parser)]
 pub struct NodeArgs {
     /// Port number to listen on.
     #[arg(long, short, default_value = "8545", value_name = "NUM")]
@@ -167,7 +167,7 @@ impl NodeArgs {
 }
 
 /// Anvil's EVM related arguments.
-#[derive(Clone, Debug, Parser, Default)]
+#[derive(Clone, Debug, Parser)]
 #[command(next_help_heading = "EVM options")]
 pub struct AnvilEvmArgs {
     /// The block gas limit.
