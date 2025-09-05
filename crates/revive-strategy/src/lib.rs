@@ -38,6 +38,7 @@ impl ReviveExecutorStrategyBuilder for ExecutorStrategy {
     }
 }
 
+// TODO: rewrite this to something proper rather than a thread local variable
 std::thread_local! {
     pub static TEST_EXTERNALITIES: std::cell::RefCell<sp_io::TestExternalities> = std::cell::RefCell::new(ExtBuilder::default()
     .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
@@ -51,9 +52,7 @@ fn execute_with_externalities<R, F: FnOnce(&mut sp_io::TestExternalities) -> R>(
 }
 
 pub fn with_externalities<R, F: FnOnce() -> R>(mut backend: Backend, f: F) -> R {
-    let mut test_externalities = ExtBuilder::default()
-        .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
-        .build();
+    let mut test_externalities = ExtBuilder::default().build();
     std::mem::swap(&mut test_externalities.backend, &mut backend.0);
     TEST_EXTERNALITIES.set(test_externalities);
     f()
@@ -64,9 +63,7 @@ fn save_checkpoint() {
 }
 
 fn return_to_checkpoint() {
-    let mut test_externalities = ExtBuilder::default()
-        .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
-        .build();
+    let mut test_externalities = ExtBuilder::default().build();
     let mut backend = CHECKPOINT.take();
     std::mem::swap(&mut test_externalities.backend, &mut backend);
 
