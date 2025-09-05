@@ -80,6 +80,6 @@ pub struct Backend(InMemoryBackend<sp_core::Blake2Hasher>);
 impl Backend {
     /// Get the backend of test_externalities
     pub fn get() -> Self {
-        TEST_EXTERNALITIES.with_borrow_mut(|f| Backend(f.as_backend()))
+        TEST_EXTERNALITIES.with_borrow_mut(|f| Self(f.as_backend()))
     }
 }
