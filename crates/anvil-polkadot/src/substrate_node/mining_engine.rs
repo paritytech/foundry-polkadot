@@ -1,5 +1,4 @@
 use crate::substrate_node::{error::Error, service::TransactionPoolHandle};
-use alloy_primitives::U256;
 use alloy_rpc_types::anvil::MineOptions;
 use anvil::eth::backend::time::TimeManager;
 use futures::{
@@ -94,18 +93,13 @@ impl MiningEngine {
         }
     }
 
-    pub async fn mine(
-        &self,
-        num_blocks: Option<U256>,
-        interval: Option<U256>,
-    ) -> Result<(), Error> {
+    pub async fn mine(&self, num_blocks: Option<u64>, interval: Option<u64>) -> Result<(), Error> {
         info!("anvil_mine");
-        let interval = interval.map(|i| i.to::<u64>());
-        let blocks = num_blocks.unwrap_or(U256::from(1));
-        if blocks.is_zero() {
+        let blocks = num_blocks.unwrap_or(1);
+        if blocks == 0 {
             return Ok(());
         }
-        for _ in 0..blocks.to::<u64>() {
+        for _ in 0..blocks {
             if let Some(interval) = interval {
                 self.time_manager.increase_time(interval);
             }
@@ -129,13 +123,13 @@ impl MiningEngine {
         Ok(())
     }
 
-    pub fn get_interval_mining(&self) -> Result<u64, Error> {
+    pub fn get_interval_mining(&self) -> Result<Option<u64>, Error> {
         let mode = *self.mining_mode.read();
         match mode {
             MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => {
-                Ok(tick.saturating_div(1000))
+                Ok(Some(tick.saturating_div(1000)))
             }
-            _ => Err(Error::Mining(MiningError::MiningModeMismatch)),
+            _ => Ok(None),
         }
     }
 
@@ -172,8 +166,8 @@ impl MiningEngine {
     pub fn set_time(&self, timestamp: u64) -> Result<u64, Error> {
         let now = self.time_manager.current_call_timestamp();
         self.time_manager.reset(timestamp);
-        let offset = timestamp.saturating_sub(now);
-        Ok(Duration::from_millis(offset).as_millis() as u64)
+        let offset = timestamp.saturating_mul(1000).saturating_sub(now);
+        Ok(Duration::from_millis(offset).as_secs() as u64)
     }
 
     pub fn set_block_timestamp_interval(&self, interval_in_seconds: u64) -> Result<(), Error> {

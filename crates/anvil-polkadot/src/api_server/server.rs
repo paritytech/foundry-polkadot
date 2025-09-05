@@ -40,7 +40,20 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         match req {
             EthRequest::Mine(blocks, interval) => {
-                self.mining_engine.mine(blocks, interval).await.to_rpc_result()
+                if blocks.is_some_and(|b| b >= U256::from(u64::MAX)) {
+                    return ResponseResult::Error(RpcError::invalid_params(
+                        "The number of blocks is too large",
+                    ));
+                }
+                if interval.is_some_and(|i| i >= U256::from(u64::MAX)) {
+                    return ResponseResult::Error(RpcError::invalid_params(
+                        "The interval between blocks is too large",
+                    ));
+                }
+                self.mining_engine
+                    .mine(blocks.map(|b| b.to()), interval.map(|i| i.to()))
+                    .await
+                    .to_rpc_result()
             }
             EthRequest::SetIntervalMining(interval) => {
                 self.mining_engine.set_interval_mining(interval).to_rpc_result()

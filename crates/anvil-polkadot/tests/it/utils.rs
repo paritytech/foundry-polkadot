@@ -10,14 +10,16 @@ use anvil_polkadot::{
 };
 use anvil_rpc::response::ResponseResult;
 use eyre::{Result, WrapErr};
-use futures::channel::oneshot;
+use futures::{channel::oneshot, StreamExt};
 use parity_scale_codec::Decode;
 use polkadot_sdk::{
+    polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
-    sc_client_api::{BlockBackend, HeaderBackend},
+    sc_client_api::{BlockBackend, BlockchainEvents},
     sp_core::{storage::StorageKey, twox_128, H256},
 };
 use serde_json::{json, Value};
+use std::fmt::Debug;
 use tempfile::TempDir;
 
 pub struct TestNode {
@@ -69,7 +71,7 @@ impl TestNode {
         rx.await.map_err(|e| eyre::eyre!("ApiRequest receiver dropped: {}", e))
     }
 
-    async fn substrate_rpc(&self, method: &str, params: Value) -> Result<Value> {
+    pub async fn substrate_rpc(&self, method: &str, params: Value) -> Result<Value> {
         let rpc = &self.service.rpc_handlers;
 
         let request = json!({
@@ -99,11 +101,6 @@ impl TestNode {
 }
 
 impl TestNode {
-    pub async fn get_best_block_number(&self) -> Result<u32> {
-        let best_number = self.service.client.info().best_number;
-        Ok(best_number)
-    }
-
     pub async fn block_hash_by_number(&self, n: u32) -> eyre::Result<H256> {
         self.service
             .client
@@ -129,7 +126,6 @@ impl TestNode {
             Some(hash) => self.substrate_rpc("state_getStorageAt", json!([key_hex, hash])).await?,
             None => self.substrate_rpc("state_getStorage", json!([key_hex])).await?,
         };
-
         Ok(result.as_str().map(|s| s.to_string()))
     }
 
@@ -140,5 +136,44 @@ impl TestNode {
             hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
         let mut input = &bytes[..];
         Decode::decode(&mut input).unwrap()
+    }
+
+    pub async fn wait_for_block_with_number(&self, n: u32) -> eyre::Result<()> {
+        let mut import_stream = self.service.client.import_notification_stream();
+
+        while let Some(notification) = import_stream.next().await {
+            let block_number = *notification.header.number();
+            if block_number >= n {
+                return Ok(());
+            }
+        }
+        Err(eyre::eyre!("Import stream ended before block {} was reached", n))
+    }
+}
+
+pub fn assert_with_tolerance<T>(actual: T, expected: T, tolerance: T, message: &str)
+where
+    T: PartialOrd + std::ops::Sub<Output = T> + Debug + Copy,
+{
+    let diff = if actual > expected { actual - expected } else { expected - actual };
+
+    if diff > tolerance {
+        panic!(
+            "{message}\nExpected: {expected:?} ± {tolerance:?}\nActual: {actual:?}\nDifference: {diff:?}",
+        );
+    }
+}
+
+pub fn response_result_success_inner<T>(
+    response: ResponseResult,
+) -> Result<T, Box<dyn std::error::Error>>
+where
+    T: serde::de::DeserializeOwned,
+{
+    match response {
+        ResponseResult::Success(value) => Ok(serde_json::from_value(value)?),
+        ResponseResult::Error(err) => {
+            Err(format!("Expected success but got error: {err:?}").into())
+        }
     }
 }
