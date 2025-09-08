@@ -196,7 +196,6 @@ async fn test_evm_set_remove_block_timestamp_interval() {
     let hash1 = node.block_hash_by_number(1).await.unwrap();
     let timestamp1 = node.get_decoded_timestamp(Some(hash1)).await;
     let timestamp2 = node.get_decoded_timestamp(Some(hash2)).await;
-    println!("-->{} {}", timestamp1, timestamp2);
     assert_with_tolerance(
         timestamp2.saturating_sub(timestamp1),
         3600000,
@@ -205,7 +204,8 @@ async fn test_evm_set_remove_block_timestamp_interval() {
     );
     assert!(response_result_success_inner::<bool>(
         node.eth_rpc(EthRequest::EvmRemoveBlockTimeStampInterval(())).await.unwrap()
-    ).unwrap());
+    )
+    .unwrap());
 
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
     let hash3 = node.block_hash_by_number(3).await.unwrap();

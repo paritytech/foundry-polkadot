@@ -11,21 +11,29 @@ use anvil_polkadot::{
 use anvil_rpc::response::ResponseResult;
 use eyre::{Result, WrapErr};
 use futures::{channel::oneshot, StreamExt};
+use pallet_revive_eth_rpc::{
+    subxt_client,
+    subxt_client::{system::calls::types::Remark, SrcChainConfig},
+};
 use parity_scale_codec::Decode;
 use polkadot_sdk::{
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
+    sc_network_types::multiaddr::Protocol,
     sp_core::{storage::StorageKey, twox_128, H256},
 };
 use serde_json::{json, Value};
 use std::fmt::Debug;
+use subxt::OnlineClient;
+use subxt_signer::sr25519::Keypair;
 use tempfile::TempDir;
 
 pub struct TestNode {
     pub service: Service,
     pub api: ApiHandle,
     _temp_dir: Option<TempDir>,
+    port: u16,
 }
 
 impl TestNode {
@@ -59,7 +67,12 @@ impl TestNode {
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
         let (service, api) = spawn(anvil_config, config, LoggingManager::default()).await?;
 
-        Ok(Self { service, api, _temp_dir: temp_dir })
+        let port = match service.rpc_handlers.listen_addresses()[0].clone().pop().unwrap() {
+            Protocol::Tcp(port) => port,
+            _ => panic!("Expected TCP protocol"),
+        };
+
+        Ok(Self { service, api, _temp_dir: temp_dir, port })
     }
 
     pub async fn eth_rpc(&mut self, req: EthRequest) -> Result<ResponseResult> {
@@ -148,6 +161,39 @@ impl TestNode {
             }
         }
         Err(eyre::eyre!("Import stream ended before block {} was reached", n))
+    }
+
+    pub async fn wait_for_block_with_timeout(
+        &self,
+        n: u32,
+        timeout: std::time::Duration,
+    ) -> eyre::Result<()> {
+        tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
+            .await
+            .map_err(|_| eyre::eyre!("Timeout waiting for block {}", n))?
+    }
+
+    pub async fn submit_remark(&self, signer: Keypair) {
+        let url = format!("ws://127.0.0.1:{}", self.port);
+        let subxt_client = OnlineClient::<SrcChainConfig>::from_url(url)
+            .await
+            .wrap_err("Failed to create subxt client")
+            .unwrap();
+        let tx_payload = subxt_client::tx().system().remark(b"bonjour".to_vec());
+        let res = subxt_client
+            .tx()
+            .sign_and_submit_then_watch_default(&tx_payload, &signer)
+            .await
+            .unwrap()
+            .wait_for_finalized()
+            .await
+            .unwrap();
+
+        let block_hash = res.block_hash();
+        let block = subxt_client.blocks().at(block_hash).await.unwrap();
+        let extrinsics = block.extrinsics().await.unwrap();
+        let _remarks =
+            extrinsics.find::<Remark>().map(|remark| remark.unwrap().value).collect::<Vec<_>>();
     }
 }
 

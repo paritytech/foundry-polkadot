@@ -7,7 +7,8 @@ use anvil_rpc::{
     response::ResponseResult,
 };
 use serde_json::json;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
+use subxt_signer::sr25519::dev;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_invalid_mining() {
@@ -189,7 +190,85 @@ async fn test_interval_mining() {
     );
 }
 
-// TODO: test for auto mine
-// TODO: test for mixed mining
-// TODO: test for evm_mine
-// TODO: test for evm_mine_detailed
+#[tokio::test(flavor = "multi_thread")]
+async fn test_auto_mine() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    assert!(matches!(
+        node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap(),
+        ResponseResult::Success(_)
+    ));
+
+    assert_eq!(
+        node.substrate_rpc("chain_getHeader", json!([]))
+            .await
+            .unwrap()
+            .get("number")
+            .and_then(|v| v.as_str())
+            .unwrap(),
+        "0x0"
+    );
+    node.submit_remark(dev::alice()).await;
+    assert_eq!(
+        node.substrate_rpc("chain_getHeader", json!([]))
+            .await
+            .unwrap()
+            .get("number")
+            .and_then(|v| v.as_str())
+            .unwrap(),
+        "0x1"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mixed_mining() {
+    let mut anvil_node_config = AnvilNodeConfig::test_config();
+    anvil_node_config.mixed_mining = true;
+    anvil_node_config.block_time = Some(Duration::from_secs(10));
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+    node.submit_remark(dev::bob()).await;
+    assert_eq!(
+        node.substrate_rpc("chain_getHeader", json!([]))
+            .await
+            .unwrap()
+            .get("number")
+            .and_then(|v| v.as_str())
+            .unwrap(),
+        "0x1"
+    );
+    node.wait_for_block_with_timeout(2, Duration::from_secs(10)).await.unwrap();
+    assert_eq!(
+        node.substrate_rpc("chain_getHeader", json!([]))
+            .await
+            .unwrap()
+            .get("number")
+            .and_then(|v| v.as_str())
+            .unwrap(),
+        "0x2"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_mine() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let _res = node.eth_rpc(EthRequest::EvmMine(None)).await.unwrap();
+    // mine block with the same timestamp
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_mine_detailed() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    assert!(matches!(
+        node.eth_rpc(EthRequest::EvmMineDetailed(None)).await.unwrap(),
+        ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })
+    ));
+}
