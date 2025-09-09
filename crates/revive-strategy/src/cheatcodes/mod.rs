@@ -6,22 +6,21 @@ use std::{
 
 use alloy_primitives::{ruint::aliases::U256, Address, Bytes, B256};
 use alloy_sol_types::SolValue;
-use foundry_common::sh_err;
-use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
-use revive_env::{AccountId, Runtime, System};
-
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, InnerEcx, Result,
-    Vm::{getNonce_0Call, pvmCall, setNonceCall, setNonceUnsafeCall},
+    CommonCreateInput, DealRecord, Ecx, EvmCheatcodeInspectorStrategyRunner, InnerEcx, Result,
+    Vm::{dealCall, getNonce_0Call, pvmCall, setNonceCall, setNonceUnsafeCall},
 };
+use foundry_common::sh_err;
+use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
+use revive_env::{AccountId, Runtime, System};
 
 use polkadot_sdk::{
     frame_support::traits::{fungible::Mutate, Currency},
     pallet_balances,
     pallet_revive::{
-        evm::GasEncoder, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
+        self, evm::GasEncoder, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
         DepositLimit, Pallet,
     },
     polkadot_sdk_frame::prelude::OriginFor,
@@ -63,6 +62,7 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     /// Whether to start in PVM mode (from config)
     pub resolc_startup: bool,
     pub dual_compiled_contracts: DualCompiledContracts,
+    base_contract_deployed: bool,
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
@@ -71,6 +71,7 @@ impl PvmCheatcodeInspectorStrategyContext {
             using_pvm: false, // Start in EVM mode by default
             resolc_startup,
             dual_compiled_contracts,
+            base_contract_deployed: false,
         }
     }
 }
@@ -112,6 +113,33 @@ fn set_nonce(address: Address, nonce: u64, ecx: InnerEcx<'_, '_, '_>) {
     account.info.nonce = nonce;
 }
 
+fn set_balance(address: Address, amount: U256, ecx: InnerEcx<'_, '_, '_>) -> U256 {
+    let account =
+        ecx.journaled_state.load_account(address, &mut ecx.db).expect("account loaded").data;
+    account.mark_touch();
+    account.info.balance = amount;
+    let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+    let balance_native =
+        BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
+
+    let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
+
+    let old_balance = execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let addr = &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
+            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(
+                address.as_slice(),
+            ));
+            pallet_balances::Pallet::<Runtime>::set_balance(
+                &addr,
+                balance_native.into_rounded_balance().saturating_add(min_balance),
+            );
+            old_balance
+        })
+    });
+    U256::from_limbs(old_balance.0)
+}
+
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
@@ -138,6 +166,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     todo!("Switch back to EVM");
                 }
 
+                Ok(Default::default())
+            }
+            t if using_pvm && is::<dealCall>(t) => {
+                let &dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
+
+                let old_balance = set_balance(account, newBalance, ccx.ecx);
+                let record = DealRecord { address: account, old_balance, new_balance: newBalance };
+                ccx.state.eth_deals.push(record);
                 Ok(Default::default())
             }
             t if using_pvm && is::<setNonceCall>(t) => {
@@ -170,9 +206,12 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         }
     }
 
-    fn base_contract_deployed(&self, _ctx: &mut dyn CheatcodeInspectorStrategyContext) {
+    fn base_contract_deployed(&self, ctx: &mut dyn CheatcodeInspectorStrategyContext) {
         // PVM mode is enabled, but no special handling needed for now
         // Only intercept PVM-specific calls when needed in future implementations
+        let ctx = get_context_ref_mut(ctx);
+
+        ctx.base_contract_deployed = true;
     }
 
     fn record_broadcastable_create_transactions(
@@ -227,7 +266,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     ) {
         let ctx = get_context_ref_mut(ctx);
 
-        if ctx.resolc_startup && !ctx.using_pvm {
+        if ctx.resolc_startup && ctx.base_contract_deployed {
             tracing::info!("startup PVM migration initiated");
             select_pvm(ctx, ecx);
             tracing::info!("startup PVM migration completed");
