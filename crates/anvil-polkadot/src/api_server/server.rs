@@ -8,7 +8,7 @@ use alloy_primitives::U256;
 use anvil_core::eth::EthRequest;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use futures::{channel::mpsc, StreamExt};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 pub struct ApiServer {
     req_receiver: mpsc::Receiver<ApiRequest>,
@@ -51,13 +51,14 @@ impl ApiServer {
                     ));
                 }
                 self.mining_engine
-                    .mine(blocks.map(|b| b.to()), interval.map(|i| i.to()))
+                    .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
                     .await
                     .to_rpc_result()
             }
-            EthRequest::SetIntervalMining(interval) => {
-                self.mining_engine.set_interval_mining(interval).to_rpc_result()
-            }
+            EthRequest::SetIntervalMining(interval) => self
+                .mining_engine
+                .set_interval_mining(Duration::from_secs(interval))
+                .to_rpc_result(),
             EthRequest::GetIntervalMining(()) => {
                 self.mining_engine.get_interval_mining().to_rpc_result()
             }
@@ -70,9 +71,10 @@ impl ApiServer {
             }
             EthRequest::EvmMineDetailed(_mine) => ResponseResult::Error(RpcError::internal_error()),
             //------- TimeMachine---------
-            EthRequest::EvmSetBlockTimeStampInterval(time) => {
-                self.mining_engine.set_block_timestamp_interval(time).to_rpc_result()
-            }
+            EthRequest::EvmSetBlockTimeStampInterval(time) => self
+                .mining_engine
+                .set_block_timestamp_interval(Duration::from_secs(time))
+                .to_rpc_result(),
             EthRequest::EvmRemoveBlockTimeStampInterval(()) => {
                 self.mining_engine.remove_block_timestamp_interval().to_rpc_result()
             }
@@ -83,11 +85,13 @@ impl ApiServer {
                     ))
                 }
                 let time = time.to::<u64>();
-                self.mining_engine.set_next_block_timestamp(time).to_rpc_result()
+                self.mining_engine
+                    .set_next_block_timestamp(Duration::from_secs(time))
+                    .to_rpc_result()
             }
             EthRequest::EvmIncreaseTime(time) => self
                 .mining_engine
-                .increase_time(time.try_into().unwrap_or(u64::MAX))
+                .increase_time(Duration::from_secs(time.try_into().unwrap_or(0)))
                 .to_rpc_result(),
             EthRequest::EvmSetTime(timestamp) => {
                 if timestamp >= U256::from(u64::MAX) {
@@ -97,7 +101,7 @@ impl ApiServer {
                 }
                 // Make sure here we are not traveling back in time.
                 let time = timestamp.to::<u64>();
-                self.mining_engine.set_time(time).to_rpc_result()
+                self.mining_engine.set_time(Duration::from_secs(time)).to_rpc_result()
             }
             EthRequest::SetLogging(enabled) => {
                 node_info!("anvil_setLoggingEnabled");

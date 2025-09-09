@@ -151,16 +151,25 @@ impl TestNode {
         Decode::decode(&mut input).unwrap()
     }
 
-    pub async fn wait_for_block_with_number(&self, n: u32) -> eyre::Result<()> {
+    pub async fn wait_for_block_with_number(&self, n: u32) {
         let mut import_stream = self.service.client.import_notification_stream();
 
         while let Some(notification) = import_stream.next().await {
             let block_number = *notification.header.number();
             if block_number >= n {
-                return Ok(());
+                break;
             }
         }
-        Err(eyre::eyre!("Import stream ended before block {} was reached", n))
+    }
+
+    pub async fn get_chain_header_block_number(&self) -> String {
+        self.substrate_rpc("chain_getHeader", json!([]))
+            .await
+            .unwrap()
+            .get("number")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .to_string()
     }
 
     pub async fn wait_for_block_with_timeout(
@@ -168,9 +177,8 @@ impl TestNode {
         n: u32,
         timeout: std::time::Duration,
     ) -> eyre::Result<()> {
-        tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
-            .await
-            .map_err(|_| eyre::eyre!("Timeout waiting for block {}", n))?
+        tokio::time::timeout(timeout, self.wait_for_block_with_number(n)).await?;
+        Ok(())
     }
 
     pub async fn submit_remark(&self, signer: Keypair) {
@@ -210,9 +218,7 @@ where
     }
 }
 
-pub fn response_result_success_inner<T>(
-    response: ResponseResult,
-) -> Result<T, Box<dyn std::error::Error>>
+pub fn unwrap_response<T>(response: ResponseResult) -> Result<T, Box<dyn std::error::Error>>
 where
     T: serde::de::DeserializeOwned,
 {

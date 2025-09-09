@@ -2,10 +2,10 @@ use crate::substrate_node::{error::Error, service::TransactionPoolHandle};
 use alloy_rpc_types::anvil::MineOptions;
 use anvil::eth::backend::time::TimeManager;
 use futures::{
-    channel::{mpsc::Sender, oneshot},
-    stream::{unfold, FusedStream},
+    channel::oneshot,
+    stream::{select_all, unfold, FusedStream, SelectAll},
     task::AtomicWaker,
-    SinkExt, StreamExt,
+    StreamExt,
 };
 use parking_lot::RwLock;
 use polkadot_sdk::{
@@ -14,11 +14,15 @@ use polkadot_sdk::{
     sp_core, *,
 };
 use std::{pin::Pin, sync::Arc};
-use tokio::time::{interval_at, Duration, Instant, MissedTickBehavior};
+use tokio::{
+    sync::mpsc::Sender,
+    time::{interval_at, Duration, Instant, MissedTickBehavior},
+};
 
 use substrate_runtime::Runtime;
 type Hash = <Runtime as frame_system::Config>::Hash;
 
+// Errors that can happen during the block production.
 #[derive(Debug, thiserror::Error)]
 pub enum MiningError {
     #[error("Block production failed: {0:?}")]
@@ -35,36 +39,55 @@ impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for MiningError {
     }
 }
 
+/// Mining modes supported by the MiningEngine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MiningMode {
-    /// We are only producing blocks as an answer to the
-    /// mine family of RPCs
+    /// Blocs are produced only in response to RPC calls.
     None,
-    /// Create a new block every tick milliseconds.
-    Interval { tick: u64 },
-    /// Create a new block every time there is a transaction.
+    /// Automatic block productiona t fixed time intervals.
+    Interval { tick: Duration },
+    /// Automatic block production triggered by new transactions.
     AutoMining,
-    /// A mix of the two mining modes above. We create a block
-    /// either every tick milliseconds or anytime there is a new
-    /// transaction
-    MixedMining { tick: u64 },
+    /// Hybrid mode combining interval and transaction-based mining.
+    MixedMining { tick: Duration },
 }
 
 impl MiningMode {
+    /// Create a mining mode based on configuration parameters.
+    ///
+    /// This method determines the appropriate mining mode based on
+    /// the provided timing and behavioral preferences.
+    ///
+    /// # Arguments
+    /// * `block_time` - Optional duration between blocks for interval mining
+    /// * `mixed_mining` - Enable mixed mode when block_time is provided
+    /// * `no_mining` - Disable automatic mining when no block_time is set
+    ///
+    /// # Returns
+    /// The appropriate `MiningMode` variant based on input parameters
     pub fn new(block_time: Option<Duration>, mixed_mining: bool, no_mining: bool) -> Self {
         block_time.map_or_else(
             || if no_mining { Self::None } else { Self::AutoMining },
             |time| {
                 if mixed_mining {
-                    Self::MixedMining { tick: time.as_millis() as u64 }
+                    Self::MixedMining { tick: time }
                 } else {
-                    Self::Interval { tick: time.as_millis() as u64 }
+                    Self::Interval { tick: time }
                 }
             },
         )
     }
 }
 
+/// Controller for blockchain block production operations.
+///
+/// The `MiningEngine` provides a high-level interface for managing block production
+/// It supports multiple mining modes, time manipulation for testing, and
+/// Ethereum-compatible RPC methods.
+///
+/// The engine coordinates between the transaction pool, consensus layer, and time
+/// management to provide flexible block production strategies suitable for both
+/// development and production environments.
 pub struct MiningEngine {
     /// Coordination mechanism between the MiningEngine and the background
     /// task that runs the "polling" loop from `run_mining_engine`.
@@ -78,6 +101,19 @@ pub struct MiningEngine {
 }
 
 impl MiningEngine {
+    /// Create a new mining engine controller.
+    ///
+    /// Initializes a mining engine with the specified components and configuration.
+    /// The engine will coordinate block production according to the initial mining mode.
+    ///
+    /// # Arguments
+    /// * `mining_mode` - Initial mining strategy
+    /// * `transaction_pool` - Handle for monitoring transaction pool changes
+    /// * `time_manager` - Component for blockchain time management
+    /// * `seal_command_sender` - Channel for sending block sealing commands
+    ///
+    /// # Returns
+    /// A new `MiningEngine` instance ready for use
     pub fn new(
         mining_mode: MiningMode,
         transaction_pool: Arc<TransactionPoolHandle>,
@@ -93,7 +129,24 @@ impl MiningEngine {
         }
     }
 
-    pub async fn mine(&self, num_blocks: Option<u64>, interval: Option<u64>) -> Result<(), Error> {
+    /// Mine a specified number of blocks manually.
+    ///
+    /// This method implements the `anvil_mine` RPC call, allowing manual control
+    /// over block production. Blocks are mined sequentially, with optional time
+    /// advancement between each block.
+    ///
+    /// # Arguments
+    /// * `num_blocks` - Number of blocks to mine (defaults to 1 if None)
+    /// * `interval` - Optional time to advance between blocks (in seconds)
+    ///
+    /// # Returns
+    /// * `Ok(())` - All blocks were mined successfully
+    /// * `Err(Error)` - Block production failed
+    pub async fn mine(
+        &self,
+        num_blocks: Option<u64>,
+        interval: Option<Duration>,
+    ) -> Result<(), Error> {
         info!("anvil_mine");
         let blocks = num_blocks.unwrap_or(1);
         if blocks == 0 {
@@ -101,42 +154,97 @@ impl MiningEngine {
         }
         for _ in 0..blocks {
             if let Some(interval) = interval {
-                self.time_manager.increase_time(interval);
+                self.time_manager.increase_time(interval.as_secs());
             }
-            self.seal_now().await.map_err(|e| Error::Mining(e.into()))?;
+            seal_now(&self.seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
         }
         Ok(())
     }
 
+    /// Ethereum-compatible block mining RPC method.
+    ///
+    /// Implements the `evm_mine` RPC call from the Ethereum JSON-RPC API.
+    /// This method provides compatibility with Ethereum development tools
+    /// and testing frameworks.
+    ///
+    /// # Arguments
+    /// * `opts` - Optional mining parameters including timestamp and block count
+    ///
+    /// # Returns
+    /// * `Ok("0x0")` - Standard Ethereum success response
+    /// * `Err(Error)` - Mining operation failed
     pub async fn evm_mine(&self, opts: Option<MineOptions>) -> Result<String, Error> {
         info!("evm_mine");
         self.do_evm_mine(opts).await?;
         Ok("0x0".to_string())
     }
 
-    pub fn set_interval_mining(&self, interval: u64) -> Result<(), Error> {
-        let interval = interval.saturating_mul(1000);
-        let new_mode =
-            if interval == 0 { MiningMode::None } else { MiningMode::Interval { tick: interval } };
+    /// Configure interval-based mining mode.
+    ///
+    /// Sets the mining engine to produce blocks at regular time intervals.
+    /// An interval of 0 disables interval mining. Changes take effect immediately
+    /// and will wake the background mining task.
+    ///
+    /// # Arguments
+    /// * `interval` - Block production interval in seconds (0 to disable)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Mining mode updated successfully
+    /// * `Err(Error)` - Configuration failed
+    pub fn set_interval_mining(&self, interval: Duration) -> Result<(), Error> {
+        let new_mode = if interval.as_secs() == 0 {
+            MiningMode::None
+        } else {
+            MiningMode::Interval { tick: interval }
+        };
         *self.mining_mode.write() = new_mode;
         self.wake();
         Ok(())
     }
 
+    /// Get the current interval mining configuration.
+    ///
+    /// Returns the current block production interval if interval or mixed
+    /// mining is active, or None if interval mining is disabled.
+    ///
+    /// # Returns
+    /// * `Ok(Some(seconds))` - Interval mining active with specified interval
+    /// * `Ok(None)` - Interval mining is disabled
+    /// * `Err(Error)` - Failed to read configuration
     pub fn get_interval_mining(&self) -> Result<Option<u64>, Error> {
         let mode = *self.mining_mode.read();
         match mode {
             MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => {
-                Ok(Some(tick.saturating_div(1000)))
+                Ok(Some(tick.as_secs()))
             }
             _ => Ok(None),
         }
     }
 
+    /// Check if automatic mining is enabled.
+    ///
+    /// Returns true if the mining engine will automatically produce blocks
+    /// when new transactions are added to the transaction pool.
+    ///
+    /// # Returns
+    /// * `Ok(true)` - Auto-mining is enabled
+    /// * `Ok(false)` - Auto-mining is disabled
     pub fn get_auto_mine(&self) -> Result<bool, Error> {
         Ok(self.is_automine())
     }
 
+    /// Enable or disable automatic mining mode.
+    ///
+    /// When enabled, the mining engine will automatically produce a new block
+    /// whenever a transaction is added to the transaction pool. This provides
+    /// instant transaction confirmation in development environments.
+    ///
+    /// # Arguments
+    /// * `enabled` - True to enable auto-mining, false to disable
+    ///
+    /// # Returns
+    /// * `Ok(())` - Auto-mining setting updated successfully
+    /// * `Err(Error)` - Configuration failed
     pub fn set_auto_mine(&self, enabled: bool) -> Result<(), Error> {
         let mining_mode = match (self.is_automine(), enabled) {
             (true, true) => None,
@@ -151,51 +259,89 @@ impl MiningEngine {
         Ok(())
     }
 
-    pub fn set_next_block_timestamp(&self, time_in_seconds: u64) -> Result<(), Error> {
+    /// Set the timestamp for the next block to be mined.
+    ///
+    /// Allows precise control over block timestamps for testing scenarios.
+    /// The timestamp must not be older than the current blockchain time.
+    ///
+    /// # Arguments
+    /// * `time_in_seconds` - Unix timestamp in seconds for the next block
+    ///
+    /// # Returns
+    /// * `Ok(())` - Timestamp set successfully
+    /// * `Err(Error::Mining(MiningError::Timestamp))` - Invalid timestamp
+    pub fn set_next_block_timestamp(&self, time: Duration) -> Result<(), Error> {
         self.time_manager
             // this will convert the time_in_seconds in milliseconds. It is transparent
             // to the user
-            .set_next_block_timestamp(time_in_seconds)
+            .set_next_block_timestamp(time.as_secs())
             .map_err(|_| Error::Mining(MiningError::Timestamp))
     }
 
-    pub fn increase_time(&self, time_in_seconds: u64) -> Result<i64, Error> {
-        Ok(self.time_manager.increase_time(time_in_seconds) as i64)
+    /// Advance the blockchain time by a specified duration.
+    ///
+    /// Increases the current blockchain time, affecting timestamps of future blocks.
+    ///
+    /// # Arguments
+    /// * `time_in_seconds` - Duration to advance in seconds
+    ///
+    /// # Returns
+    /// * `Ok(new_timestamp)` - The new current timestamp as i64
+    /// * `Err(Error)` - Time advancement failed
+    pub fn increase_time(&self, time: Duration) -> Result<i64, Error> {
+        Ok(self.time_manager.increase_time(time.as_secs()) as i64)
     }
 
-    pub fn set_time(&self, timestamp: u64) -> Result<u64, Error> {
+    /// Set the blockchain time to a specific timestamp.
+    ///
+    /// Resets the blockchain time to the specified timestamp and returns
+    /// the time difference from the previous timestamp.
+    ///
+    /// # Arguments
+    /// * `timestamp` - Target timestamp in seconds since Unix epoch
+    ///
+    /// # Returns
+    /// * `Ok(offset_seconds)` - Time difference from previous timestamp
+    /// * `Err(Error)` - Time setting failed
+    pub fn set_time(&self, timestamp: Duration) -> Result<u64, Error> {
         let now = self.time_manager.current_call_timestamp();
-        self.time_manager.reset(timestamp);
-        let offset = timestamp.saturating_mul(1000).saturating_sub(now);
-        Ok(Duration::from_millis(offset).as_secs() as u64)
+        self.time_manager.reset(timestamp.as_secs());
+        let offset = (timestamp.as_millis() as u64).saturating_sub(now);
+        Ok(Duration::from_millis(offset).as_secs())
     }
 
-    pub fn set_block_timestamp_interval(&self, interval_in_seconds: u64) -> Result<(), Error> {
-        self.time_manager.set_block_timestamp_interval(interval_in_seconds);
+    /// Configure automatic timestamp intervals between blocks.
+    ///
+    /// Sets a fixed time interval that will be automatically added to each
+    /// block's timestamp relative to the previous block. This ensures
+    /// consistent time progression in the blockchain.
+    ///
+    /// # Arguments
+    /// * `interval_in_seconds` - Time interval to add between block timestamps
+    ///
+    /// # Returns
+    /// * `Ok(())` - Timestamp interval configured successfully
+    /// * `Err(Error)` - Configuration failed
+    pub fn set_block_timestamp_interval(&self, interval_in_seconds: Duration) -> Result<(), Error> {
+        self.time_manager.set_block_timestamp_interval(interval_in_seconds.as_secs());
         Ok(())
     }
 
+    /// Remove automatic timestamp intervals between blocks.
+    ///
+    /// Disables the automatic timestamp interval feature, allowing blocks
+    /// to have timestamps based on the actual mining time rather than
+    /// fixed intervals.
+    ///
+    /// # Returns
+    /// * `Ok(true)` - Timestamp interval was removed
+    /// * `Ok(false)` - No timestamp interval was configured
+    /// * `Err(Error)` - Operation failed
     pub fn remove_block_timestamp_interval(&self) -> Result<bool, Error> {
         Ok(self.time_manager.remove_block_timestamp_interval())
     }
 
     //---------- Helpers ---------------
-
-    async fn seal_now(&self) -> Result<CreatedBlock<Hash>, BlockProducingError> {
-        let (sender, receiver) = oneshot::channel();
-        let seal_command = EngineCommand::SealNewBlock {
-            create_empty: true,
-            finalize: true,
-            parent_hash: None,
-            sender: Some(sender),
-        };
-        self.seal_command_sender.clone().send(seal_command).await?;
-        match receiver.await {
-            Ok(Ok(rx)) => Ok(rx),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(e.into()),
-        }
-    }
 
     fn wake(&self) {
         self.waker.wake();
@@ -227,18 +373,39 @@ impl MiningEngine {
         }
 
         for _ in 0..blocks_to_mine {
-            self.seal_now().await.map_err(|e| Error::Mining(e.into()))?;
+            seal_now(&self.seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
         }
 
         Ok(blocks_to_mine)
     }
 }
 
+async fn seal_now(
+    seal_command_sender: &Sender<EngineCommand<sp_core::H256>>,
+) -> Result<CreatedBlock<Hash>, BlockProducingError> {
+    let (sender, receiver) = oneshot::channel();
+    let seal_command = EngineCommand::SealNewBlock {
+        create_empty: true,
+        finalize: true,
+        parent_hash: None,
+        sender: Some(sender),
+    };
+    seal_command_sender
+        .send(seal_command)
+        .await
+        .map_err(|_| BlockProducingError::Canceled(oneshot::Canceled))?;
+    match receiver.await {
+        Ok(Ok(rx)) => Ok(rx),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(e.into()),
+    }
+}
+
 // --------------- MiningEngine runner
 type SealCommandStream = Pin<Box<dyn FusedStream<Item = ()> + Send>>;
 
-fn build_interval_stream(interval: u64) -> SealCommandStream {
-    let interval = Duration::from_millis(interval);
+fn build_interval_stream(interval: Duration) -> SealCommandStream {
+    //let interval = Duration::from_millis(interval);
     let mut interval_ticker = interval_at(Instant::now() + interval, interval);
     interval_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -283,56 +450,64 @@ async fn wait_for_mode_change(
     .await
 }
 
-async fn next_or_pending(stream: Option<&mut SealCommandStream>) -> Option<()> {
-    match stream {
-        Some(s) => s.next().await,
-        None => futures::future::pending().await,
-    }
-}
-
-async fn poll_and_seal(engine: Arc<MiningEngine>, stream: Option<&mut SealCommandStream>) -> bool {
-    if next_or_pending(stream).await.is_some() {
-        match engine.seal_now().await {
-            Ok(block) => {
-                debug!(hash=?block.hash, "sealed");
-            }
-            Err(BlockProducingError::Canceled(_) | BlockProducingError::SendError(_)) => {
-                return false; // fatal: break outer loop
-            }
-            Err(e) => {
-                error!(?e, "block production failed");
-            }
-        }
-    }
-    true
-}
-
+/// Run the mining engine background task.
+///
+/// This is the main event loop that handles block production based on the current
+/// mining mode. It monitors for mining mode changes, manages stream selectors for
+/// different trigger types (intervals, transactions), and coordinates block sealing
+/// operations.
+///
+/// The function runs indefinitely until the mining engine is shut down or a fatal
+/// error occurs. It uses `tokio::select!` to concurrently handle mode changes and
+/// mining triggers efficiently.
+///
+/// # Arguments
+/// * `engine` - Shared reference to the mining engine to control
+///
+/// # Behavior
+/// - Monitors for mining mode changes and rebuilds event streams accordingly
+/// - Handles interval-based mining triggers using tokio timers
+/// - Handles transaction-based mining triggers from the transaction pool
+/// - Processes block sealing commands and logs results
+/// - Gracefully handles non-fatal errors and continues operation
+/// - Terminates on fatal errors (communication failures)
+///
+/// # Error Handling
+/// - **Fatal errors** (Canceled, SendError): Breaks the main loop and terminates
+/// - **Non-fatal errors**: Logged and operation continues
+/// - **Successful operations**: Block hash is logged at debug level
 pub async fn run_mining_engine(engine: Arc<MiningEngine>) {
     let mut current_mode = None;
-    let mut interval_mining_stream: Option<SealCommandStream> = None;
-    let mut auto_mining_stream: Option<SealCommandStream> = None;
+    let mut combined_stream: SelectAll<SealCommandStream> = select_all(vec![]);
 
     loop {
         tokio::select! {
             new_mode = wait_for_mode_change(&engine, current_mode) => {
                 current_mode = Some(new_mode);
                 let (interval_stream, auto_stream) = build_streams_for_mode(new_mode, &engine);
-                interval_mining_stream = interval_stream;
-                auto_mining_stream = auto_stream;
-            }
-            // Poll the interval stream if it exists
-            continue_loop = poll_and_seal(engine.clone(), interval_mining_stream.as_mut()) => {
-                if !continue_loop {
-                    break;
+                let mut streams: Vec<SealCommandStream> = Vec::new();
+                if let Some(stream) = interval_stream {
+                    streams.push(stream);
                 }
-            }
-            // Poll the automining stream if it exists
-            continue_loop = poll_and_seal(engine.clone(), auto_mining_stream.as_mut()) => {
-                if !continue_loop {
-                    break;
+                if let Some(stream) = auto_stream {
+                    streams.push(stream);
                 }
-            }
 
+                combined_stream = select_all(streams);
+            }
+            Some(_) = combined_stream.next(), if !combined_stream.is_empty() => {
+                match seal_now(&engine.seal_command_sender).await {
+                    Ok(block) => {
+                        debug!(hash=?block.hash, "sealed");
+                    }
+                    Err(BlockProducingError::Canceled(_) | BlockProducingError::SendError(_)) => {
+                        break; // fatal: break outer loop
+                    }
+                    Err(e) => {
+                        error!(?e, "block production failed");
+                    }
+                }
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::utils::{assert_with_tolerance, response_result_success_inner, TestNode};
+use crate::utils::{assert_with_tolerance, unwrap_response, TestNode};
 use alloy_primitives::U256;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
@@ -40,7 +40,7 @@ async fn test_evm_set_time_in_the_past() {
     // Set the timestamp in the past
     let new_timestamp = first_timestamp.saturating_div(1000).saturating_sub(1);
     assert_eq!(
-        response_result_success_inner::<u64>(
+        unwrap_response::<u64>(
             node.eth_rpc(EthRequest::EvmSetTime(U256::from(new_timestamp))).await.unwrap()
         )
         .unwrap(),
@@ -48,6 +48,9 @@ async fn test_evm_set_time_in_the_past() {
     );
 
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+    // This is a placeholder as it is not currently possible to set the timeline
+    // for a value in the past, however this shall change when we have the state
+    // injector.
     let second_hash = node.block_hash_by_number(2).await.unwrap();
     let second_timestamp = node.get_decoded_timestamp(Some(second_hash)).await;
     assert_eq!(second_timestamp.saturating_sub(first_timestamp), 1);
@@ -66,7 +69,7 @@ async fn test_evm_set_time() {
     // Set the timestamp in the future
     let new_timestamp = first_timestamp.saturating_div(1000).saturating_add(3600);
     assert_with_tolerance(
-        response_result_success_inner::<u64>(
+        unwrap_response::<u64>(
             node.eth_rpc(EthRequest::EvmSetTime(U256::from(new_timestamp))).await.unwrap(),
         )
         .unwrap(),
@@ -99,10 +102,8 @@ async fn test_evm_increase_time_by_zero() {
     let first_timestamp = node.get_decoded_timestamp(Some(first_hash)).await;
 
     assert_eq!(
-        response_result_success_inner::<u64>(
-            node.eth_rpc(EthRequest::EvmSetTime(U256::from(0))).await.unwrap()
-        )
-        .unwrap(),
+        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmSetTime(U256::from(0))).await.unwrap())
+            .unwrap(),
         0
     );
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
@@ -128,7 +129,7 @@ async fn test_evm_increase_time() {
 
     let new_timestamp = first_timestamp.saturating_div(1000).saturating_add(3600);
     assert_with_tolerance(
-        response_result_success_inner::<u64>(
+        unwrap_response::<u64>(
             node.eth_rpc(EthRequest::EvmSetTime(U256::from(new_timestamp))).await.unwrap(),
         )
         .unwrap(),
@@ -159,7 +160,7 @@ async fn test_evm_set_next_block_timestamp() {
         SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs();
     let next_timestamp = timestamp + 3600;
     assert_with_tolerance(
-        response_result_success_inner::<u64>(
+        unwrap_response::<u64>(
             node.eth_rpc(EthRequest::EvmSetTime(U256::from(next_timestamp))).await.unwrap(),
         )
         .unwrap(),
@@ -187,10 +188,10 @@ async fn test_evm_set_remove_block_timestamp_interval() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
-    assert!(matches!(
+    unwrap_response::<()>(
         node.eth_rpc(EthRequest::EvmSetBlockTimeStampInterval(3600)).await.unwrap(),
-        ResponseResult::Success(_)
-    ));
+    )
+    .unwrap();
     let _ = node.eth_rpc(EthRequest::Mine(Some(U256::from(2)), None)).await.unwrap();
     let hash2 = node.block_hash_by_number(2).await.unwrap();
     let hash1 = node.block_hash_by_number(1).await.unwrap();
@@ -202,7 +203,7 @@ async fn test_evm_set_remove_block_timestamp_interval() {
         100,
         "Interval between the blocks if greater than the desired value.",
     );
-    assert!(response_result_success_inner::<bool>(
+    assert!(unwrap_response::<bool>(
         node.eth_rpc(EthRequest::EvmRemoveBlockTimeStampInterval(())).await.unwrap()
     )
     .unwrap());

@@ -131,6 +131,7 @@ parity-scale-codec = "3.7.5"
 subxt = "0.41.0"
 pallet-revive-eth-rpc = "0.9.0"
 subxt-signer = "0.41.0"
+tokio-stream = "0.1.17"
 
 [dev-dependencies]
 alloy-provider = { workspace = true, features = ["txpool-api"] }

@@ -18,6 +18,7 @@ use polkadot_sdk::{
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
+use tokio_stream::wrappers::ReceiverStream; // NEW
 
 pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>;
@@ -34,7 +35,7 @@ pub struct Service {
     pub rpc_handlers: RpcHandlers,
     pub mining_engine: Arc<MiningEngine>,
     pub seal_command_sender:
-        futures::channel::mpsc::Sender<sc_consensus_manual_seal::EngineCommand<sp_core::H256>>,
+        tokio::sync::mpsc::Sender<sc_consensus_manual_seal::EngineCommand<sp_core::H256>>,
 }
 
 /// Builds a new service for a full client.
@@ -64,7 +65,9 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
     );
 
-    let (seal_engine_command_sender, commands_stream) = futures::channel::mpsc::channel(1024);
+    //let (seal_engine_command_sender, commands_stream) = futures::channel::mpsc::channel(1024);
+    let (seal_engine_command_sender, commands_stream) = tokio::sync::mpsc::channel(1024);
+    let commands_stream = ReceiverStream::new(commands_stream);
 
     let mining_mode =
         MiningMode::new(anvil_config.block_time, anvil_config.mixed_mining, anvil_config.no_mining);
