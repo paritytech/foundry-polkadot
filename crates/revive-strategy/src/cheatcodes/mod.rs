@@ -131,7 +131,7 @@ fn set_balance(address: Address, amount: U256, ecx: InnerEcx<'_, '_, '_>) -> U25
                 address.as_slice(),
             ));
             pallet_balances::Pallet::<Runtime>::set_balance(
-                &addr,
+                addr,
                 balance_native.into_rounded_balance().saturating_add(min_balance),
             );
             old_balance
