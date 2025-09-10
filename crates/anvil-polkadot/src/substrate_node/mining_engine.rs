@@ -11,7 +11,7 @@ use parking_lot::RwLock;
 use polkadot_sdk::{
     sc_consensus_manual_seal::{CreatedBlock, EngineCommand, Error as BlockProducingError},
     sc_service::TransactionPool,
-    sp_core, *,
+    sp_core,
 };
 use std::{pin::Pin, sync::Arc};
 use tokio::{
@@ -19,8 +19,7 @@ use tokio::{
     time::{interval_at, Duration, Instant, MissedTickBehavior},
 };
 
-use substrate_runtime::Runtime;
-type Hash = <Runtime as frame_system::Config>::Hash;
+use substrate_runtime::Hash;
 
 // Errors that can happen during the block production.
 #[derive(Debug, thiserror::Error)]
