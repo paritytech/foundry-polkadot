@@ -17,7 +17,9 @@ use frame_system::limits::BlockWeights;
 use pallet_revive::{evm::runtime::EthExtra, AccountId32Mapper};
 use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
-    parachains_common::{AccountId, Balance, BlockNumber, Hash as CommonHash, Header, Nonce, Signature},
+    parachains_common::{
+        AccountId, Balance, BlockNumber, Hash as CommonHash, Header, Nonce, Signature,
+    },
     polkadot_sdk_frame::{
         deps::sp_genesis_builder,
         runtime::{apis, prelude::*},

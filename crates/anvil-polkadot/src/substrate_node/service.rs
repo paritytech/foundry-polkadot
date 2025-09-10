@@ -65,7 +65,6 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
     );
 
-    //let (seal_engine_command_sender, commands_stream) = futures::channel::mpsc::channel(1024);
     let (seal_engine_command_sender, commands_stream) = tokio::sync::mpsc::channel(1024);
     let commands_stream = ReceiverStream::new(commands_stream);
 

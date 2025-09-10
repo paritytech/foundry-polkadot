@@ -162,14 +162,16 @@ impl TestNode {
         }
     }
 
-    pub async fn get_chain_header_block_number(&self) -> String {
-        self.substrate_rpc("chain_getHeader", json!([]))
+    pub async fn best_block_number(&self) -> u32 {
+        let num = self
+            .substrate_rpc("chain_getHeader", json!([]))
             .await
             .unwrap()
             .get("number")
             .and_then(|v| v.as_str())
             .unwrap()
-            .to_string()
+            .to_owned();
+        u32::from_str_radix(num.trim_start_matches("0x"), 16).unwrap()
     }
 
     pub async fn wait_for_block_with_timeout(
@@ -177,8 +179,9 @@ impl TestNode {
         n: u32,
         timeout: std::time::Duration,
     ) -> eyre::Result<()> {
-        tokio::time::timeout(timeout, self.wait_for_block_with_number(n)).await?;
-        Ok(())
+        tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
+            .await
+            .map_err(|e| e.into())
     }
 
     pub async fn submit_remark(&self, signer: Keypair) {

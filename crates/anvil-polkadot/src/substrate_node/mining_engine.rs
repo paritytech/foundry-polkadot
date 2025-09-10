@@ -1,4 +1,7 @@
-use crate::substrate_node::{error::Error, service::TransactionPoolHandle};
+use crate::{
+    macros::node_info,
+    substrate_node::{error::Error, service::TransactionPoolHandle},
+};
 use alloy_rpc_types::anvil::MineOptions;
 use anvil::eth::backend::time::TimeManager;
 use futures::{
@@ -14,12 +17,11 @@ use polkadot_sdk::{
     sp_core,
 };
 use std::{pin::Pin, sync::Arc};
+use substrate_runtime::Hash;
 use tokio::{
     sync::mpsc::Sender,
     time::{interval_at, Duration, Instant, MissedTickBehavior},
 };
-
-use substrate_runtime::Hash;
 
 // Errors that can happen during the block production.
 #[derive(Debug, thiserror::Error)]
@@ -193,6 +195,7 @@ impl MiningEngine {
     /// * `Ok(())` - Mining mode updated successfully
     /// * `Err(Error)` - Configuration failed
     pub fn set_interval_mining(&self, interval: Duration) -> Result<(), Error> {
+        node_info!("evm_setIntervalMining");
         let new_mode = if interval.as_secs() == 0 {
             MiningMode::None
         } else {
@@ -213,6 +216,7 @@ impl MiningEngine {
     /// * `Ok(None)` - Interval mining is disabled
     /// * `Err(Error)` - Failed to read configuration
     pub fn get_interval_mining(&self) -> Result<Option<u64>, Error> {
+        node_info!("anvil_getIntervalMining");
         let mode = *self.mining_mode.read();
         match mode {
             MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => {
@@ -231,6 +235,7 @@ impl MiningEngine {
     /// * `Ok(true)` - Auto-mining is enabled
     /// * `Ok(false)` - Auto-mining is disabled
     pub fn get_auto_mine(&self) -> Result<bool, Error> {
+        node_info!("anvil_getAutomine");
         Ok(self.is_automine())
     }
 
@@ -247,6 +252,7 @@ impl MiningEngine {
     /// * `Ok(())` - Auto-mining setting updated successfully
     /// * `Err(Error)` - Configuration failed
     pub fn set_auto_mine(&self, enabled: bool) -> Result<(), Error> {
+        node_info!("evm_setAutomine");
         let mining_mode = match (self.is_automine(), enabled) {
             (true, true) => None,
             (true, false) => Some(MiningMode::None),
@@ -272,6 +278,7 @@ impl MiningEngine {
     /// * `Ok(())` - Timestamp set successfully
     /// * `Err(Error::Mining(MiningError::Timestamp))` - Invalid timestamp
     pub fn set_next_block_timestamp(&self, time: Duration) -> Result<(), Error> {
+        node_info!("anvil_setBlockTimestampInterval");
         self.time_manager
             // this will convert the time_in_seconds in milliseconds. It is transparent
             // to the user
@@ -290,7 +297,8 @@ impl MiningEngine {
     /// * `Ok(new_timestamp)` - The new current timestamp as i64
     /// * `Err(Error)` - Time advancement failed
     pub fn increase_time(&self, time: Duration) -> Result<i64, Error> {
-        Ok(self.time_manager.increase_time(time.as_secs()) as i64)
+        node_info!("evm_increaseTime");
+        Ok(self.time_manager.increase_time(time.as_secs()).saturating_div(1000) as i64)
     }
 
     /// Set the blockchain time to a specific timestamp.
@@ -305,6 +313,7 @@ impl MiningEngine {
     /// * `Ok(offset_seconds)` - Time difference from previous timestamp
     /// * `Err(Error)` - Time setting failed
     pub fn set_time(&self, timestamp: Duration) -> Result<u64, Error> {
+        node_info!("evm_setTime");
         let now = self.time_manager.current_call_timestamp();
         self.time_manager.reset(timestamp.as_secs());
         let offset = (timestamp.as_millis() as u64).saturating_sub(now);
@@ -339,6 +348,7 @@ impl MiningEngine {
     /// * `Ok(false)` - No timestamp interval was configured
     /// * `Err(Error)` - Operation failed
     pub fn remove_block_timestamp_interval(&self) -> Result<bool, Error> {
+        node_info!("anvil_removeBlockTimestampInterval");
         Ok(self.time_manager.remove_block_timestamp_interval())
     }
 

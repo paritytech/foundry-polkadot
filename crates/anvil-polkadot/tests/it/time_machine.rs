@@ -12,7 +12,7 @@ use anvil_rpc::{
 // Tests --------- EvmSetTime
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_evm_set_invalid_param() {
+async fn test_evm_set_time_invalid_param() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
@@ -102,8 +102,10 @@ async fn test_evm_increase_time_by_zero() {
     let first_timestamp = node.get_decoded_timestamp(Some(first_hash)).await;
 
     assert_eq!(
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmSetTime(U256::from(0))).await.unwrap())
-            .unwrap(),
+        unwrap_response::<i64>(
+            node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(0))).await.unwrap()
+        )
+        .unwrap(),
         0
     );
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
@@ -127,10 +129,9 @@ async fn test_evm_increase_time() {
     let first_hash = node.block_hash_by_number(1).await.unwrap();
     let first_timestamp = node.get_decoded_timestamp(Some(first_hash)).await;
 
-    let new_timestamp = first_timestamp.saturating_div(1000).saturating_add(3600);
     assert_with_tolerance(
-        unwrap_response::<u64>(
-            node.eth_rpc(EthRequest::EvmSetTime(U256::from(new_timestamp))).await.unwrap(),
+        unwrap_response::<i64>(
+            node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(3600))).await.unwrap(),
         )
         .unwrap(),
         3600,
@@ -159,16 +160,8 @@ async fn test_evm_set_next_block_timestamp() {
     let timestamp =
         SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs();
     let next_timestamp = timestamp + 3600;
-    assert_with_tolerance(
-        unwrap_response::<u64>(
-            node.eth_rpc(EthRequest::EvmSetTime(U256::from(next_timestamp))).await.unwrap(),
-        )
-        .unwrap(),
-        3600,
-        1,
-        "Wrong offset when increasing the timestamp.",
-    );
 
+    node.eth_rpc(EthRequest::EvmSetNextBlockTimeStamp(U256::from(next_timestamp))).await.unwrap();
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
     let first_hash = node.block_hash_by_number(1).await.unwrap();
     let first_timestamp = node.get_decoded_timestamp(Some(first_hash)).await;
@@ -176,7 +169,7 @@ async fn test_evm_set_next_block_timestamp() {
         first_timestamp.saturating_sub(timestamp.saturating_mul(1000)),
         3600000,
         200,
-        "Could not move the time in the future",
+        "The time was not moved into the future",
     );
 }
 
