@@ -31,6 +31,8 @@ pub enum MiningError {
     MiningModeMismatch,
     #[error("Current timestamp is newer.")]
     Timestamp,
+    #[error("Closed channel")]
+    ClosedChannel,
 }
 
 impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for MiningError {
@@ -156,7 +158,7 @@ impl MiningEngine {
             if let Some(interval) = interval {
                 self.time_manager.increase_time(interval.as_secs());
             }
-            seal_now(&self.seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
+            seal_now(&self.seal_command_sender).await?;
         }
         Ok(())
     }
@@ -373,7 +375,7 @@ impl MiningEngine {
         }
 
         for _ in 0..blocks_to_mine {
-            seal_now(&self.seal_command_sender).await.map_err(|e| Error::Mining(e.into()))?;
+            seal_now(&self.seal_command_sender).await?;
         }
 
         Ok(blocks_to_mine)
@@ -382,7 +384,7 @@ impl MiningEngine {
 
 async fn seal_now(
     seal_command_sender: &Sender<EngineCommand<sp_core::H256>>,
-) -> Result<CreatedBlock<Hash>, BlockProducingError> {
+) -> Result<CreatedBlock<Hash>, Error> {
     let (sender, receiver) = oneshot::channel();
     let seal_command = EngineCommand::SealNewBlock {
         create_empty: true,
@@ -393,11 +395,11 @@ async fn seal_now(
     seal_command_sender
         .send(seal_command)
         .await
-        .map_err(|_| BlockProducingError::Canceled(oneshot::Canceled))?;
+        .map_err(|_| Error::Mining(MiningError::ClosedChannel))?;
     match receiver.await {
         Ok(Ok(rx)) => Ok(rx),
-        Ok(Err(e)) => Err(e),
-        Err(e) => Err(e.into()),
+        Ok(Err(e)) => Err(Error::Mining(MiningError::BlockProducing(e))),
+        Err(_e) => Err(Error::Mining(MiningError::ClosedChannel)),
     }
 }
 
@@ -500,7 +502,7 @@ pub async fn run_mining_engine(engine: Arc<MiningEngine>) {
                     Ok(block) => {
                         debug!(hash=?block.hash, "sealed");
                     }
-                    Err(BlockProducingError::Canceled(_) | BlockProducingError::SendError(_)) => {
+                    Err(Error::Mining(MiningError::ClosedChannel)) => {
                         break; // fatal: break outer loop
                     }
                     Err(e) => {
