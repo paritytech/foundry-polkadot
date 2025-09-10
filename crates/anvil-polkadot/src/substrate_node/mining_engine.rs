@@ -42,7 +42,7 @@ impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for MiningError {
 /// Mining modes supported by the MiningEngine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MiningMode {
-    /// Blocs are produced only in response to RPC calls.
+    /// Blocks are produced only in response to RPC calls.
     None,
     /// Automatic block productiona t fixed time intervals.
     Interval { tick: Duration },
