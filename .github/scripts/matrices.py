@@ -29,14 +29,17 @@ class Case:
     n_partitions: int
     # Whether to run on non-Linux platforms for PRs. All platforms and tests are run on pushes.
     pr_cross_platform: bool
+    # Build the selected tests with Cargo's release profile.
+    run_release: bool
 
     def __init__(
-        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool
+        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool, run_release: bool = False,
     ):
         self.name = name
         self.filter = filter
         self.n_partitions = n_partitions
         self.pr_cross_platform = pr_cross_platform
+        self.run_release = run_release
 
 
 # GHA matrix entry
@@ -77,33 +80,45 @@ targets = [t_linux_x86, t_macos, t_windows] if is_pr else [t_linux_x86, t_macos,
 config = [
     Case(
         name="unit",
-        filter="!kind(test)",
+        filter="!kind(test) & !package(=anvil-polkadot)",
         n_partitions=1,
         pr_cross_platform=True,
+        run_release=False,
     ),
     Case(
         name="integration",
-        filter="kind(test) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
+        filter="kind(test) & !test(/\\b(issue|ext_integration)|polkadot_localnode/) & !package(=anvil-polkadot)",
         n_partitions=3,
         pr_cross_platform=True,
+        run_release=False,
     ),
     Case(
         name="integration / issue-repros",
         filter="package(=forge) & test(/\\bissue/)",
         n_partitions=2,
         pr_cross_platform=False,
+        run_release=False,
     ),
     Case(
         name="integration / external",
         filter="package(=forge) & test(/\\bext_integration/)",
         n_partitions=2,
         pr_cross_platform=False,
+        run_release=False,
     ),
-        Case(
+    Case(
         name="integration / polkadot_localnode",
         filter="(package(=cast) | package(=forge)) & test(/polkadot_localnode/)",
         n_partitions=1,
         pr_cross_platform=False,
+        run_release=False,
+    ),
+    Case(
+        name="anvil-polkadot",
+        filter="package(=anvil-polkadot)",
+        n_partitions=1,
+        pr_cross_platform=True,
+        run_release=True,
     ),
 ]
 
@@ -129,6 +144,8 @@ def main():
                 
                 if profile == "isolate":
                     flags += " --features=isolate-by-default"
+                if case.run_release:
+                    flags = "--release " + flags
                 name += os_str
 
                 obj = Expanded(
