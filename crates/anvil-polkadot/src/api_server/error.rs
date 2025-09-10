@@ -14,12 +14,13 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Helper trait to easily convert results to rpc results
 pub(crate) trait ToRpcResponseResult {
     fn to_rpc_result(self) -> ResponseResult;
 }
 
-/// Converts a serializable value into a `ResponseResult`
-pub fn to_rpc_result<T: Serialize>(val: T) -> ResponseResult {
+/// Converts a serializable value into a `ResponseResult`.
+fn to_rpc_result<T: Serialize>(val: T) -> ResponseResult {
     match serde_json::to_value(val) {
         Ok(success) => ResponseResult::Success(success),
         Err(err) => {
@@ -33,7 +34,6 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
     fn to_rpc_result(self) -> ResponseResult {
         match self {
             Ok(val) => to_rpc_result(val),
-            Err(Error::InvalidParams(msg)) => RpcError::invalid_params(msg).into(),
             Err(err) => RpcError::internal_error_with(err.to_string()).into(),
         }
     }

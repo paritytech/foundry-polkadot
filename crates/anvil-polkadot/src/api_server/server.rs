@@ -5,31 +5,128 @@ use crate::{
     },
     logging::LoggingManager,
     macros::node_info,
-    substrate_node::{mining_engine::MiningEngine, service::Service},
+    substrate_node::mining_engine::MiningEngine,
 };
-use alloy_primitives::U256;
+use alloy_primitives::{B256, U256, U64};
 use alloy_rpc_types::anvil::MineOptions;
-use anvil_core::eth::{EthRequest, Params};
+use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use futures::{channel::mpsc, StreamExt};
+use polkadot_sdk::{
+    pallet_revive::evm::{Account, ReceiptInfo},
+    pallet_revive_eth_rpc::{
+        client::Client as EthRpcClient, subxt_client::SrcChainConfig, ReceiptExtractor,
+        ReceiptProvider, SubxtBlockInfoProvider,
+    },
+    sc_service::RpcHandlers,
+};
+use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
+use subxt::{
+    backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
+    ext::{
+        jsonrpsee::core::traits::ToRpcParams,
+        subxt_rpcs::{Error as SubxtRpcError, LegacyRpcMethods},
+    },
+    OnlineClient,
+};
+
+struct InMemoryRpcClient(RpcHandlers);
+
+struct Params(Option<Box<RawValue>>);
+
+impl ToRpcParams for Params {
+    fn to_rpc_params(self) -> std::result::Result<Option<Box<RawValue>>, serde_json::Error> {
+        Ok(self.0)
+    }
+}
+
+impl RpcClientT for InMemoryRpcClient {
+    fn request_raw<'a>(
+        &'a self,
+        method: &'a str,
+        params: Option<Box<RawValue>>,
+    ) -> RawRpcFuture<'a, Box<RawValue>> {
+        Box::pin(async move {
+            self.0
+                .handle()
+                .call(method, Params(params))
+                .await
+                .map_err(|err| SubxtRpcError::Client(Box::new(err)))
+        })
+    }
+
+    fn subscribe_raw<'a>(
+        &'a self,
+        _sub: &'a str,
+        _params: Option<Box<RawValue>>,
+        _unsub: &'a str,
+    ) -> RawRpcFuture<'a, RawRpcSubscription> {
+        unimplemented!("Not needed")
+    }
+}
+
+pub struct Wallet {
+    _accounts: Vec<Account>,
+}
 
 pub struct ApiServer {
     req_receiver: mpsc::Receiver<ApiRequest>,
     logging_manager: LoggingManager,
     mining_engine: Arc<MiningEngine>,
+    eth_rpc_client: EthRpcClient,
+    _wallet: Wallet,
 }
 
 impl ApiServer {
-    pub fn new(
-        substrate_service: &Service,
+    pub async fn new(
+        mining_engine: Arc<MiningEngine>,
+        rpc_handlers: RpcHandlers,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
     ) -> Self {
+        let rpc_client = RpcClient::new(InMemoryRpcClient(rpc_handlers));
+        let api =
+            OnlineClient::<SrcChainConfig>::from_rpc_client(rpc_client.clone()).await.unwrap();
+        let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
+
+        let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await.unwrap();
+
+        let (pool, keep_latest_n_blocks) = {
+            // see sqlite in-memory issue: https://github.com/launchbadge/sqlx/issues/2510
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .idle_timeout(None)
+                .max_lifetime(None)
+                .connect("sqlite::memory:")
+                .await
+                .unwrap();
+
+            (pool, Some(100))
+        };
+
+        let receipt_extractor = ReceiptExtractor::new(api.clone(), None).await.unwrap();
+
+        let receipt_provider = ReceiptProvider::new(
+            pool,
+            block_provider.clone(),
+            receipt_extractor.clone(),
+            keep_latest_n_blocks,
+        )
+        .await
+        .unwrap();
+
+        let eth_rpc_client =
+            EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
+                .await
+                .unwrap();
+
         Self {
             req_receiver,
             logging_manager,
-            mining_engine: substrate_service.mining_engine.clone(),
+            mining_engine,
+            eth_rpc_client,
+            _wallet: Wallet { _accounts: vec![] },
         }
     }
 
@@ -43,6 +140,8 @@ impl ApiServer {
 
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         let res = match req.clone() {
+            EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
+            //------- Mining---------
             EthRequest::Mine(blocks, interval) => self.mine(blocks, interval).await.to_rpc_result(),
             EthRequest::SetIntervalMining(interval) => {
                 self.set_interval_mining(interval).to_rpc_result()
@@ -63,7 +162,18 @@ impl ApiServer {
             }
             EthRequest::EvmIncreaseTime(time) => self.increase_time(time).to_rpc_result(),
             EthRequest::EvmSetTime(timestamp) => self.set_time(timestamp).to_rpc_result(),
-            EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
+            //------- Revive---------
+            EthRequest::EthChainId(()) => self.eth_chain_id().to_rpc_result(),
+            EthRequest::EthNetworkId(()) => self.network_id().to_rpc_result(),
+            EthRequest::NetListening(()) => self.net_listening().to_rpc_result(),
+            EthRequest::EthSyncing(()) => self.syncing().to_rpc_result(),
+            EthRequest::EthGetTransactionReceipt(tx_hash) => {
+                self.transaction_receipt(tx_hash).await.to_rpc_result()
+            }
+            EthRequest::EthEstimateGas(_call, _block, _overrides) => {
+                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            }
+
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -117,7 +227,7 @@ impl ApiServer {
         Ok(())
     }
 
-    async fn evm_mine(&self, mine: Option<Params<Option<MineOptions>>>) -> Result<String> {
+    async fn evm_mine(&self, mine: Option<MineParams<Option<MineOptions>>>) -> Result<String> {
         node_info!("evm_mine");
 
         self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
@@ -171,4 +281,44 @@ impl ApiServer {
         self.logging_manager.set_enabled(enabled);
         Ok(())
     }
+
+    fn eth_chain_id(&self) -> Result<U64> {
+        node_info!("eth_chainId");
+        Ok(U256::from(self.eth_rpc_client.chain_id()).to::<U64>())
+    }
+
+    fn network_id(&self) -> Result<u64> {
+        node_info!("eth_networkId");
+        Ok(self.eth_rpc_client.chain_id())
+    }
+
+    fn net_listening(&self) -> Result<bool> {
+        node_info!("net_listening");
+        Ok(true)
+    }
+
+    fn syncing(&self) -> Result<bool> {
+        node_info!("eth_syncing");
+        Ok(false)
+    }
+
+    async fn transaction_receipt(&self, tx_hash: B256) -> Result<Option<ReceiptInfo>> {
+        node_info!("eth_getTransactionReceipt");
+        // TODO: do we really need to return Ok(None) if the transaction is still in the pool?
+        Ok(self.eth_rpc_client.receipt(&(tx_hash.0.into())).await)
+    }
+
+    //async fn estimate_gas(
+    //    &self,
+    //    request: WithOtherFields<TransactionRequest>,
+    //    block: Option<alloy_rpc_types::BlockId>,
+    //) -> Result<U256> {
+    //    node_info!("eth_estimateGas");
+    //
+    //    let hash =
+    // self.eth_rpc_client.block_hash_for_tag(block.unwrap_or_default().into()).await?;
+    //    let runtime_api = self.eth_rpc_client.runtime_api(hash);
+    //    let dry_run = runtime_api.dry_run(transaction).await?;
+    //    Ok(dry_run.eth_gas)
+    //}
 }

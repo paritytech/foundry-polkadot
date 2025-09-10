@@ -17,10 +17,14 @@ pub struct ApiRequest {
 pub fn spawn(substrate_service: &Service, logging_manager: LoggingManager) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
 
-    let api_server = ApiServer::new(substrate_service, receiver, logging_manager);
-
     let spawn_handle = substrate_service.task_manager.spawn_essential_handle();
-    spawn_handle.spawn("anvil-api-server", "anvil", api_server.run());
+    let rpc_handlers = substrate_service.rpc_handlers.clone();
+    let mining_engine = substrate_service.mining_engine.clone();
+    spawn_handle.spawn("anvil-api-server", "anvil", async move {
+        let api_server =
+            ApiServer::new(mining_engine, rpc_handlers, receiver, logging_manager).await;
+        api_server.run().await;
+    });
 
     api_handle
 }
