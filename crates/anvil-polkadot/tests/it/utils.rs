@@ -23,7 +23,7 @@ use polkadot_sdk::{
 use serde_json::{json, Value};
 use std::fmt::Debug;
 use subxt::{OnlineClient, PolkadotConfig};
-use subxt_signer::sr25519::Keypair;
+use subxt_signer::ecdsa::Keypair;
 use tempfile::TempDir;
 
 pub struct TestNode {

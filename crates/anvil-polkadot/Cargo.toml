@@ -22,7 +22,7 @@ path = "bin/main.rs"
 hex = "0.4.3"
 codec = { version = "3.7.5", default-features = true, package = "parity-scale-codec" }
 substrate-runtime = { path = "substrate-runtime" }
-polkadot-sdk = { version = "2507.1.0", default-features = false, features = [
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "acihodaru/foundry-polkadot", default-features = false, features = [
     "sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
@@ -133,6 +133,10 @@ chrono.workspace = true
 clap_complete_fig = "4"
 
 tokio-stream = "0.1.17"
+sqlx = "0.8.6"
+subxt = "0.41.0"
+subxt-signer = "0.41.0"
+async-stream = "0.3.6"
 
 [dev-dependencies]
 alloy-provider = { workspace = true, features = ["txpool-api"] }

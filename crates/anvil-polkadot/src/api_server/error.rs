@@ -1,5 +1,6 @@
 use crate::substrate_node::{mining_engine::MiningError, service::BackendError};
 use anvil_rpc::{error::RpcError, response::ResponseResult};
+use polkadot_sdk::pallet_revive_eth_rpc::{client::ClientError, EthRpcError};
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -14,6 +15,10 @@ pub enum Error {
     Mining(#[from] MiningError),
     #[error("Invalid params: {0}")]
     InvalidParams(String),
+    #[error("Client error {0:?}")]
+    ClientError(ClientError),
+    #[error("ETH RPC ERROR {0:?}")]
+    EthRpcError(EthRpcError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -23,6 +28,7 @@ pub(crate) trait ToRpcResponseResult {
     fn to_rpc_result(self) -> ResponseResult;
 }
 
+/// Converts a serializable value into a `ResponseResult`.
 fn to_rpc_result<T: Serialize>(val: T) -> ResponseResult {
     match serde_json::to_value(val) {
         Ok(success) => ResponseResult::Success(success),

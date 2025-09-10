@@ -129,7 +129,6 @@ pub async fn spawn_anvil_tasks(
     logging_manager: LoggingManager,
 ) -> Result<ApiHandle> {
     let mut addresses = Vec::with_capacity(anvil_config.host.len());
-
     // Spawn the api server.
     let api_handle = api_server::spawn(service, logging_manager);
 

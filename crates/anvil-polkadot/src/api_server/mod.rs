@@ -1,9 +1,11 @@
-use crate::{logging::LoggingManager, substrate_node::service::Service};
+use crate::{config::AnvilNodeConfig, logging::LoggingManager, substrate_node::service::Service};
+use alloy_signer_local::LocalSigner;
 use anvil_core::eth::EthRequest;
 use anvil_rpc::response::ResponseResult;
 use futures::channel::{mpsc, oneshot};
 use server::ApiServer;
 
+mod convert;
 mod error;
 mod server;
 
@@ -17,10 +19,11 @@ pub struct ApiRequest {
 pub fn spawn(substrate_service: &Service, logging_manager: LoggingManager) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
 
-    let api_server = ApiServer::new(substrate_service, receiver, logging_manager);
-
     let spawn_handle = substrate_service.task_manager.spawn_essential_handle();
-    spawn_handle.spawn("anvil-api-server", "anvil", api_server.run());
+    spawn_handle.spawn("anvil-api-server", "anvil", async move {
+        let api_server = ApiServer::new(substrate_service, receiver, logging_manager).await;
+        api_server.run().await;
+    });
 
     api_handle
 }

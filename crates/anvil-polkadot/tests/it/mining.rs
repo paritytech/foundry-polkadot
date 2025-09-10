@@ -1,9 +1,11 @@
 use crate::utils::{assert_with_tolerance, unwrap_response, TestNode};
-use alloy_primitives::U256;
-use alloy_rpc_types::anvil::MineOptions;
+use alloy_primitives::{Address, U256};
+use alloy_rpc_types::{anvil::MineOptions, TransactionRequest};
+use alloy_serde::WithOtherFields;
 use anvil::eth::backend::time::duration_since_unix_epoch;
 use anvil_core::eth::{EthRequest, Params};
 use anvil_polkadot::{
+    api_server::convert::from_h160_to_address,
     cmd::NodeArgs,
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
@@ -11,9 +13,9 @@ use anvil_rpc::{
     error::{ErrorCode, RpcError},
     response::ResponseResult,
 };
-use polkadot_sdk::sc_cli::clap::Parser;
-use std::time::{Duration, SystemTime};
-use subxt_signer::sr25519::dev;
+use polkadot_sdk::{pallet_revive::evm::Account, sc_cli::clap::Parser};
+use std::{thread::sleep, time::{Duration, SystemTime}};
+use subxt_signer::ecdsa::dev;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_invalid_mining() {
@@ -189,7 +191,16 @@ async fn test_auto_mine() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     assert_eq!(node.best_block_number().await, 0);
-    node.submit_remark(dev::alice()).await;
+
+    let fr = from_h160_to_address(Account::from(subxt_signer::eth::dev::alith()).address());
+    let to = from_h160_to_address(Account::from(subxt_signer::eth::dev::baltathar()).address());
+    let tx = TransactionRequest::default().value(U256::from(1)).from(fr).to(to);
+    let r = node
+        .eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx))))
+        .await
+        .unwrap();
+    println!("{:?}", r);
+    sleep(Duration::from_secs(2));
     assert_eq!(node.best_block_number().await, 1);
 }
 
