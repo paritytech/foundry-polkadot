@@ -148,7 +148,7 @@ impl TestNode {
         Decode::decode(&mut input).unwrap()
     }
 
-    pub async fn wait_for_block_with_number(&self, n: u32) {
+    async fn wait_for_block_with_number(&self, n: u32) {
         let mut import_stream = self.service.client.import_notification_stream();
 
         while let Some(notification) = import_stream.next().await {

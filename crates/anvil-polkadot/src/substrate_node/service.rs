@@ -18,7 +18,7 @@ use polkadot_sdk::{
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
-use tokio_stream::wrappers::ReceiverStream; // NEW
+use tokio_stream::wrappers::ReceiverStream;
 
 pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>;

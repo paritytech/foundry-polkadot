@@ -126,8 +126,6 @@ async fn test_manual_mining_with_interval() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_interval_mining() {
-    use anvil_polkadot::cmd::NodeArgs;
-    use polkadot_sdk::sc_cli::clap::Parser;
     let node_args = NodeArgs::parse_from(["anvil", "--block-time", "3", "--port", "0"]);
     let (mut anvil_node_config, substrate_node_config) = node_args.into_node_config().unwrap();
     anvil_node_config = anvil_node_config.set_silent(true);
@@ -178,7 +176,7 @@ async fn test_interval_mining() {
         timestamp3.saturating_sub(timestamp1),
         2000,
         100,
-        "Interval between the blocks if greater than the desired value.",
+        "Interval between the blocks is greater than the desired value.",
     );
 }
 
