@@ -840,7 +840,7 @@ async fn test_reset_fork_on_new_blocks() {
         .flat_map(futures::stream::iter);
     // the http watcher may fetch multiple blocks at once, so we set a timeout here to offset edge
     // cases where the stream immediately returns a block
-    tokio::time::sleep(Duration::from_secs(12)).await;
+    tokio::time::sleep(Duration::from_secs(24)).await;
     stream.next().await.unwrap();
     stream.next().await.unwrap();
 
