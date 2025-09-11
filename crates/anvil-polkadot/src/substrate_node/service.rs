@@ -11,7 +11,7 @@ use polkadot_sdk::{
     sc_service::{self, error::Error as ServiceError, Configuration, RpcHandlers, TaskManager},
     sc_transaction_pool::{self, TransactionPoolWrapper},
     sc_utils::mpsc::tracing_unbounded,
-    sp_core, sp_io,
+    sp_io,
     sp_keystore::KeystorePtr,
     sp_timestamp,
     substrate_frame_rpc_system::SystemApiServer,
@@ -34,8 +34,6 @@ pub struct Service {
     pub tx_pool: Arc<TransactionPoolHandle>,
     pub rpc_handlers: RpcHandlers,
     pub mining_engine: Arc<MiningEngine>,
-    pub seal_command_sender:
-        tokio::sync::mpsc::Sender<sc_consensus_manual_seal::EngineCommand<sp_core::H256>>,
 }
 
 /// Builds a new service for a full client.
@@ -76,7 +74,7 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         mining_mode,
         transaction_pool.clone(),
         time_manager.clone(),
-        seal_engine_command_sender.clone(),
+        seal_engine_command_sender,
     ));
     let rpc_handlers = spawn_rpc_server(
         &mut task_manager,
@@ -133,7 +131,6 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         tx_pool: transaction_pool,
         rpc_handlers,
         mining_engine,
-        seal_command_sender: seal_engine_command_sender,
     })
 }
 
