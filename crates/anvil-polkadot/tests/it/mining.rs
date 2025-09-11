@@ -108,19 +108,19 @@ async fn test_manual_mining_with_interval() {
         timestamp2.saturating_sub(timestamp1),
         3000,
         100,
-        "Interval between the blocks if greater than the desired value.",
+        "Interval between the blocks is outside of the desired range.",
     );
     assert_with_tolerance(
         timestamp3.saturating_sub(timestamp2),
         3000,
         100,
-        "Interval between the blocks if greater than the desired value.",
+        "Interval between the blocks is outside of the desired range.",
     );
     assert_with_tolerance(
         timestamp3.saturating_sub(timestamp1),
         6000,
         100,
-        "Interval between the blocks if greater than the desired value.",
+        "Interval between the blocks is outside of the desired range.",
     );
 }
 
@@ -152,7 +152,7 @@ async fn test_interval_mining() {
         after_mining.duration_since(before_mining).unwrap().as_millis(),
         3000,
         500,
-        "Interval between the blocks if greater than the desired value.",
+        "Interval between the blocks is outside of the desired range.",
     );
     let hash3 = node.block_hash_by_number(3).await.unwrap();
     let hash2 = node.block_hash_by_number(2).await.unwrap();
@@ -164,19 +164,19 @@ async fn test_interval_mining() {
         timestamp2.saturating_sub(timestamp1),
         1000,
         100,
-        "Interval between the blocks if greater than the desired value.",
+        "Interval between the blocks is outside of the desired range.",
     );
     assert_with_tolerance(
         timestamp3.saturating_sub(timestamp2),
         1000,
         100,
-        "Interval between the blocks if greater than the desired value.",
+        "Interval between the blocks is outside of the desired range."
     );
     assert_with_tolerance(
         timestamp3.saturating_sub(timestamp1),
         2000,
         100,
-        "Interval between the blocks is greater than the desired value.",
+        "Interval between the blocks is outside of the desired range.",
     );
 }
 
