@@ -170,7 +170,7 @@ async fn test_interval_mining() {
         timestamp3.saturating_sub(timestamp2),
         1000,
         100,
-        "Interval between the blocks is outside of the desired range."
+        "Interval between the blocks is outside of the desired range.",
     );
     assert_with_tolerance(
         timestamp3.saturating_sub(timestamp1),
