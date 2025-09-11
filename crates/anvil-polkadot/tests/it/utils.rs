@@ -11,12 +11,9 @@ use anvil_polkadot::{
 use anvil_rpc::response::ResponseResult;
 use eyre::{Result, WrapErr};
 use futures::{channel::oneshot, StreamExt};
-use pallet_revive_eth_rpc::{
-    subxt_client,
-    subxt_client::{system::calls::types::Remark, SrcChainConfig},
-};
 use parity_scale_codec::Decode;
 use polkadot_sdk::{
+    pallet_revive_eth_rpc::subxt_client::{self, system::calls::types::Remark},
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
@@ -25,7 +22,7 @@ use polkadot_sdk::{
 };
 use serde_json::{json, Value};
 use std::fmt::Debug;
-use subxt::OnlineClient;
+use subxt::{OnlineClient, PolkadotConfig};
 use subxt_signer::sr25519::Keypair;
 use tempfile::TempDir;
 
@@ -186,11 +183,12 @@ impl TestNode {
 
     pub async fn submit_remark(&self, signer: Keypair) {
         let url = format!("ws://127.0.0.1:{}", self.port);
-        let subxt_client = OnlineClient::<SrcChainConfig>::from_url(url)
+        let subxt_client = OnlineClient::<PolkadotConfig>::from_url(url)
             .await
             .wrap_err("Failed to create subxt client")
             .unwrap();
-        let tx_payload = subxt_client::tx().system().remark(b"bonjour".to_vec());
+        let remark_data = b"bonjour".to_vec();
+        let tx_payload = subxt_client::tx().system().remark(remark_data.clone());
         let res = subxt_client
             .tx()
             .sign_and_submit_then_watch_default(&tx_payload, &signer)
@@ -203,8 +201,9 @@ impl TestNode {
         let block_hash = res.block_hash();
         let block = subxt_client.blocks().at(block_hash).await.unwrap();
         let extrinsics = block.extrinsics().await.unwrap();
-        let _remarks =
+        let remarks =
             extrinsics.find::<Remark>().map(|remark| remark.unwrap().value).collect::<Vec<_>>();
+        assert_eq!(remarks[0].remark, remark_data);
     }
 }
 

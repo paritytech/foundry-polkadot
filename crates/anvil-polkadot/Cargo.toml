@@ -57,6 +57,7 @@ polkadot-sdk = { version = "2507.1.0", default-features = false, features = [
 	"substrate-frame-rpc-system",
 	"substrate-rpc-client",
 	"substrate-wasm-builder",
+	"pallet-revive-eth-rpc"
 ] }
 anvil.workspace = true
 anvil-core.workspace = true
@@ -129,7 +130,6 @@ chrono.workspace = true
 clap_complete_fig = "4"
 parity-scale-codec = "3.7.5"
 subxt = "0.41.0"
-pallet-revive-eth-rpc = "0.9.0"
 subxt-signer = "0.41.0"
 tokio-stream = "0.1.17"
 
