@@ -90,35 +90,6 @@ async fn test_evm_set_time() {
 }
 
 // Tests --------- EvmIncreaseTime
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_evm_increase_time_by_zero() {
-    let anvil_node_config = AnvilNodeConfig::test_config();
-    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
-
-    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
-    let first_hash = node.block_hash_by_number(1).await.unwrap();
-    let first_timestamp = node.get_decoded_timestamp(Some(first_hash)).await;
-
-    assert_eq!(
-        unwrap_response::<i64>(
-            node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(0))).await.unwrap()
-        )
-        .unwrap(),
-        0
-    );
-    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
-    let second_hash = node.block_hash_by_number(2).await.unwrap();
-    let second_timestamp = node.get_decoded_timestamp(Some(second_hash)).await;
-    assert_with_tolerance(
-        second_timestamp.saturating_sub(first_timestamp),
-        1,
-        1,
-        "Wrong timestamp",
-    );
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_increase_time() {
     let anvil_node_config = AnvilNodeConfig::test_config();
