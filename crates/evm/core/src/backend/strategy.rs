@@ -1,6 +1,5 @@
 use std::{any::Any, fmt::Debug};
-
-use crate::InspectorExt;
+use crate::{InspectorExt, utils::{configure_tx_req_env, new_evm_with_inspector}, backend::update_state};
 
 use super::{Backend, BackendInner, Fork, ForkDB, FoundryEvmInMemoryDB};
 use alloy_primitives::Address;
@@ -9,7 +8,7 @@ use eyre::{Context, Result};
 use revm::{
     db::CacheDB,
     primitives::{Env, EnvWithHandlerCfg, ResultAndState},
-    DatabaseRef, JournaledState,
+    DatabaseCommit, DatabaseRef, JournaledState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -183,21 +182,20 @@ impl BackendStrategyRunner for EvmBackendStrategyRunner {
         inspector: &mut dyn InspectorExt,
         _inspect_ctx: Box<dyn Any>,
     ) -> eyre::Result<()> {
-        use revm::DatabaseCommit;
         backend.commit(journaled_state.state.clone());
 
         let res = {
-            crate::utils::configure_tx_req_env(&mut env, tx, None)?;
+            configure_tx_req_env(&mut env, tx, None)?;
             let env = backend.env_with_handler_cfg(env);
 
             let mut db = backend.clone();
-            let mut evm = crate::utils::new_evm_with_inspector(&mut db, env, inspector);
+            let mut evm = new_evm_with_inspector(&mut db, env, inspector);
             evm.context.evm.journaled_state.depth = journaled_state.depth + 1;
             evm.transact()?
         };
 
         backend.commit(res.state);
-        crate::backend::update_state(&mut journaled_state.state, backend, None)?;
+        update_state(&mut journaled_state.state, backend, None)?;
 
         Ok(())
     }

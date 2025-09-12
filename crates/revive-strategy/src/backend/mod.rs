@@ -1,7 +1,7 @@
 use std::any::Any;
 
 use foundry_evm::backend::{
-    BackendStrategy, BackendStrategyContext, BackendStrategyRunner, EvmBackendStrategyRunner,
+    Backend, BackendStrategy, BackendStrategyContext, BackendStrategyRunner, EvmBackendStrategyRunner,
     ForkDB,
 };
 use foundry_evm::InspectorExt;
@@ -77,7 +77,7 @@ impl BackendStrategyRunner for ReviveBackendStrategyRunner {
 
     fn transact_from_tx(
         &self,
-        _backend: &mut foundry_evm::backend::Backend,
+        _backend: &mut Backend,
         _tx: &TransactionRequest,
         _env: Env,
         _journaled_state: &mut JournaledState,
