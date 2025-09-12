@@ -1,6 +1,6 @@
 use std::{any::Any, fmt::Debug};
 
-use crate::{InspectorExt, backend::JournaledState};
+use crate::{backend::JournaledState, InspectorExt};
 
 use super::{Backend, BackendInner, Fork, ForkDB, FoundryEvmInMemoryDB};
 use alloy_primitives::Address;
