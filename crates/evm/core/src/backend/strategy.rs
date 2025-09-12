@@ -1,14 +1,14 @@
 use std::{any::Any, fmt::Debug};
 
-use crate::InspectorExt;
+use crate::{InspectorExt, backend::JournaledState};
 
 use super::{Backend, BackendInner, Fork, ForkDB, FoundryEvmInMemoryDB};
 use alloy_primitives::Address;
 use eyre::{Context, Result};
 use revm::{
     db::CacheDB,
-    primitives::{EnvWithHandlerCfg, ResultAndState},
-    DatabaseRef, JournaledState,
+    primitives::{Env, EnvWithHandlerCfg, ResultAndState},
+    DatabaseRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -82,6 +82,17 @@ pub trait BackendStrategyRunner: Debug + Send + Sync {
         active: &ForkDB,
         fork_db: &mut ForkDB,
     );
+
+    /// Executes a given TransactionRequest, commits the new state to the DB
+    fn transact_from_tx(
+        &self,
+        backend: &mut Backend,
+        tx: &alloy_rpc_types::TransactionRequest,
+        env: Env,
+        journaled_state: &mut crate::backend::JournaledState,
+        inspector: &mut dyn crate::InspectorExt,
+        inspect_ctx: Box<dyn Any>,
+    ) -> eyre::Result<()>;
 }
 
 /// Implements [BackendStrategyRunner] for EVM.
@@ -160,6 +171,34 @@ impl BackendStrategyRunner for EvmBackendStrategyRunner {
         fork_db: &mut ForkDB,
     ) {
         merge_db_account_data(addr, active, fork_db);
+    }
+
+    fn transact_from_tx(
+        &self,
+        backend: &mut Backend,
+        tx: &alloy_rpc_types::TransactionRequest,
+        mut env: Env,
+        journaled_state: &mut crate::backend::JournaledState,
+        inspector: &mut dyn crate::InspectorExt,
+        _inspect_ctx: Box<dyn Any>,
+    ) -> eyre::Result<()> {
+        use revm::DatabaseCommit;
+        backend.commit(journaled_state.state.clone());
+
+        let res = {
+            crate::utils::configure_tx_req_env(&mut env, tx, None)?;
+            let env = backend.env_with_handler_cfg(env);
+
+            let mut db = backend.clone();
+            let mut evm = crate::utils::new_evm_with_inspector(&mut db, env, inspector);
+            evm.context.evm.journaled_state.depth = journaled_state.depth + 1;
+            evm.transact()?
+        };
+
+        backend.commit(res.state);
+        crate::backend::update_state(&mut journaled_state.state, backend, None)?;
+
+        Ok(())
     }
 }
 
