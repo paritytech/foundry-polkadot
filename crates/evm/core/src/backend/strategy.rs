@@ -1,14 +1,15 @@
 use std::{any::Any, fmt::Debug};
 
-use crate::{backend::JournaledState, InspectorExt};
+use crate::InspectorExt;
 
 use super::{Backend, BackendInner, Fork, ForkDB, FoundryEvmInMemoryDB};
 use alloy_primitives::Address;
+use alloy_rpc_types::TransactionRequest;
 use eyre::{Context, Result};
 use revm::{
     db::CacheDB,
     primitives::{Env, EnvWithHandlerCfg, ResultAndState},
-    DatabaseRef,
+    DatabaseRef, JournaledState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -87,10 +88,10 @@ pub trait BackendStrategyRunner: Debug + Send + Sync {
     fn transact_from_tx(
         &self,
         backend: &mut Backend,
-        tx: &alloy_rpc_types::TransactionRequest,
+        tx: &TransactionRequest,
         env: Env,
-        journaled_state: &mut crate::backend::JournaledState,
-        inspector: &mut dyn crate::InspectorExt,
+        journaled_state: &mut JournaledState,
+        inspector: &mut dyn InspectorExt,
         inspect_ctx: Box<dyn Any>,
     ) -> eyre::Result<()>;
 }
@@ -176,10 +177,10 @@ impl BackendStrategyRunner for EvmBackendStrategyRunner {
     fn transact_from_tx(
         &self,
         backend: &mut Backend,
-        tx: &alloy_rpc_types::TransactionRequest,
+        tx: &TransactionRequest,
         mut env: Env,
-        journaled_state: &mut crate::backend::JournaledState,
-        inspector: &mut dyn crate::InspectorExt,
+        journaled_state: &mut JournaledState,
+        inspector: &mut dyn InspectorExt,
         _inspect_ctx: Box<dyn Any>,
     ) -> eyre::Result<()> {
         use revm::DatabaseCommit;
