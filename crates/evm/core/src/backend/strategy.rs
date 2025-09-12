@@ -1,5 +1,10 @@
 use std::{any::Any, fmt::Debug};
-use crate::{InspectorExt, utils::{configure_tx_req_env, new_evm_with_inspector}, backend::update_state};
+
+use crate::{
+    backend::update_state,
+    utils::{configure_tx_req_env, new_evm_with_inspector},
+    InspectorExt,
+};
 
 use super::{Backend, BackendInner, Fork, ForkDB, FoundryEvmInMemoryDB};
 use alloy_primitives::Address;

@@ -1,11 +1,13 @@
 use std::any::Any;
 
-use foundry_evm::backend::{
-    Backend, BackendStrategy, BackendStrategyContext, BackendStrategyRunner, EvmBackendStrategyRunner,
-    ForkDB,
-};
-use foundry_evm::InspectorExt;
 use alloy_rpc_types::TransactionRequest;
+use foundry_evm::{
+    backend::{
+        Backend, BackendStrategy, BackendStrategyContext, BackendStrategyRunner,
+        EvmBackendStrategyRunner, ForkDB,
+    },
+    InspectorExt,
+};
 use revm::{primitives::Env, JournaledState};
 use serde::{Deserialize, Serialize};
 
