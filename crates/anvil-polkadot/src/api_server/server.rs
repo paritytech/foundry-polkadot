@@ -40,12 +40,12 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         match req {
             EthRequest::Mine(blocks, interval) => {
-                if blocks.is_some_and(|b| b >= U256::from(u64::MAX)) {
+                if blocks.is_some_and(|b| u64::try_from(b).is_err()) {
                     return ResponseResult::Error(RpcError::invalid_params(
                         "The number of blocks is too large",
                     ));
                 }
-                if interval.is_some_and(|i| i >= U256::from(u64::MAX)) {
+                if interval.is_some_and(|i| u64::try_from(i).is_err()) {
                     return ResponseResult::Error(RpcError::invalid_params(
                         "The interval between blocks is too large",
                     ));

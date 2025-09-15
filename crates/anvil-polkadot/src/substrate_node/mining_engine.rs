@@ -47,7 +47,7 @@ impl From<polkadot_sdk::sc_consensus_manual_seal::Error> for MiningError {
 pub enum MiningMode {
     /// Blocks are produced only in response to RPC calls.
     None,
-    /// Automatic block productiona t fixed time intervals.
+    /// Automatic block productiona at fixed time intervals.
     Interval { tick: Duration },
     /// Automatic block production triggered by new transactions.
     AutoMining,
@@ -152,9 +152,6 @@ impl MiningEngine {
     ) -> Result<(), Error> {
         info!("anvil_mine");
         let blocks = num_blocks.unwrap_or(1);
-        if blocks == 0 {
-            return Ok(());
-        }
         for _ in 0..blocks {
             if let Some(interval) = interval {
                 self.time_manager.increase_time(interval.as_secs());
@@ -416,7 +413,6 @@ async fn seal_now(
 type SealCommandStream = Pin<Box<dyn FusedStream<Item = ()> + Send>>;
 
 fn build_interval_stream(interval: Duration) -> SealCommandStream {
-    //let interval = Duration::from_millis(interval);
     let mut interval_ticker = interval_at(Instant::now() + interval, interval);
     interval_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -435,15 +431,22 @@ fn build_auto_stream(engine: &Arc<MiningEngine>) -> SealCommandStream {
 fn build_streams_for_mode(
     mode: MiningMode,
     engine: &Arc<MiningEngine>,
-) -> (Option<SealCommandStream>, Option<SealCommandStream>) {
-    let interval_stream = match mode {
+) -> SelectAll<SealCommandStream> {
+    let mut streams: Vec<SealCommandStream> = Vec::new();
+    if let Some(stream) = match mode {
         MiningMode::Interval { tick } | MiningMode::MixedMining { tick } => Some(tick),
         _ => None,
     }
-    .map(build_interval_stream);
-    let auto_stream = matches!(mode, MiningMode::AutoMining | MiningMode::MixedMining { .. })
-        .then(|| build_auto_stream(engine));
-    (interval_stream, auto_stream)
+    .map(build_interval_stream)
+    {
+        streams.push(stream)
+    }
+    if let Some(stream) = matches!(mode, MiningMode::AutoMining | MiningMode::MixedMining { .. })
+        .then(|| build_auto_stream(engine))
+    {
+        streams.push(stream)
+    }
+    select_all(streams)
 }
 
 async fn wait_for_mode_change(
@@ -469,8 +472,7 @@ async fn wait_for_mode_change(
 /// operations.
 ///
 /// The function runs indefinitely until the mining engine is shut down or a fatal
-/// error occurs. It uses `tokio::select!` to concurrently handle mode changes and
-/// mining triggers efficiently.
+/// error occurs.
 ///
 /// # Arguments
 /// * `engine` - Shared reference to the mining engine to control
@@ -495,16 +497,7 @@ pub async fn run_mining_engine(engine: Arc<MiningEngine>) {
         tokio::select! {
             new_mode = wait_for_mode_change(&engine, current_mode) => {
                 current_mode = Some(new_mode);
-                let (interval_stream, auto_stream) = build_streams_for_mode(new_mode, &engine);
-                let mut streams: Vec<SealCommandStream> = Vec::new();
-                if let Some(stream) = interval_stream {
-                    streams.push(stream);
-                }
-                if let Some(stream) = auto_stream {
-                    streams.push(stream);
-                }
-
-                combined_stream = select_all(streams);
+                combined_stream = build_streams_for_mode(new_mode, &engine);
             }
             Some(_) = combined_stream.next(), if !combined_stream.is_empty() => {
                 match seal_now(&engine.seal_command_sender).await {

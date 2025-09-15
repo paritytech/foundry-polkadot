@@ -34,7 +34,7 @@ async fn test_invalid_mining() {
     );
 
     assert!(matches!(
-        node.eth_rpc(EthRequest::Mine(Some(U256::from(u64::MAX)), None)).await.unwrap(),
+        node.eth_rpc(EthRequest::Mine(Some(U256::from(u128::MAX)), None)).await.unwrap(),
         ResponseResult::Error(RpcError {
             code: ErrorCode::InvalidParams,
             message,
@@ -42,7 +42,7 @@ async fn test_invalid_mining() {
         }) if message == "The number of blocks is too large"
     ));
     assert!(matches!(
-        node.eth_rpc(EthRequest::Mine(None, Some(U256::from(u64::MAX)))).await.unwrap(),
+        node.eth_rpc(EthRequest::Mine(None, Some(U256::from(u128::MAX)))).await.unwrap(),
         ResponseResult::Error(RpcError {
             code: ErrorCode::InvalidParams,
             message,
