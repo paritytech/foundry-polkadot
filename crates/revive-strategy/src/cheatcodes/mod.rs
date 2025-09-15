@@ -207,8 +207,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     }
 
     fn base_contract_deployed(&self, ctx: &mut dyn CheatcodeInspectorStrategyContext) {
-        // PVM mode is enabled, but no special handling needed for now
-        // Only intercept PVM-specific calls when needed in future implementations
         let ctx = get_context_ref_mut(ctx);
 
         ctx.base_contract_deployed = true;
