@@ -69,7 +69,7 @@ impl ApiServer {
 
         if let ResponseResult::Error(err) = &res {
             node_info!("\nRPC request failed:");
-            node_info!("    Request: {:?}", res);
+            node_info!("    Request: {:?}", req);
             node_info!("    Error: {}\n", err);
         }
 
