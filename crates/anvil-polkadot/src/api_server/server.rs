@@ -94,7 +94,8 @@ impl ApiServer {
     fn set_interval_mining(&self, interval: u64) -> Result<()> {
         node_info!("evm_setIntervalMining");
 
-        Ok(self.mining_engine.set_interval_mining(Duration::from_secs(interval)))
+        self.mining_engine.set_interval_mining(Duration::from_secs(interval));
+        Ok(())
     }
 
     fn get_interval_mining(&self) -> Result<Option<u64>> {
@@ -112,7 +113,8 @@ impl ApiServer {
     fn set_auto_mine(&self, enabled: bool) -> Result<()> {
         node_info!("evm_setAutomine");
 
-        Ok(self.mining_engine.set_auto_mine(enabled))
+        self.mining_engine.set_auto_mine(enabled);
+        Ok(())
     }
 
     async fn evm_mine(&self, mine: Option<Params<Option<MineOptions>>>) -> Result<String> {
