@@ -23,7 +23,7 @@ use tokio::{
 // Errors that can happen during the block production.
 #[derive(Debug, thiserror::Error)]
 pub enum MiningError {
-    #[error("Block production failed: {0:?}")]
+    #[error("Block production failed: {0}")]
     BlockProducing(#[from] BlockProducingError),
     #[error("Current mining mode can not answer this query.")]
     MiningModeMismatch,
