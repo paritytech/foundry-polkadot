@@ -156,8 +156,10 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         }
 
         let using_pvm = get_context_ref_mut(ccx.state.strategy.context.as_mut()).using_pvm;
+
         match cheatcode.as_any().type_id() {
             t if is::<pvmCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let pvmCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
                 if *enabled {
                     let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
@@ -169,6 +171,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 Ok(Default::default())
             }
             t if using_pvm && is::<dealCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+
                 let &dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
                 let old_balance = set_balance(account, newBalance, ccx.ecx);
@@ -177,6 +181,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 Ok(Default::default())
             }
             t if using_pvm && is::<setNonceCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+
                 let &setNonceCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
                 set_nonce(account, newNonce, ccx.ecx);
@@ -184,6 +190,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 Ok(Default::default())
             }
             t if using_pvm && is::<setNonceUnsafeCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 // TODO implement unsafe_set_nonce on polkadot-sdk
                 let &setNonceUnsafeCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
@@ -191,6 +198,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 Ok(Default::default())
             }
             t if using_pvm && is::<getNonce_0Call>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &getNonce_0Call { account } = cheatcode.as_any().downcast_ref().unwrap();
                 let nonce = execute_with_externalities(|externalities| {
                     externalities.execute_with(|| {
@@ -302,6 +310,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             })
         });
         let balance = U256::from_limbs(balance.0);
+        tracing::info!(operation = "get_balance" , using_pvm = ?ctx.using_pvm, target = ?address, balance = ?balance);
 
         // Skip the current BALANCE instruction since we've already handled it
         match interpreter.stack.push(balance) {
@@ -418,7 +427,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
-                crate::tracing::trace::<Runtime, _, _>(|| {
+                trace::<Runtime, _, _>(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
                         &H160::from_slice(input.caller().as_slice()),
                     ));

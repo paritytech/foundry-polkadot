@@ -241,6 +241,7 @@ function test_Balance() public {
     )
     .unwrap();
 
+    cmd.env("RUST_LOG", "revive_strategy");
     let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
@@ -257,6 +258,13 @@ Polkadot comes with native account abstraction support (so smart contracts are j
 coverned by code), and you should avoid differentiating between contracts and non-contract
 addresses.
 [FILE]
+[..] INFO revive_strategy::cheatcodes: startup PVM migration initiated
+[..] INFO revive_strategy::cheatcodes: switching to PVM
+[..] INFO revive_strategy::cheatcodes: startup PVM migration completed
+[..] INFO revive_strategy::cheatcodes: cheatcode=dealCall { account: 0x7fa9385be102ac3eac297483dd6233d62b3e1496, newBalance: 64000000000000000000 } using_pvm=true
+[..] INFO revive_strategy::cheatcodes: operation="get_balance" using_pvm=true target=0x7fa9385be102ac3eac297483dd6233d62b3e1496 balance=64000000000000000000
+[..] INFO revive_strategy::cheatcodes: cheatcode=dealCall { account: 0x7fa9385be102ac3eac297483dd6233d62b3e1496, newBalance: 65000000000000000000 } using_pvm=true
+[..] INFO revive_strategy::cheatcodes: operation="get_balance" using_pvm=true target=0x7fa9385be102ac3eac297483dd6233d62b3e1496 balance=65000000000000000000
 
 Ran 1 test for src/Balance.t.sol:Balance
 [PASS] test_Balance() ([GAS])
