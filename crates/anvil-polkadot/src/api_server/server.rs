@@ -1,33 +1,43 @@
 use crate::{
     api_server::{
         error::{Error, Result, ToRpcResponseResult},
+        revive_conversions::{
+            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId,
+        },
         ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
     substrate_node::mining_engine::MiningEngine,
 };
-use alloy_primitives::{B256, U256, U64};
-use alloy_rpc_types::anvil::MineOptions;
+use alloy_eips::BlockId;
+use alloy_primitives::{Address, B256, U256, U64};
+use alloy_rpc_types::{anvil::MineOptions, TransactionRequest};
+use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
-use futures::{channel::mpsc, StreamExt};
+use futures::{channel::mpsc, stream, StreamExt};
 use polkadot_sdk::{
-    pallet_revive::evm::{Account, ReceiptInfo},
+    pallet_revive::evm::{Account, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, ReceiptInfo},
     pallet_revive_eth_rpc::{
-        client::Client as EthRpcClient, subxt_client::SrcChainConfig, ReceiptExtractor,
-        ReceiptProvider, SubxtBlockInfoProvider,
+        client::Client as EthRpcClient,
+        subxt_client::{self, SrcChainConfig},
+        EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     },
     sc_service::RpcHandlers,
+    sp_core::{self, keccak_256},
 };
+use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
 use subxt::{
     backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
+    config::substrate::H256,
     ext::{
         jsonrpsee::core::traits::ToRpcParams,
         subxt_rpcs::{Error as SubxtRpcError, LegacyRpcMethods},
     },
+    utils::H160,
     OnlineClient,
 };
 
@@ -58,16 +68,34 @@ impl RpcClientT for InMemoryRpcClient {
 
     fn subscribe_raw<'a>(
         &'a self,
-        _sub: &'a str,
-        _params: Option<Box<RawValue>>,
+        sub: &'a str,
+        params: Option<Box<RawValue>>,
         _unsub: &'a str,
     ) -> RawRpcFuture<'a, RawRpcSubscription> {
-        unimplemented!("Not needed")
+        Box::pin(async move {
+            let subscription = self
+                .0
+                .handle()
+                .subscribe_unbounded(sub, Params(params))
+                .await
+                .map_err(|err| SubxtRpcError::Client(Box::new(err)))?;
+            let id = Value::from(subscription.subscription_id().to_owned())
+                .as_str()
+                .map(|s| s.to_string());
+            let raw_stream = stream::unfold(subscription, |mut sub| async move {
+                match sub.next::<Box<RawValue>>().await {
+                    Some(Ok((notification, _sub_id))) => Some((Ok(notification), sub)),
+                    Some(Err(e)) => Some((Err(SubxtRpcError::Client(Box::new(e))), sub)),
+                    None => None, // Subscription ended, Do something here? :-??
+                }
+            });
+            Ok(RawRpcSubscription { stream: Box::pin(raw_stream), id })
+        })
     }
 }
 
 pub struct Wallet {
-    _accounts: Vec<Account>,
+    accounts: Vec<Account>,
 }
 
 pub struct ApiServer {
@@ -75,7 +103,7 @@ pub struct ApiServer {
     logging_manager: LoggingManager,
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
-    _wallet: Wallet,
+    wallet: Wallet,
 }
 
 impl ApiServer {
@@ -126,7 +154,12 @@ impl ApiServer {
             logging_manager,
             mining_engine,
             eth_rpc_client,
-            _wallet: Wallet { _accounts: vec![] },
+            wallet: Wallet {
+                accounts: vec![
+                    Account::from(subxt_signer::eth::dev::baltathar()),
+                    Account::from(subxt_signer::eth::dev::alith()),
+                ],
+            },
         }
     }
 
@@ -170,10 +203,24 @@ impl ApiServer {
             EthRequest::EthGetTransactionReceipt(tx_hash) => {
                 self.transaction_receipt(tx_hash).await.to_rpc_result()
             }
-            EthRequest::EthEstimateGas(_call, _block, _overrides) => {
-                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            EthRequest::EthGetBalance(addr, block) => {
+                self.get_balance(addr, block).await.to_rpc_result()
             }
-
+            EthRequest::EthGetStorageAt(addr, slot, block) => {
+                self.get_storage_at(addr, slot, block).await.to_rpc_result()
+            }
+            EthRequest::EthGetCodeAt(addr, block) => {
+                self.get_code(addr, block).await.to_rpc_result()
+            }
+            EthRequest::EthGetBlockByHash(hash, full) => {
+                self.get_block_by_hash(hash, full).await.to_rpc_result()
+            }
+            EthRequest::EthEstimateGas(call, block, _overrides) => {
+                self.estimate_gas(call, block).await.to_rpc_result()
+            }
+            EthRequest::EthSendTransaction(request) => {
+                self.send_transaction(*request.clone()).await.to_rpc_result()
+            }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -192,10 +239,8 @@ impl ApiServer {
         self.logging_manager.set_enabled(enabled);
         Ok(())
     }
-}
 
-// Mining related RPCs.
-impl ApiServer {
+    // Mining related RPCs.
     async fn mine(&self, blocks: Option<U256>, interval: Option<U256>) -> Result<()> {
         node_info!("anvil_mine");
 
@@ -243,10 +288,8 @@ impl ApiServer {
         self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
         Ok("0x0".to_string())
     }
-}
 
-// TimeMachine RPCs
-impl ApiServer {
+    // TimeMachine RPCs
     fn set_block_timestamp_interval(&self, time: u64) -> Result<()> {
         node_info!("anvil_setBlockTimestampInterval");
 
@@ -287,11 +330,9 @@ impl ApiServer {
         let time = timestamp.to::<u64>();
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
-}
 
-// Revive RPCs 
-impl ApiServer {
-        fn eth_chain_id(&self) -> Result<U64> {
+    // Revive RPCs
+    fn eth_chain_id(&self) -> Result<U64> {
         node_info!("eth_chainId");
         Ok(U256::from(self.eth_rpc_client.chain_id()).to::<U64>())
     }
@@ -317,17 +358,169 @@ impl ApiServer {
         Ok(self.eth_rpc_client.receipt(&(tx_hash.0.into())).await)
     }
 
-    //async fn estimate_gas(
-    //    &self,
-    //    request: WithOtherFields<TransactionRequest>,
-    //    block: Option<alloy_rpc_types::BlockId>,
-    //) -> Result<U256> {
-    //    node_info!("eth_estimateGas");
-    //
-    //    let hash =
-    // self.eth_rpc_client.block_hash_for_tag(block.unwrap_or_default().into()).await?;
-    //    let runtime_api = self.eth_rpc_client.runtime_api(hash);
-    //    let dry_run = runtime_api.dry_run(transaction).await?;
-    //    Ok(dry_run.eth_gas)
-    //}
+    async fn get_balance(&self, addr: Address, block: Option<BlockId>) -> Result<U256> {
+        node_info!("eth_getBalance");
+        let hash = self
+            .eth_rpc_client
+            .block_hash_for_tag(ReviveBlockId::from(block).inner())
+            .await
+            .map_err(Error::Revive)?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let balance =
+            runtime_api.balance(ReviveAddress::from(addr).inner()).await.map_err(Error::Revive)?;
+        Ok(AlloyU256::from(balance).inner())
+    }
+
+    async fn get_storage_at(
+        &self,
+        addr: Address,
+        slot: U256,
+        block: Option<BlockId>,
+    ) -> Result<Bytes> {
+        let hash = self
+            .eth_rpc_client
+            .block_hash_for_tag(ReviveBlockId::from(block).inner())
+            .await
+            .map_err(Error::Revive)?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let bytes = runtime_api
+            .get_storage(ReviveAddress::from(addr).inner(), slot.to_be_bytes())
+            .await
+            .map_err(Error::Revive)?;
+        Ok(bytes.unwrap_or_default().into())
+    }
+
+    async fn get_code(&self, address: Address, block: Option<BlockId>) -> Result<Bytes> {
+        let hash = self
+            .eth_rpc_client
+            .block_hash_for_tag(ReviveBlockId::from(block).inner())
+            .await
+            .map_err(Error::Revive)?;
+        let code = self
+            .eth_rpc_client
+            .runtime_api(hash)
+            .code(ReviveAddress::from(address).inner())
+            .await
+            .map_err(Error::Revive)?;
+        Ok(code.into())
+    }
+
+    async fn get_block_by_hash(
+        &self,
+        block_hash: B256,
+        hydrated_transactions: bool,
+    ) -> Result<Option<Block>> {
+        let Some(block) = self
+            .eth_rpc_client
+            .block_by_hash(&H256::from_slice(block_hash.as_slice()))
+            .await
+            .map_err(Error::Revive)?
+        else {
+            return Ok(None);
+        };
+        let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
+        Ok(Some(block))
+    }
+
+    async fn estimate_gas(
+        &self,
+        request: WithOtherFields<TransactionRequest>,
+        block: Option<alloy_rpc_types::BlockId>,
+    ) -> Result<sp_core::U256> {
+        node_info!("eth_estimateGas");
+
+        let hash = self
+            .eth_rpc_client
+            .block_hash_for_tag(ReviveBlockId::from(block).inner())
+            .await
+            .map_err(Error::Revive)?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let dry_run = runtime_api
+            .dry_run(convert_to_generic_transaction(request.into_inner()))
+            .await
+            .map_err(Error::Revive)?;
+        Ok(dry_run.eth_gas)
+    }
+
+    async fn gas_price(&self) -> Result<sp_core::U256> {
+        let hash = self
+            .eth_rpc_client
+            .block_hash_for_tag(BlockTag::Latest.into())
+            .await
+            .map_err(Error::Revive)?;
+
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        runtime_api.gas_price().await.map_err(Error::Revive)
+    }
+
+    pub async fn get_transaction_count(
+        &self,
+        address: H160,
+        block: BlockNumberOrTagOrHash,
+    ) -> Result<sp_core::U256> {
+        let hash = self.eth_rpc_client.block_hash_for_tag(block).await.map_err(Error::Revive)?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let nonce = runtime_api.nonce(address).await.map_err(Error::Revive)?;
+        Ok(nonce)
+    }
+
+    async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
+        let hash = H256(keccak_256(&transaction.0));
+        let call = subxt_client::tx().revive().eth_transact(transaction.0);
+        let _tx_status = self
+            .eth_rpc_client
+            .submit_and_watch(call)
+            .await
+            .map_err(|err| {
+                node_info!("submit call failed: {err:?}");
+                err
+            })
+            .map_err(Error::Revive)?
+            .wait_for_finalized()
+            .await
+            .map_err(|err| SubxtRpcError::Client(Box::new(err)));
+        node_info!("send_raw_transaction hash: {hash:?}");
+
+        Ok(hash)
+    }
+
+    pub(crate) async fn send_transaction(
+        &self,
+        transaction_req: WithOtherFields<TransactionRequest>,
+    ) -> Result<H256> {
+        let mut transaction = convert_to_generic_transaction(transaction_req.clone().into_inner());
+        node_info!("{transaction:#?}");
+        let Some(from) = transaction.from else {
+            node_info!("Transaction must have a sender");
+            return Err(Error::EthRpc(EthRpcError::InvalidTransaction));
+        };
+
+        let account = self
+            .wallet
+            .accounts
+            .iter()
+            .find(|account| account.address() == from)
+            .ok_or(Error::EthRpc(EthRpcError::AccountNotFound(from)))?;
+
+        if transaction.gas.is_none() {
+            transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
+        }
+        if transaction.gas_price.is_none() {
+            transaction.gas_price = Some(self.gas_price().await?);
+        }
+        if transaction.nonce.is_none() {
+            transaction.nonce =
+                Some(self.get_transaction_count(from, BlockTag::Latest.into()).await?);
+        }
+        if transaction.chain_id.is_none() {
+            transaction.chain_id =
+                Some(sp_core::U256::from_big_endian(&self.eth_chain_id()?.to_be_bytes::<8>()));
+        }
+
+        let tx = transaction
+            .try_into_unsigned()
+            .map_err(|_| Error::EthRpc(EthRpcError::InvalidTransaction))?;
+        let payload = account.sign_transaction(tx).signed_payload();
+        self.send_raw_transaction(Bytes(payload)).await
+    }
 }

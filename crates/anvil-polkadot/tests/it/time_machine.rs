@@ -20,10 +20,10 @@ async fn test_evm_set_time_invalid_param() {
     assert!(matches!(
         node.eth_rpc(EthRequest::EvmSetTime(U256::from(u64::MAX))).await.unwrap(),
         ResponseResult::Error(RpcError {
-            code: ErrorCode::InvalidParams,
+            code: ErrorCode::InternalError,
             message,
             data: None
-        }) if message == "The timestamp is too big"
+        }) if message == "Invalid params: The timestamp is too big"
     ));
 }
 

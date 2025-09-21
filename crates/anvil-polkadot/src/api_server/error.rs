@@ -1,5 +1,6 @@
 use crate::substrate_node::mining_engine::MiningError;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
+use polkadot_sdk::pallet_revive_eth_rpc::{client::ClientError, EthRpcError};
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -10,6 +11,10 @@ pub enum Error {
     RpcUnimplemented,
     #[error("Invalid params: {0}")]
     InvalidParams(String),
+    #[error("Revive call failed: {0:?}")]
+    Revive(ClientError),
+    #[error("ETH RPC ERROR {0:?}")]
+    EthRpc(EthRpcError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

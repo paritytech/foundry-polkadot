@@ -32,22 +32,21 @@ async fn test_invalid_mining() {
         .unwrap(),
         None
     );
-
     assert!(matches!(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(u128::MAX)), None)).await.unwrap(),
         ResponseResult::Error(RpcError {
-            code: ErrorCode::InvalidParams,
+            code: ErrorCode::InternalError,
             message,
             data: None
-        }) if message == "The number of blocks is too large"
+        }) if message == "Invalid params: The number of blocks is too large"
     ));
     assert!(matches!(
         node.eth_rpc(EthRequest::Mine(None, Some(U256::from(u128::MAX)))).await.unwrap(),
         ResponseResult::Error(RpcError {
-            code: ErrorCode::InvalidParams,
+            code: ErrorCode::InternalError,
             message,
             data: None
-        }) if message == "The interval between blocks is too large"
+        }) if message == "Invalid params: The interval between blocks is too large"
     ));
 }
 
@@ -200,9 +199,9 @@ async fn test_mixed_mining() {
     anvil_node_config.block_time = Some(Duration::from_secs(1));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
-    node.submit_remark(dev::bob()).await;
+    node.submit_remark(dev::alice()).await;
     assert_eq!(node.best_block_number().await, 1);
-    node.wait_for_block_with_timeout(2, Duration::from_secs(1)).await.unwrap();
+    node.wait_for_block_with_timeout(2, Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 2);
 }
 

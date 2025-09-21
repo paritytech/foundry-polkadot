@@ -5,6 +5,7 @@ use futures::channel::{mpsc, oneshot};
 use server::ApiServer;
 
 mod error;
+pub mod revive_conversions;
 mod server;
 
 pub type ApiHandle = mpsc::Sender<ApiRequest>;
