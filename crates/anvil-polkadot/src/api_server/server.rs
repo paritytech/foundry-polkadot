@@ -186,6 +186,16 @@ impl ApiServer {
         res
     }
 
+    fn set_logging(&self, enabled: bool) -> Result<()> {
+        node_info!("anvil_setLoggingEnabled");
+
+        self.logging_manager.set_enabled(enabled);
+        Ok(())
+    }
+}
+
+// Mining related RPCs.
+impl ApiServer {
     async fn mine(&self, blocks: Option<U256>, interval: Option<U256>) -> Result<()> {
         node_info!("anvil_mine");
 
@@ -233,7 +243,10 @@ impl ApiServer {
         self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
         Ok("0x0".to_string())
     }
+}
 
+// TimeMachine RPCs
+impl ApiServer {
     fn set_block_timestamp_interval(&self, time: u64) -> Result<()> {
         node_info!("anvil_setBlockTimestampInterval");
 
@@ -274,15 +287,11 @@ impl ApiServer {
         let time = timestamp.to::<u64>();
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
+}
 
-    fn set_logging(&self, enabled: bool) -> Result<()> {
-        node_info!("anvil_setLoggingEnabled");
-
-        self.logging_manager.set_enabled(enabled);
-        Ok(())
-    }
-
-    fn eth_chain_id(&self) -> Result<U64> {
+// Revive RPCs 
+impl ApiServer {
+        fn eth_chain_id(&self) -> Result<U64> {
         node_info!("eth_chainId");
         Ok(U256::from(self.eth_rpc_client.chain_id()).to::<U64>())
     }
