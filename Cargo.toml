@@ -296,7 +296,7 @@ thiserror = "2"
 
 # allocators
 mimalloc = "0.1"
-tikv-jemallocator = "0.6"
+tikv-jemallocator = "0.5"
 tracy-client = "0.18"
 
 # misc
@@ -366,7 +366,7 @@ heck = "0.5"
 uuid = "1.17.0"
 flate2 = "1.1"
 
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false }
+
 
 ## Pinned dependencies. Enabled for the workspace in crates/test-utils.
 
