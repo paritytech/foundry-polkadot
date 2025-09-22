@@ -10,7 +10,9 @@ use crate::{
     config::AnvilNodeConfig,
     logging::LoggingManager,
     macros::node_info,
-    substrate_node::{error::ToRpcResponseResult, mining_engine::MiningEngine},
+    substrate_node::{
+        error::ToRpcResponseResult, mining_engine::MiningEngine, service::TransactionPoolHandle,
+    },
 };
 use alloy_primitives::U256;
 use anvil::eth::sign::DevSigner;
@@ -51,6 +53,7 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     pub(crate) eth_rpc_client: EthRpcClient,
     pub(crate) wallet: Wallet,
+    pub(crate) tx_pool: Arc<TransactionPoolHandle>,
 }
 
 struct InMemoryRpcClient(RpcHandlers);
@@ -86,7 +89,6 @@ impl RpcClientT for InMemoryRpcClient {
     ) -> RawRpcFuture<'a, RawRpcSubscription> {
         use serde_json::Value;
         println!("{:?}", sub);
-        assert_eq!(1, 0);
         Box::pin(async move {
             let subscription = self
                 .0
@@ -129,6 +131,7 @@ impl ApiServer {
         rpc_handlers: RpcHandlers,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
+        tx_pool: Arc<TransactionPoolHandle>,
     ) -> Self {
         use alloy_primitives::address;
         let rpc_client = RpcClient::new(InMemoryRpcClient(rpc_handlers));
@@ -179,6 +182,7 @@ impl ApiServer {
                     Account::from(subxt_signer::eth::dev::alith()),
                 ],
             },
+            tx_pool,
         }
     }
 

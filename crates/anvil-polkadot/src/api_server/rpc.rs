@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     api_server::{
         convert::{
@@ -12,13 +14,20 @@ use crate::{
 use alloy_primitives::{B256, U256, U64};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
+use parity_scale_codec::{Decode, DecodeLimit, Encode};
 use polkadot_sdk::{
+    frame_support::MAX_EXTRINSIC_DEPTH,
+    pallet_revive,
     pallet_revive::evm::{
         Block, BlockNumberOrTagOrHash, BlockTag, Bytes, GenericTransaction, ReceiptInfo,
+        TransactionSigned,
     },
     pallet_revive_eth_rpc::{subxt_client, EthRpcError},
+    sc_service::TransactionPool,
     sp_core::{self, keccak_256, H256, U256 as SU256},
+    sp_runtime,
 };
+use substrate_runtime::{RuntimeCall, UncheckedExtrinsic};
 use subxt::utils::H160;
 
 impl ApiServer {
@@ -164,7 +173,32 @@ impl ApiServer {
             .try_into_unsigned()
             .map_err(|_| Error::EthRpcError(EthRpcError::InvalidTransaction))?;
         let payload = account.sign_transaction(tx).signed_payload();
-        self.send_raw_transaction(Bytes(payload)).await
+
+        let hash = self.send_raw_transaction(Bytes(payload)).await?;
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        for tx in self.tx_pool.ready() {
+            // let data = <Vec<u8> as Decode>::decode(&mut &(tx.data.encode()[..])).unwrap();
+
+            let ext = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
+            )
+            .unwrap()
+            .0;
+
+            if let sp_runtime::generic::UncheckedExtrinsic {
+                function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                ..
+            } = ext
+            {
+                let tx = TransactionSigned::decode(&payload.to_vec()).unwrap();
+
+                panic!("{:#?}", tx);
+            }
+        }
+
+        Ok(hash)
     }
 
     pub(crate) async fn estimate_gas(

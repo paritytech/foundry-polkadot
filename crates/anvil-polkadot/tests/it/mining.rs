@@ -14,7 +14,10 @@ use anvil_rpc::{
     response::ResponseResult,
 };
 use polkadot_sdk::{pallet_revive::evm::Account, sc_cli::clap::Parser};
-use std::{thread::sleep, time::{Duration, SystemTime}};
+use std::{
+    thread::sleep,
+    time::{Duration, SystemTime},
+};
 use subxt_signer::ecdsa::dev;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -188,7 +191,7 @@ async fn test_auto_mine() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+    // unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     assert_eq!(node.best_block_number().await, 0);
 

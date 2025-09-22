@@ -22,10 +22,11 @@ pub fn spawn(substrate_service: &Service, logging_manager: LoggingManager) -> Ap
 
     let spawn_handle = substrate_service.task_manager.spawn_essential_handle();
     let rpc_handlers = substrate_service.rpc_handlers.clone();
+    let tx_pool = substrate_service.tx_pool.clone();
     let mining_engine = substrate_service.mining_engine.clone();
     spawn_handle.spawn("anvil-api-server", "anvil", async move {
         let api_server =
-            ApiServer::new(mining_engine, rpc_handlers, receiver, logging_manager).await;
+            ApiServer::new(mining_engine, rpc_handlers, receiver, logging_manager, tx_pool).await;
         api_server.run().await;
     });
 
