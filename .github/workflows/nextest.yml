@@ -80,6 +80,11 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install clang
+        id: install-clang
+        uses: egor-tensin/setup-clang@v1
+
+          
       # macOS-specific setup
       - name: Install libusb 1.0.27 (macOS)
         if: matrix.os == 'macos'
@@ -204,6 +209,9 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install clang
+        uses: egor-tensin/setup-clang@v1
+  
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
