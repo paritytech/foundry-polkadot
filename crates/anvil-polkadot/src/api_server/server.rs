@@ -8,7 +8,10 @@ use crate::{
     },
     logging::LoggingManager,
     macros::node_info,
-    substrate_node::mining_engine::MiningEngine,
+    substrate_node::{
+        mining_engine::MiningEngine,
+        service::{Service, TransactionPoolHandle},
+    },
 };
 use alloy_eips::BlockId;
 use alloy_primitives::{Address, B256, U256, U64};
@@ -30,6 +33,14 @@ use polkadot_sdk::{
 use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
+
+// Imports for txpool types
+use alloy_network::AnyRpcTransaction;
+use alloy_primitives::{Address, B256};
+use alloy_rpc_types::txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus};
+use polkadot_sdk::{sc_service::InPoolTransaction, sc_transaction_pool_api::TransactionPool};
+
+use indexmap::IndexMap;
 use subxt::{
     backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
     config::substrate::H256,
@@ -104,6 +115,7 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,
+    tx_pool: Arc<TransactionPoolHandle>,
 }
 
 impl ApiServer {
@@ -160,6 +172,7 @@ impl ApiServer {
                     Account::from(subxt_signer::eth::dev::alith()),
                 ],
             },
+            tx_pool: substrate_service.tx_pool.clone(),
         }
     }
 
@@ -220,6 +233,16 @@ impl ApiServer {
             }
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request.clone()).await.to_rpc_result()
+            }
+            // Txpool methods
+            EthRequest::TxPoolStatus(_) => self.txpool_status().await,
+            EthRequest::TxPoolInspect(_) => self.txpool_inspect().await,
+            EthRequest::TxPoolContent(_) => self.txpool_content().await,
+            // Anvil drop transaction methods
+            EthRequest::DropTransaction(tx_hash) => self.anvil_drop_transaction(tx_hash).await,
+            EthRequest::DropAllTransactions() => self.anvil_drop_all_transactions().await,
+            EthRequest::RemovePoolTransactions(address) => {
+                self.anvil_remove_pool_transactions(address).await
             }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
@@ -467,8 +490,7 @@ impl ApiServer {
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
         let hash = H256(keccak_256(&transaction.0));
         let call = subxt_client::tx().revive().eth_transact(transaction.0);
-        self
-            .eth_rpc_client
+        self.eth_rpc_client
             .submit(call)
             .await
             .map_err(|err| {
@@ -519,5 +541,73 @@ impl ApiServer {
             .map_err(|_| Error::EthRpc(EthRpcError::InvalidTransaction))?;
         let payload = account.sign_transaction(tx).signed_payload();
         self.send_raw_transaction(Bytes(payload)).await
+    }
+
+    /// Returns transaction pool status - IMPLEMENTED
+    async fn txpool_status(&self) -> ResponseResult {
+        node_info!("txpool_status");
+        let pool_status = self.tx_pool.status();
+        // Convert Substrate PoolStatus to Ethereum TxpoolStatus format
+        let status =
+            TxpoolStatus { pending: pool_status.ready as u64, queued: pool_status.future as u64 };
+        ResponseResult::Success(serde_json::to_value(status).unwrap_or_default())
+    }
+
+    /// Returns transaction summaries - NOT IMPLEMENTED
+    async fn txpool_inspect(&self) -> ResponseResult {
+        node_info!("txpool_inspect");
+        // TODO: Convert Substrate transactions to TxpoolInspectSummary format
+        let inspect = TxpoolInspect::default();
+        ResponseResult::Success(serde_json::to_value(inspect).unwrap_or_default())
+    }
+
+    /// Returns full transaction details - NOT IMPLEMENTED
+    async fn txpool_content(&self) -> ResponseResult {
+        node_info!("txpool_content");
+        // TODO: Convert Substrate transactions to AnyRpcTransaction format
+        let content = TxpoolContent::<AnyRpcTransaction>::default();
+        ResponseResult::Success(serde_json::to_value(content).unwrap_or_default())
+    }
+
+    /// Drop specific transaction by hash - NOT IMPLEMENTED
+    async fn anvil_drop_transaction(&self, _tx_hash: B256) -> ResponseResult {
+        node_info!("anvil_dropTransaction");
+        // TODO: Convert B256 to Substrate hash format and remove via report_invalid
+        ResponseResult::Success(serde_json::Value::Null)
+    }
+
+    /// Drop all transactions from pool - IMPLEMENTED
+    async fn anvil_drop_all_transactions(&self) -> ResponseResult {
+        node_info!("anvil_dropAllTransactions");
+
+        // Get all transactions from both queues
+        let ready_txs = self.tx_pool.ready();
+        let future_txs = self.tx_pool.futures();
+
+        let mut invalid_txs = IndexMap::new();
+
+        // Mark all ready transactions for removal
+        for tx in ready_txs {
+            invalid_txs.insert(*tx.hash(), None);
+        }
+
+        // Mark all future transactions for removal
+        for tx in future_txs {
+            invalid_txs.insert(*tx.hash(), None);
+        }
+
+        // Remove all transactions using report_invalid API
+        let removed = self.tx_pool.report_invalid(None, invalid_txs).await;
+
+        ResponseResult::Success(serde_json::Value::Bool(!removed.is_empty()))
+    }
+
+    /// Remove transactions from specific address - NOT IMPLEMENTED
+    async fn anvil_remove_pool_transactions(&self, _address: Address) -> ResponseResult {
+        node_info!("anvil_removePoolTransactions");
+
+        // TODO: Convert ETH Address to Substrate AccountId format
+        // Then filter transactions by sender and remove via report_invalid
+        ResponseResult::Success(serde_json::Value::Bool(true))
     }
 }

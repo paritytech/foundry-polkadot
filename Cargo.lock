@@ -1246,6 +1246,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "hyper 1.6.0",
+ "indexmap 2.9.0",
  "itertools 0.14.0",
  "op-alloy-consensus",
  "op-alloy-rpc-types",
