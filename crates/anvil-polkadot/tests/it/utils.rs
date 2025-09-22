@@ -3,6 +3,7 @@ use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{self, ApiHandle},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
+    genesis::GenesisConfig,
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
@@ -60,7 +61,7 @@ impl TestNode {
             Some(_) => {}
         }
 
-        let substrate_client = SubstrateCli { genesis_config: anvil_config.clone().into() };
+        let substrate_client = SubstrateCli { genesis_config: GenesisConfig::from(&anvil_config) };
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
         let (service, api) = spawn(anvil_config, config, LoggingManager::default()).await?;
 

@@ -5,6 +5,7 @@
 use crate::{
     api_server::ApiHandle,
     config::AnvilNodeConfig,
+    genesis::GenesisConfig,
     logging::{LoggingManager, NodeLogLayer},
     substrate_node::service::Service,
 };
@@ -88,7 +89,8 @@ pub fn run_command(args: Anvil) -> Result<()> {
 
     let (anvil_config, substrate_config) = args.node.into_node_config()?;
 
-    let substrate_client = opts::SubstrateCli { genesis_config: anvil_config.clone().into() };
+    let substrate_client =
+        opts::SubstrateCli { genesis_config: GenesisConfig::from(&anvil_config) };
 
     let tokio_runtime = build_runtime()?;
 

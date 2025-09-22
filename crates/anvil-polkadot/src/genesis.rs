@@ -47,8 +47,8 @@ pub struct GenesisConfig {
     pub gas_limit: Option<u128>,
 }
 
-impl From<AnvilNodeConfig> for GenesisConfig {
-    fn from(anvil_config: AnvilNodeConfig) -> Self {
+impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
+    fn from(anvil_config: &'a AnvilNodeConfig) -> Self {
         Self {
             chain_id: anvil_config.get_chain_id(),
             timestamp: anvil_config.get_genesis_timestamp(),
@@ -78,7 +78,7 @@ mod tests {
     use polkadot_sdk::sp_core::twox_128;
 
     #[test]
-    fn test_storage() {
+    fn test_storage_encoding() {
         let system_hash = twox_128(b"System");
         let number_hash = twox_128(b"Number");
         let mut concatenated_number_hash = [0u8; 32];
