@@ -224,8 +224,8 @@ jobs:
       - name: Install clang on macOS
         if: contains(matrix.runner_label, 'macos')
         run: |
-          brew install llvm@20
-          brew link llvm@20
+          brew install llvm
+          brew link llvm
           echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
 
