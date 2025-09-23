@@ -40,6 +40,16 @@ use alloy_primitives::{Address, B256};
 use alloy_rpc_types::txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus};
 use polkadot_sdk::{sc_service::InPoolTransaction, sc_transaction_pool_api::TransactionPool};
 
+use parity_scale_codec::{Decode, DecodeLimit, Encode};
+use polkadot_sdk::{
+    frame_support::MAX_EXTRINSIC_DEPTH,
+    pallet_revive,
+    pallet_revive::evm::TransactionSigned,
+    sp_core::{self, keccak_256, H256},
+    sp_runtime,
+};
+use substrate_runtime::{RuntimeCall, UncheckedExtrinsic};
+
 use indexmap::IndexMap;
 use subxt::{
     backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
@@ -569,11 +579,45 @@ impl ApiServer {
         ResponseResult::Success(serde_json::to_value(content).unwrap_or_default())
     }
 
-    /// Drop specific transaction by hash - NOT IMPLEMENTED
-    async fn anvil_drop_transaction(&self, _tx_hash: B256) -> ResponseResult {
+    /// Helper function to find transaction by ETH hash
+    fn find_transaction_by_eth_hash(&self, target_hash: B256) -> Option<H256> {
+        for tx in self.tx_pool.ready() {
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
+            ) {
+                if let sp_runtime::generic::UncheckedExtrinsic {
+                    function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0
+                {
+                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                        // Calculate the Ethereum transaction hash manually
+                        let eth_hash = keccak_256(&payload);
+                        let eth_hash_b256 = B256::from_slice(&eth_hash);
+                        if eth_hash_b256 == target_hash {
+                            return Some(*tx.hash());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Drop specific transaction by hash - IMPLEMENTED - NEED TESTING!
+    async fn anvil_drop_transaction(&self, tx_hash: B256) -> ResponseResult {
         node_info!("anvil_dropTransaction");
-        // TODO: Convert B256 to Substrate hash format and remove via report_invalid
-        ResponseResult::Success(serde_json::Value::Null)
+
+        if let Some(substrate_hash) = self.find_transaction_by_eth_hash(tx_hash) {
+            let mut invalid_txs = IndexMap::new();
+            invalid_txs.insert(substrate_hash, None);
+
+            let removed = self.tx_pool.report_invalid(None, invalid_txs).await;
+            ResponseResult::Success(serde_json::Value::Bool(!removed.is_empty()))
+        } else {
+            ResponseResult::Success(serde_json::Value::Bool(false))
+        }
     }
 
     /// Drop all transactions from pool - IMPLEMENTED
