@@ -206,7 +206,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-          cache-targets: false
+          prefix-key: "v0-rust-after-merge"
 
       - name: Setup Git config
         run: |
