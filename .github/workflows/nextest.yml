@@ -226,8 +226,8 @@ jobs:
         run: |
           brew install llvm@20
           brew link llvm@20
-          export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-          export LIBCLANG_PATH=$(brew --prefix llvm)/lib
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
