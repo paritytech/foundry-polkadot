@@ -245,4 +245,6 @@ jobs:
           echo "$LLVM_CONFIG_PATH"
           echo "$LIBCLANG_PATH"
           ls -ltrh target/
+          pwd
+          rm -rf target/
           cargo nextest run ${{ matrix.flags }}
