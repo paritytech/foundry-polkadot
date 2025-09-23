@@ -98,8 +98,10 @@ jobs:
           ./configure --prefix=/usr/local
           make
           sudo make install
-          brew install llvm@20
-          brew link llvm@20
+          brew install llvm
+          brew link llvm
+          export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+          export LIBCLANG_PATH=$(brew --prefix llvm)/lib
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -224,6 +226,8 @@ jobs:
         run: |
           brew install llvm@20
           brew link llvm@20
+          export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+          export LIBCLANG_PATH=$(brew --prefix llvm)/lib
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -236,4 +240,7 @@ jobs:
           SVM_TARGET_PLATFORM: ${{ matrix.svm_target_platform }}
           HTTP_ARCHIVE_URLS: ${{ secrets.HTTP_ARCHIVE_URLS }}
           WS_ARCHIVE_URLS: ${{ secrets.WS_ARCHIVE_URLS }}
-        run: cargo nextest run ${{ matrix.flags }}
+        run: |
+          echo "$LLVM_CONFIG_PATH"
+          echo "$LIBCLANG_PATH"
+          cargo nextest run ${{ matrix.flags }}
