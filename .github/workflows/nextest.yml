@@ -80,10 +80,11 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install clang
-        id: install-clang
-        if: matrix.os != 'macos'
-        uses: egor-tensin/setup-clang@v1
+      - name: Install clang on ubuntu
+        if: matrix.os == 'ubuntu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev
 
           
       # macOS-specific setup
@@ -97,6 +98,8 @@ jobs:
           ./configure --prefix=/usr/local
           make
           sudo make install
+          brew install llvm@20
+          brew link llvm@20
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -210,10 +213,18 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install clang
-        uses: egor-tensin/setup-clang@v1
-        if: matrix.os != 'macos'
+      - name: Install clang on ubuntu
+        if: contains(matrix.runner_label, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev
   
+      - name: Install clang on macOS
+        if: contains(matrix.runner_label, 'macos')
+        run: |
+          brew install llvm@20
+          brew link llvm@20
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
