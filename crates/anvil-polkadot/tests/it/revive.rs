@@ -105,6 +105,7 @@ async fn test_send_transaction() {
         .unwrap(),
     )
     .unwrap();
+    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
 
     let alith_final_balance = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetBalance(

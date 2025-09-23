@@ -467,20 +467,17 @@ impl ApiServer {
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
         let hash = H256(keccak_256(&transaction.0));
         let call = subxt_client::tx().revive().eth_transact(transaction.0);
-        let _tx_status = self
+        self
             .eth_rpc_client
-            .submit_and_watch(call)
+            .submit(call)
             .await
             .map_err(|err| {
                 node_info!("submit call failed: {err:?}");
                 err
             })
-            .map_err(Error::Revive)?
-            .wait_for_finalized()
-            .await
-            .map_err(|err| SubxtRpcError::Client(Box::new(err)));
-        node_info!("send_raw_transaction hash: {hash:?}");
+            .map_err(Error::Revive)?;
 
+        node_info!("send_raw_transaction hash: {hash:?}");
         Ok(hash)
     }
 
