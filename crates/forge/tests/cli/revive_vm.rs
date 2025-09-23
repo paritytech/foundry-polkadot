@@ -294,7 +294,8 @@ contract Warp is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
+    cmd.env("RUST_LOG", "revive_strategy");
+    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -310,6 +311,12 @@ Polkadot comes with native account abstraction support (so smart contracts are j
 coverned by code), and you should avoid differentiating between contracts and non-contract
 addresses.
 [FILE]
+[..] INFO revive_strategy::cheatcodes: startup PVM migration initiated
+[..] INFO revive_strategy::cheatcodes: switching to PVM
+[..] INFO revive_strategy::cheatcodes: startup PVM migration completed
+[..] INFO revive_strategy::cheatcodes: cheatcode=pvmCall { enabled: true } using_pvm=true
+[..] INFO revive_strategy::cheatcodes: already in PVM
+[..] INFO revive_strategy::cheatcodes: cheatcode=warpCall { newTimestamp: 100 } using_pvm=true
 
 Ran 1 test for src/Warp.t.sol:Warp
 [PASS] test_Warp() ([GAS])

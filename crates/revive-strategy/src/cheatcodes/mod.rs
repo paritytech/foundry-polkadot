@@ -243,6 +243,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_pvm && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
 
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 set_timestamp(newTimestamp, ccx.ecx);
 
                 Ok(Default::default())
