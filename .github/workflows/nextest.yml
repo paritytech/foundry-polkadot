@@ -82,6 +82,7 @@ jobs:
 
       - name: Install clang
         id: install-clang
+        if: matrix.os != 'macos'
         uses: egor-tensin/setup-clang@v1
 
           
@@ -211,6 +212,7 @@ jobs:
 
       - name: Install clang
         uses: egor-tensin/setup-clang@v1
+        if: matrix.os != 'macos'
   
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
