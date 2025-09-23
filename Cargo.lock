@@ -1220,8 +1220,8 @@ dependencies = [
  "serde",
  "serde_json",
  "substrate-runtime",
- "subxt 0.41.0",
- "subxt-signer 0.41.0",
+ "subxt",
+ "subxt-signer",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
@@ -7152,7 +7152,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "snapbox",
- "subxt 0.41.0",
+ "subxt",
  "tempfile",
  "tokio",
  "tracing",
@@ -7237,25 +7237,11 @@ dependencies = [
 
 [[package]]
 name = "frame-decode"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7cb8796f93fa038f979a014234d632e9688a120e745f936e2635123c77537f7"
-dependencies = [
- "frame-metadata 21.0.0",
- "parity-scale-codec",
- "scale-decode",
- "scale-info",
- "scale-type-resolver",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "frame-decode"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e56c0e51972d7b26ff76966c4d0f2307030df9daa5ce0885149ece1ab7ca5ad"
 dependencies = [
- "frame-metadata 23.0.0",
+ "frame-metadata",
  "parity-scale-codec",
  "scale-decode",
  "scale-info",
@@ -7311,29 +7297,6 @@ dependencies = [
 
 [[package]]
 name = "frame-metadata"
-version = "20.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26de808fa6461f2485dc51811aefed108850064994fb4a62b3ac21ffa62ac8df"
-dependencies = [
- "cfg-if",
- "parity-scale-codec",
- "scale-info",
- "serde",
-]
-
-[[package]]
-name = "frame-metadata"
-version = "21.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20dfd1d7eae1d94e32e869e2fb272d81f52dd8db57820a373adb83ea24d7d862"
-dependencies = [
- "cfg-if",
- "parity-scale-codec",
- "scale-info",
-]
-
-[[package]]
-name = "frame-metadata"
 version = "23.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8c26fcb0454397c522c05fdad5380c4e622f8a875638af33bff5a320d1fc965"
@@ -7371,7 +7334,7 @@ dependencies = [
  "bitflags 1.3.2",
  "docify",
  "environmental",
- "frame-metadata 23.0.0",
+ "frame-metadata",
  "frame-support-procedural",
  "impl-trait-for-tuples",
  "k256",
@@ -8049,7 +8012,6 @@ checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
  "ahash",
  "allocator-api2",
- "serde",
 ]
 
 [[package]]
@@ -12780,7 +12742,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "substrate-bn",
- "subxt-signer 0.43.0",
+ "subxt-signer",
 ]
 
 [[package]]
@@ -12811,8 +12773,8 @@ dependencies = [
  "sp-weights",
  "sqlx",
  "substrate-prometheus-endpoint",
- "subxt 0.43.0",
- "subxt-signer 0.43.0",
+ "subxt",
+ "subxt-signer",
  "thiserror 1.0.69",
  "tokio",
 ]
@@ -16287,16 +16249,6 @@ dependencies = [
 
 [[package]]
 name = "ruzstd"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5174a470eeb535a721ae9fdd6e291c2411a906b96592182d05217591d5c5cf7b"
-dependencies = [
- "byteorder",
- "derive_more 0.99.20",
-]
-
-[[package]]
-name = "ruzstd"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3640bec8aad418d7d03c72ea2de10d5c646a598f9883c7babc160d91e3c1b26c"
@@ -18273,60 +18225,6 @@ dependencies = [
 
 [[package]]
 name = "smoldot"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "966e72d77a3b2171bb7461d0cb91f43670c63558c62d7cf42809cae6c8b6b818"
-dependencies = [
- "arrayvec 0.7.6",
- "async-lock",
- "atomic-take",
- "base64 0.22.1",
- "bip39",
- "blake2-rfc",
- "bs58",
- "chacha20",
- "crossbeam-queue",
- "derive_more 0.99.20",
- "ed25519-zebra",
- "either",
- "event-listener 5.4.1",
- "fnv",
- "futures-lite",
- "futures-util",
- "hashbrown 0.14.5",
- "hex",
- "hmac 0.12.1",
- "itertools 0.13.0",
- "libm",
- "libsecp256k1",
- "merlin",
- "nom 7.1.3",
- "num-bigint",
- "num-rational",
- "num-traits",
- "pbkdf2 0.12.2",
- "pin-project 1.1.10",
- "poly1305",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "ruzstd 0.6.0",
- "schnorrkel 0.11.5",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sha3",
- "siphasher 1.0.1",
- "slab",
- "smallvec",
- "soketto",
- "twox-hash 1.6.3",
- "wasmi 0.32.3",
- "x25519-dalek",
- "zeroize",
-]
-
-[[package]]
-name = "smoldot"
 version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16e5723359f0048bf64bfdfba64e5732a56847d42c4fd3fe56f18280c813413"
@@ -18363,7 +18261,7 @@ dependencies = [
  "poly1305",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
- "ruzstd 0.8.1",
+ "ruzstd",
  "schnorrkel 0.11.5",
  "serde",
  "serde_json",
@@ -18376,42 +18274,6 @@ dependencies = [
  "twox-hash 2.1.2",
  "wasmi 0.40.0",
  "x25519-dalek",
- "zeroize",
-]
-
-[[package]]
-name = "smoldot-light"
-version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a33b06891f687909632ce6a4e3fd7677b24df930365af3d0bcb078310129f3f"
-dependencies = [
- "async-channel 2.5.0",
- "async-lock",
- "base64 0.22.1",
- "blake2-rfc",
- "bs58",
- "derive_more 0.99.20",
- "either",
- "event-listener 5.4.1",
- "fnv",
- "futures-channel",
- "futures-lite",
- "futures-util",
- "hashbrown 0.14.5",
- "hex",
- "itertools 0.13.0",
- "log",
- "lru 0.12.5",
- "parking_lot 0.12.4",
- "pin-project 1.1.10",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "serde",
- "serde_json",
- "siphasher 1.0.1",
- "slab",
- "smol",
- "smoldot 0.18.0",
  "zeroize",
 ]
 
@@ -18447,7 +18309,7 @@ dependencies = [
  "siphasher 1.0.1",
  "slab",
  "smol",
- "smoldot 0.19.4",
+ "smoldot",
  "zeroize",
 ]
 
@@ -19180,7 +19042,7 @@ name = "sp-metadata-ir"
 version = "0.6.0"
 source = "git+https://github.com/paritytech/polkadot-sdk.git?branch=master#277a26585b3d7e38668d5068d2f10ef39051f5d6"
 dependencies = [
- "frame-metadata 23.0.0",
+ "frame-metadata",
  "parity-scale-codec",
  "scale-info",
 ]
@@ -20176,43 +20038,6 @@ checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "subxt"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03459d84546def5e1d0d22b162754609f18e031522b0319b53306f5829de9c09"
-dependencies = [
- "async-trait",
- "derive-where",
- "either",
- "frame-metadata 20.0.0",
- "futures",
- "hex",
- "jsonrpsee",
- "parity-scale-codec",
- "primitive-types 0.13.1",
- "scale-bits",
- "scale-decode",
- "scale-encode",
- "scale-info",
- "scale-value",
- "serde",
- "serde_json",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "subxt-core 0.41.0",
- "subxt-lightclient 0.41.0",
- "subxt-macro 0.41.0",
- "subxt-metadata 0.41.0",
- "subxt-rpcs 0.41.0",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
- "wasm-bindgen-futures",
- "web-time",
-]
-
-[[package]]
-name = "subxt"
 version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74791ddeaaa6de42e7cc8a715c83eb73303f513f90af701fd07eb2caad92ed84"
@@ -20220,7 +20045,7 @@ dependencies = [
  "async-trait",
  "derive-where",
  "either",
- "frame-metadata 23.0.0",
+ "frame-metadata",
  "futures",
  "hex",
  "jsonrpsee",
@@ -20234,11 +20059,11 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "subxt-core 0.43.0",
- "subxt-lightclient 0.43.0",
- "subxt-macro 0.43.0",
- "subxt-metadata 0.43.0",
- "subxt-rpcs 0.43.0",
+ "subxt-core",
+ "subxt-lightclient",
+ "subxt-macro",
+ "subxt-metadata",
+ "subxt-rpcs",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
@@ -20246,23 +20071,6 @@ dependencies = [
  "url",
  "wasm-bindgen-futures",
  "web-time",
-]
-
-[[package]]
-name = "subxt-codegen"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "324c52c09919fec8c22a4b572a466878322e99fe14a9e3d50d6c3700a226ec25"
-dependencies = [
- "heck 0.5.0",
- "parity-scale-codec",
- "proc-macro2",
- "quote",
- "scale-info",
- "scale-typegen",
- "subxt-metadata 0.41.0",
- "syn 2.0.104",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -20277,39 +20085,9 @@ dependencies = [
  "quote",
  "scale-info",
  "scale-typegen",
- "subxt-metadata 0.43.0",
+ "subxt-metadata",
  "syn 2.0.104",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "subxt-core"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66ef00be9d64885ec94e478a58e4e39d222024b20013ae7df4fc6ece545391aa"
-dependencies = [
- "base58",
- "blake2 0.10.6",
- "derive-where",
- "frame-decode 0.7.1",
- "frame-metadata 20.0.0",
- "hashbrown 0.14.5",
- "hex",
- "impl-serde",
- "keccak-hash",
- "parity-scale-codec",
- "primitive-types 0.13.1",
- "scale-bits",
- "scale-decode",
- "scale-encode",
- "scale-info",
- "scale-value",
- "serde",
- "serde_json",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "subxt-metadata 0.41.0",
- "thiserror 2.0.12",
- "tracing",
 ]
 
 [[package]]
@@ -20321,8 +20099,8 @@ dependencies = [
  "base58",
  "blake2 0.10.6",
  "derive-where",
- "frame-decode 0.8.3",
- "frame-metadata 23.0.0",
+ "frame-decode",
+ "frame-metadata",
  "hashbrown 0.14.5",
  "hex",
  "impl-serde",
@@ -20337,25 +20115,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "subxt-metadata 0.43.0",
+ "subxt-metadata",
  "thiserror 2.0.12",
- "tracing",
-]
-
-[[package]]
-name = "subxt-lightclient"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce07c2515b2e63b85ec3043fe4461b287af0615d4832c2fe6e81ba780b906bc0"
-dependencies = [
- "futures",
- "futures-util",
- "serde",
- "serde_json",
- "smoldot-light 0.16.2",
- "thiserror 2.0.12",
- "tokio",
- "tokio-stream",
  "tracing",
 ]
 
@@ -20369,27 +20130,11 @@ dependencies = [
  "futures-util",
  "serde",
  "serde_json",
- "smoldot-light 0.17.2",
+ "smoldot-light",
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tracing",
-]
-
-[[package]]
-name = "subxt-macro"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c2c8da275a620dd676381d72395dfea91f0a6cd849665b4f1d0919371850701"
-dependencies = [
- "darling 0.20.11",
- "parity-scale-codec",
- "proc-macro-error2",
- "quote",
- "scale-typegen",
- "subxt-codegen 0.41.0",
- "subxt-utils-fetchmetadata 0.41.0",
- "syn 2.0.104",
 ]
 
 [[package]]
@@ -20403,25 +20148,10 @@ dependencies = [
  "proc-macro-error2",
  "quote",
  "scale-typegen",
- "subxt-codegen 0.43.0",
- "subxt-metadata 0.43.0",
- "subxt-utils-fetchmetadata 0.43.0",
+ "subxt-codegen",
+ "subxt-metadata",
+ "subxt-utils-fetchmetadata",
  "syn 2.0.104",
-]
-
-[[package]]
-name = "subxt-metadata"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fff4591673600c4388e21305788282414d26c791b4dee21b7cb0b19c10076f98"
-dependencies = [
- "frame-decode 0.7.1",
- "frame-metadata 20.0.0",
- "hashbrown 0.14.5",
- "parity-scale-codec",
- "scale-info",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -20430,37 +20160,13 @@ version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c134068711c0c46906abc0e6e4911204420331530738e18ca903a5469364d9f"
 dependencies = [
- "frame-decode 0.8.3",
- "frame-metadata 23.0.0",
+ "frame-decode",
+ "frame-metadata",
  "hashbrown 0.14.5",
  "parity-scale-codec",
  "scale-info",
  "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "subxt-rpcs"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ba7494d250d65dc3439365ac5e8e0fbb9c3992e6e84b7aa01d69e082249b8b8"
-dependencies = [
- "derive-where",
- "frame-metadata 20.0.0",
- "futures",
- "hex",
- "impl-serde",
- "jsonrpsee",
- "parity-scale-codec",
- "primitive-types 0.13.1",
- "serde",
- "serde_json",
- "subxt-core 0.41.0",
- "subxt-lightclient 0.41.0",
- "thiserror 2.0.12",
- "tokio-util",
- "tracing",
- "url",
 ]
 
 [[package]]
@@ -20471,7 +20177,7 @@ checksum = "25de7727144780d780a6a7d78bbfd28414b8adbab68b05e87329c367d7705be4"
 dependencies = [
  "derive-where",
  "finito",
- "frame-metadata 23.0.0",
+ "frame-metadata",
  "futures",
  "hex",
  "impl-serde",
@@ -20480,41 +20186,13 @@ dependencies = [
  "primitive-types 0.13.1",
  "serde",
  "serde_json",
- "subxt-core 0.43.0",
- "subxt-lightclient 0.43.0",
+ "subxt-core",
+ "subxt-lightclient",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "subxt-signer"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a2370298a210ed1df26152db7209a85e0ed8cfbce035309c3b37f7b61755377"
-dependencies = [
- "base64 0.22.1",
- "bip39",
- "cfg-if",
- "crypto_secretbox",
- "hex",
- "hmac 0.12.1",
- "parity-scale-codec",
- "pbkdf2 0.12.2",
- "regex",
- "schnorrkel 0.11.5",
- "scrypt 0.11.0",
- "secp256k1 0.30.0",
- "secrecy 0.10.3",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "subxt-core 0.41.0",
- "thiserror 2.0.12",
- "zeroize",
 ]
 
 [[package]]
@@ -20542,20 +20220,9 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "subxt-core 0.43.0",
+ "subxt-core",
  "thiserror 2.0.12",
  "zeroize",
-]
-
-[[package]]
-name = "subxt-utils-fetchmetadata"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc868b55fe2303788dc7703457af390111940c3da4714b510983284501780ed5"
-dependencies = [
- "hex",
- "parity-scale-codec",
- "thiserror 2.0.12",
 ]
 
 [[package]]

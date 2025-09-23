@@ -129,8 +129,8 @@ clap_complete = { version = "4" }
 chrono.workspace = true
 clap_complete_fig = "4"
 parity-scale-codec = "3.7.5"
-subxt = "0.41.0"
-subxt-signer = "0.41.0"
+subxt = "0.43.0"
+subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
 
 [dev-dependencies]
