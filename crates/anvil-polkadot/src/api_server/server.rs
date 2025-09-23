@@ -467,8 +467,7 @@ impl ApiServer {
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
         let hash = H256(keccak_256(&transaction.0));
         let call = subxt_client::tx().revive().eth_transact(transaction.0);
-        self
-            .eth_rpc_client
+        self.eth_rpc_client
             .submit(call)
             .await
             .map_err(|err| {
