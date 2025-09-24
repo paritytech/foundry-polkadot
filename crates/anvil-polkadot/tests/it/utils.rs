@@ -18,6 +18,7 @@ use polkadot_sdk::{
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
     sc_network_types::multiaddr::Protocol,
+    sc_service::TaskManager,
     sp_core::{storage::StorageKey, twox_128, H256},
 };
 use serde_json::{json, Value};
@@ -30,6 +31,7 @@ pub struct TestNode {
     pub service: Service,
     pub api: ApiHandle,
     _temp_dir: Option<TempDir>,
+    _task_manager: TaskManager,
     port: u16,
 }
 
@@ -62,14 +64,15 @@ impl TestNode {
 
         let substrate_client = SubstrateCli {};
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
-        let (service, api) = spawn(anvil_config, config, LoggingManager::default()).await?;
+        let (task_manager, service, api) =
+            spawn(anvil_config, config, LoggingManager::default()).await?;
 
         let port = match service.rpc_handlers.listen_addresses()[0].clone().pop().unwrap() {
             Protocol::Tcp(port) => port,
             _ => panic!("Expected TCP protocol"),
         };
 
-        Ok(Self { service, api, _temp_dir: temp_dir, port })
+        Ok(Self { service, api, _temp_dir: temp_dir, port, _task_manager: task_manager })
     }
 
     pub async fn eth_rpc(&mut self, req: EthRequest) -> Result<ResponseResult> {

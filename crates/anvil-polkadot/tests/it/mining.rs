@@ -1,5 +1,5 @@
 use crate::utils::{assert_with_tolerance, unwrap_response, TestNode};
-use alloy_primitives::{Address, U256};
+use alloy_primitives::U256;
 use alloy_rpc_types::{anvil::MineOptions, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil::eth::backend::time::duration_since_unix_epoch;
@@ -14,7 +14,10 @@ use anvil_rpc::{
     response::ResponseResult,
 };
 use polkadot_sdk::{pallet_revive::evm::Account, sc_cli::clap::Parser};
-use std::{thread::sleep, time::{Duration, SystemTime}};
+use std::{
+    thread::sleep,
+    time::{Duration, SystemTime},
+};
 use subxt_signer::ecdsa::dev;
 
 #[tokio::test(flavor = "multi_thread")]

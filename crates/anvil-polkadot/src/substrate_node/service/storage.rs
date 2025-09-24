@@ -1,10 +1,13 @@
 use codec::{Decode, Encode};
 use polkadot_sdk::{
+    frame_system, pallet_balances::AccountData,
     pallet_revive_eth_rpc::subxt_client::src_chain::runtime_types::pallet_revive::storage::ContractInfo,
+    parachains_common::Nonce,
 };
+use substrate_runtime::Balance;
 
 #[derive(Encode, Decode)]
-pub struct AccountInfo {
+pub struct ReviveAccountInfo {
     pub account_type: AccountType,
     pub dust: u32,
 }
@@ -15,6 +18,8 @@ pub enum AccountType {
     EOA,
 }
 
+pub type SystemAccountInfo = frame_system::AccountInfo<Nonce, AccountData<Balance>>;
+
 pub mod well_known_keys {
     use codec::Encode;
     use polkadot_sdk::{
@@ -22,10 +27,13 @@ pub mod well_known_keys {
         sp_core::{blake2_128, twox_128, H160, H256},
     };
 
-    pub const TOTAL_ISSUANCE: &str =
-        "c2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80";
+    // Hex-encoded key: 0xc2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80
+    pub const TOTAL_ISSUANCE: [u8; 32] = [
+        194, 38, 18, 118, 204, 157, 31, 133, 152, 234, 75, 106, 116, 177, 92, 47, 87, 200, 117,
+        228, 207, 247, 65, 72, 228, 98, 143, 38, 75, 151, 76, 128,
+    ];
 
-    // Hex-encode key: 0x9527366927478e710d3f7fb77c6d1f89
+    // Hex-encoded key: 0x9527366927478e710d3f7fb77c6d1f89
     pub const CHAIN_ID: [u8; 16] = [
         149u8, 39u8, 54u8, 105u8, 39u8, 71u8, 142u8, 113u8, 13u8, 63u8, 127u8, 183u8, 124u8, 109u8,
         31u8, 137u8,
@@ -47,7 +55,7 @@ pub mod well_known_keys {
         key
     }
 
-    pub fn nonce(account_id: AccountId) -> Vec<u8> {
+    pub fn system_account_info(account_id: AccountId) -> Vec<u8> {
         let mut key = Vec::new();
         key.extend_from_slice(&twox_128("System".as_bytes()));
         key.extend_from_slice(&twox_128("Account".as_bytes()));
@@ -57,7 +65,7 @@ pub mod well_known_keys {
         key
     }
 
-    pub fn account_info(address: H160) -> Vec<u8> {
+    pub fn revive_account_info(address: H160) -> Vec<u8> {
         let mut key = Vec::new();
         key.extend_from_slice(&twox_128("Revive".as_bytes()));
         key.extend_from_slice(&twox_128("AccountInfoOf".as_bytes()));

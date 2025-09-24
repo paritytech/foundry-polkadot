@@ -1,7 +1,6 @@
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, U160, U256 as AU256};
 use alloy_rpc_types::{request::TransactionRequest, AccessList};
-use alloy_signer::k256::elliptic_curve::weierstrass::add;
 use polkadot_sdk::{
     pallet_revive::evm::{
         AccessListEntry, BlockNumberOrTagOrHash, BlockTag, Byte, GenericTransaction,
@@ -89,7 +88,10 @@ pub(crate) fn try_convert_transaction_request(
             .max_priority_fee_per_gas
             .map(|mpfpg| SU256::from(mpfpg)),
         nonce: transaction.nonce.map(|nonce| SU256::from(nonce)),
-        to: transaction.from.map(|addr| from_address_to_h160(addr)),
+        to: transaction
+            .to
+            .and_then(|tx_kind| tx_kind.into_to())
+            .map(|addr| from_address_to_h160(addr)),
         r#type: transaction.transaction_type.map(|byte| Byte::from(byte)),
         value: transaction.value.map(|value| from_alloy_u256_to_sp_u256(value)),
     }

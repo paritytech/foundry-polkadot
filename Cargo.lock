@@ -1230,6 +1230,7 @@ dependencies = [
  "anvil-core",
  "anvil-rpc",
  "anvil-server",
+ "assert_matches",
  "async-stream",
  "async-trait",
  "axum",

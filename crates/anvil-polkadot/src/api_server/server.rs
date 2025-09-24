@@ -12,7 +12,7 @@ use crate::{
     substrate_node::{
         mining_engine::MiningEngine,
         service::{
-            storage::{AccountInfo, AccountType},
+            storage::{AccountType, ReviveAccountInfo},
             BackendWithOverlay, Client, Service,
         },
     },
@@ -26,11 +26,11 @@ use codec::Encode;
 use futures::{channel::mpsc, StreamExt};
 use polkadot_sdk::{
     pallet_revive::{
-        evm::{Account, Block, BlockNumberOrTagOrHash, BlockTag, GenericTransaction, ReceiptInfo},
+        evm::{Account, Block, BlockNumberOrTagOrHash, BlockTag, ReceiptInfo},
         ReviveApi,
     },
     pallet_revive_eth_rpc::{
-        client::Client as EthRpcClient,
+        client::{Client as EthRpcClient, SubscriptionType},
         subxt_client::{
             self,
             runtime_types::{
@@ -46,7 +46,6 @@ use polkadot_sdk::{
     sc_service::RpcHandlers,
     sp_api::ProvideRuntimeApi,
     sp_core::{self, keccak_256, Hasher, H160, H256, U256 as SU256},
-    sp_io,
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
@@ -61,7 +60,6 @@ use subxt::{
     },
     OnlineClient,
 };
-use subxt_signer::ecdsa::dev;
 
 struct InMemoryRpcClient(RpcHandlers);
 
@@ -94,8 +92,6 @@ impl RpcClientT for InMemoryRpcClient {
         params: Option<Box<RawValue>>,
         _unsub: &'a str,
     ) -> RawRpcFuture<'a, RawRpcSubscription> {
-        use serde_json::Value;
-        println!("{:?}", sub);
         Box::pin(async move {
             let subscription = self
                 .0
@@ -103,31 +99,17 @@ impl RpcClientT for InMemoryRpcClient {
                 .subscribe_unbounded(sub, Params(params))
                 .await
                 .map_err(|err| SubxtRpcError::Client(Box::new(err)))?;
-
-            let id: Value = Value::from(subscription.subscription_id().to_owned());
-            let stream = async_stream::stream! {
-                let mut sub = subscription;
-                loop {
-                    match sub.next::<Box<RawValue>>().await {
-                        Some(Ok((notification, _sub_id))) => {
-                            yield Ok(notification);
-                        }
-                        Some(Err(e)) => {
-                            yield Err(SubxtRpcError::Client(Box::new(e)));
-                            break;
-                        }
-                        None => {
-                            // Subscription ended
-                            break;
-                        }
-                    }
+            let id = serde_json::Value::from(subscription.subscription_id().to_owned())
+                .as_str()
+                .map(|s| s.to_string());
+            let raw_stream = futures::stream::unfold(subscription, |mut sub| async move {
+                match sub.next::<Box<RawValue>>().await {
+                    Some(Ok((notification, _sub_id))) => Some((Ok(notification), sub)),
+                    Some(Err(e)) => Some((Err(SubxtRpcError::Client(Box::new(e))), sub)),
+                    None => None, // Subscription ended, Do something here? :-??
                 }
-            };
-            // Try creating RawRpcSubscription directly
-            Ok(RawRpcSubscription {
-                stream: Box::pin(stream),
-                id: id.as_str().map(|s| s.to_string()),
-            })
+            });
+            Ok(RawRpcSubscription { stream: Box::pin(raw_stream), id })
         })
     }
 }
@@ -148,7 +130,7 @@ pub struct ApiServer {
 
 impl ApiServer {
     pub async fn new(
-        substrate_service: &Service,
+        substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
     ) -> Self {
@@ -187,6 +169,20 @@ impl ApiServer {
             EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
                 .await
                 .unwrap();
+
+        let eth_rpc_client_clone = eth_rpc_client.clone();
+        substrate_service.spawn_handle.spawn("block-subscription", "None", async move {
+            let eth_rpc_client = eth_rpc_client_clone;
+            let fut1 = eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::BestBlocks);
+            let fut2 =
+                eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::FinalizedBlocks);
+
+            let res = tokio::try_join!(fut1, fut2).map(|_| ());
+
+            if let Err(err) = res {
+                panic!("Block subscription task failed: {err:?}",)
+            }
+        });
 
         Self {
             req_receiver,
@@ -279,6 +275,13 @@ impl ApiServer {
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request).await.to_rpc_result()
             }
+            EthRequest::EthGetTransactionCount(addr, block) => self
+                .get_transaction_count(
+                    from_address_to_h160(addr),
+                    to_block_number_or_tag_or_hash(block),
+                )
+                .await
+                .to_rpc_result(),
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -419,13 +422,13 @@ impl ApiServer {
 
         let mut account_info = self
             .backend
-            .read_account_info(latest_block, address)?
-            .unwrap_or_else(|| AccountInfo { account_type: AccountType::EOA, dust: 0 });
+            .read_revive_account_info(latest_block, address)?
+            .unwrap_or_else(|| ReviveAccountInfo { account_type: AccountType::EOA, dust: 0 });
 
         if account_info.dust != dust {
             account_info.dust = dust;
 
-            self.backend.inject_account_info(latest_block, address, account_info);
+            self.backend.inject_revive_account_info(latest_block, address, account_info);
         }
 
         Ok(())
@@ -438,11 +441,15 @@ impl ApiServer {
 
         let account_id = self.get_account_id(latest_block, address);
 
-        self.backend.inject_nonce(
-            latest_block,
-            account_id,
-            value.try_into().map_err(|_| Error::NonceOverflow)?,
-        );
+        let mut account_info = self
+            .backend
+            .read_system_account_info(latest_block, account_id.clone())
+            .unwrap()
+            .unwrap_or_default();
+
+        account_info.nonce = value.try_into().map_err(|_| Error::NonceOverflow)?;
+
+        self.backend.inject_system_account_info(latest_block, account_id, account_info);
 
         Ok(())
     }
@@ -450,8 +457,8 @@ impl ApiServer {
     fn set_storage_at(&self, address: Address, key: U256, value: B256) -> Result<()> {
         let latest_block = self.backend.blockchain().info().best_hash;
 
-        let Some(AccountInfo { account_type: AccountType::Contract(contract_info), .. }) =
-            self.backend.read_account_info(latest_block, address)?
+        let Some(ReviveAccountInfo { account_type: AccountType::Contract(contract_info), .. }) =
+            self.backend.read_revive_account_info(latest_block, address)?
         else {
             return Ok(())
         };
@@ -476,13 +483,16 @@ impl ApiServer {
 
         let code_hash = H256(keccak_256(&bytes));
 
-        let account_info = match self.backend.read_account_info(latest_block, address)? {
+        let account_info = match self.backend.read_revive_account_info(latest_block, address)? {
             None => {
                 let contract_info = new_contract_info(&address, code_hash);
 
-                AccountInfo { account_type: AccountType::Contract(contract_info), dust: 0 }
+                ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust: 0 }
             }
-            Some(AccountInfo { account_type: AccountType::Contract(mut contract_info), dust }) => {
+            Some(ReviveAccountInfo {
+                account_type: AccountType::Contract(mut contract_info),
+                dust,
+            }) => {
                 if contract_info.code_hash != code_hash {
                     // Remove the pristine code and code info for the old hash.
                     self.backend.inject_pristine_code(latest_block, contract_info.code_hash, None);
@@ -491,16 +501,16 @@ impl ApiServer {
 
                 contract_info.code_hash = code_hash;
 
-                AccountInfo { account_type: AccountType::Contract(contract_info), dust }
+                ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust }
             }
-            Some(AccountInfo { account_type: AccountType::EOA, dust }) => {
+            Some(ReviveAccountInfo { account_type: AccountType::EOA, dust }) => {
                 let contract_info = new_contract_info(&address, code_hash);
 
-                AccountInfo { account_type: AccountType::Contract(contract_info), dust }
+                ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust }
             }
         };
 
-        self.backend.inject_account_info(latest_block, address, account_info);
+        self.backend.inject_revive_account_info(latest_block, address, account_info);
 
         let code_info = CodeInfo {
             owner: <[u8; 32]>::from(account_id).into(),
@@ -527,12 +537,16 @@ impl ApiServer {
 
     fn eth_chain_id(&self) -> Result<U64> {
         node_info!("eth_chainId");
-        Ok(U256::from(self.eth_rpc_client.chain_id()).to::<U64>())
+        let latest_block = self.backend.blockchain().info().best_hash;
+
+        Ok(U256::from(self.chain_id(latest_block)).to::<U64>())
     }
 
     fn network_id(&self) -> Result<u64> {
         node_info!("eth_networkId");
-        Ok(self.eth_rpc_client.chain_id())
+        let latest_block = self.backend.blockchain().info().best_hash;
+
+        Ok(self.chain_id(latest_block))
     }
 
     fn net_listening(&self) -> Result<bool> {
@@ -628,8 +642,10 @@ impl ApiServer {
 
     pub(crate) async fn send_transaction(
         &self,
-        mut transaction_req: WithOtherFields<TransactionRequest>,
+        transaction_req: WithOtherFields<TransactionRequest>,
     ) -> Result<H256> {
+        let latest_block = self.backend.blockchain().info().best_hash;
+
         let mut transaction = try_convert_transaction_request(transaction_req.clone().into_inner());
         node_info!("{transaction:#?}");
 
@@ -660,7 +676,7 @@ impl ApiServer {
 
         if transaction.chain_id.is_none() {
             transaction.chain_id =
-                Some(from_alloy_u256_to_sp_u256(U256::from(self.eth_chain_id()?)));
+                Some(from_alloy_u256_to_sp_u256(U256::from(self.chain_id(latest_block))));
         }
 
         let tx = transaction
@@ -714,12 +730,20 @@ impl ApiServer {
 
     // ----- Helpers
 
+    fn chain_id(&self, at: Hash) -> u64 {
+        self.backend.read_chain_id(at).unwrap_or(420_420_420)
+    }
+
     fn get_account_id(&self, block: Hash, address: Address) -> AccountId {
-        self.client.runtime_api().account_id(block, address).unwrap()
+        self.client.runtime_api().account_id(block, from_address_to_h160(address)).unwrap()
     }
 
     fn construct_balance_with_dust(&self, block: Hash, value: U256) -> (Balance, u32) {
-        self.client.runtime_api().new_balance_with_dust(block, value).unwrap()
+        self.client
+            .runtime_api()
+            .new_balance_with_dust(block, from_alloy_u256_to_sp_u256(value))
+            .unwrap()
+            .unwrap()
     }
 }
 

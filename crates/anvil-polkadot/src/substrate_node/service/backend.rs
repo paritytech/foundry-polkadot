@@ -1,5 +1,5 @@
 use crate::substrate_node::service::{
-    storage::{well_known_keys, AccountInfo},
+    storage::{well_known_keys, ReviveAccountInfo, SystemAccountInfo},
     Backend,
 };
 use alloy_primitives::{Address, Bytes};
@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use polkadot_sdk::{
     pallet_balances::AccountData,
     pallet_revive_eth_rpc::subxt_client::runtime_types::pallet_revive::vm::CodeInfo,
-    parachains_common::{AccountId, Hash, Nonce},
+    parachains_common::{AccountId, Hash},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
     sp_blockchain,
@@ -25,12 +25,18 @@ pub enum BackendError {
     Client(#[from] sp_blockchain::Error),
     #[error("Could not find total issuance in the state")]
     MissingTotalIssuance,
+    #[error("Could not find chain id in the state")]
+    MissingChainId,
     #[error("Unable to decode total issuance")]
     DecodeTotalIssuance(codec::Error),
+    #[error("Unable to decode chain id")]
+    DecodeChainId(codec::Error),
     #[error("Unable to decode balance")]
     DecodeBalance(codec::Error),
-    #[error("Unable to decode account info")]
-    DecodeAccountInfo(codec::Error),
+    #[error("Unable to decode revive account info")]
+    DecodeReviveAccountInfo(codec::Error),
+    #[error("Unable to decode system account info")]
+    DecodeSystemAccountInfo(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -64,29 +70,59 @@ impl BackendWithOverlay {
             .transpose()
     }
 
+    pub fn read_chain_id(&self, hash: Hash) -> Result<u64> {
+        let key = well_known_keys::CHAIN_ID;
+
+        let value = self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingChainId)?;
+        u64::decode(&mut &value[..]).map_err(|err| BackendError::DecodeChainId(err))
+    }
+
     pub fn read_total_issuance(&self, hash: Hash) -> Result<Balance> {
-        let key = hex::decode(well_known_keys::TOTAL_ISSUANCE).unwrap();
+        let key = well_known_keys::TOTAL_ISSUANCE;
 
-        println!("total issuance key: {:?}", key.clone());
-
-        let value = self.read_top_state(hash, key)?.ok_or(BackendError::MissingTotalIssuance)?;
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingTotalIssuance)?;
         Balance::decode(&mut &value[..]).map_err(|err| BackendError::DecodeTotalIssuance(err))
     }
 
-    pub fn read_account_info(&self, hash: Hash, address: Address) -> Result<Option<AccountInfo>> {
-        let key = well_known_keys::account_info(H160::from_slice(address.as_slice()));
+    pub fn read_system_account_info(
+        &self,
+        hash: Hash,
+        account_id: AccountId,
+    ) -> Result<Option<SystemAccountInfo>> {
+        let key = well_known_keys::system_account_info(account_id);
 
         self.read_top_state(hash, key)?
             .map(|value| {
-                AccountInfo::decode(&mut &value[..])
-                    .map_err(|err| BackendError::DecodeAccountInfo(err))
+                SystemAccountInfo::decode(&mut &value[..])
+                    .map_err(|err| BackendError::DecodeSystemAccountInfo(err))
             })
             .transpose()
     }
 
-    pub fn inject_nonce(&self, at: Hash, account_id: AccountId, value: Nonce) {
+    pub fn read_revive_account_info(
+        &self,
+        hash: Hash,
+        address: Address,
+    ) -> Result<Option<ReviveAccountInfo>> {
+        let key = well_known_keys::revive_account_info(H160::from_slice(address.as_slice()));
+
+        self.read_top_state(hash, key)?
+            .map(|value| {
+                ReviveAccountInfo::decode(&mut &value[..])
+                    .map_err(|err| BackendError::DecodeReviveAccountInfo(err))
+            })
+            .transpose()
+    }
+
+    pub fn inject_system_account_info(
+        &self,
+        at: Hash,
+        account_id: AccountId,
+        value: SystemAccountInfo,
+    ) {
         let mut overrides = self.overrides.lock();
-        overrides.set_nonce(at, account_id, value);
+        overrides.set_system_account_info(at, account_id, value);
     }
 
     pub fn inject_chain_id(&self, at: Hash, chain_id: u64) {
@@ -104,9 +140,9 @@ impl BackendWithOverlay {
         overrides.set_balance(at, account_id, value);
     }
 
-    pub fn inject_account_info(&self, at: Hash, address: Address, info: AccountInfo) {
+    pub fn inject_revive_account_info(&self, at: Hash, address: Address, info: ReviveAccountInfo) {
         let mut overrides = self.overrides.lock();
-        overrides.set_account_info(at, address, info);
+        overrides.set_revive_account_info(at, address, info);
     }
 
     pub fn inject_pristine_code(&self, at: Hash, code_hash: H256, code: Option<Bytes>) {
@@ -183,9 +219,14 @@ impl StorageOverrides {
         self.add(latest_block, changeset);
     }
 
-    fn set_nonce(&mut self, latest_block: Hash, account_id: AccountId, nonce: Nonce) {
+    fn set_system_account_info(
+        &mut self,
+        latest_block: Hash,
+        account_id: AccountId,
+        info: SystemAccountInfo,
+    ) {
         let mut changeset = BlockOverrides::default();
-        changeset.top.insert(well_known_keys::nonce(account_id), Some(nonce.encode()));
+        changeset.top.insert(well_known_keys::system_account_info(account_id), Some(info.encode()));
 
         self.add(latest_block, changeset);
     }
@@ -212,10 +253,15 @@ impl StorageOverrides {
         self.add(latest_block, changeset);
     }
 
-    fn set_account_info(&mut self, latest_block: Hash, address: Address, info: AccountInfo) {
+    fn set_revive_account_info(
+        &mut self,
+        latest_block: Hash,
+        address: Address,
+        info: ReviveAccountInfo,
+    ) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(
-            well_known_keys::account_info(H160::from_slice(address.as_slice())),
+            well_known_keys::revive_account_info(H160::from_slice(address.as_slice())),
             Some(info.encode()),
         );
 

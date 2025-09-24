@@ -8,7 +8,10 @@ use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
     sc_network_types::{self, multiaddr::Multiaddr},
     sc_rpc_api::DenyUnsafe,
-    sc_service::{self, error::Error as ServiceError, Configuration, RpcHandlers, TaskManager},
+    sc_service::{
+        self, error::Error as ServiceError, Configuration, RpcHandlers, SpawnTaskHandle,
+        TaskManager,
+    },
     sc_transaction_pool::{self},
     sc_utils::mpsc::tracing_unbounded,
     sp_keystore::KeystorePtr,
@@ -33,8 +36,9 @@ pub type TransactionPoolHandle = sc_transaction_pool::TransactionPoolHandle<Bloc
 
 type SelectChain = sc_consensus::LongestChain<Backend, Block>;
 
+#[derive(Clone)]
 pub struct Service {
-    pub task_manager: TaskManager,
+    pub spawn_handle: SpawnTaskHandle,
     pub client: Arc<Client>,
     pub backend: Arc<Backend>,
     pub tx_pool: Arc<TransactionPoolHandle>,
@@ -44,7 +48,10 @@ pub struct Service {
 }
 
 /// Builds a new service for a full client.
-pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Service, ServiceError> {
+pub fn new(
+    anvil_config: &AnvilNodeConfig,
+    config: Configuration,
+) -> Result<(TaskManager, Service), ServiceError> {
     let storage_overrides = Arc::new(Mutex::new(StorageOverrides::new()));
 
     let (client, backend, keystore, mut task_manager) = client::new_client(
@@ -131,15 +138,17 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         authorship_future,
     );
 
-    Ok(Service {
-        task_manager,
+    let service = Service {
+        spawn_handle: task_manager.spawn_handle(),
         client,
         backend,
         tx_pool: transaction_pool,
         rpc_handlers,
         storage_overrides,
         mining_engine,
-    })
+    };
+
+    Ok((task_manager, service))
 }
 
 fn spawn_rpc_server(
