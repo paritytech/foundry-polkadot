@@ -10,50 +10,38 @@ use crate::{
     macros::node_info,
     substrate_node::{
         mining_engine::MiningEngine,
-        service::{Service, TransactionPoolHandle},
+        service::TransactionPoolHandle,
     },
 };
 use alloy_eips::BlockId;
+use alloy_network::AnyRpcTransaction;
 use alloy_primitives::{Address, B256, U256, U64};
-use alloy_rpc_types::{anvil::MineOptions, TransactionRequest};
+use alloy_rpc_types::{anvil::MineOptions, TransactionRequest, txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus}};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use futures::{channel::mpsc, stream, StreamExt};
+use indexmap::IndexMap;
+use parity_scale_codec::{DecodeLimit, Encode};
 use polkadot_sdk::{
-    pallet_revive::evm::{Account, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, ReceiptInfo},
+    frame_support::MAX_EXTRINSIC_DEPTH,
+    pallet_revive::{self, evm::{Account, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, ReceiptInfo, TransactionSigned}},
     pallet_revive_eth_rpc::{
         client::Client as EthRpcClient,
         subxt_client::{self, SrcChainConfig},
         EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     },
-    sc_service::RpcHandlers,
-    sp_core::{self, keccak_256},
+    sc_service::{InPoolTransaction, RpcHandlers},
+    sc_transaction_pool_api::TransactionPool,
+    sp_core::{self, keccak_256, H256},
+    sp_runtime,
 };
 use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
-
-// Imports for txpool types
-use alloy_network::AnyRpcTransaction;
-use alloy_primitives::{Address, B256};
-use alloy_rpc_types::txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus};
-use polkadot_sdk::{sc_service::InPoolTransaction, sc_transaction_pool_api::TransactionPool};
-
-use parity_scale_codec::{Decode, DecodeLimit, Encode};
-use polkadot_sdk::{
-    frame_support::MAX_EXTRINSIC_DEPTH,
-    pallet_revive,
-    pallet_revive::evm::TransactionSigned,
-    sp_core::{self, keccak_256, H256},
-    sp_runtime,
-};
 use substrate_runtime::{RuntimeCall, UncheckedExtrinsic};
-
-use indexmap::IndexMap;
 use subxt::{
     backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
-    config::substrate::H256,
     ext::{
         jsonrpsee::core::traits::ToRpcParams,
         subxt_rpcs::{Error as SubxtRpcError, LegacyRpcMethods},
@@ -134,6 +122,7 @@ impl ApiServer {
         rpc_handlers: RpcHandlers,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
+        tx_pool: Arc<TransactionPoolHandle>,
     ) -> Self {
         let rpc_client = RpcClient::new(InMemoryRpcClient(rpc_handlers));
         let api =
@@ -182,7 +171,7 @@ impl ApiServer {
                     Account::from(subxt_signer::eth::dev::alith()),
                 ],
             },
-            tx_pool: substrate_service.tx_pool.clone(),
+            tx_pool,
         }
     }
 
@@ -591,7 +580,7 @@ impl ApiServer {
                     ..
                 } = ext.0
                 {
-                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                    if let Ok(_signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
                         // Calculate the Ethereum transaction hash manually
                         let eth_hash = keccak_256(&payload);
                         let eth_hash_b256 = B256::from_slice(&eth_hash);
