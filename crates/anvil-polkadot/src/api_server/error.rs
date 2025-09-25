@@ -41,11 +41,14 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
             Ok(val) => to_rpc_result(val),
             Err(err) => match err {
                 Error::Mining(mining_error) => match mining_error {
-                    MiningError::BlockProducing(error) => RpcError::internal_error_with(format!(
-                        "Failed to produce a block: {error}"
-                    ))
-                    .into(),
-                    MiningError::MiningModeMismatch => todo!(),
+                    MiningError::BlockProducing(error) => {
+                        RpcError::internal_error_with(format!("Failed to produce a block: {error}"))
+                            .into()
+                    }
+                    MiningError::MiningModeMismatch => {
+                        RpcError::invalid_params("Current mining mode can not answer thise query.")
+                            .into()
+                    }
                     MiningError::Timestamp => {
                         RpcError::invalid_params("Current timestamp is newer.").into()
                     }
