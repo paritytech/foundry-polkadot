@@ -6,6 +6,7 @@ use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{self, ApiHandle, revive_conversions::ReviveAddress},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
+    init_tracing,
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
@@ -64,8 +65,13 @@ impl TestNode {
 
         let substrate_client = SubstrateCli {};
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
-        let (service, task_manager, api) =
-            spawn(anvil_config, config, LoggingManager::default()).await?;
+        let logging_manager = if anvil_config.enable_tracing {
+            init_tracing(anvil_config.silent)
+        } else {
+            LoggingManager::default()
+        };
+
+        let (service, api) = spawn(anvil_config, config, logging_manager).await?;
 
         Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }

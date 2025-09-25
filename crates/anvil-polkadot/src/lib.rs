@@ -163,7 +163,7 @@ pub async fn spawn_anvil_tasks(
     Ok(api_handle)
 }
 
-fn init_tracing(silent: bool) -> LoggingManager {
+pub fn init_tracing(silent: bool) -> LoggingManager {
     use tracing_subscriber::prelude::*;
 
     let manager = LoggingManager::default();
