@@ -2,7 +2,6 @@ use crate::{
     AnvilNodeConfig,
     genesis::DevelopmentGenesisBlockBuilder,
     substrate_node::mining_engine::{MiningEngine, MiningMode, run_mining_engine},
-    substrate_node::mining_engine::{MiningEngine, MiningMode, run_mining_engine},
 };
 use anvil::eth::backend::time::TimeManager;
 use jsonrpsee::RpcModule;
