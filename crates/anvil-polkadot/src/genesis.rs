@@ -4,7 +4,18 @@ use crate::config::AnvilNodeConfig;
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::Address;
 use codec::Encode;
-use std::collections::BTreeMap;
+use polkadot_sdk::{
+    sc_chain_spec::{resolve_state_version_from_wasm, BuildGenesisBlock},
+    sc_client_api::{backend::Backend, BlockImportOperation},
+    sc_executor::RuntimeVersionOf,
+    sp_blockchain,
+    sp_core::storage::Storage,
+    sp_runtime::{
+        traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
+        BuildStorage,
+    },
+};
+use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 // Hex-encode key: 0x9527366927478e710d3f7fb77c6d1f89
 pub const CHAIN_ID_KEY: [u8; 16] = [
@@ -69,6 +80,93 @@ impl GenesisConfig {
         ];
         // TODO: add other fields
         storage
+    }
+}
+
+pub struct DevelopmentGenesisBlockBuilder<Block: BlockT, B, E> {
+    genesis_number: u32,
+    genesis_storage: Storage,
+    commit_genesis_state: bool,
+    backend: Arc<B>,
+    executor: E,
+    _phantom: PhantomData<Block>,
+}
+
+impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf>
+    DevelopmentGenesisBlockBuilder<Block, B, E>
+{
+    pub fn new(
+        genesis_number: u64,
+        build_genesis_storage: &dyn BuildStorage,
+        commit_genesis_state: bool,
+        backend: Arc<B>,
+        executor: E,
+    ) -> sp_blockchain::Result<Self> {
+        let genesis_storage =
+            build_genesis_storage.build_storage().map_err(sp_blockchain::Error::Storage)?;
+        Self::new_with_storage(
+            genesis_number,
+            genesis_storage,
+            commit_genesis_state,
+            backend,
+            executor,
+        )
+    }
+
+    pub fn new_with_storage(
+        genesis_number: u64,
+        genesis_storage: Storage,
+        commit_genesis_state: bool,
+        backend: Arc<B>,
+        executor: E,
+    ) -> sp_blockchain::Result<Self> {
+        Ok(Self {
+            genesis_number: genesis_number as u32,
+            genesis_storage,
+            commit_genesis_state,
+            backend,
+            executor,
+            _phantom: PhantomData::<Block>,
+        })
+    }
+}
+
+impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf> BuildGenesisBlock<Block>
+    for DevelopmentGenesisBlockBuilder<Block, B, E>
+{
+    type BlockImportOperation = <B as Backend<Block>>::BlockImportOperation;
+
+    fn build_genesis_block(self) -> sp_blockchain::Result<(Block, Self::BlockImportOperation)> {
+        let Self {
+            genesis_number,
+            genesis_storage,
+            commit_genesis_state,
+            backend,
+            executor,
+            _phantom,
+        } = self;
+
+        let genesis_state_version =
+            resolve_state_version_from_wasm::<_, HashingFor<Block>>(&genesis_storage, &executor)?;
+        let mut op = backend.begin_operation()?;
+        let state_root =
+            op.set_genesis_state(genesis_storage, commit_genesis_state, genesis_state_version)?;
+        let extrinsics_root = <<<Block as BlockT>::Header as HeaderT>::Hashing as HashT>::trie_root(
+            Vec::new(),
+            genesis_state_version,
+        );
+        let genesis_block = Block::new(
+            <<Block as BlockT>::Header as HeaderT>::new(
+                genesis_number.into(),
+                extrinsics_root,
+                state_root,
+                Default::default(),
+                Default::default(),
+            ),
+            Default::default(),
+        );
+
+        Ok((genesis_block, op))
     }
 }
 

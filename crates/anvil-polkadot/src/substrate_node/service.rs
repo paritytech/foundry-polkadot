@@ -1,20 +1,43 @@
 use crate::{
+    genesis::DevelopmentGenesisBlockBuilder,
     substrate_node::mining_engine::{run_mining_engine, MiningEngine, MiningMode},
     AnvilNodeConfig,
 };
 use anvil::eth::backend::time::TimeManager;
+use jsonrpsee::RpcModule;
 use polkadot_sdk::{
-    sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
+    sc_basic_authorship,
+    sc_chain_spec::ChainSpec,
+    sc_client_api::{Backend as ClientBackend, HeaderBackend},
+    sc_client_db::{BlocksPruning, PruningMode},
+    sc_consensus, sc_consensus_manual_seal,
     sc_executor::WasmExecutor,
     sc_network_types::{self, multiaddr::Multiaddr},
+    sc_rpc::{
+        author::AuthorApiServer,
+        chain::ChainApiServer,
+        offchain::OffchainApiServer,
+        state::{ChildStateApiServer, StateApiServer},
+        system::{Request, SystemApiServer, SystemInfo},
+    },
     sc_rpc_api::DenyUnsafe,
-    sc_service::{self, error::Error as ServiceError, Configuration, RpcHandlers, TaskManager},
+    sc_rpc_spec_v2::{
+        archive::ArchiveApiServer,
+        chain_head::ChainHeadApiServer,
+        chain_spec::ChainSpecApiServer,
+        transaction::{TransactionApiServer, TransactionBroadcastApiServer},
+    },
+    sc_service::{
+        self, error::Error as ServiceError, Configuration, RpcHandlers, SpawnTaskHandle,
+        TaskManager,
+    },
+    sc_telemetry::TelemetryHandle,
     sc_transaction_pool::{self, TransactionPoolWrapper},
-    sc_utils::mpsc::tracing_unbounded,
+    sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender},
     sp_io,
     sp_keystore::KeystorePtr,
     sp_timestamp,
-    substrate_frame_rpc_system::SystemApiServer,
+    substrate_frame_rpc_system::SystemApiServer as _,
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
@@ -26,6 +49,12 @@ pub type FullClient =
 pub type Backend = sc_service::TFullBackend<Block>;
 pub type TransactionPoolHandle = sc_transaction_pool::TransactionPoolHandle<Block, FullClient>;
 type SelectChain = sc_consensus::LongestChain<Backend, Block>;
+type TFullParts<TBl, TRtApi, TExec> = (
+    sc_service::TFullClient<TBl, TRtApi, TExec>,
+    Arc<sc_service::TFullBackend<TBl>>,
+    sc_service::KeystoreContainer,
+    sc_service::TaskManager,
+);
 
 pub struct Service {
     pub task_manager: TaskManager,
@@ -36,10 +65,39 @@ pub struct Service {
     pub mining_engine: Arc<MiningEngine>,
 }
 
+/// Create the initial parts of a full node with a customizable genesis block builder.
+fn new_full_parts_with_custom_genesis(
+    genesis_block_number: u64,
+    config: &Configuration,
+    telemetry: Option<TelemetryHandle>,
+    executor: WasmExecutor<sp_io::SubstrateHostFunctions>,
+) -> Result<TFullParts<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>, ServiceError>
+{
+    let backend = sc_service::new_db_backend(config.db_config())?;
+
+    let genesis_block_builder = DevelopmentGenesisBlockBuilder::new(
+        genesis_block_number,
+        config.chain_spec.as_storage_builder(),
+        !config.no_genesis(),
+        backend.clone(),
+        executor.clone(),
+    )?;
+
+    sc_service::new_full_parts_with_genesis_builder(
+        config,
+        telemetry,
+        executor,
+        backend,
+        genesis_block_builder,
+        false,
+    )
+}
+
 /// Builds a new service for a full client.
 pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Service, ServiceError> {
     let (client, backend, keystore_container, mut task_manager) =
-        sc_service::new_full_parts::<Block, RuntimeApi, _>(
+        new_full_parts_with_custom_genesis(
+            anvil_config.get_genesis_number(),
             &config,
             None,
             sc_service::new_wasm_executor(&config.executor),
@@ -78,6 +136,7 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         seal_engine_command_sender,
     ));
     let rpc_handlers = spawn_rpc_server(
+        anvil_config.get_genesis_number(),
         &mut task_manager,
         client.clone(),
         config,
@@ -135,7 +194,142 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
     })
 }
 
+// Re-implement RPC module generation without the check on the genesis block number
+fn custom_gen_rpc_module(
+    genesis_number: u64,
+    spawn_handle: SpawnTaskHandle,
+    client: Arc<FullClient>,
+    transaction_pool: Arc<TransactionPoolWrapper<Block, FullClient>>,
+    keystore: KeystorePtr,
+    system_rpc_tx: TracingUnboundedSender<Request<Block>>,
+    impl_name: String,
+    impl_version: String,
+    chain_spec: &dyn ChainSpec,
+    state_pruning: &Option<PruningMode>,
+    blocks_pruning: BlocksPruning,
+    backend: Arc<Backend>,
+) -> Result<RpcModule<()>, ServiceError> {
+    let rpc_builder = {
+        let client = client.clone();
+        let pool = transaction_pool.clone();
+
+        Box::new(move |_| {
+            let rpc_builder_ext: Result<_, ServiceError> = Ok(
+                polkadot_sdk::substrate_frame_rpc_system::System::new(client.clone(), pool.clone())
+                    .into_rpc(),
+            );
+            rpc_builder_ext
+        })
+    };
+
+    let system_info = SystemInfo {
+        chain_name: chain_spec.name().into(),
+        impl_name,
+        impl_version,
+        properties: chain_spec.properties(),
+        chain_type: chain_spec.chain_type(),
+    };
+
+    let mut rpc_api = RpcModule::new(());
+    let task_executor = Arc::new(spawn_handle);
+
+    let (chain, state, child_state) = {
+        let chain =
+            polkadot_sdk::sc_rpc::chain::new_full(client.clone(), task_executor.clone()).into_rpc();
+        let (state, child_state) =
+            polkadot_sdk::sc_rpc::state::new_full(client.clone(), task_executor.clone());
+        let state = state.into_rpc();
+        let child_state = child_state.into_rpc();
+
+        (chain, state, child_state)
+    };
+
+    const MAX_TRANSACTION_PER_CONNECTION: usize = 16;
+
+    let transaction_broadcast_rpc_v2 =
+        polkadot_sdk::sc_rpc_spec_v2::transaction::TransactionBroadcast::new(
+            client.clone(),
+            transaction_pool.clone(),
+            task_executor.clone(),
+            MAX_TRANSACTION_PER_CONNECTION,
+        )
+        .into_rpc();
+
+    let transaction_v2 = polkadot_sdk::sc_rpc_spec_v2::transaction::Transaction::new(
+        client.clone(),
+        transaction_pool.clone(),
+        task_executor.clone(),
+        None,
+    )
+    .into_rpc();
+
+    let chain_head_v2 = polkadot_sdk::sc_rpc_spec_v2::chain_head::ChainHead::new(
+        client.clone(),
+        backend.clone(),
+        task_executor.clone(),
+        // Defaults to sensible limits for the `ChainHead`.
+        polkadot_sdk::sc_rpc_spec_v2::chain_head::ChainHeadConfig::default(),
+    )
+    .into_rpc();
+
+    let is_archive_node = state_pruning.as_ref().map(|sp| sp.is_archive()).unwrap_or(false) &&
+        blocks_pruning.is_archive();
+    let genesis_hash = client.hash(genesis_number as u32).ok().flatten().unwrap();
+    if is_archive_node {
+        let archive_v2 = polkadot_sdk::sc_rpc_spec_v2::archive::Archive::new(
+            client.clone(),
+            backend.clone(),
+            genesis_hash,
+            task_executor.clone(),
+        )
+        .into_rpc();
+        rpc_api.merge(archive_v2).map_err(|e| ServiceError::Application(e.into()))?;
+    }
+
+    let chain_spec_v2 = polkadot_sdk::sc_rpc_spec_v2::chain_spec::ChainSpec::new(
+        chain_spec.name().into(),
+        genesis_hash,
+        chain_spec.properties(),
+    )
+    .into_rpc();
+
+    let author = polkadot_sdk::sc_rpc::author::Author::new(
+        client,
+        transaction_pool,
+        keystore,
+        task_executor.clone(),
+    )
+    .into_rpc();
+
+    let system = polkadot_sdk::sc_rpc::system::System::new(system_info, system_rpc_tx).into_rpc();
+
+    if let Some(storage) = backend.offchain_storage() {
+        let offchain = polkadot_sdk::sc_rpc::offchain::Offchain::new(storage).into_rpc();
+
+        rpc_api.merge(offchain).map_err(|e| ServiceError::Application(e.into()))?;
+    }
+
+    // Part of the RPC v2 spec.
+    rpc_api.merge(transaction_v2).map_err(|e| ServiceError::Application(e.into()))?;
+    rpc_api.merge(transaction_broadcast_rpc_v2).map_err(|e| ServiceError::Application(e.into()))?;
+    rpc_api.merge(chain_head_v2).map_err(|e| ServiceError::Application(e.into()))?;
+    rpc_api.merge(chain_spec_v2).map_err(|e| ServiceError::Application(e.into()))?;
+
+    // Part of the old RPC spec.
+    rpc_api.merge(chain).map_err(|e| ServiceError::Application(e.into()))?;
+    rpc_api.merge(author).map_err(|e| ServiceError::Application(e.into()))?;
+    rpc_api.merge(system).map_err(|e| ServiceError::Application(e.into()))?;
+    rpc_api.merge(state).map_err(|e| ServiceError::Application(e.into()))?;
+    rpc_api.merge(child_state).map_err(|e| ServiceError::Application(e.into()))?;
+    // Additional [`RpcModule`]s defined in the node to fit the specific blockchain
+    let extra_rpcs = rpc_builder(task_executor)?;
+    rpc_api.merge(extra_rpcs).map_err(|e| ServiceError::Application(e.into()))?;
+
+    Ok(rpc_api)
+}
+
 fn spawn_rpc_server(
+    genesis_number: u64,
     task_manager: &mut TaskManager,
     client: Arc<FullClient>,
     mut config: Configuration,
@@ -143,22 +337,13 @@ fn spawn_rpc_server(
     keystore: KeystorePtr,
     backend: Arc<Backend>,
 ) -> Result<RpcHandlers, ServiceError> {
-    let rpc_extensions_builder = {
-        let client = client.clone();
-        let pool = transaction_pool.clone();
-
-        Box::new(move |_| {
-            Ok(polkadot_sdk::substrate_frame_rpc_system::System::new(client.clone(), pool.clone())
-                .into_rpc())
-        })
-    };
-
     let (system_rpc_tx, system_rpc_rx) = tracing_unbounded("mpsc_system_rpc", 10_000);
 
     let rpc_id_provider = config.rpc.id_provider.take();
 
     let gen_rpc_module = || {
-        sc_service::gen_rpc_module(
+        custom_gen_rpc_module(
+            genesis_number,
             task_manager.spawn_handle(),
             client.clone(),
             transaction_pool.clone(),
@@ -170,8 +355,6 @@ fn spawn_rpc_server(
             &config.state_pruning,
             config.blocks_pruning,
             backend.clone(),
-            &*rpc_extensions_builder,
-            None,
         )
     };
 
