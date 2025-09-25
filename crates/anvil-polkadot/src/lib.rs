@@ -129,11 +129,8 @@ pub async fn spawn_anvil_tasks(
     service: Service,
     logging_manager: LoggingManager,
 ) -> Result<ApiHandle> {
-    let mut addresses = Vec::with_capacity(anvil_config.host.len());
-    let spawn_handle = service.spawn_handle.clone();
-
     // Spawn the api server.
-    let api_handle = api_server::spawn(service, logging_manager);
+    let api_handle = api_server::spawn(service.clone(), logging_manager);
 
     // Spawn the network servers.
     for addr in &anvil_config.host {
@@ -141,22 +138,19 @@ pub async fn spawn_anvil_tasks(
 
         // Create a TCP listener.
         let tcp_listener = tokio::net::TcpListener::bind(sock_addr).await?;
-        addresses.push(tcp_listener.local_addr()?);
 
         // Spawn the server future on a new task.
         let srv =
             server::serve_on(tcp_listener, anvil_config.server_config.clone(), api_handle.clone());
-        spawn_handle.spawn(
-            "anvil",
-            "anvil-tcp",
-            async move { srv.await.expect("TCP server failure") },
-        );
+        service
+            .spawn_handle
+            .spawn("anvil", "anvil-tcp", async move { srv.await.expect("TCP server failure") });
     }
 
     // If configured, spawn the IPC server.
     anvil_config
         .get_ipc_path()
-        .map(|path| try_spawn_ipc(&spawn_handle, path, api_handle.clone()))
+        .map(|path| try_spawn_ipc(&service.spawn_handle, path, api_handle.clone()))
         .transpose()?;
 
     anvil_config.print()?;

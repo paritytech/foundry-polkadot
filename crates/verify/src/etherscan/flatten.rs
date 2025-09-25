@@ -3,14 +3,14 @@ use crate::provider::VerificationContext;
 use eyre::{Context, Result};
 use foundry_block_explorers::verify::CodeFormat;
 use foundry_compilers::{
+    AggregatedCompilerOutput,
     artifacts::{BytecodeHash, Source, Sources},
     buildinfo::RawBuildInfo,
     compilers::{
-        solc::{SolcCompiler, SolcLanguage, SolcVersionedInput},
         Compiler, CompilerInput,
+        solc::{SolcCompiler, SolcLanguage, SolcVersionedInput},
     },
     solc::Solc,
-    AggregatedCompilerOutput,
 };
 use semver::{BuildMetadata, Version};
 use std::path::Path;
@@ -90,12 +90,12 @@ impl EtherscanFlattenedSource {
 
         let out = compiler.compile(&input)?;
         let compiler_version = compiler.compiler_version(&input);
-        let compund_version = compound_version(compiler_version, &input.version);
+        let compound_version = compound_version(compiler_version, &input.version);
         if out.errors.iter().any(|e| e.is_error()) {
             let mut o = AggregatedCompilerOutput::<SolcCompiler>::default();
             o.extend(
                 version,
-                RawBuildInfo::new(&input, &out, &compund_version, false)?,
+                RawBuildInfo::new(&input, &out, &compound_version, false)?,
                 "default",
                 out,
             );

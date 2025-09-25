@@ -5,7 +5,7 @@ use axum::Router;
 use futures::StreamExt;
 use handler::{HttpEthRpcHandler, PubSubEthRpcHandler};
 use polkadot_sdk::sc_service::SpawnTaskHandle;
-use std::{future::Future, io, net::SocketAddr, pin::pin};
+use std::{io, net::SocketAddr, pin::pin};
 use tokio::net::TcpListener;
 
 use crate::api_server::ApiHandle;

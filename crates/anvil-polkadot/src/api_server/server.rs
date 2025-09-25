@@ -12,7 +12,7 @@ use crate::{
     substrate_node::{
         mining_engine::MiningEngine,
         service::{
-            storage::{AccountType, ReviveAccountInfo},
+            storage::{AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo},
             BackendWithOverlay, Client, Service,
         },
     },
@@ -31,14 +31,7 @@ use polkadot_sdk::{
     },
     pallet_revive_eth_rpc::{
         client::{Client as EthRpcClient, SubscriptionType},
-        subxt_client::{
-            self,
-            runtime_types::{
-                bounded_collections::bounded_vec::BoundedVec, pallet_revive::vm::CodeInfo,
-            },
-            src_chain::runtime_types::pallet_revive::storage::ContractInfo,
-            SrcChainConfig,
-        },
+        subxt_client::{self, SrcChainConfig},
         EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     },
     parachains_common::{AccountId, Hash},
@@ -249,7 +242,7 @@ impl ApiServer {
             EthRequest::EthGetTransactionReceipt(tx_hash) => {
                 self.transaction_receipt(tx_hash).await.to_rpc_result()
             }
-            EthRequest::EthEstimateGas(call, block, _overrides) => {
+            EthRequest::EthEstimateGas(call, block, _state_overrides, _block_overrides) => {
                 self.estimate_gas(call, block).await.to_rpc_result()
             }
             EthRequest::EthGetBalance(addr, block) => self
@@ -298,10 +291,12 @@ impl ApiServer {
         node_info!("anvil_mine");
 
         if blocks.is_some_and(|b| u64::try_from(b).is_err()) {
-            return Err(Error::InvalidParams("The number of blocks is too large".to_string()))
+            return Err(Error::InvalidParams("The number of blocks is too large".to_string()));
         }
         if interval.is_some_and(|i| u64::try_from(i).is_err()) {
-            return Err(Error::InvalidParams("The interval between blocks is too large".to_string()))
+            return Err(Error::InvalidParams(
+                "The interval between blocks is too large".to_string(),
+            ));
         }
         self.mining_engine
             .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
@@ -362,7 +357,7 @@ impl ApiServer {
         node_info!("anvil_setBlockTimestampInterval");
 
         if time >= U256::from(u64::MAX) {
-            return Err(Error::InvalidParams("The timestamp is too big".to_string()))
+            return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = time.to::<u64>();
         self.mining_engine
@@ -380,7 +375,7 @@ impl ApiServer {
         node_info!("evm_setTime");
 
         if timestamp >= U256::from(u64::MAX) {
-            return Err(Error::InvalidParams("The timestamp is too big".to_string()))
+            return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = timestamp.to::<u64>();
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
@@ -460,13 +455,12 @@ impl ApiServer {
         let Some(ReviveAccountInfo { account_type: AccountType::Contract(contract_info), .. }) =
             self.backend.read_revive_account_info(latest_block, address)?
         else {
-            return Ok(())
+            return Ok(());
         };
-        let trie_id = contract_info.trie_id.0;
 
         self.backend.inject_child_storage(
             latest_block,
-            trie_id,
+            contract_info.trie_id,
             key.to_be_bytes_vec(),
             value.to_vec(),
         );
@@ -518,6 +512,7 @@ impl ApiServer {
             refcount: 0,
             code_len: bytes.len() as u32,
             behaviour_version: 0,
+            code_type: ByteCodeType::Evm,
         };
 
         self.backend.inject_pristine_code(latest_block, code_hash, Some(bytes));
@@ -756,7 +751,7 @@ fn new_contract_info(address: &Address, code_hash: H256) -> ContractInfo {
     };
 
     ContractInfo {
-        trie_id: BoundedVec::<u8>(trie_id),
+        trie_id,
         code_hash,
         storage_bytes: 0,
         storage_items: 0,

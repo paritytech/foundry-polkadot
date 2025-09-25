@@ -2,10 +2,10 @@ use crate::substrate_node::service::TransactionPoolHandle;
 use alloy_rpc_types::anvil::MineOptions;
 use anvil::eth::backend::time::TimeManager;
 use futures::{
-    channel::oneshot,
-    stream::{select_all, unfold, FusedStream, SelectAll},
-    task::AtomicWaker,
     StreamExt,
+    channel::oneshot,
+    stream::{FusedStream, SelectAll, select_all, unfold},
+    task::AtomicWaker,
 };
 use parking_lot::RwLock;
 use polkadot_sdk::{
@@ -17,7 +17,7 @@ use std::{pin::Pin, sync::Arc};
 use substrate_runtime::Hash;
 use tokio::{
     sync::mpsc::Sender,
-    time::{interval_at, Duration, Instant, MissedTickBehavior},
+    time::{Duration, Instant, MissedTickBehavior, interval_at},
 };
 
 // Errors that can happen during the block production.

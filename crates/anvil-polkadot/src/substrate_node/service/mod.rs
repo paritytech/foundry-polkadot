@@ -12,7 +12,7 @@ use polkadot_sdk::{
         self, error::Error as ServiceError, Configuration, RpcHandlers, SpawnTaskHandle,
         TaskManager,
     },
-    sc_transaction_pool::{self},
+    sc_transaction_pool,
     sc_utils::mpsc::tracing_unbounded,
     sp_keystore::KeystorePtr,
     sp_timestamp,

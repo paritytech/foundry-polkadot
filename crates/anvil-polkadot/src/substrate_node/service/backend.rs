@@ -1,5 +1,5 @@
 use crate::substrate_node::service::{
-    storage::{well_known_keys, ReviveAccountInfo, SystemAccountInfo},
+    storage::{well_known_keys, CodeInfo, ReviveAccountInfo, SystemAccountInfo},
     Backend,
 };
 use alloy_primitives::{Address, Bytes};
@@ -8,7 +8,6 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use polkadot_sdk::{
     pallet_balances::AccountData,
-    pallet_revive_eth_rpc::subxt_client::runtime_types::pallet_revive::vm::CodeInfo,
     parachains_common::{AccountId, Hash},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
@@ -174,7 +173,7 @@ impl BackendWithOverlay {
         };
 
         if let Some(overriden_val) = maybe_overriden_val {
-            return Ok(overriden_val)
+            return Ok(overriden_val);
         }
 
         let state = self.backend.state_at(hash, TrieCacheContext::Trusted)?;

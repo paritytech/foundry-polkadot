@@ -1,10 +1,10 @@
 use codec::{Decode, Encode};
 use polkadot_sdk::{
-    frame_system, pallet_balances::AccountData,
-    pallet_revive_eth_rpc::subxt_client::src_chain::runtime_types::pallet_revive::storage::ContractInfo,
-    parachains_common::Nonce,
+    frame_system,
+    pallet_balances::AccountData,
+    parachains_common::{AccountId, Nonce},
 };
-use substrate_runtime::Balance;
+use substrate_runtime::{Balance, Hash};
 
 #[derive(Encode, Decode)]
 pub struct ReviveAccountInfo {
@@ -16,6 +16,34 @@ pub struct ReviveAccountInfo {
 pub enum AccountType {
     Contract(ContractInfo),
     EOA,
+}
+
+#[derive(Encode, Decode)]
+pub struct ContractInfo {
+    pub trie_id: Vec<u8>,
+    pub code_hash: Hash,
+    pub storage_bytes: u32,
+    pub storage_items: u32,
+    pub storage_byte_deposit: Balance,
+    pub storage_item_deposit: Balance,
+    pub storage_base_deposit: Balance,
+    pub immutable_data_len: u32,
+}
+
+#[derive(Encode, Decode)]
+pub struct CodeInfo {
+    pub owner: AccountId,
+    pub deposit: Balance,
+    pub refcount: u64,
+    pub code_len: u32,
+    pub code_type: ByteCodeType,
+    pub behaviour_version: u32,
+}
+
+#[derive(Encode, Decode)]
+pub enum ByteCodeType {
+    Pvm,
+    Evm,
 }
 
 pub type SystemAccountInfo = frame_system::AccountInfo<Nonce, AccountData<Balance>>;

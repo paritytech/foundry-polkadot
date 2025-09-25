@@ -94,5 +94,6 @@ pub(crate) fn try_convert_transaction_request(
             .map(|addr| from_address_to_h160(addr)),
         r#type: transaction.transaction_type.map(|byte| Byte::from(byte)),
         value: transaction.value.map(|value| from_alloy_u256_to_sp_u256(value)),
+        authorization_list: vec![],
     }
 }
