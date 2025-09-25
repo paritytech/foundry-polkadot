@@ -6,7 +6,7 @@
 //! THIS IS WORK IN PROGRESS. It is not yet complete and may change in the future.
 #![allow(clippy::disallowed_macros)]
 use polkadot_sdk::{
-    frame_support::traits::{Currency, fungible::Mutate},
+    frame_support::traits::Currency,
     frame_system, pallet_balances,
     pallet_revive::{self, AddressMapper},
     polkadot_runtime_common::BuildStorage,
@@ -43,22 +43,20 @@ impl ExtBuilder {
     pub fn build(self) -> sp_io::TestExternalities {
         sp_tracing::try_init_simple();
         let mut t = frame_system::GenesisConfig::<Runtime>::default().build_storage().unwrap();
+        let mut balance_genesis_config = self.balance_genesis_config;
+        balance_genesis_config.push((
+            pallet_revive::Pallet::<Runtime>::account_id(),
+            pallet_balances::Pallet::<Runtime>::minimum_balance(),
+        ));
         pallet_balances::GenesisConfig::<Runtime> {
-            balances: self.balance_genesis_config,
+            balances: balance_genesis_config,
             dev_accounts: None,
         }
         .assimilate_storage(&mut t)
         .unwrap();
         let mut ext = sp_io::TestExternalities::new(t);
         ext.register_extension(KeystoreExt::new(MemoryKeystore::new()));
-        ext.execute_with(|| {
-            System::set_block_number(0);
-            // Ensure the pallet revive account has at least the minimum balance.
-            let _ = pallet_balances::Pallet::<Runtime>::mint_into(
-                &pallet_revive::Pallet::<Runtime>::account_id(),
-                pallet_balances::Pallet::<Runtime>::minimum_balance(),
-            );
-        });
+        ext.execute_with(|| System::set_block_number(0));
         ext
     }
 }
