@@ -1,7 +1,7 @@
 use crate::{
     api_server::{
-        error::{Error, Result, ToRpcResponseResult},
         ApiRequest,
+        error::{Error, Result, ToRpcResponseResult},
     },
     logging::LoggingManager,
     macros::node_info,
@@ -11,7 +11,7 @@ use alloy_primitives::U256;
 use alloy_rpc_types::anvil::MineOptions;
 use anvil_core::eth::{EthRequest, Params};
 use anvil_rpc::response::ResponseResult;
-use futures::{channel::mpsc, StreamExt};
+use futures::{StreamExt, channel::mpsc};
 use std::{sync::Arc, time::Duration};
 
 pub struct ApiServer {
@@ -80,10 +80,12 @@ impl ApiServer {
         node_info!("anvil_mine");
 
         if blocks.is_some_and(|b| u64::try_from(b).is_err()) {
-            return Err(Error::InvalidParams("The number of blocks is too large".to_string()))
+            return Err(Error::InvalidParams("The number of blocks is too large".to_string()));
         }
         if interval.is_some_and(|i| u64::try_from(i).is_err()) {
-            return Err(Error::InvalidParams("The interval between blocks is too large".to_string()))
+            return Err(Error::InvalidParams(
+                "The interval between blocks is too large".to_string(),
+            ));
         }
         self.mining_engine
             .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
@@ -141,7 +143,7 @@ impl ApiServer {
         node_info!("anvil_setBlockTimestampInterval");
 
         if time >= U256::from(u64::MAX) {
-            return Err(Error::InvalidParams("The timestamp is too big".to_string()))
+            return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = time.to::<u64>();
         self.mining_engine
@@ -159,7 +161,7 @@ impl ApiServer {
         node_info!("evm_setTime");
 
         if timestamp >= U256::from(u64::MAX) {
-            return Err(Error::InvalidParams("The timestamp is too big".to_string()))
+            return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = timestamp.to::<u64>();
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))

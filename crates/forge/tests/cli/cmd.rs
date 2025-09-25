@@ -1,15 +1,15 @@
 //! Contains various tests for checking forge's commands
 
 use crate::constants::*;
-use foundry_compilers::artifacts::{remappings::Remapping, ConfigurableContractArtifact, Metadata};
+use foundry_compilers::artifacts::{ConfigurableContractArtifact, Metadata, remappings::Remapping};
 use foundry_config::{
-    parse_with_profile, BasicConfig, Chain, Config, FuzzConfig, InvariantConfig, SolidityErrorCode,
+    BasicConfig, Chain, Config, FuzzConfig, InvariantConfig, SolidityErrorCode, parse_with_profile,
 };
 use foundry_test_utils::{
     foundry_compilers::PathStyle,
     rpc::next_etherscan_api_key,
     snapbox::IntoData,
-    util::{pretty_err, read_string, OutputExt, TestCommand},
+    util::{OutputExt, TestCommand, read_string},
 };
 use semver::Version;
 use std::{
@@ -36,7 +36,7 @@ Options:
   -j, --threads <THREADS>
           Number of threads to use. Specifying 0 defaults to the number of logical cores
           
-          [aliases: jobs]
+          [aliases: --jobs]
 
   -V, --version
           Print version
@@ -69,7 +69,7 @@ Display options:
           - 4 (-vvvv): Print execution traces for all tests, and setup traces for failing tests.
           - 5 (-vvvvv): Print execution and setup traces for all tests, including storage changes.
 
-Find more information in the book: http://book.getfoundry.sh/reference/forge/forge.html
+Find more information in the book: https://getfoundry.sh/forge/overview
 
 "#]]);
 });
@@ -1208,6 +1208,11 @@ Compiler run successful!
 forgetest!(can_build_after_failure, |prj, cmd| {
     prj.insert_ds_test();
 
+    // Disable linting during build to avoid linting output interfering with test assertions
+    prj.update_config(|config| {
+        config.lint.lint_on_build = false;
+    });
+
     prj.add_source(
         "ATest.t.sol",
         r#"
@@ -1498,7 +1503,7 @@ Installing forge-5980-test in [..] (url: Some("https://github.com/evalir/forge-5
         prj.update_config(|config| {
             config.remappings = vec![
                 Remapping::from_str("forge-5980-test/=lib/forge-5980-test/src/").unwrap().into(),
-                // explicit remapping for sub-dependendy seems necessary for some reason
+                // explicit remapping for sub-dependency seems necessary for some reason
                 Remapping::from_str(
                     "forge-5980-test-dep/=lib/forge-5980-test/lib/forge-5980-test-dep/src/",
                 )
@@ -1631,7 +1636,7 @@ forgetest!(gas_report_all_contracts, |prj, cmd| {
 +=============================================================================================+
 | Deployment Cost                        | Deployment Size |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
-| 133027                                 | 394             |       |        |       |         |
+| 133015                                 | 394             |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
 |                                        |                 |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
@@ -1678,7 +1683,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
   {
     "contract": "src/Contracts.sol:ContractOne",
     "deployment": {
-      "gas": 133027,
+      "gas": 133015,
       "size": 394
     },
     "functions": {
@@ -1736,7 +1741,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 +=============================================================================================+
 | Deployment Cost                        | Deployment Size |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
-| 133027                                 | 394             |       |        |       |         |
+| 133015                                 | 394             |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
 |                                        |                 |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
@@ -1783,7 +1788,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
   {
     "contract": "src/Contracts.sol:ContractOne",
     "deployment": {
-      "gas": 133027,
+      "gas": 133015,
       "size": 394
     },
     "functions": {
@@ -1841,7 +1846,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 +=============================================================================================+
 | Deployment Cost                        | Deployment Size |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
-| 133027                                 | 394             |       |        |       |         |
+| 133015                                 | 394             |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
 |                                        |                 |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
@@ -1888,7 +1893,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
   {
     "contract": "src/Contracts.sol:ContractOne",
     "deployment": {
-      "gas": 133027,
+      "gas": 133015,
       "size": 394
     },
     "functions": {
@@ -1949,7 +1954,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 +=============================================================================================+
 | Deployment Cost                        | Deployment Size |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
-| 133027                                 | 394             |       |        |       |         |
+| 133015                                 | 394             |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
 |                                        |                 |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
@@ -1996,7 +2001,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
   {
     "contract": "src/Contracts.sol:ContractOne",
     "deployment": {
-      "gas": 133027,
+      "gas": 133015,
       "size": 394
     },
     "functions": {
@@ -2061,7 +2066,7 @@ forgetest!(gas_report_some_contracts, |prj, cmd| {
 +=============================================================================================+
 | Deployment Cost                        | Deployment Size |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
-| 133027                                 | 394             |       |        |       |         |
+| 133015                                 | 394             |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
 |                                        |                 |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
@@ -2080,7 +2085,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
   {
     "contract": "src/Contracts.sol:ContractOne",
     "deployment": {
-      "gas": 133027,
+      "gas": 133015,
       "size": 394
     },
     "functions": {
@@ -2291,7 +2296,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 +=============================================================================================+
 | Deployment Cost                        | Deployment Size |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
-| 133027                                 | 394             |       |        |       |         |
+| 133015                                 | 394             |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
 |                                        |                 |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
@@ -2324,7 +2329,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
   {
     "contract": "src/Contracts.sol:ContractOne",
     "deployment": {
-      "gas": 133027,
+      "gas": 133015,
       "size": 394
     },
     "functions": {
@@ -2380,7 +2385,7 @@ Ran 3 test suites [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 +=============================================================================================+
 | Deployment Cost                        | Deployment Size |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
-| 133027                                 | 394             |       |        |       |         |
+| 133015                                 | 394             |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
 |                                        |                 |       |        |       |         |
 |----------------------------------------+-----------------+-------+--------+-------+---------|
@@ -2437,7 +2442,7 @@ Warning: ContractThree is listed in both 'gas_reports' and 'gas_reports_ignore'.
   {
     "contract": "src/Contracts.sol:ContractOne",
     "deployment": {
-      "gas": 133027,
+      "gas": 133015,
       "size": 394
     },
     "functions": {
@@ -2545,7 +2550,7 @@ contract CounterTest is DSTest {
 +=======================================================================================+
 | Deployment Cost                  | Deployment Size |       |        |       |         |
 |----------------------------------+-----------------+-------+--------+-------+---------|
-| 172107                           | 578             |       |        |       |         |
+| 172095                           | 578             |       |        |       |         |
 |----------------------------------+-----------------+-------+--------+-------+---------|
 |                                  |                 |       |        |       |         |
 |----------------------------------+-----------------+-------+--------+-------+---------|
@@ -2570,7 +2575,7 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
   {
     "contract": "src/Counter.sol:Counter",
     "deployment": {
-      "gas": 172107,
+      "gas": 172095,
       "size": 578
     },
     "functions": {
@@ -2672,7 +2677,7 @@ contract GasReportFallbackTest is Test {
 +========================================================================================================+
 | Deployment Cost                                   | Deployment Size |       |        |       |         |
 |---------------------------------------------------+-----------------+-------+--------+-------+---------|
-| 117171                                            | 471             |       |        |       |         |
+| 117159                                            | 471             |       |        |       |         |
 |---------------------------------------------------+-----------------+-------+--------+-------+---------|
 |                                                   |                 |       |        |       |         |
 |---------------------------------------------------+-----------------+-------+--------+-------+---------|
@@ -2711,7 +2716,7 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
   {
     "contract": "test/DelegateProxyTest.sol:DelegateProxy",
     "deployment": {
-      "gas": 117171,
+      "gas": 117159,
       "size": 471
     },
     "functions": {
@@ -2923,7 +2928,7 @@ contract NestedDeploy is Test {
 +============================================================================================+
 | Deployment Cost                           | Deployment Size |     |        |     |         |
 |-------------------------------------------+-----------------+-----+--------+-----+---------|
-| 328961                                    | 1163            |     |        |     |         |
+| 328949                                    | 1163            |     |        |     |         |
 |-------------------------------------------+-----------------+-----+--------+-----+---------|
 |                                           |                 |     |        |     |         |
 |-------------------------------------------+-----------------+-----+--------+-----+---------|
@@ -2978,7 +2983,7 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
   {
     "contract": "test/NestedDeployTest.sol:Parent",
     "deployment": {
-      "gas": 328961,
+      "gas": 328949,
       "size": 1163
     },
     "functions": {
@@ -3000,10 +3005,9 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 forgetest_init!(can_use_absolute_imports, |prj, cmd| {
     prj.update_config(|config| {
         let remapping = prj.paths().libraries[0].join("myDependency");
-        config.remappings =
-            vec![Remapping::from_str(&format!("myDependency/={}", remapping.display()))
-                .unwrap()
-                .into()];
+        config.remappings = vec![
+            Remapping::from_str(&format!("myDependency/={}", remapping.display())).unwrap().into(),
+        ];
     });
 
     prj.add_lib(
@@ -3018,9 +3022,9 @@ forgetest_init!(can_use_absolute_imports, |prj, cmd| {
     prj.add_lib(
         "myDependency/src/Config.sol",
         r#"
-        import "src/interfaces/IConfig.sol";
+        import {IConfig} from "myDependency/src/interfaces/IConfig.sol";
 
-    contract Config {}
+    contract Config is IConfig {}
    "#,
     )
     .unwrap();
@@ -3028,9 +3032,11 @@ forgetest_init!(can_use_absolute_imports, |prj, cmd| {
     prj.add_source(
         "Greeter",
         r#"
-        import "myDependency/src/Config.sol";
+        import {Config} from "myDependency/src/Config.sol";
 
-    contract Greeter {}
+    contract Greeter {
+        Config config;
+    }
    "#,
     )
     .unwrap();
@@ -3149,58 +3155,6 @@ forgetest_init!(can_bind, |prj, cmd| {
 Compiler run successful!
 Generating bindings for [..] contracts
 Bindings have been generated to [..]
-
-"#]]);
-});
-
-// checks missing dependencies are auto installed
-forgetest_init!(can_install_missing_deps_test, |prj, cmd| {
-    prj.clear();
-
-    // wipe forge-std
-    let forge_std_dir = prj.root().join("lib/forge-std");
-    pretty_err(&forge_std_dir, fs::remove_dir_all(&forge_std_dir));
-
-    cmd.arg("test").assert_success().stdout_eq(str![[r#"
-Missing dependencies found. Installing now...
-
-[UPDATING_DEPENDENCIES]
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-Ran 2 tests for test/Counter.t.sol:CounterTest
-[PASS] testFuzz_SetNumber(uint256) (runs: 256, [AVG_GAS])
-[PASS] test_Increment() ([GAS])
-Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
-
-"#]]);
-});
-
-// checks missing dependencies are auto installed
-forgetest_init!(can_install_missing_deps_build, |prj, cmd| {
-    prj.clear();
-
-    // wipe forge-std
-    let forge_std_dir = prj.root().join("lib/forge-std");
-    pretty_err(&forge_std_dir, fs::remove_dir_all(&forge_std_dir));
-
-    // Build the project
-    cmd.arg("build").assert_success().stdout_eq(str![[r#"
-Missing dependencies found. Installing now...
-
-[UPDATING_DEPENDENCIES]
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-"#]]);
-
-    // Expect compilation to be skipped as no files have changed
-    cmd.forge_fuse().arg("build").assert_success().stdout_eq(str![[r#"
-No files changed, compilation skipped
 
 "#]]);
 });
@@ -3572,6 +3526,42 @@ forgetest!(test_inspect_contract_with_same_name, |prj, cmd| {
 "#]]);
 });
 
+// <https://github.com/foundry-rs/foundry/issues/10531>
+forgetest!(inspect_multiple_contracts_with_different_paths, |prj, cmd| {
+    prj.add_source(
+        "Source.sol",
+        r#"
+    contract Source {
+        function foo() public {}
+    }   
+    "#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "another/Source.sol",
+        r#"
+    contract Source {
+        function bar() public {}
+    }
+    "#,
+    )
+    .unwrap();
+
+    cmd.args(["inspect", "src/another/Source.sol:Source", "methodIdentifiers"])
+        .assert_success()
+        .stdout_eq(str![[r#"
+
+╭--------+------------╮
+| Method | Identifier |
++=====================+
+| bar()  | febb0f7e   |
+╰--------+------------╯
+
+
+"#]]);
+});
+
 forgetest!(inspect_custom_counter_method_identifiers, |prj, cmd| {
     prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
 
@@ -3599,6 +3589,53 @@ forgetest!(inspect_custom_counter_method_identifiers, |prj, cmd| {
 "#]]);
 });
 
+forgetest_init!(can_inspect_standard_json, |prj, cmd| {
+    cmd.args(["inspect", "src/Counter.sol:Counter", "standard-json"]).assert_success().stdout_eq(str![[r#"
+{
+  "language": "Solidity",
+  "sources": {
+    "src/Counter.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED/npragma solidity ^0.8.13;/n/ncontract Counter {/n    uint256 public number;/n/n    function setNumber(uint256 newNumber) public {/n        number = newNumber;/n    }/n/n    function increment() public {/n        number++;/n    }/n}/n"
+    }
+  },
+  "settings": {
+    "remappings": [
+      "forge-std/=lib/forge-std/src/"
+    ],
+    "optimizer": {
+      "enabled": false,
+      "runs": 200
+    },
+    "metadata": {
+      "useLiteralContent": false,
+      "bytecodeHash": "ipfs",
+      "appendCBOR": true
+    },
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode.object",
+          "evm.bytecode.sourceMap",
+          "evm.bytecode.linkReferences",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.sourceMap",
+          "evm.deployedBytecode.linkReferences",
+          "evm.deployedBytecode.immutableReferences",
+          "evm.methodIdentifiers",
+          "metadata"
+        ]
+      }
+    },
+    "evmVersion": "cancun",
+    "viaIR": false,
+    "libraries": {}
+  }
+}
+
+"#]]);
+});
+
 // checks that `clean` also works with the "out" value set in Config
 forgetest_init!(gas_report_include_tests, |prj, cmd| {
     prj.update_config(|config| {
@@ -3615,7 +3652,7 @@ forgetest_init!(gas_report_include_tests, |prj, cmd| {
 +=======================================================================================+
 | Deployment Cost                  | Deployment Size |       |        |       |         |
 |----------------------------------+-----------------+-------+--------+-------+---------|
-| 156813                           | 509             |       |        |       |         |
+| 156801                           | 509             |       |        |       |         |
 |----------------------------------+-----------------+-------+--------+-------+---------|
 |                                  |                 |       |        |       |         |
 |----------------------------------+-----------------+-------+--------+-------+---------|
@@ -3633,15 +3670,15 @@ forgetest_init!(gas_report_include_tests, |prj, cmd| {
 +================================================================================================+
 | Deployment Cost                         | Deployment Size |        |        |        |         |
 |-----------------------------------------+-----------------+--------+--------+--------+---------|
-| 1545498                                 | 7578            |        |        |        |         |
+| 1544498                                 | 7573            |        |        |        |         |
 |-----------------------------------------+-----------------+--------+--------+--------+---------|
 |                                         |                 |        |        |        |         |
 |-----------------------------------------+-----------------+--------+--------+--------+---------|
 | Function Name                           | Min             | Avg    | Median | Max    | # Calls |
 |-----------------------------------------+-----------------+--------+--------+--------+---------|
-| setUp                                   | 218902          | 218902 | 218902 | 218902 | 1       |
+| setUp                                   | 218890          | 218890 | 218890 | 218890 | 1       |
 |-----------------------------------------+-----------------+--------+--------+--------+---------|
-| test_Increment                          | 54915           | 54915  | 54915  | 54915  | 1       |
+| test_Increment                          | 51847           | 51847  | 51847  | 51847  | 1       |
 ╰-----------------------------------------+-----------------+--------+--------+--------+---------╯
 
 
@@ -3658,7 +3695,7 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
   {
     "contract": "src/Counter.sol:Counter",
     "deployment": {
-      "gas": 156813,
+      "gas": 156801,
       "size": 509
     },
     "functions": {
@@ -3688,23 +3725,23 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
   {
     "contract": "test/Counter.t.sol:CounterTest",
     "deployment": {
-      "gas": 1545498,
-      "size": 7578
+      "gas": 1544498,
+      "size": 7573
     },
     "functions": {
       "setUp()": {
         "calls": 1,
-        "min": 218902,
-        "mean": 218902,
-        "median": 218902,
-        "max": 218902
+        "min": 218890,
+        "mean": 218890,
+        "median": 218890,
+        "max": 218890
       },
       "test_Increment()": {
         "calls": 1,
-        "min": 54915,
-        "mean": 54915,
-        "median": 54915,
-        "max": 54915
+        "min": 51847,
+        "mean": 51847,
+        "median": 51847,
+        "max": 51847
       }
     }
   }
@@ -3785,4 +3822,23 @@ Compiler run successful!
 Generating bindings for 1 contracts
 Bindings have been generated to [..]"#
     ]]);
+});
+
+// forge bind e2e
+forgetest_init!(can_bind_e2e, |prj, cmd| {
+    cmd.args(["bind"]).assert_success().stdout_eq(str![[r#"No files changed, compilation skipped
+Generating bindings for 2 contracts
+Bindings have been generated to [..]"#]]);
+
+    let bindings_path = prj.root().join("out/bindings");
+
+    assert!(bindings_path.exists(), "Bindings directory should exist");
+    let out = Command::new("cargo")
+        .arg("build")
+        .current_dir(&bindings_path)
+        .output()
+        .expect("Failed to run cargo build");
+    // RUn `cargo build`
+
+    assert!(out.status.success(), "Cargo build should succeed");
 });

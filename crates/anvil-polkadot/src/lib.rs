@@ -14,7 +14,7 @@ use eyre::Result;
 use foundry_cli::utils;
 use opts::{Anvil, AnvilSubcommand};
 use polkadot_sdk::{
-    sc_cli::{self, build_runtime, SubstrateCli},
+    sc_cli::{self, SubstrateCli, build_runtime},
     sc_service::{self, TaskManager},
 };
 use server::try_spawn_ipc;
@@ -133,8 +133,6 @@ pub async fn spawn_anvil_tasks(
     service: &Service,
     logging_manager: LoggingManager,
 ) -> Result<ApiHandle> {
-    let mut addresses = Vec::with_capacity(anvil_config.host.len());
-
     // Spawn the api server.
     let api_handle = api_server::spawn(service, logging_manager);
 
@@ -144,7 +142,6 @@ pub async fn spawn_anvil_tasks(
 
         // Create a TCP listener.
         let tcp_listener = tokio::net::TcpListener::bind(sock_addr).await?;
-        addresses.push(tcp_listener.local_addr()?);
 
         // Spawn the server future on a new task.
         let srv =
