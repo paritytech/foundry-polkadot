@@ -1,6 +1,6 @@
 use crate::utils::{TestNode, unwrap_response};
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, U256};
+use alloy_primitives::{Address, B256, U256};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
@@ -8,7 +8,10 @@ use anvil_polkadot::{
     api_server::revive_conversions::ReviveAddress,
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
-use polkadot_sdk::pallet_revive::evm::{Account, Block};
+use polkadot_sdk::pallet_revive::{
+    self,
+    evm::{Account, Block, ReceiptInfo},
+};
 use subxt::utils::H256;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -98,7 +101,7 @@ async fn test_send_transaction() {
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let _tx_hash = unwrap_response::<H256>(
+    let tx_hash = unwrap_response::<H256>(
         node.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
             transaction.clone(),
         ))))
@@ -107,6 +110,19 @@ async fn test_send_transaction() {
     )
     .unwrap();
     node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
+    // let's wait for the Finalized
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let transaction_receipt = unwrap_response::<Option<ReceiptInfo>>(
+        node.eth_rpc(EthRequest::EthGetTransactionReceipt(B256::from(tx_hash.to_fixed_bytes())))
+            .await
+            .unwrap(),
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(1));
+    assert_eq!(transaction_receipt.transaction_index, pallet_revive::U256::from(1));
+    assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 
     let alith_final_balance = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetBalance(
