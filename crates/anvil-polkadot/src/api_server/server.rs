@@ -9,7 +9,8 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
-        in_mem_rpc::InMemoryRpcClient, mining_engine::MiningEngine, service::Service,
+        cheats::CheatsManager, in_mem_rpc::InMemoryRpcClient, mining_engine::MiningEngine,
+        service::Service,
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
@@ -45,6 +46,7 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,
+    cheats_manager: CheatsManager,
 }
 
 impl ApiServer {
@@ -60,6 +62,7 @@ impl ApiServer {
             logging_manager,
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
+            cheats_manager: CheatsManager::default(),
             wallet: Wallet {
                 accounts: vec![
                     Account::from(subxt_signer::eth::dev::baltathar()),
@@ -127,6 +130,10 @@ impl ApiServer {
             }
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request.clone()).await.to_rpc_result()
+            }
+            // -- Impersonation --
+            EthRequest::ImpersonateAccount(addr) => {
+                self.impersonate_account(H160::from_slice(addr.0.as_ref())).to_rpc_result()
             }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
@@ -369,13 +376,6 @@ impl ApiServer {
             return Err(Error::ReviveRpc(EthRpcError::InvalidTransaction));
         };
 
-        let account = self
-            .wallet
-            .accounts
-            .iter()
-            .find(|account| account.address() == from)
-            .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?;
-
         if transaction.gas.is_none() {
             transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
         }
@@ -395,8 +395,22 @@ impl ApiServer {
 
         let tx = transaction
             .try_into_unsigned()
-            .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
-        let payload = account.sign_transaction(tx).signed_payload();
+            .map_err(|_| Error::EthRpc(EthRpcError::InvalidTransaction))?;
+
+        let payload = if self.cheats_manager.is_impersonated(from) {
+            let mut fake_signature = [0; 65];
+            fake_signature[12..32].copy_from_slice(from.as_bytes());
+            tx.with_signature(fake_signature).signed_payload()
+        } else {
+            let account = self
+                .wallet
+                .accounts
+                .iter()
+                .find(|account| account.address() == from)
+                .ok_or(Error::EthRpc(EthRpcError::AccountNotFound(from)))?;
+            account.sign_transaction(tx).signed_payload()
+        };
+
         self.send_raw_transaction(Bytes(payload)).await
     }
 
@@ -406,6 +420,12 @@ impl ApiServer {
             .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
             .await
             .map_err(Error::from)
+    }
+
+    fn impersonate_account(&self, addr: H160) -> Result<()> {
+        node_info!("anvil_impersonateAccount");
+        self.cheats_manager.impersonate(addr);
+        Ok(())
     }
 }
 
@@ -459,5 +479,6 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
             panic!("Block subscription task failed: {err:?}",)
         }
     });
+
     Ok(eth_rpc_client)
 }
