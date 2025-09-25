@@ -199,7 +199,7 @@ async fn test_mixed_mining() {
     anvil_node_config.block_time = Some(Duration::from_secs(1));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
-    node.submit_remark(dev::alice()).await;
+    node.submit_remark(dev::bob()).await;
     assert_eq!(node.best_block_number().await, 1);
     node.wait_for_block_with_timeout(2, Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 2);

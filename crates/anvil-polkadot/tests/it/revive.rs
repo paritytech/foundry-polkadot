@@ -17,6 +17,7 @@ async fn test_get_chain_id() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
+    // expected 420420420
     assert_eq!(
         unwrap_response::<String>(node.eth_rpc(EthRequest::EthChainId(())).await.unwrap()).unwrap(),
         "0x190f1b44"

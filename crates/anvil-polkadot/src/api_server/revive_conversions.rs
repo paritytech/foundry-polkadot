@@ -177,11 +177,15 @@ pub(crate) fn convert_to_generic_transaction(
         access_list: transaction_request
             .access_list
             .map(|access_list| ReviveAccessList::from(access_list).inner()),
-        authorization_list: transaction_request.authorization_list.map_or(Default::default(),|authorization_list| {
-            authorization_list.into_iter().map(|entry| {
-                ReviveAuthorizationListEntry::from(entry).inner()
-            }).collect()
-        }),
+        authorization_list: transaction_request.authorization_list.map_or(
+            Default::default(),
+            |authorization_list| {
+                authorization_list
+                    .into_iter()
+                    .map(|entry| ReviveAuthorizationListEntry::from(entry).inner())
+                    .collect()
+            },
+        ),
         blob_versioned_hashes: transaction_request
             .blob_versioned_hashes
             .unwrap_or_default()
