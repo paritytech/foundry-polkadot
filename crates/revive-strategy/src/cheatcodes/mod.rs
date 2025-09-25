@@ -250,6 +250,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 Ok(Default::default())
             }
             t if using_pvm && is::<loadCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
                 let target_address_h160 = H160::from_slice(target.as_slice());
                 let storage_value = execute_with_externalities(|externalities| {
