@@ -6,8 +6,9 @@
 //! THIS IS WORK IN PROGRESS. It is not yet complete and may change in the future.
 #![allow(clippy::disallowed_macros)]
 use polkadot_sdk::{
+    frame_support::traits::{Currency, fungible::Mutate},
     frame_system, pallet_balances,
-    pallet_revive::AddressMapper,
+    pallet_revive::{self, AddressMapper},
     polkadot_runtime_common::BuildStorage,
     sp_core::H160,
     sp_io,
@@ -50,8 +51,14 @@ impl ExtBuilder {
         .unwrap();
         let mut ext = sp_io::TestExternalities::new(t);
         ext.register_extension(KeystoreExt::new(MemoryKeystore::new()));
-        ext.execute_with(|| System::set_block_number(0));
-
+        ext.execute_with(|| {
+            System::set_block_number(0);
+            // Ensure the pallet revive account has at least the minimum balance.
+            let _ = pallet_balances::Pallet::<Runtime>::mint_into(
+                &pallet_revive::Pallet::<Runtime>::account_id(),
+                pallet_balances::Pallet::<Runtime>::minimum_balance(),
+            );
+        });
         ext
     }
 }
