@@ -1,10 +1,10 @@
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::Address;
-use alloy_rpc_types::{AccessList, TransactionRequest};
+use alloy_rpc_types::{AccessList, SignedAuthorization, TransactionRequest};
 use polkadot_sdk::{
     pallet_revive::evm::{
-        AccessListEntry, BlockNumberOrTagOrHash, BlockTag, Byte, Bytes, GenericTransaction,
-        InputOrData,
+        AccessListEntry, AuthorizationListEntry, BlockNumberOrTagOrHash, BlockTag, Byte, Bytes,
+        GenericTransaction, InputOrData,
     },
     sp_core,
 };
@@ -134,6 +134,28 @@ impl From<AccessList> for ReviveAccessList {
 }
 
 #[derive(Debug, Clone)]
+pub struct ReviveAuthorizationListEntry(AuthorizationListEntry);
+
+impl ReviveAuthorizationListEntry {
+    pub fn inner(self) -> AuthorizationListEntry {
+        self.0
+    }
+}
+
+impl From<SignedAuthorization> for ReviveAuthorizationListEntry {
+    fn from(value: SignedAuthorization) -> Self {
+        Self(AuthorizationListEntry {
+            chain_id: SubstrateU256::from(value.inner().chain_id).inner(),
+            address: ReviveAddress::from(value.inner().address).inner(),
+            nonce: value.inner().nonce.into(),
+            y_parity: value.y_parity().into(),
+            r: SubstrateU256::from(value.r()).inner(),
+            s: SubstrateU256::from(value.s()).inner(),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ReviveBytes(Bytes);
 
 impl From<alloy_primitives::Bytes> for ReviveBytes {
@@ -155,6 +177,11 @@ pub(crate) fn convert_to_generic_transaction(
         access_list: transaction_request
             .access_list
             .map(|access_list| ReviveAccessList::from(access_list).inner()),
+        authorization_list: transaction_request.authorization_list.map_or(Default::default(),|authorization_list| {
+            authorization_list.into_iter().map(|entry| {
+                ReviveAuthorizationListEntry::from(entry).inner()
+            }).collect()
+        }),
         blob_versioned_hashes: transaction_request
             .blob_versioned_hashes
             .unwrap_or_default()

@@ -2,7 +2,7 @@ use std::{fs, path::Path, str::FromStr};
 
 use foundry_compilers::artifacts::{ConfigurableContractArtifact, Metadata, Remapping};
 use foundry_config::SolidityErrorCode;
-use foundry_test_utils::{snapbox::IntoData, TestProject};
+use foundry_test_utils::{TestProject, snapbox::IntoData};
 
 use crate::constants::*;
 const CONTRACT_ARTIFACT_JSON: &str = "Foo.sol/Foo.json";
@@ -839,7 +839,10 @@ forgetest!(test_inspect_contract_with_same_name_for_resolc, |prj, cmd| {
     let source = format!("{CUSTOM_COUNTER}\n{ANOTHER_COUNTER}");
     prj.add_source("Counter.sol", &source).unwrap();
 
-    cmd.args(["inspect", "--resolc", "src/Counter.sol", "errors"]).assert_failure().stderr_eq(str![[r#"Error: Multiple contracts found in the same file, please specify the target <path>:<contract> or <contract>[..]"#]]);
+    cmd.args(["inspect", "--resolc", "src/Counter.sol", "errors"]).assert_failure().stderr_eq(str![[r#"
+Error: Multiple contracts found in the same file, please specify the target <path>:<contract> or <contract>
+
+"#]]);
 
     cmd.forge_fuse().args(["inspect", "--resolc", "Counter", "errors"]).assert_success().stdout_eq(
         str![[r#"
@@ -979,10 +982,9 @@ Compiler run successful!
 forgetest!(can_use_absolute_imports_for_resolc, |prj, cmd| {
     prj.update_config(|config| {
         let remapping = prj.paths().libraries[0].join("myDependency");
-        config.remappings =
-            vec![Remapping::from_str(&format!("myDependency/={}", remapping.display()))
-                .unwrap()
-                .into()];
+        config.remappings = vec![
+            Remapping::from_str(&format!("myDependency/={}", remapping.display())).unwrap().into(),
+        ];
     });
 
     prj.add_lib(

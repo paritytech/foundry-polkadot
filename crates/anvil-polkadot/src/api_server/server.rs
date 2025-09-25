@@ -1,28 +1,28 @@
 use crate::{
     api_server::{
+        ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId,
+            AlloyU256, ReviveAddress, ReviveBlockId, convert_to_generic_transaction,
         },
-        ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
     substrate_node::mining_engine::MiningEngine,
 };
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, U256, U64};
-use alloy_rpc_types::{anvil::MineOptions, TransactionRequest};
+use alloy_primitives::{Address, B256, U64, U256};
+use alloy_rpc_types::{TransactionRequest, anvil::MineOptions};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
-use futures::{channel::mpsc, stream, StreamExt};
+use futures::{StreamExt, channel::mpsc, stream};
 use polkadot_sdk::{
     pallet_revive::evm::{Account, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, ReceiptInfo},
     pallet_revive_eth_rpc::{
+        EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
         client::Client as EthRpcClient,
         subxt_client::{self, SrcChainConfig},
-        EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     },
     sc_service::RpcHandlers,
     sp_core::{self, keccak_256},
@@ -31,6 +31,7 @@ use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
 use subxt::{
+    OnlineClient,
     backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
     config::substrate::H256,
     ext::{
@@ -38,7 +39,6 @@ use subxt::{
         subxt_rpcs::{Error as SubxtRpcError, LegacyRpcMethods},
     },
     utils::H160,
-    OnlineClient,
 };
 
 struct InMemoryRpcClient(RpcHandlers);
@@ -215,7 +215,7 @@ impl ApiServer {
             EthRequest::EthGetBlockByHash(hash, full) => {
                 self.get_block_by_hash(hash, full).await.to_rpc_result()
             }
-            EthRequest::EthEstimateGas(call, block, _overrides) => {
+            EthRequest::EthEstimateGas(call, block, _overrides, _block_overrides) => {
                 self.estimate_gas(call, block).await.to_rpc_result()
             }
             EthRequest::EthSendTransaction(request) => {
@@ -245,10 +245,12 @@ impl ApiServer {
         node_info!("anvil_mine");
 
         if blocks.is_some_and(|b| u64::try_from(b).is_err()) {
-            return Err(Error::InvalidParams("The number of blocks is too large".to_string()))
+            return Err(Error::InvalidParams("The number of blocks is too large".to_string()));
         }
         if interval.is_some_and(|i| u64::try_from(i).is_err()) {
-            return Err(Error::InvalidParams("The interval between blocks is too large".to_string()))
+            return Err(Error::InvalidParams(
+                "The interval between blocks is too large".to_string(),
+            ));
         }
         self.mining_engine
             .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
@@ -307,7 +309,7 @@ impl ApiServer {
         node_info!("anvil_setBlockTimestampInterval");
 
         if time >= U256::from(u64::MAX) {
-            return Err(Error::InvalidParams("The timestamp is too big".to_string()))
+            return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = time.to::<u64>();
         self.mining_engine
@@ -325,7 +327,7 @@ impl ApiServer {
         node_info!("evm_setTime");
 
         if timestamp >= U256::from(u64::MAX) {
-            return Err(Error::InvalidParams("The timestamp is too big".to_string()))
+            return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = timestamp.to::<u64>();
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))

@@ -20,7 +20,7 @@ path = "bin/main.rs"
 [dependencies]
 # foundry internal
 substrate-runtime = { path = "substrate-runtime" }
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "acihodaru/foundry-polkadot", default-features = false, features = [
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = [
     "sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
@@ -116,7 +116,7 @@ thiserror.workspace = true
 yansi.workspace = true
 tempfile.workspace = true
 itertools.workspace = true
-rand.workspace = true
+rand_08.workspace = true
 eyre.workspace = true
 
 # cli
@@ -129,8 +129,8 @@ clap_complete = { version = "4" }
 chrono.workspace = true
 clap_complete_fig = "4"
 parity-scale-codec = "3.7.5"
-subxt = "0.41.0"
-subxt-signer = "0.41.0"
+subxt = "0.43.0"
+subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
 sqlx = "0.8.6"
 

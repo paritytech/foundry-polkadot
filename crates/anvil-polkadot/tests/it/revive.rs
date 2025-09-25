@@ -1,4 +1,4 @@
-use crate::utils::{unwrap_response, TestNode};
+use crate::utils::{TestNode, unwrap_response};
 use alloy_eips::BlockId;
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::TransactionRequest;
