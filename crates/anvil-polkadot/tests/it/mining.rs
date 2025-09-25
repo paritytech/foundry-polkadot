@@ -35,18 +35,18 @@ async fn test_invalid_mining() {
     assert!(matches!(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(u128::MAX)), None)).await.unwrap(),
         ResponseResult::Error(RpcError {
-            code: ErrorCode::InternalError,
+            code: ErrorCode::InvalidParams,
             message,
             data: None
-        }) if message == "Invalid params: The number of blocks is too large"
+        }) if message == "The number of blocks is too large"
     ));
     assert!(matches!(
         node.eth_rpc(EthRequest::Mine(None, Some(U256::from(u128::MAX)))).await.unwrap(),
         ResponseResult::Error(RpcError {
-            code: ErrorCode::InternalError,
+            code: ErrorCode::InvalidParams,
             message,
             data: None
-        }) if message == "Invalid params: The interval between blocks is too large"
+        }) if message == "The interval between blocks is too large"
     ));
 }
 

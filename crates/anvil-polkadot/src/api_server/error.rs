@@ -39,7 +39,31 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
     fn to_rpc_result(self) -> ResponseResult {
         match self {
             Ok(val) => to_rpc_result(val),
-            Err(err) => RpcError::internal_error_with(err.to_string()).into(),
+            Err(err) => match err {
+                Error::Mining(mining_error) => match mining_error {
+                    MiningError::BlockProducing(error) => RpcError::internal_error_with(format!(
+                        "Failed to produce a block: {error}"
+                    ))
+                    .into(),
+                    MiningError::MiningModeMismatch => todo!(),
+                    MiningError::Timestamp => {
+                        RpcError::invalid_params("Current timestamp is newer.").into()
+                    }
+                    MiningError::ClosedChannel => {
+                        RpcError::internal_error_with("Communication Channel was dropped.").into()
+                    }
+                },
+                Error::RpcUnimplemented => RpcError::internal_error_with("Not implemented").into(),
+                Error::InvalidParams(error_message) => {
+                    RpcError::invalid_params(error_message).into()
+                }
+                Error::Revive(client_error) => {
+                    RpcError::internal_error_with(format!("{client_error}")).into()
+                }
+                Error::EthRpc(eth_rpc_error) => {
+                    RpcError::invalid_params(format!("{eth_rpc_error}")).into()
+                }
+            },
         }
     }
 }
