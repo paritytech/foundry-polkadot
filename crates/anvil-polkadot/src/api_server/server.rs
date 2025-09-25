@@ -8,15 +8,15 @@ use crate::{
     },
     logging::LoggingManager,
     macros::node_info,
-    substrate_node::{
-        mining_engine::MiningEngine,
-        service::TransactionPoolHandle,
-    },
+    substrate_node::{mining_engine::MiningEngine, service::TransactionPoolHandle},
 };
 use alloy_eips::BlockId;
-use alloy_network::AnyRpcTransaction;
 use alloy_primitives::{Address, B256, U256, U64};
-use alloy_rpc_types::{anvil::MineOptions, TransactionRequest, txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus}};
+use alloy_rpc_types::{
+    anvil::MineOptions,
+    txpool::{TxpoolContent, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
+    TransactionRequest,
+};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
@@ -25,7 +25,13 @@ use indexmap::IndexMap;
 use parity_scale_codec::{DecodeLimit, Encode};
 use polkadot_sdk::{
     frame_support::MAX_EXTRINSIC_DEPTH,
-    pallet_revive::{self, evm::{Account, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, ReceiptInfo, TransactionSigned}},
+    pallet_revive::{
+        self,
+        evm::{
+            Account, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, ReceiptInfo, TransactionInfo,
+            TransactionSigned,
+        },
+    },
     pallet_revive_eth_rpc::{
         client::Client as EthRpcClient,
         subxt_client::{self, SrcChainConfig},
@@ -38,7 +44,7 @@ use polkadot_sdk::{
 };
 use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use substrate_runtime::{RuntimeCall, UncheckedExtrinsic};
 use subxt::{
     backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
@@ -560,12 +566,87 @@ impl ApiServer {
         ResponseResult::Success(serde_json::to_value(inspect).unwrap_or_default())
     }
 
-    /// Returns full transaction details - NOT IMPLEMENTED
+    /// Returns full transaction details - IMPLEMENTED
     async fn txpool_content(&self) -> ResponseResult {
         node_info!("txpool_content");
-        // TODO: Convert Substrate transactions to AnyRpcTransaction format
-        let content = TxpoolContent::<AnyRpcTransaction>::default();
+
+        let mut pending = BTreeMap::new();
+        let mut queued = BTreeMap::new();
+
+        // Process ready transactions (pending)
+        self.process_ready_transactions(&mut pending);
+
+        // Process future transactions (queued)
+        self.process_future_transactions(&mut queued);
+
+        let content = TxpoolContent { pending, queued };
         ResponseResult::Success(serde_json::to_value(content).unwrap_or_default())
+    }
+
+    /// Create TransactionInfo from signed transaction and payload
+    fn create_transaction_info(&self, signed_tx: &TransactionSigned, payload: &[u8]) -> Option<(Address, String, TransactionInfo)> {
+        let eth_hash_h256 = H256::from_slice(&keccak_256(payload));
+
+        let nonce = match signed_tx {
+            TransactionSigned::TransactionLegacySigned(tx) => tx.transaction_legacy_unsigned.nonce,
+            TransactionSigned::Transaction1559Signed(tx) => tx.transaction_1559_unsigned.nonce,
+            TransactionSigned::Transaction2930Signed(tx) => tx.transaction_2930_unsigned.nonce,
+            TransactionSigned::Transaction4844Signed(tx) => tx.transaction_4844_unsigned.nonce,
+        };
+
+        let from_h160 = signed_tx.recover_eth_address().ok()?;
+        let from_addr = Address::from_slice(&from_h160.as_bytes());
+
+        let tx_info = TransactionInfo {
+            hash: eth_hash_h256,
+            block_hash: H256::default(),
+            block_number: sp_core::U256::zero(),
+            transaction_index: sp_core::U256::zero(),
+            from: from_h160,
+            transaction_signed: signed_tx.clone(),
+        };
+
+        Some((from_addr, format!("{:#x}", nonce), tx_info))
+    }
+
+    /// Process ready transactions (pending)
+    fn process_ready_transactions(&self, pending: &mut BTreeMap<Address, BTreeMap<String, TransactionInfo>>) {
+        for tx in self.tx_pool.ready() {
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH, &mut &(tx.data.encode()[..])
+            ) {
+                if let sp_runtime::generic::UncheckedExtrinsic {
+                    function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0 {
+                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                        if let Some((from_addr, nonce_str, tx_info)) = self.create_transaction_info(&signed_tx, &payload) {
+                            pending.entry(from_addr).or_insert_with(BTreeMap::new).insert(nonce_str, tx_info);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Process future transactions (queued)
+    fn process_future_transactions(&self, queued: &mut BTreeMap<Address, BTreeMap<String, TransactionInfo>>) {
+        for tx in self.tx_pool.futures() {
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH, &mut &(tx.data.encode()[..])
+            ) {
+                if let sp_runtime::generic::UncheckedExtrinsic {
+                    function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0 {
+                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                        if let Some((from_addr, nonce_str, tx_info)) = self.create_transaction_info(&signed_tx, &payload) {
+                            queued.entry(from_addr).or_insert_with(BTreeMap::new).insert(nonce_str, tx_info);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Helper function to find transaction by ETH hash
