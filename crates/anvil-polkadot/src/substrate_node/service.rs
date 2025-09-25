@@ -1,7 +1,7 @@
 use crate::{
-    genesis::DevelopmentGenesisBlockBuilder,
-    substrate_node::mining_engine::{run_mining_engine, MiningEngine, MiningMode},
     AnvilNodeConfig,
+    genesis::DevelopmentGenesisBlockBuilder,
+    substrate_node::mining_engine::{MiningEngine, MiningMode, run_mining_engine},
     substrate_node::mining_engine::{MiningEngine, MiningMode, run_mining_engine},
 };
 use anvil::eth::backend::time::TimeManager;
@@ -29,12 +29,12 @@ use polkadot_sdk::{
         transaction::{TransactionApiServer, TransactionBroadcastApiServer},
     },
     sc_service::{
-        self, error::Error as ServiceError, Configuration, RpcHandlers, SpawnTaskHandle,
-        TaskManager,
+        self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
+        error::Error as ServiceError,
     },
     sc_telemetry::TelemetryHandle,
     sc_transaction_pool::{self, TransactionPoolWrapper},
-    sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender},
+    sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded},
     sp_io,
     sp_keystore::KeystorePtr,
     sp_timestamp,
@@ -273,8 +273,8 @@ fn custom_gen_rpc_module(
     )
     .into_rpc();
 
-    let is_archive_node = state_pruning.as_ref().map(|sp| sp.is_archive()).unwrap_or(false) &&
-        blocks_pruning.is_archive();
+    let is_archive_node = state_pruning.as_ref().map(|sp| sp.is_archive()).unwrap_or(false)
+        && blocks_pruning.is_archive();
     let genesis_hash = client.hash(genesis_number as u32).ok().flatten().unwrap();
     if is_archive_node {
         let archive_v2 = polkadot_sdk::sc_rpc_spec_v2::archive::Archive::new(
