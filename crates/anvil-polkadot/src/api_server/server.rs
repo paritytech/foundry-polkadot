@@ -367,7 +367,6 @@ impl ApiServer {
 
     async fn transaction_receipt(&self, tx_hash: B256) -> Result<Option<ReceiptInfo>> {
         node_info!("eth_getTransactionReceipt");
-        // TODO: do we really need to return Ok(None) if the transaction is still in the pool?
         Ok(self.eth_rpc_client.receipt(&(tx_hash.0.into())).await)
     }
 
@@ -497,6 +496,7 @@ impl ApiServer {
         &self,
         transaction_req: WithOtherFields<TransactionRequest>,
     ) -> Result<H256> {
+        node_info!("eth_sendTransaction");
         let mut transaction = convert_to_generic_transaction(transaction_req.clone().into_inner());
         node_info!("{transaction:#?}");
         let Some(from) = transaction.from else {
