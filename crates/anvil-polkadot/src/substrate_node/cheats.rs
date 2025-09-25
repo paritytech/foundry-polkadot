@@ -59,11 +59,6 @@ impl CheatsManager {
         trace!(target: "cheats", "Auto impersonation set to {:?}", enabled);
         self.state.write().auto_impersonate_accounts = enabled
     }
-
-    /// Returns all accounts that are currently being impersonated.
-    pub fn impersonated_accounts(&self) -> HashSet<H160> {
-        self.state.read().impersonated_accounts.clone()
-    }
 }
 
 /// Container type for all the state variables

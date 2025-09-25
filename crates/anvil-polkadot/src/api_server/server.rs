@@ -135,6 +135,12 @@ impl ApiServer {
             EthRequest::ImpersonateAccount(addr) => {
                 self.impersonate_account(H160::from_slice(addr.0.as_ref())).to_rpc_result()
             }
+            EthRequest::StopImpersonatingAccount(addr) => {
+                self.stop_impersonating_account(&H160::from_slice(addr.0.as_ref())).to_rpc_result()
+            }
+            EthRequest::AutoImpersonateAccount(enable) => {
+                self.auto_impersonate_account(enable).to_rpc_result()
+            }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -425,6 +431,18 @@ impl ApiServer {
     fn impersonate_account(&self, addr: H160) -> Result<()> {
         node_info!("anvil_impersonateAccount");
         self.cheats_manager.impersonate(addr);
+        Ok(())
+    }
+
+    fn auto_impersonate_account(&self, enable: bool) -> Result<()> {
+        node_info!("anvil_autoImpersonateAccount");
+        self.cheats_manager.set_auto_impersonate_account(enable);
+        Ok(())
+    }
+
+    fn stop_impersonating_account(&self, addr: &H160) -> Result<()> {
+        node_info!("anvil_stopImpersonatingAccount");
+        self.cheats_manager.stop_impersonating(addr);
         Ok(())
     }
 }
