@@ -71,7 +71,7 @@ impl TestNode {
             LoggingManager::default()
         };
 
-        let (service, api) = spawn(anvil_config, config, logging_manager).await?;
+        let (service, task_manager, api) = spawn(anvil_config, config, logging_manager).await?;
 
         Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }
@@ -150,20 +150,18 @@ impl TestNode {
         to: Address,
         amount: U256,
         block_nr: u32,
-    ) -> H256 {
+    ) -> Result<H256> {
         let tx_hash = unwrap_response::<H256>(
             self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
                 TransactionRequest::default().value(amount).from(from).to(to),
             ))))
             .await
             .unwrap(),
-        )
-        .unwrap();
+        )?;
         self.wait_for_block_with_timeout(block_nr, std::time::Duration::from_secs(5))
             .await
             .unwrap();
-
-        tx_hash
+        Ok(tx_hash)
     }
 
     pub async fn state_get_storage(

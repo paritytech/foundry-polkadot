@@ -25,8 +25,6 @@ use sp_runtime_interface::{
     runtime_interface,
 };
 
-use crate::macros::node_info;
-
 #[runtime_interface]
 pub trait Crypto {
     #[version(1)]
@@ -82,10 +80,8 @@ pub trait Hashing {
             );
             let mut res = [0; 32];
             res.copy_from_slice(&data[0..32]);
-            // node_info!("hex address {:02x}", data);
             res
         } else {
-            node_info!("keccak_256 real");
             sp_io::hashing::keccak_256(data)
         }
     }
