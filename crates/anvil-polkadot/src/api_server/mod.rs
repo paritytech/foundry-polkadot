@@ -5,7 +5,7 @@ use futures::channel::{mpsc, oneshot};
 use polkadot_sdk::sc_service::TaskManager;
 use server::ApiServer;
 
-mod error;
+pub mod error;
 pub mod revive_conversions;
 mod server;
 
@@ -26,7 +26,9 @@ pub fn spawn(
     let spawn_handle = task_manager.spawn_essential_handle();
     let service = substrate_service.clone();
     spawn_handle.spawn("anvil-api-server", "anvil", async move {
-        let api_server = ApiServer::new(service, receiver, logging_manager).await;
+        let api_server = ApiServer::new(service, receiver, logging_manager)
+            .await
+            .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));
         api_server.run().await;
     });
 

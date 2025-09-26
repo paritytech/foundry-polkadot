@@ -1,4 +1,4 @@
 mod mining;
-mod revive;
+mod standard_rpc;
 mod time_machine;
 mod utils;

@@ -12,9 +12,18 @@ pub enum Error {
     #[error("Invalid params: {0}")]
     InvalidParams(String),
     #[error("Revive call failed: {0}")]
-    Revive(ClientError),
-    #[error("Ethereum RPC ERROR {0}")]
-    EthRpc(EthRpcError),
+    ReviveRpc(#[from] EthRpcError),
+}
+impl From<subxt::Error> for Error {
+    fn from(err: subxt::Error) -> Self {
+        Self::ReviveRpc(EthRpcError::ClientError(err.into()))
+    }
+}
+
+impl From<ClientError> for Error {
+    fn from(err: ClientError) -> Self {
+        Self::ReviveRpc(EthRpcError::ClientError(err))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -46,7 +55,7 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                             .into()
                     }
                     MiningError::MiningModeMismatch => {
-                        RpcError::invalid_params("Current mining mode can not answer thise query.")
+                        RpcError::invalid_params("Current mining mode can not answer this query.")
                             .into()
                     }
                     MiningError::Timestamp => {
@@ -60,11 +69,8 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 Error::InvalidParams(error_message) => {
                     RpcError::invalid_params(error_message).into()
                 }
-                Error::Revive(client_error) => {
+                Error::ReviveRpc(client_error) => {
                     RpcError::internal_error_with(format!("{client_error}")).into()
-                }
-                Error::EthRpc(eth_rpc_error) => {
-                    RpcError::invalid_params(format!("{eth_rpc_error}")).into()
                 }
             },
         }
