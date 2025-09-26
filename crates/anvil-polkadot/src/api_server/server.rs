@@ -558,11 +558,20 @@ impl ApiServer {
         ResponseResult::Success(serde_json::to_value(status).unwrap_or_default())
     }
 
-    /// Returns transaction summaries - NOT IMPLEMENTED
+    /// Returns transaction summaries - IMPLEMENTED
     async fn txpool_inspect(&self) -> ResponseResult {
         node_info!("txpool_inspect");
-        // TODO: Convert Substrate transactions to TxpoolInspectSummary format
-        let inspect = TxpoolInspect::default();
+
+        let mut pending = BTreeMap::new();
+        let mut queued = BTreeMap::new();
+
+        // Process ready transactions (pending)
+        self.process_ready_transactions_for_inspect(&mut pending);
+
+        // Process future transactions (queued)
+        self.process_future_transactions_for_inspect(&mut queued);
+
+        let inspect = TxpoolInspect { pending, queued };
         ResponseResult::Success(serde_json::to_value(inspect).unwrap_or_default())
     }
 
@@ -747,5 +756,105 @@ impl ApiServer {
         // TODO: Convert ETH Address to Substrate AccountId format
         // Then filter transactions by sender and remove via report_invalid
         ResponseResult::Success(serde_json::Value::Bool(true))
+    }
+
+    /// Process ready transactions for inspect (pending)
+    fn process_ready_transactions_for_inspect(
+        &self,
+        pending: &mut BTreeMap<Address, BTreeMap<String, TxpoolInspectSummary>>,
+    ) {
+        for tx in self.tx_pool.ready() {
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
+            ) {
+                if let sp_runtime::generic::UncheckedExtrinsic {
+                    function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0
+                {
+                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                        if let Some((from_addr, nonce_str, summary)) =
+                            self.create_inspect_summary(&signed_tx)
+                        {
+                            pending
+                                .entry(from_addr)
+                                .or_insert_with(BTreeMap::new)
+                                .insert(nonce_str, summary);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Process future transactions for inspect (queued)
+    fn process_future_transactions_for_inspect(
+        &self,
+        queued: &mut BTreeMap<Address, BTreeMap<String, TxpoolInspectSummary>>,
+    ) {
+        for tx in self.tx_pool.futures() {
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
+            ) {
+                if let sp_runtime::generic::UncheckedExtrinsic {
+                    function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0
+                {
+                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                        if let Some((from_addr, nonce_str, summary)) =
+                            self.create_inspect_summary(&signed_tx)
+                        {
+                            queued
+                                .entry(from_addr)
+                                .or_insert_with(BTreeMap::new)
+                                .insert(nonce_str, summary);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Create TxpoolInspectSummary from signed transaction
+    fn create_inspect_summary(
+        &self,
+        signed_tx: &TransactionSigned,
+    ) -> Option<(Address, String, TxpoolInspectSummary)> {
+        // Recover sender address
+        let from_h160 = signed_tx.recover_eth_address().ok()?;
+        let from_addr = Address::from_slice(&from_h160.as_bytes());
+
+        // Extract transaction fields based on type
+        let (nonce, to, value, gas, gas_price) = match signed_tx {
+            TransactionSigned::TransactionLegacySigned(tx) => {
+                let t = &tx.transaction_legacy_unsigned;
+                (t.nonce, t.to, t.value, t.gas, Some(t.gas_price))
+            }
+            TransactionSigned::Transaction1559Signed(tx) => {
+                let t = &tx.transaction_1559_unsigned;
+                (t.nonce, t.to, t.value, t.gas, Some(t.max_fee_per_gas))
+            }
+            TransactionSigned::Transaction2930Signed(tx) => {
+                let t = &tx.transaction_2930_unsigned;
+                (t.nonce, t.to, t.value, t.gas, Some(t.gas_price))
+            }
+            TransactionSigned::Transaction4844Signed(tx) => {
+                let t = &tx.transaction_4844_unsigned;
+                (t.nonce, Some(t.to), t.value, t.gas, Some(t.max_fee_per_gas))
+            }
+        };
+
+        // Create the summary with proper type conversions
+        let summary = TxpoolInspectSummary {
+            to: to.map(|addr| Address::from_slice(&addr.as_bytes())),
+            value: U256::from_limbs(value.0),
+            gas: gas.as_u64(),
+            gas_price: gas_price.map(|gp| gp.as_u128()).unwrap_or(0),
+        };
+
+        Some((from_addr, format!("{:#x}", nonce), summary))
     }
 }
