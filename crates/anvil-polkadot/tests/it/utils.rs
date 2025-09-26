@@ -3,11 +3,10 @@ use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{self, ApiHandle},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
-    genesis::GenesisConfig,
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
-    substrate_node::service::Service,
+    substrate_node::{genesis::GenesisConfig, service::Service},
 };
 use anvil_rpc::response::ResponseResult;
 use codec::Decode;

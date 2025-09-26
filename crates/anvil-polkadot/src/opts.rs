@@ -1,4 +1,7 @@
-use crate::{cmd::NodeArgs, genesis::GenesisConfig, substrate_node::chain_spec};
+use crate::{
+    cmd::NodeArgs,
+    substrate_node::{chain_spec, genesis::GenesisConfig},
+};
 use clap::{Parser, Subcommand};
 use foundry_cli::opts::GlobalArgs;
 use foundry_common::version::{LONG_VERSION, SHORT_VERSION};

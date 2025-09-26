@@ -1,4 +1,4 @@
-use crate::genesis::GenesisConfig;
+use crate::substrate_node::genesis::GenesisConfig;
 use polkadot_sdk::{
     sc_chain_spec::{ChainSpec, GetExtension},
     sc_executor::HostFunctions,

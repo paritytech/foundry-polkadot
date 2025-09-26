@@ -5,9 +5,8 @@
 use crate::{
     api_server::ApiHandle,
     config::AnvilNodeConfig,
-    genesis::GenesisConfig,
     logging::{LoggingManager, NodeLogLayer},
-    substrate_node::service::Service,
+    substrate_node::{genesis::GenesisConfig, service::Service},
 };
 use clap::{CommandFactory, Parser};
 use eyre::Result;
@@ -39,8 +38,6 @@ pub mod api_server;
 pub mod cmd;
 
 pub mod opts;
-
-pub mod genesis;
 
 #[macro_use]
 extern crate tracing;
