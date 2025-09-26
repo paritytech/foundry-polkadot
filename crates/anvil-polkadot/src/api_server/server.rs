@@ -749,13 +749,62 @@ impl ApiServer {
         ResponseResult::Success(serde_json::Value::Bool(!removed.is_empty()))
     }
 
-    /// Remove transactions from specific address - NOT IMPLEMENTED
-    async fn anvil_remove_pool_transactions(&self, _address: Address) -> ResponseResult {
+    /// Remove transactions from specific address - IMPLEMENTED
+    async fn anvil_remove_pool_transactions(&self, address: Address) -> ResponseResult {
         node_info!("anvil_removePoolTransactions");
 
-        // TODO: Convert ETH Address to Substrate AccountId format
-        // Then filter transactions by sender and remove via report_invalid
-        ResponseResult::Success(serde_json::Value::Bool(true))
+        let mut invalid_txs = IndexMap::new();
+
+        // Check ready transactions (pending)
+        for tx in self.tx_pool.ready() {
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
+            ) {
+                if let sp_runtime::generic::UncheckedExtrinsic {
+                    function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0
+                {
+                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                        if let Ok(from_h160) = signed_tx.recover_eth_address() {
+                            let from_addr = Address::from_slice(&from_h160.as_bytes());
+                            if from_addr == address {
+                                invalid_txs.insert(*tx.hash(), None);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check future transactions (queued)
+        for tx in self.tx_pool.futures() {
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
+            ) {
+                if let sp_runtime::generic::UncheckedExtrinsic {
+                    function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0
+                {
+                    if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
+                        if let Ok(from_h160) = signed_tx.recover_eth_address() {
+                            let from_addr = Address::from_slice(&from_h160.as_bytes());
+                            if from_addr == address {
+                                invalid_txs.insert(*tx.hash(), None);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove all matching transactions
+        let removed = self.tx_pool.report_invalid(None, invalid_txs).await;
+
+        ResponseResult::Success(serde_json::Value::Bool(!removed.is_empty()))
     }
 
     /// Process ready transactions for inspect (pending)
