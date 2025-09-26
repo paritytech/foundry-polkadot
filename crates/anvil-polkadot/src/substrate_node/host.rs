@@ -34,15 +34,17 @@ pub trait Crypto {
         sig: PassPointerAndRead<&[u8; 65], 65>,
         msg: PassPointerAndRead<&[u8; 32], 32>,
     ) -> AllocateAndReturnByCodec<Result<[u8; 64], EcdsaVerifyError>> {
-        node_info!("secp256k1_ecdsa_recover override 1: {:?}", sig);
-        node_info!("bla {}", sig[..12].iter().eq([0; 12].iter()));
         if sig[..12].iter().eq([0; 12].iter()) {
-            node_info!("impersonation case 2");
+            trace!(
+                target = "host_fn_overrides",
+                name = "secp256k1_ecdsa_recover - version 1",
+                "impersonation for: {:?}",
+                &sig[12..32]
+            );
             let mut res = [0u8; 64];
             res[12..32].copy_from_slice(&sig[12..32]);
             Ok(res)
         } else {
-            node_info!("regular case 1");
             sp_io::crypto::secp256k1_ecdsa_recover(sig, msg)
         }
     }
@@ -52,14 +54,17 @@ pub trait Crypto {
         sig: PassPointerAndRead<&[u8; 65], 65>,
         msg: PassPointerAndRead<&[u8; 32], 32>,
     ) -> AllocateAndReturnByCodec<Result<[u8; 64], EcdsaVerifyError>> {
-        node_info!("secp256k1_ecdsa_recover override 2: {:?}", sig);
         if sig[..12] == [0; 12] && sig[32..64] == [0; 32] {
-            node_info!("impersonation case 2");
+            trace!(
+                target = "host_fn_overrides",
+                name = "secp256k1_ecdsa_recover - version 2",
+                "impersonation for: {:?}",
+                &sig[12..32]
+            );
             let mut res = [0u8; 64];
             res[12..32].copy_from_slice(&sig[12..32]);
             Ok(res)
         } else {
-            node_info!("regular case 2:");
             sp_io::crypto::secp256k1_ecdsa_recover(sig, msg)
         }
     }
@@ -68,9 +73,13 @@ pub trait Crypto {
 #[runtime_interface]
 pub trait Hashing {
     fn keccak_256(data: PassFatPointerAndRead<&[u8]>) -> AllocateAndReturnPointer<[u8; 32], 32> {
-        node_info!("keccak_256 override: {:?}", data);
         if data.len() == 64 && data[..12] == [0; 12] && data[32..64] == [0; 32] {
-            node_info!("keccak_256 override");
+            trace!(
+                target = "host_fn_overrides",
+                name = "keccak_256",
+                "impersonation for: {:?}",
+                &data[12..32]
+            );
             let mut res = [0; 32];
             res.copy_from_slice(&data[0..32]);
             // node_info!("hex address {:02x}", data);
