@@ -11,9 +11,9 @@ pub enum Error {
     RpcUnimplemented,
     #[error("Invalid params: {0}")]
     InvalidParams(String),
-    #[error("Revive call failed: {0:?}")]
+    #[error("Revive call failed: {0}")]
     Revive(ClientError),
-    #[error("ETH RPC ERROR {0:?}")]
+    #[error("Ethereum RPC ERROR {0}")]
     EthRpc(EthRpcError),
 }
 
@@ -53,7 +53,7 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                         RpcError::invalid_params("Current timestamp is newer.").into()
                     }
                     MiningError::ClosedChannel => {
-                        RpcError::internal_error_with("Communication Channel was dropped.").into()
+                        RpcError::internal_error_with("Communication channel was dropped.").into()
                     }
                 },
                 Error::RpcUnimplemented => RpcError::internal_error_with("Not implemented").into(),

@@ -192,7 +192,6 @@ pub(crate) fn convert_to_generic_transaction(
             .into_iter()
             .map(|b256| H256::from_slice(b256.as_ref()))
             .collect(),
-        //replace
         blobs: transaction_request
             .sidecar
             .unwrap_or_default()

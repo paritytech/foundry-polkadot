@@ -190,15 +190,15 @@ impl ApiServer {
             EthRequest::SetIntervalMining(interval) => {
                 self.set_interval_mining(interval).to_rpc_result()
             }
-            EthRequest::GetIntervalMining(()) => self.get_interval_mining().to_rpc_result(),
-            EthRequest::GetAutoMine(()) => self.get_auto_mine().to_rpc_result(),
+            EthRequest::GetIntervalMining(_) => self.get_interval_mining().to_rpc_result(),
+            EthRequest::GetAutoMine(_) => self.get_auto_mine().to_rpc_result(),
             EthRequest::SetAutomine(enabled) => self.set_auto_mine(enabled).to_rpc_result(),
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
             }
-            EthRequest::EvmRemoveBlockTimeStampInterval(()) => {
+            EthRequest::EvmRemoveBlockTimeStampInterval(_) => {
                 self.remove_block_timestamp_interval().to_rpc_result()
             }
             EthRequest::EvmSetNextBlockTimeStamp(time) => {
@@ -207,10 +207,10 @@ impl ApiServer {
             EthRequest::EvmIncreaseTime(time) => self.increase_time(time).to_rpc_result(),
             EthRequest::EvmSetTime(timestamp) => self.set_time(timestamp).to_rpc_result(),
             //------- Revive---------
-            EthRequest::EthChainId(()) => self.eth_chain_id().to_rpc_result(),
-            EthRequest::EthNetworkId(()) => self.network_id().to_rpc_result(),
-            EthRequest::NetListening(()) => self.net_listening().to_rpc_result(),
-            EthRequest::EthSyncing(()) => self.syncing().to_rpc_result(),
+            EthRequest::EthChainId(_) => self.eth_chain_id().to_rpc_result(),
+            EthRequest::EthNetworkId(_) => self.network_id().to_rpc_result(),
+            EthRequest::NetListening(_) => self.net_listening().to_rpc_result(),
+            EthRequest::EthSyncing(_) => self.syncing().to_rpc_result(),
             EthRequest::EthGetTransactionReceipt(tx_hash) => {
                 self.transaction_receipt(tx_hash).await.to_rpc_result()
             }
@@ -498,9 +498,7 @@ impl ApiServer {
     ) -> Result<H256> {
         node_info!("eth_sendTransaction");
         let mut transaction = convert_to_generic_transaction(transaction_req.clone().into_inner());
-        node_info!("{transaction:#?}");
         let Some(from) = transaction.from else {
-            node_info!("Transaction must have a sender");
             return Err(Error::EthRpc(EthRpcError::InvalidTransaction));
         };
 
