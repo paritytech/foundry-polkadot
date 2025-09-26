@@ -584,7 +584,11 @@ impl ApiServer {
     }
 
     /// Create TransactionInfo from signed transaction and payload
-    fn create_transaction_info(&self, signed_tx: &TransactionSigned, payload: &[u8]) -> Option<(Address, String, TransactionInfo)> {
+    fn create_transaction_info(
+        &self,
+        signed_tx: &TransactionSigned,
+        payload: &[u8],
+    ) -> Option<(Address, String, TransactionInfo)> {
         let eth_hash_h256 = H256::from_slice(&keccak_256(payload));
 
         let nonce = match signed_tx {
@@ -610,18 +614,28 @@ impl ApiServer {
     }
 
     /// Process ready transactions (pending)
-    fn process_ready_transactions(&self, pending: &mut BTreeMap<Address, BTreeMap<String, TransactionInfo>>) {
+    fn process_ready_transactions(
+        &self,
+        pending: &mut BTreeMap<Address, BTreeMap<String, TransactionInfo>>,
+    ) {
         for tx in self.tx_pool.ready() {
             if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
-                MAX_EXTRINSIC_DEPTH, &mut &(tx.data.encode()[..])
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
             ) {
                 if let sp_runtime::generic::UncheckedExtrinsic {
                     function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
                     ..
-                } = ext.0 {
+                } = ext.0
+                {
                     if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
-                        if let Some((from_addr, nonce_str, tx_info)) = self.create_transaction_info(&signed_tx, &payload) {
-                            pending.entry(from_addr).or_insert_with(BTreeMap::new).insert(nonce_str, tx_info);
+                        if let Some((from_addr, nonce_str, tx_info)) =
+                            self.create_transaction_info(&signed_tx, &payload)
+                        {
+                            pending
+                                .entry(from_addr)
+                                .or_insert_with(BTreeMap::new)
+                                .insert(nonce_str, tx_info);
                         }
                     }
                 }
@@ -630,18 +644,28 @@ impl ApiServer {
     }
 
     /// Process future transactions (queued)
-    fn process_future_transactions(&self, queued: &mut BTreeMap<Address, BTreeMap<String, TransactionInfo>>) {
+    fn process_future_transactions(
+        &self,
+        queued: &mut BTreeMap<Address, BTreeMap<String, TransactionInfo>>,
+    ) {
         for tx in self.tx_pool.futures() {
             if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
-                MAX_EXTRINSIC_DEPTH, &mut &(tx.data.encode()[..])
+                MAX_EXTRINSIC_DEPTH,
+                &mut &(tx.data.encode()[..]),
             ) {
                 if let sp_runtime::generic::UncheckedExtrinsic {
                     function: RuntimeCall::Revive(pallet_revive::Call::eth_transact { payload }),
                     ..
-                } = ext.0 {
+                } = ext.0
+                {
                     if let Ok(signed_tx) = TransactionSigned::decode(&payload.to_vec()) {
-                        if let Some((from_addr, nonce_str, tx_info)) = self.create_transaction_info(&signed_tx, &payload) {
-                            queued.entry(from_addr).or_insert_with(BTreeMap::new).insert(nonce_str, tx_info);
+                        if let Some((from_addr, nonce_str, tx_info)) =
+                            self.create_transaction_info(&signed_tx, &payload)
+                        {
+                            queued
+                                .entry(from_addr)
+                                .or_insert_with(BTreeMap::new)
+                                .insert(nonce_str, tx_info);
                         }
                     }
                 }
@@ -675,7 +699,7 @@ impl ApiServer {
         None
     }
 
-    /// Drop specific transaction by hash - IMPLEMENTED - NEED TESTING!
+    /// Drop specific transaction by hash - IMPLEMENTED
     async fn anvil_drop_transaction(&self, tx_hash: B256) -> ResponseResult {
         node_info!("anvil_dropTransaction");
 
