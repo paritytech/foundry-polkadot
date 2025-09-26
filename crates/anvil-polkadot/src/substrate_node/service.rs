@@ -194,7 +194,11 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
     })
 }
 
-// Re-implement RPC module generation without the check on the genesis block number
+// Re-implement RPC module generation without the check on the genesis block number.
+// The code is identical to the one in
+// https://github.com/paritytech/polkadot-sdk/blob/9e0636567bebf312b065ca3acb285a8b32499df7/substrate/client/service/src/builder.rs#L754
+// apart from the creation of the RPC builder inside the function and the genesis number check.
+#[allow(clippy::too_many_arguments)]
 fn custom_gen_rpc_module(
     genesis_number: u64,
     spawn_handle: SpawnTaskHandle,
@@ -209,6 +213,7 @@ fn custom_gen_rpc_module(
     blocks_pruning: BlocksPruning,
     backend: Arc<Backend>,
 ) -> Result<RpcModule<()>, ServiceError> {
+    // Different from the original code, we create the RPC builder inside the function.
     let rpc_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();
@@ -274,6 +279,7 @@ fn custom_gen_rpc_module(
 
     let is_archive_node = state_pruning.as_ref().map(|sp| sp.is_archive()).unwrap_or(false)
         && blocks_pruning.is_archive();
+    // Different from the original code, we use the genesis number to get the genesis hash.
     let genesis_hash = client.hash(genesis_number as u32).ok().flatten().unwrap();
     if is_archive_node {
         let archive_v2 = polkadot_sdk::sc_rpc_spec_v2::archive::Archive::new(

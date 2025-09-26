@@ -13,7 +13,6 @@ use anvil_rpc::response::ResponseResult;
 use codec::Decode;
 use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
-use parity_scale_codec::Decode;
 use polkadot_sdk::{
     pallet_revive_eth_rpc::subxt_client::{self, system::calls::types::Remark},
     polkadot_sdk_frame::traits::Header,
