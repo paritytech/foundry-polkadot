@@ -150,7 +150,7 @@ impl TestNode {
         to: Address,
         amount: U256,
         block_nr: u32,
-    ) -> Result<H256> {
+    ) -> Result<H256, Box<dyn std::error::Error>> {
         let tx_hash = unwrap_response::<H256>(
             self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
                 TransactionRequest::default().value(amount).from(from).to(to),

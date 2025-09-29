@@ -1,7 +1,7 @@
 use alloy_primitives::{Address, U256};
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::{error::Error, revive_conversions::ReviveAddress},
+    api_server::revive_conversions::ReviveAddress,
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
 use polkadot_sdk::pallet_revive::evm::Account;
@@ -65,18 +65,23 @@ async fn test_impersonate_account() {
         node.eth_rpc(EthRequest::StopImpersonatingAccount(dest_addr)).await.unwrap(),
     )
     .unwrap();
-    let err = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 2).await.unwrap_err();
-    assert!(err.to_string().starts_with(r#"Expected success but got error: RpcError { code: InvalidParams, message: "Account not found for address"#));
+    let err = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 3).await.unwrap_err();
+    assert!(err.to_string().starts_with(
+        r#"Expected success but got error: RpcError { code:
+    InvalidParams, message: "Account not found for address"#
+    ));
 
     // Start impersonating any address now
-    // FIX: fails with invalid transaction - outdated transaction.
-    unwrap_response::<()>(node.eth_rpc(EthRequest::ImpersonateAccount(dest_addr)).await.unwrap())
+    unwrap_response::<()>(node.eth_rpc(EthRequest::AutoImpersonateAccount(true)).await.unwrap())
         .unwrap();
+
+    // Transfer at block 3 (same as for previous failed transfer, which did not produce a block).
+    let transfer_amount = U256::from_str_radix("10000000", 10).unwrap();
     let _tx_hash = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 3).await.unwrap();
 
     // Assert on balances after second transfer.
-    let alith_balance = node.get_eth_balance(alith_addr, Some(2)).await;
-    let dest_balance = node.get_eth_balance(dest_addr, Some(2)).await;
+    let alith_balance = node.get_eth_balance(alith_addr, Some(3)).await;
+    let dest_balance = node.get_eth_balance(dest_addr, Some(3)).await;
     assert_eq!(alith_final_balance, alith_balance - transfer_amount - transfer_amount);
     // gas here is 760108157000000000
     assert_eq!(
