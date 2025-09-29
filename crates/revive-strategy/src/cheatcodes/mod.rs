@@ -12,6 +12,7 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{dealCall, getNonce_0Call, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall, warpCall},
+    journaled_account,
 };
 use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
@@ -184,11 +185,12 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if is::<pvmCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let pvmCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
+                let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+                    get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 if *enabled {
-                    let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                     select_pvm(ctx, ccx.ecx);
                 } else {
-                    todo!("Switch back to EVM");
+                    select_evm(ctx, ccx.ecx);
                 }
                 Ok(Default::default())
             }
@@ -409,6 +411,52 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
             })
         });
     }
+}
+
+fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
+    if !ctx.using_pvm {
+        tracing::info!("already in EVM");
+        return;
+    }
+
+    tracing::info!("switching to EVM");
+    ctx.using_pvm = false;
+
+    // Migrate state from PVM back to EVM
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let block_number = System::block_number();
+            let timestamp = Timestamp::get();
+
+            data.block.number = U256::from(block_number);
+            data.block.timestamp = U256::from(timestamp / 1000);
+
+            // Migrate persistent accounts from PVM state to EVM state
+            let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
+            for address in persistent_accounts {
+                let account_evm = H160::from_slice(address.as_slice());
+                let account_id = AccountId::to_fallback_account_id(&account_evm);
+
+                let account_info = System::account(account_id);
+                let pvm_nonce = account_info.nonce;
+
+                let pallet_evm_balance = Pallet::<Runtime>::evm_balance(&account_evm);
+                let amount_evm = U256::from_limbs(pallet_evm_balance.0);
+                let account = journaled_account(data, address).expect("failed to load account");
+                let _ = std::mem::replace(&mut account.info.balance, amount_evm);
+                let _ = std::mem::replace(&mut account.info.nonce, pvm_nonce as u64);
+
+                // TODO(Parity): Add bytecode migration from PVM to EVM when needed
+
+                tracing::info!(
+                    operation = "migrate_account_to_evm",
+                    address = ?address,
+                    balance = ?amount_evm,
+                    nonce = ?pvm_nonce
+                );
+            }
+        })
+    });
 }
 
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
