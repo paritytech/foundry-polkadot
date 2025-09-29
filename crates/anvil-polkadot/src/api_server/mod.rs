@@ -2,7 +2,6 @@ use crate::{logging::LoggingManager, substrate_node::service::Service};
 use anvil_core::eth::EthRequest;
 use anvil_rpc::response::ResponseResult;
 use futures::channel::{mpsc, oneshot};
-use polkadot_sdk::sc_service::TaskManager;
 use server::ApiServer;
 
 pub mod error;
@@ -16,16 +15,11 @@ pub struct ApiRequest {
     pub resp_sender: oneshot::Sender<ResponseResult>,
 }
 
-pub fn spawn(
-    substrate_service: &Service,
-    task_manager: &TaskManager,
-    logging_manager: LoggingManager,
-) -> ApiHandle {
+pub fn spawn(substrate_service: &Service, logging_manager: LoggingManager) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
 
-    let spawn_handle = task_manager.spawn_essential_handle();
     let service = substrate_service.clone();
-    spawn_handle.spawn("anvil-api-server", "anvil", async move {
+    substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
         let api_server = ApiServer::new(service, receiver, logging_manager)
             .await
             .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));

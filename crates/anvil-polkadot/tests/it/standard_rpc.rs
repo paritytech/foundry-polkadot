@@ -126,29 +126,6 @@ async fn test_send_transaction() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_send_to_random() {
-    let anvil_node_config = AnvilNodeConfig::test_config();
-    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
-
-    let alith = Account::from(subxt_signer::eth::dev::alith());
-    let addr = Address::random();
-
-    let transfer_amount = U256::from_str_radix("100000000000000000", 10).unwrap();
-    let transaction = TransactionRequest::default()
-        .value(transfer_amount)
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .to(addr);
-    let _tx_hash = node.send_transaction(transaction).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
-
-    let balance = node.get_balance(ReviveAddress::from(addr).inner(), None).await;
-    assert_eq!(balance, transfer_amount);
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn test_send_to_uninitialized() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);

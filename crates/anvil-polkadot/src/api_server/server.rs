@@ -26,7 +26,6 @@ use polkadot_sdk::{
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
         subxt_client::{self, SrcChainConfig},
     },
-    sc_service::SpawnTaskHandle,
     sp_core::{self, keccak_256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
@@ -48,69 +47,13 @@ pub struct ApiServer {
     wallet: Wallet,
 }
 
-async fn create_rpc_client(substrate_service: Service) -> Result<EthRpcClient> {
-    let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
-    let api = OnlineClient::<SrcChainConfig>::from_rpc_client(rpc_client.clone()).await?;
-    let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
-
-    let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
-
-    let (pool, keep_latest_n_blocks) = {
-        // see sqlite in-memory issue: https://github.com/launchbadge/sqlx/issues/2510
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .idle_timeout(None)
-            .max_lifetime(None)
-            .connect("sqlite::memory:")
-            .await
-            .map_err(|err| {
-                Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err)))
-            })?;
-
-        (pool, Some(100))
-    };
-
-    let receipt_extractor = ReceiptExtractor::new(api.clone(), None)
-        .await
-        .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
-
-    let receipt_provider = ReceiptProvider::new(
-        pool,
-        block_provider.clone(),
-        receipt_extractor.clone(),
-        keep_latest_n_blocks,
-    )
-    .await
-    .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
-
-    EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
-        .await
-        .map_err(Error::from)
-}
-
-fn spawn_subscribers(spawn_handle: SpawnTaskHandle, eth_rpc_client: EthRpcClient) {
-    //let eth_rpc_client_clone = eth_rpc_client.clone();
-    spawn_handle.spawn("block-subscription", "None", async move {
-        let eth_rpc_client = eth_rpc_client;
-        let best_future =
-            eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::BestBlocks);
-        let finalized_future =
-            eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::FinalizedBlocks);
-        let res = tokio::try_join!(best_future, finalized_future).map(|_| ());
-        if let Err(err) = res {
-            panic!("Block subscription task failed: {err:?}",)
-        }
-    });
-}
-
 impl ApiServer {
     pub async fn new(
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
     ) -> Result<Self> {
-        let eth_rpc_client = create_rpc_client(substrate_service.clone()).await?;
-        spawn_subscribers(substrate_service.spawn_handle, eth_rpc_client.clone());
+        let eth_rpc_client = create_revive_rpc_client(&substrate_service).await?;
 
         Ok(Self {
             req_receiver,
@@ -298,13 +241,6 @@ impl ApiServer {
     }
 
     // Eth RPCs
-    async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
-        self.eth_rpc_client
-            .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
-            .await
-            .map_err(Error::from)
-    }
-
     fn eth_chain_id(&self) -> Result<U64> {
         node_info!("eth_chainId");
         Ok(U256::from(self.eth_rpc_client.chain_id()).to::<U64>())
@@ -395,6 +331,8 @@ impl ApiServer {
     }
 
     async fn gas_price(&self) -> Result<sp_core::U256> {
+        node_info!("eth_gasPrice");
+
         let hash =
             self.get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Latest))).await?;
 
@@ -407,6 +345,7 @@ impl ApiServer {
         address: H160,
         block: Option<BlockId>,
     ) -> Result<sp_core::U256> {
+        node_info!("eth_getTransactionCount");
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
         let nonce = runtime_api.nonce(address).await?;
@@ -460,4 +399,65 @@ impl ApiServer {
         let payload = account.sign_transaction(tx).signed_payload();
         self.send_raw_transaction(Bytes(payload)).await
     }
+
+    // Helpers
+    async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
+        self.eth_rpc_client
+            .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
+            .await
+            .map_err(Error::from)
+    }
+}
+
+async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcClient> {
+    let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
+    let api = OnlineClient::<SrcChainConfig>::from_rpc_client(rpc_client.clone()).await?;
+    let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
+
+    let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
+
+    let (pool, keep_latest_n_blocks) = {
+        // see sqlite in-memory issue: https://github.com/launchbadge/sqlx/issues/2510
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect("sqlite::memory:")
+            .await
+            .map_err(|err| {
+                Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err)))
+            })?;
+
+        (pool, Some(100))
+    };
+
+    let receipt_extractor = ReceiptExtractor::new(api.clone(), None)
+        .await
+        .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
+
+    let receipt_provider = ReceiptProvider::new(
+        pool,
+        block_provider.clone(),
+        receipt_extractor.clone(),
+        keep_latest_n_blocks,
+    )
+    .await
+    .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
+
+    let eth_rpc_client = EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
+        .await
+        .map_err(Error::from)?;
+    let eth_rpc_client_clone = eth_rpc_client.clone();
+    substrate_service.spawn_handle.spawn("block-subscription", "None", async move {
+        let eth_rpc_client = eth_rpc_client_clone;
+        let best_future =
+            eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::BestBlocks);
+        let finalized_future =
+            eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::FinalizedBlocks);
+        let res = tokio::try_join!(best_future, finalized_future).map(|_| ());
+        if let Err(err) = res {
+            panic!("Block subscription task failed: {err:?}",)
+        }
+    });
+    Ok(eth_rpc_client)
 }
