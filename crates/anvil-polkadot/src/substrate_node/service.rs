@@ -10,7 +10,10 @@ use anvil::eth::backend::time::TimeManager;
 use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
     sc_executor::WasmExecutor,
-    sc_service::{self, Configuration, RpcHandlers, TaskManager, error::Error as ServiceError},
+    sc_service::{
+        self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
+        error::Error as ServiceError,
+    },
     sc_telemetry::TelemetryHandle,
     sc_transaction_pool, sp_io, sp_timestamp,
 };
