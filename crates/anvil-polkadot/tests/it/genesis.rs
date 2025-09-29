@@ -15,15 +15,13 @@ async fn test_genesis() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
-    // UNIMPLEMENTED: fix
-    // assert_eq!(unwrap_response::<u32>(node.eth_rpc(EthRequest::EthChainId(())).await.unwrap()).
-    // unwrap(), chain_id);
-
-    // Check that genesis block number and timestamp are set correctly at genesis
+    // Check that block number, timestamp, and chain id are set correctly at genesis
     assert_eq!(node.best_block_number().await, genesis_block_number);
     let genesis_hash = node.block_hash_by_number(genesis_block_number).await.unwrap();
     let actual_genesis_timestamp = node.get_decoded_timestamp(Some(genesis_hash)).await;
     assert_eq!(actual_genesis_timestamp, genesis_timestamp);
+    let current_chain_id = node.get_decoded_chain_id(Some(genesis_hash)).await;
+    assert_eq!(current_chain_id, chain_id);
 
     // Manually mine two blocks and force the timestamp to be increasing with 1 second each time.
     unwrap_response::<()>(

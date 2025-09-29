@@ -6,7 +6,10 @@ use anvil_polkadot::{
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
-    substrate_node::{genesis::GenesisConfig, service::Service},
+    substrate_node::{
+        genesis::{CHAIN_ID_KEY, GenesisConfig},
+        service::Service,
+    },
 };
 use anvil_rpc::response::ResponseResult;
 use codec::Decode;
@@ -141,6 +144,15 @@ impl TestNode {
 
     pub async fn get_decoded_timestamp(&self, at: Option<H256>) -> u64 {
         let storage_key = Self::create_storage_key("Timestamp", "Now");
+        let encoded_value = self.state_get_storage(storage_key, at).await.unwrap().unwrap();
+        let bytes =
+            hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
+        let mut input = &bytes[..];
+        Decode::decode(&mut input).unwrap()
+    }
+
+    pub async fn get_decoded_chain_id(&self, at: Option<H256>) -> u32 {
+        let storage_key = StorageKey(CHAIN_ID_KEY.to_vec());
         let encoded_value = self.state_get_storage(storage_key, at).await.unwrap().unwrap();
         let bytes =
             hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
