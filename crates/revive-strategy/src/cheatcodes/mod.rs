@@ -19,11 +19,9 @@ use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 
 use polkadot_sdk::{
-    frame_support::traits::{Currency, fungible::Mutate},
-    pallet_balances,
     pallet_revive::{
-        self, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config, DepositLimit,
-        Pallet, evm::GasEncoder,
+        self, AddressMapper, BalanceOf, BumpNonce, Code, Config, DepositLimit, Pallet,
+        evm::GasEncoder,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -119,22 +117,17 @@ fn set_balance(address: Address, amount: U256, ecx: Ecx<'_, '_, '_>) -> U256 {
     let account = ecx.journaled_state.load_account(address).expect("account loaded").data;
     account.mark_touch();
     account.info.balance = amount;
-    let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-    let balance_native =
-        BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-
-    let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
-
     let old_balance = execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
-            let addr = &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(
-                address.as_slice(),
-            ));
-            pallet_balances::Pallet::<Runtime>::set_balance(
-                addr,
-                balance_native.into_rounded_balance().saturating_add(min_balance),
-            );
+            let account_evm = H160::from_slice(address.as_slice());
+            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&account_evm);
+
+            // Use set_evm_balance to properly handle dust conversion
+            let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes());
+            if let Err(e) = Pallet::<Runtime>::set_evm_balance(&account_evm, amount_pvm) {
+                let _ = sh_err!("Failed to set EVM balance: {e:?}");
+            }
+
             old_balance
         })
     });
@@ -377,22 +370,10 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
         let amount = acc.data.info.balance;
         let nonce = acc.data.info.nonce;
 
-        let amount_pvm =
-            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-        let balance_native =
-            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-        let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
-        let amount_evm = U256::from_limbs(balance.0);
-        if amount != amount_evm {
-            let _ = sh_err!(
-                "Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect."
-            );
-        }
-        let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
         execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
-                let account_id =
-                    AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
+                let account_evm = H160::from_slice(address.as_slice());
+                let account_id = AccountId::to_fallback_account_id(&account_evm);
                 let current_nonce = System::account_nonce(&account_id);
 
                 assert!(
@@ -404,10 +385,9 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                     System::inc_account_nonce(&account_id);
                 }
 
-                <Runtime as Config>::Currency::set_balance(
-                    &account_id,
-                    balance_native.into_rounded_balance().saturating_add(min_balance),
-                );
+                let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes());
+                Pallet::<Runtime>::set_evm_balance(&account_evm, amount_pvm)
+                    .expect("Cannot migrate account balance")
             })
         });
     }
@@ -447,13 +427,6 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 let _ = std::mem::replace(&mut account.info.nonce, pvm_nonce as u64);
 
                 // TODO(Parity): Add bytecode migration from PVM to EVM when needed
-
-                tracing::info!(
-                    operation = "migrate_account_to_evm",
-                    address = ?address,
-                    balance = ?amount_evm,
-                    nonce = ?pvm_nonce
-                );
             }
         })
     });
