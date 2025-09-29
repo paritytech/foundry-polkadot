@@ -46,7 +46,7 @@ pub const BLOCK_NUMBER_KEY: [u8; 32] = [
 pub struct GenesisConfig {
     /// The chain id of the Substrate chain.
     pub chain_id: u64,
-    /// The initial timestamp for the genesis block
+    /// The initial timestamp for the genesis block in milliseconds
     pub timestamp: u64,
     /// All accounts that should be initialised at genesis with their info.
     pub alloc: Option<BTreeMap<Address, GenesisAccount>>,
@@ -62,7 +62,8 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
     fn from(anvil_config: &'a AnvilNodeConfig) -> Self {
         Self {
             chain_id: anvil_config.get_chain_id(),
-            timestamp: anvil_config.get_genesis_timestamp(),
+            // Anvil genesis timestamp is in seconds, while Substrate timestamp is in milliseconds.
+            timestamp: anvil_config.get_genesis_timestamp() * 1000,
             alloc: anvil_config.genesis.as_ref().map(|g| g.alloc.clone()),
             number: anvil_config.get_genesis_number() as u32,
             base_fee_per_gas: anvil_config.get_base_fee(),
