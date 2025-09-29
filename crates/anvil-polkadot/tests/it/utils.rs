@@ -17,25 +17,21 @@ use futures::{StreamExt, channel::oneshot};
 use parity_scale_codec::Decode;
 use polkadot_sdk::{
     pallet_revive::evm::{Block, ReceiptInfo},
-    pallet_revive_eth_rpc::subxt_client::{self, system::calls::types::Remark},
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
-    sc_network_types::multiaddr::Protocol,
     sc_service::TaskManager,
     sp_core::{H256, storage::StorageKey, twox_128},
 };
 use serde_json::{Value, json};
 use std::fmt::Debug;
-use subxt::{OnlineClient, PolkadotConfig, utils::H160};
-use subxt_signer::sr25519::Keypair;
+use subxt::utils::H160;
 use tempfile::TempDir;
 
 pub struct TestNode {
     pub service: Service,
     pub api: ApiHandle,
     _temp_dir: Option<TempDir>,
-    port: u16,
     _task_manager: TaskManager,
 }
 
@@ -71,12 +67,7 @@ impl TestNode {
         let (service, task_manager, api) =
             spawn(anvil_config, config, LoggingManager::default()).await?;
 
-        let port = match service.rpc_handlers.listen_addresses()[0].clone().pop().unwrap() {
-            Protocol::Tcp(port) => port,
-            _ => panic!("Expected TCP protocol"),
-        };
-
-        Ok(Self { service, api, _temp_dir: temp_dir, port, _task_manager: task_manager })
+        Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }
 
     pub async fn eth_rpc(&mut self, req: EthRequest) -> Result<ResponseResult> {
@@ -186,31 +177,6 @@ impl TestNode {
         tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
             .await
             .map_err(|e| e.into())
-    }
-
-    pub async fn submit_remark(&self, signer: Keypair) {
-        let url = format!("ws://127.0.0.1:{}", self.port);
-        let subxt_client = OnlineClient::<PolkadotConfig>::from_url(url)
-            .await
-            .wrap_err("Failed to create subxt client")
-            .unwrap();
-        let remark_data = b"bonjour".to_vec();
-        let tx_payload = subxt_client::tx().system().remark(remark_data.clone());
-        let res = subxt_client
-            .tx()
-            .sign_and_submit_then_watch_default(&tx_payload, &signer)
-            .await
-            .unwrap()
-            .wait_for_finalized()
-            .await
-            .unwrap();
-
-        let block_hash = res.block_hash();
-        let block = subxt_client.blocks().at(block_hash).await.unwrap();
-        let extrinsics = block.extrinsics().await.unwrap();
-        let remarks =
-            extrinsics.find::<Remark>().map(|remark| remark.unwrap().value).collect::<Vec<_>>();
-        assert_eq!(remarks[0].remark, remark_data);
     }
 }
 
