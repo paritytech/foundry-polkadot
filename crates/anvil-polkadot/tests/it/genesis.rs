@@ -25,7 +25,7 @@ async fn test_genesis() {
     let actual_genesis_timestamp = node.get_decoded_timestamp(Some(genesis_hash)).await;
     assert_eq!(actual_genesis_timestamp, genesis_timestamp);
 
-    // Manually mine one blocks and force the timestamp to be increasing with 1 second.
+    // Manually mine two blocks and force the timestamp to be increasing with 1 second each time.
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(2)), Some(U256::from(1)))).await.unwrap(),
     )
