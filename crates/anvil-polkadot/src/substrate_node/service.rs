@@ -31,8 +31,9 @@ type TFullParts<TBl, TRtApi, TExec> = (
     sc_service::TaskManager,
 );
 
+#[derive(Clone)]
 pub struct Service {
-    pub task_manager: TaskManager,
+    pub spawn_handle: SpawnTaskHandle,
     pub client: Arc<FullClient>,
     pub backend: Arc<Backend>,
     pub tx_pool: Arc<TransactionPoolHandle>,
@@ -69,7 +70,10 @@ fn new_full_parts_with_custom_genesis(
 }
 
 /// Builds a new service for a full client.
-pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Service, ServiceError> {
+pub fn new(
+    anvil_config: &AnvilNodeConfig,
+    config: Configuration,
+) -> Result<(Service, TaskManager), ServiceError> {
     let (client, backend, keystore_container, mut task_manager) =
         new_full_parts_with_custom_genesis(
             anvil_config.get_genesis_number(),
@@ -159,12 +163,15 @@ pub fn new(anvil_config: &AnvilNodeConfig, config: Configuration) -> Result<Serv
         authorship_future,
     );
 
-    Ok(Service {
+    Ok((
+        Service {
+            spawn_handle: task_manager.spawn_handle(),
+            client,
+            backend,
+            tx_pool: transaction_pool,
+            rpc_handlers,
+            mining_engine,
+        },
         task_manager,
-        client,
-        backend,
-        tx_pool: transaction_pool,
-        rpc_handlers,
-        mining_engine,
-    })
+    ))
 }
