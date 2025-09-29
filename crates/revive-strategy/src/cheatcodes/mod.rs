@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use alloy_primitives::{Address, B256, Bytes, ruint::aliases::U256};
+use alloy_primitives::{Address, B256, Bytes, keccak256, ruint::aliases::U256};
 use alloy_rpc_types::BlobTransactionSidecar;
 use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
@@ -20,7 +20,7 @@ use revive_env::{AccountId, Runtime, System, Timestamp};
 
 use polkadot_sdk::{
     pallet_revive::{
-        self, AddressMapper, BalanceOf, BumpNonce, Code, Config, DepositLimit, Pallet,
+        self, AccountInfo, AddressMapper, BalanceOf, BumpNonce, Code, Config, DepositLimit, Pallet,
         evm::GasEncoder,
     },
     polkadot_sdk_frame::prelude::OriginFor,
@@ -37,6 +37,7 @@ use revm::{
         CallInputs, CallOutcome, CreateOutcome, Gas, InstructionResult, Interpreter,
         InterpreterResult, interpreter_types::Jumps,
     },
+    state::Bytecode,
 };
 pub trait PvmCheatcodeInspectorStrategyBuilder {
     fn new_pvm(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self;
@@ -411,22 +412,32 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
             data.block.number = U256::from(block_number);
             data.block.timestamp = U256::from(timestamp / 1000);
 
+            let test_contract = data.journaled_state.database.get_test_contract_address();
             // Migrate persistent accounts from PVM state to EVM state
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
             for address in persistent_accounts {
                 let account_evm = H160::from_slice(address.as_slice());
-                let account_id = AccountId::to_fallback_account_id(&account_evm);
-
-                let account_info = System::account(account_id);
-                let pvm_nonce = account_info.nonce;
-
+                let pallet_evm_nonce = Pallet::<Runtime>::evm_nonce(&account_evm);
                 let pallet_evm_balance = Pallet::<Runtime>::evm_balance(&account_evm);
                 let amount_evm = U256::from_limbs(pallet_evm_balance.0);
                 let account = journaled_account(data, address).expect("failed to load account");
-                let _ = std::mem::replace(&mut account.info.balance, amount_evm);
-                let _ = std::mem::replace(&mut account.info.nonce, pvm_nonce as u64);
+                account.info.balance = amount_evm;
+                account.info.nonce = pallet_evm_nonce as u64;
 
-                // TODO(Parity): Add bytecode migration from PVM to EVM when needed
+                if !test_contract.map(|addr| addr == address).unwrap_or_default()
+                    && let Some(hash) = AccountInfo::<Runtime>::load_contract(&account_evm)
+                        .map(|info| info.code_hash)
+                {
+                    // Try to find the corresponding EVM bytecode for this PVM contract
+                    if let Some((_, contract)) = ctx
+                        .dual_compiled_contracts
+                        .find_by_resolc_bytecode_hash(format!("{hash:x}"))
+                        && let Some(evm_bytes) = contract.evm_bytecode.as_bytes()
+                    {
+                        account.info.code_hash = keccak256(evm_bytes);
+                        account.info.code = Some(Bytecode::new_raw(evm_bytes.clone()));
+                    }
+                }
             }
         })
     });
