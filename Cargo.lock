@@ -1210,7 +1210,6 @@ dependencies = [
  "foundry-test-utils",
  "futures",
  "futures-timer",
- "hex",
  "hyper 1.6.0",
  "itertools 0.14.0",
  "lru 0.16.0",

@@ -5,18 +5,18 @@ use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error(transparent)]
-    Backend(#[from] BackendError),
-    #[error("Nonce overflowing the substrate nonce type")]
-    NonceOverflow,
-    #[error("Rpc Endpoint not implemented")]
-    RpcUnimplemented,
     #[error("Block mining failed: {0}")]
     Mining(#[from] MiningError),
+    #[error("Rpc Endpoint not implemented")]
+    RpcUnimplemented,
     #[error("Invalid params: {0}")]
     InvalidParams(String),
     #[error("Revive call failed: {0}")]
     ReviveRpc(#[from] EthRpcError),
+    #[error(transparent)]
+    Backend(#[from] BackendError),
+    #[error("Nonce overflowing the substrate nonce type")]
+    NonceOverflow,
 }
 
 impl From<subxt::Error> for Error {

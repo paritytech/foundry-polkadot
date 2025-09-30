@@ -130,7 +130,7 @@ pub async fn spawn_anvil_tasks(
     logging_manager: LoggingManager,
 ) -> Result<ApiHandle> {
     // Spawn the api server.
-    let api_handle = api_server::spawn(service.clone(), logging_manager);
+    let api_handle = api_server::spawn(service, logging_manager);
 
     // Spawn the network servers.
     for addr in &anvil_config.host {

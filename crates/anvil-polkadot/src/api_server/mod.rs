@@ -15,7 +15,7 @@ pub struct ApiRequest {
     pub resp_sender: oneshot::Sender<ResponseResult>,
 }
 
-pub fn spawn(substrate_service: Service, logging_manager: LoggingManager) -> ApiHandle {
+pub fn spawn(substrate_service: &Service, logging_manager: LoggingManager) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
 
     let service = substrate_service.clone();

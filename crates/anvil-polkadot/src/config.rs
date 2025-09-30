@@ -1,24 +1,23 @@
 use alloy_genesis::Genesis;
-use alloy_primitives::{U256, hex, map::HashMap, utils::Unit};
+use alloy_primitives::{hex, map::HashMap, utils::Unit, U256};
 use alloy_signer::Signer;
 use alloy_signer_local::{
-    MnemonicBuilder, PrivateKeySigner,
     coins_bip39::{English, Mnemonic},
+    MnemonicBuilder, PrivateKeySigner,
 };
 use anvil_server::ServerConfig;
 use eyre::{Context, Result};
 use foundry_common::{duration_since_unix_epoch, sh_println};
 use polkadot_sdk::{
     sc_cli::{
-        self, CliConfiguration as SubstrateCliConfiguration, Cors, DatabaseParams,
-        ExecutionStrategiesParams, PruningParams, RPC_DEFAULT_MAX_CONNECTIONS,
+        self, CliConfiguration as SubstrateCliConfiguration, Cors, RPC_DEFAULT_MAX_CONNECTIONS,
         RPC_DEFAULT_MAX_REQUEST_SIZE_MB, RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
         RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN,
     },
     sc_service,
 };
 use rand_08::thread_rng;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     fmt::Write as FmtWrite,
     fs::File,
@@ -64,7 +63,6 @@ const BANNER: &str = r"
 pub struct SubstrateNodeConfig {
     shared_params: sc_cli::SharedParams,
     rpc_params: sc_cli::RpcParams,
-    import_params: sc_cli::ImportParams,
 }
 
 impl SubstrateNodeConfig {
@@ -100,32 +98,7 @@ impl SubstrateNodeConfig {
             rpc_cors: None,
         };
 
-        let import_params = sc_cli::ImportParams {
-            pruning_params: PruningParams {
-                state_pruning: None,
-                blocks_pruning: sc_cli::DatabasePruningMode::Archive,
-            },
-            database_params: DatabaseParams {
-                database: Some(sc_cli::Database::ParityDb),
-                database_cache_size: None,
-            },
-            wasm_method: sc_cli::WasmExecutionMethod::Compiled,
-            wasmtime_instantiation_strategy:
-                sc_cli::WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
-            wasm_runtime_overrides: None,
-            execution_strategies: ExecutionStrategiesParams {
-                execution_block_construction: None,
-                execution_import_block: None,
-                execution_offchain_worker: None,
-                execution_syncing: None,
-                execution_other: None,
-                execution: Some(sc_cli::ExecutionStrategy::Native),
-            },
-            trie_cache_size: 1024 * 1024 * 1024,
-            warm_up_trie_cache: None,
-        };
-
-        Self { shared_params, rpc_params, import_params }
+        Self { shared_params, rpc_params }
     }
 
     pub fn set_base_path(&mut self, base_path: Option<PathBuf>) {
@@ -139,7 +112,7 @@ impl SubstrateCliConfiguration for SubstrateNodeConfig {
     }
 
     fn import_params(&self) -> Option<&sc_cli::ImportParams> {
-        Some(&self.import_params)
+        None
     }
 
     fn network_params(&self) -> Option<&sc_cli::NetworkParams> {

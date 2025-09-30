@@ -232,10 +232,7 @@ impl StorageOverrides {
 
     fn set_total_issuance(&mut self, latest_block: Hash, value: Balance) {
         let mut changeset = BlockOverrides::default();
-        changeset.top.insert(
-            hex::decode(well_known_keys::TOTAL_ISSUANCE).unwrap().to_vec(),
-            Some(value.encode()),
-        );
+        changeset.top.insert(well_known_keys::TOTAL_ISSUANCE.to_vec(), Some(value.encode()));
 
         self.add(latest_block, changeset);
     }
