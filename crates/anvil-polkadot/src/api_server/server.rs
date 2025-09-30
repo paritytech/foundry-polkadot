@@ -151,6 +151,7 @@ impl ApiServer {
             EthRequest::EthGetTransactionCount(addr, block) => self
                 .get_transaction_count(ReviveAddress::from(addr).inner(), block)
                 .await
+                .map(|val| AlloyU256::from(val).inner())
                 .to_rpc_result(),
 
             // ------- State injector ---------
@@ -445,7 +446,7 @@ impl ApiServer {
     fn set_chain_id(&self, chain_id: u64) -> Result<()> {
         node_info!("anvil_setChainId");
 
-        let latest_block = self.backend.blockchain().info().best_hash;
+        let latest_block = self.latest_block();
         self.backend.inject_chain_id(latest_block, chain_id);
 
         Ok(())
@@ -454,7 +455,7 @@ impl ApiServer {
     fn set_balance(&self, address: Address, value: U256) -> Result<()> {
         node_info!("anvil_setBalance");
 
-        let latest_block = self.backend.blockchain().info().best_hash;
+        let latest_block = self.latest_block();
 
         let account_id = self.get_account_id(latest_block, address);
         let mut balance_data =
@@ -495,7 +496,7 @@ impl ApiServer {
     fn set_nonce(&self, address: Address, value: U256) -> Result<()> {
         node_info!("anvil_setNonce");
 
-        let latest_block = self.backend.blockchain().info().best_hash;
+        let latest_block = self.latest_block();
 
         let account_id = self.get_account_id(latest_block, address);
 
@@ -513,7 +514,9 @@ impl ApiServer {
     }
 
     fn set_storage_at(&self, address: Address, key: U256, value: B256) -> Result<()> {
-        let latest_block = self.backend.blockchain().info().best_hash;
+        node_info!("anvil_setStorageAt");
+
+        let latest_block = self.latest_block();
 
         let Some(ReviveAccountInfo { account_type: AccountType::Contract(contract_info), .. }) =
             self.backend.read_revive_account_info(latest_block, address)?
@@ -534,7 +537,7 @@ impl ApiServer {
     fn set_code(&self, address: Address, bytes: alloy_primitives::Bytes) -> Result<()> {
         node_info!("anvil_setCode");
 
-        let latest_block = self.backend.blockchain().info().best_hash;
+        let latest_block = self.latest_block();
 
         let account_id = self.get_account_id(latest_block, address);
 
@@ -607,6 +610,10 @@ impl ApiServer {
             .new_balance_with_dust(block, SubstrateU256::from(value).inner())
             .unwrap()
             .unwrap()
+    }
+
+    fn latest_block(&self) -> H256 {
+        self.backend.blockchain().info().best_hash
     }
 }
 
