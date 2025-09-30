@@ -92,7 +92,7 @@ impl CallExecutor<Block> for Executor {
                 &RefCell::new(extensions),
             )
         } else {
-            self.call(at_hash, method, call_data, context)
+            self.inner.call(at_hash, method, call_data, context)
         }
     }
 
