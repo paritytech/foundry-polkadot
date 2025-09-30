@@ -11,7 +11,7 @@ use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
-    Vm::{dealCall, getNonce_0Call, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall, warpCall},
+    Vm::{dealCall, feeCall, getNonce_0Call, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall, warpCall},
 };
 use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
@@ -164,6 +164,11 @@ fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
     });
 }
 
+fn set_basefee(new_basefee: U256, ecx: Ecx<'_, '_, '_>) {
+    // Set basefee in EVM context.
+    ecx.block.basefee = new_basefee.try_into().expect("Basefee exceeds u64");
+}
+
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
@@ -243,6 +248,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 set_timestamp(newTimestamp, ccx.ecx);
+
+                Ok(Default::default())
+            }
+            t if using_pvm && is::<feeCall>(t) => {
+                let &feeCall { newBasefee } = cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                set_basefee(newBasefee, ccx.ecx);
 
                 Ok(Default::default())
             }
