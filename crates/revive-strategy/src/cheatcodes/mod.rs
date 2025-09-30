@@ -512,7 +512,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         ),
                         _ => None,
                     };
-                    let bump_nonce = BumpNonce::No;
+                    let bump_nonce = BumpNonce::Yes;
 
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
