@@ -132,7 +132,7 @@ jobs:
         run: ./.github/scripts/format.sh --check
 
   crate-checks:
-    runs-on: ubuntu-latest
+    runs-on: parity-large
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
