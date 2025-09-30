@@ -7,7 +7,6 @@ use codec::{Decode, Encode};
 use lru::LruCache;
 use parking_lot::Mutex;
 use polkadot_sdk::{
-    pallet_balances::AccountData,
     parachains_common::{opaque::Block, AccountId, Hash},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
@@ -52,21 +51,6 @@ impl BackendWithOverlay {
 
     pub fn blockchain(&self) -> &BlockchainDb<Block> {
         self.backend.blockchain()
-    }
-
-    pub fn read_balance(
-        &self,
-        hash: Hash,
-        account_id: AccountId,
-    ) -> Result<Option<AccountData<Balance>>> {
-        let key = well_known_keys::balance(account_id);
-
-        self.read_top_state(hash, key)?
-            .map(|value| {
-                AccountData::<Balance>::decode(&mut &value[..])
-                    .map_err(|err| BackendError::DecodeBalance(err))
-            })
-            .transpose()
     }
 
     pub fn read_chain_id(&self, hash: Hash) -> Result<u64> {
@@ -132,11 +116,6 @@ impl BackendWithOverlay {
     pub fn inject_total_issuance(&self, at: Hash, value: Balance) {
         let mut overrides = self.overrides.lock();
         overrides.set_total_issuance(at, value);
-    }
-
-    pub fn inject_balance(&self, at: Hash, account_id: AccountId, value: AccountData<Balance>) {
-        let mut overrides = self.overrides.lock();
-        overrides.set_balance(at, account_id, value);
     }
 
     pub fn inject_revive_account_info(&self, at: Hash, address: Address, info: ReviveAccountInfo) {
@@ -233,18 +212,6 @@ impl StorageOverrides {
     fn set_total_issuance(&mut self, latest_block: Hash, value: Balance) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TOTAL_ISSUANCE.to_vec(), Some(value.encode()));
-
-        self.add(latest_block, changeset);
-    }
-
-    fn set_balance(
-        &mut self,
-        latest_block: Hash,
-        account_id: AccountId,
-        value: AccountData<Balance>,
-    ) {
-        let mut changeset = BlockOverrides::default();
-        changeset.top.insert(well_known_keys::balance(account_id), Some(value.encode()));
 
         self.add(latest_block, changeset);
     }

@@ -73,16 +73,6 @@ pub mod well_known_keys {
         244, 98, 205, 207, 132, 224, 241, 214, 4, 93, 252, 187,
     ];
 
-    pub fn balance(account_id: AccountId) -> Vec<u8> {
-        let mut key = Vec::new();
-        key.extend_from_slice(&twox_128("Balances".as_bytes()));
-        key.extend_from_slice(&twox_128("Account".as_bytes()));
-        key.extend_from_slice(&blake2_128(account_id.as_ref()));
-        key.extend_from_slice(&account_id.encode());
-
-        key
-    }
-
     pub fn system_account_info(account_id: AccountId) -> Vec<u8> {
         let mut key = Vec::new();
         key.extend_from_slice(&twox_128("System".as_bytes()));

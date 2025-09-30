@@ -1,5 +1,4 @@
 use crate::utils::{unwrap_response, TestNode};
-use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{ruint::aliases::U256, Address};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
@@ -13,10 +12,10 @@ use anvil_rpc::{
     response::ResponseResult,
 };
 use assert_matches::assert_matches;
-use polkadot_sdk::{pallet_revive::evm::Account, sp_core::H256};
+use polkadot_sdk::pallet_revive::{self, evm::Account};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_chain_id() {
+async fn test_set_chain_id() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
@@ -78,18 +77,20 @@ async fn test_chain_id() {
 
     let tx = TransactionRequest::default().value(U256::from(100)).from(fr).to(to);
 
-    let tx_hash = unwrap_response::<H256>(
-        node.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx))))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let tx_hash = node.send_transaction(tx).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
 
-    // TODO: check that the transaction is in block.
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
+
+    assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
+    assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_nonce() {
+async fn test_set_nonce() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
@@ -136,14 +137,17 @@ async fn test_nonce() {
     ));
     let tx = TransactionRequest::default().value(U256::from(100)).from(address).to(to).nonce(1);
 
-    let tx_hash = unwrap_response::<H256>(
-        node.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx))))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let tx_hash = node.send_transaction(tx).await;
 
-    // TODO: check that the transaction is in block.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
+
+    assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
+    assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 
     // Set nonce for a non-existant account. Should work.
     let address = Address::from(ReviveAddress::new(
@@ -165,14 +169,21 @@ async fn test_nonce() {
 
     assert_eq!(
         unwrap_response::<U256>(
-            node.eth_rpc(EthRequest::EthGetTransactionCount(
-                address.clone(),
-                Some(BlockId::Number(BlockNumberOrTag::Number(1)))
-            ))
-            .await
-            .unwrap()
+            node.eth_rpc(EthRequest::EthGetTransactionCount(address.clone(), None)).await.unwrap()
         )
         .unwrap(),
         U256::from(1)
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_set_balance() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    assert_eq!(node.best_block_number().await, 0);
+
+    let address =
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
 }

@@ -1,6 +1,9 @@
 use crate::substrate_node::{mining_engine::MiningError, service::BackendError};
 use anvil_rpc::{error::RpcError, response::ResponseResult};
-use polkadot_sdk::pallet_revive_eth_rpc::{client::ClientError, EthRpcError};
+use polkadot_sdk::{
+    pallet_revive_eth_rpc::{client::ClientError, EthRpcError},
+    sp_api,
+};
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -17,6 +20,10 @@ pub enum Error {
     Backend(#[from] BackendError),
     #[error("Nonce overflowing the substrate nonce type")]
     NonceOverflow,
+    #[error(transparent)]
+    RuntimeApi(#[from] sp_api::ApiError),
+    #[error("Error encountered while creating a BalanceWithDust from a U256 balance")]
+    BalanceConversion,
 }
 
 impl From<subxt::Error> for Error {

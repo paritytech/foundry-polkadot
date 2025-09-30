@@ -12,7 +12,10 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
-            storage::{AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo},
+            storage::{
+                AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
+                SystemAccountInfo,
+            },
             BackendWithOverlay, Client, Service,
         },
     },
@@ -456,37 +459,40 @@ impl ApiServer {
 
         let latest_block = self.latest_block();
 
-        let account_id = self.get_account_id(latest_block, address);
-        let mut balance_data =
-            self.backend.read_balance(latest_block, account_id.clone())?.unwrap_or_default();
-        let total_issuance = self.backend.read_total_issuance(latest_block)?;
-        let (new_balance, dust) = self.construct_balance_with_dust(latest_block, value);
+        let account_id = self.get_account_id(latest_block, address)?;
+        let mut system_account_info = self
+            .backend
+            .read_system_account_info(latest_block, account_id.clone())?
+            .unwrap_or_else(|| SystemAccountInfo { providers: 1, ..Default::default() });
+        let mut total_issuance = self.backend.read_total_issuance(latest_block)?;
+        let (new_balance, dust) = self.construct_balance_with_dust(latest_block, value)?;
 
-        let diff = new_balance as i128 - (balance_data.total() as i128);
+        let diff = new_balance as i128 - (system_account_info.data.free as i128);
 
         if diff < 0 {
             let diff = diff.abs() as Balance;
 
-            balance_data.free = balance_data.free.saturating_sub(diff);
-            self.backend.inject_balance(latest_block, account_id, balance_data);
-            self.backend.inject_total_issuance(latest_block, total_issuance.saturating_sub(diff));
+            system_account_info.data.free = system_account_info.data.free.saturating_sub(diff);
+            total_issuance = total_issuance.saturating_sub(diff);
         } else if diff > 0 {
             let diff = diff.abs() as Balance;
 
-            balance_data.free = balance_data.free.saturating_add(diff);
-            self.backend.inject_balance(latest_block, account_id, balance_data);
-            self.backend.inject_total_issuance(latest_block, total_issuance.saturating_add(diff));
+            system_account_info.data.free = system_account_info.data.free.saturating_add(diff);
+            total_issuance = total_issuance.saturating_add(diff);
         }
 
-        let mut account_info = self
+        self.backend.inject_system_account_info(latest_block, account_id, system_account_info);
+        self.backend.inject_total_issuance(latest_block, total_issuance);
+
+        let mut revive_account_info = self
             .backend
             .read_revive_account_info(latest_block, address)?
             .unwrap_or_else(|| ReviveAccountInfo { account_type: AccountType::EOA, dust: 0 });
 
-        if account_info.dust != dust {
-            account_info.dust = dust;
+        if revive_account_info.dust != dust {
+            revive_account_info.dust = dust;
 
-            self.backend.inject_revive_account_info(latest_block, address, account_info);
+            self.backend.inject_revive_account_info(latest_block, address, revive_account_info);
         }
 
         Ok(())
@@ -497,13 +503,12 @@ impl ApiServer {
 
         let latest_block = self.latest_block();
 
-        let account_id = self.get_account_id(latest_block, address);
+        let account_id = self.get_account_id(latest_block, address)?;
 
         let mut account_info = self
             .backend
-            .read_system_account_info(latest_block, account_id.clone())
-            .unwrap()
-            .unwrap_or_default();
+            .read_system_account_info(latest_block, account_id.clone())?
+            .unwrap_or_else(|| SystemAccountInfo { providers: 1, ..Default::default() });
 
         account_info.nonce = value.try_into().map_err(|_| Error::NonceOverflow)?;
 
@@ -538,7 +543,7 @@ impl ApiServer {
 
         let latest_block = self.latest_block();
 
-        let account_id = self.get_account_id(latest_block, address);
+        let account_id = self.get_account_id(latest_block, address)?;
 
         let code_hash = H256(keccak_256(&bytes));
 
@@ -599,16 +604,15 @@ impl ApiServer {
         self.backend.read_chain_id(at).unwrap_or(420_420_420)
     }
 
-    fn get_account_id(&self, block: Hash, address: Address) -> AccountId {
-        self.client.runtime_api().account_id(block, ReviveAddress::from(address).inner()).unwrap()
+    fn get_account_id(&self, block: Hash, address: Address) -> Result<AccountId> {
+        Ok(self.client.runtime_api().account_id(block, ReviveAddress::from(address).inner())?)
     }
 
-    fn construct_balance_with_dust(&self, block: Hash, value: U256) -> (Balance, u32) {
+    fn construct_balance_with_dust(&self, block: Hash, value: U256) -> Result<(Balance, u32)> {
         self.client
             .runtime_api()
-            .new_balance_with_dust(block, SubstrateU256::from(value).inner())
-            .unwrap()
-            .unwrap()
+            .new_balance_with_dust(block, SubstrateU256::from(value).inner())?
+            .map_err(|_| Error::BalanceConversion)
     }
 
     fn latest_block(&self) -> H256 {
