@@ -469,10 +469,10 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
         (pool, Some(100))
     };
 
-    let receipt_extractor = ReceiptExtractor::new(
+    let receipt_extractor = ReceiptExtractor::new_with_custom_address_recovery(
         api.clone(),
         None,
-        Some(Arc::new(|signed_tx: &TransactionSigned| {
+        Arc::new(|signed_tx: &TransactionSigned| {
             let sig = signed_tx.raw_signature()?;
             if sig[..12] == [0; 12] && sig[32..64] == [0; 32] {
                 let mut res = [0; 20];
@@ -481,7 +481,7 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
             } else {
                 signed_tx.recover_eth_address()
             }
-        })),
+        }),
     )
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
