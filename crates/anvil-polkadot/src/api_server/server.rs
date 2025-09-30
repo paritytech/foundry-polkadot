@@ -17,6 +17,7 @@ use crate::{
         },
     },
 };
+use alloy_eips::BlockId;
 use alloy_primitives::{Address, B256, U256, U64};
 use alloy_rpc_types::{anvil::MineOptions, request::TransactionRequest};
 use alloy_serde::WithOtherFields;
@@ -43,8 +44,6 @@ use polkadot_sdk::{
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
 use substrate_runtime::Balance;
-
-use alloy_eips::{BlockId, BlockNumberOrTag};
 use subxt::{backend::rpc::RpcClient, ext::subxt_rpcs::LegacyRpcMethods, OnlineClient};
 
 pub struct Wallet {
@@ -279,14 +278,14 @@ impl ApiServer {
     // Eth RPCs
     fn eth_chain_id(&self) -> Result<U64> {
         node_info!("eth_chainId");
-        let latest_block = self.backend.blockchain().info().best_hash;
+        let latest_block = self.latest_block();
 
         Ok(U256::from(self.chain_id(latest_block)).to::<U64>())
     }
 
     fn network_id(&self) -> Result<u64> {
         node_info!("eth_networkId");
-        let latest_block = self.backend.blockchain().info().best_hash;
+        let latest_block = self.latest_block();
 
         Ok(self.chain_id(latest_block))
     }
@@ -373,8 +372,7 @@ impl ApiServer {
     async fn gas_price(&self) -> Result<sp_core::U256> {
         node_info!("eth_gasPrice");
 
-        let hash =
-            self.get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Latest))).await?;
+        let hash = self.latest_block();
 
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
         runtime_api.gas_price().await.map_err(Error::from)
@@ -409,7 +407,10 @@ impl ApiServer {
             return Err(Error::ReviveRpc(EthRpcError::InvalidTransaction));
         };
 
-        let latest_block = self.backend.blockchain().info().best_hash;
+        let latest_block = self.latest_block();
+        let lates_block_id = Some(BlockId::hash(
+            AlloyU256::from(sp_core::U256::from_big_endian(latest_block.as_bytes())).inner().into(),
+        ));
 
         let account = self
             .wallet
@@ -419,16 +420,14 @@ impl ApiServer {
             .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?;
 
         if transaction.gas.is_none() {
-            transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
+            transaction.gas =
+                Some(self.estimate_gas(transaction_req.clone(), lates_block_id).await?);
         }
         if transaction.gas_price.is_none() {
             transaction.gas_price = Some(self.gas_price().await?);
         }
         if transaction.nonce.is_none() {
-            transaction.nonce = Some(
-                self.get_transaction_count(from, Some(BlockId::Number(BlockNumberOrTag::Latest)))
-                    .await?,
-            );
+            transaction.nonce = Some(self.get_transaction_count(from, lates_block_id).await?);
         }
         if transaction.chain_id.is_none() {
             transaction.chain_id =
