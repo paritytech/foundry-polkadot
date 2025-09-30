@@ -1,5 +1,6 @@
 use parking_lot::Mutex;
 use polkadot_sdk::{
+    parachains_common::opaque::Block,
     sc_chain_spec::get_extension,
     sc_client_api::{execution_extensions::ExecutionExtensions, BadBlocks, ForkBlocks},
     sc_executor::WasmExecutor,
@@ -10,7 +11,7 @@ use polkadot_sdk::{
     sp_keystore::KeystorePtr,
 };
 use std::{collections::HashMap, sync::Arc};
-use substrate_runtime::{Block, RuntimeApi};
+use substrate_runtime::RuntimeApi;
 
 use crate::substrate_node::service::{backend::StorageOverrides, executor::Executor, Backend};
 

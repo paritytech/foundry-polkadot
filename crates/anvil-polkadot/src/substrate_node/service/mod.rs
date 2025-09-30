@@ -5,6 +5,7 @@ use crate::{
 use anvil::eth::backend::time::TimeManager;
 use parking_lot::Mutex;
 use polkadot_sdk::{
+    parachains_common::opaque::Block,
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
     sc_network_types::{self, multiaddr::Multiaddr},
     sc_rpc_api::DenyUnsafe,
@@ -19,7 +20,6 @@ use polkadot_sdk::{
     substrate_frame_rpc_system::SystemApiServer,
 };
 use std::sync::Arc;
-use substrate_runtime::Block;
 use tokio_stream::wrappers::ReceiverStream;
 
 pub use backend::{BackendError, BackendWithOverlay, StorageOverrides};

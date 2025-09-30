@@ -8,7 +8,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use polkadot_sdk::{
     pallet_balances::AccountData,
-    parachains_common::{AccountId, Hash},
+    parachains_common::{opaque::Block, AccountId, Hash},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
     sp_blockchain,
@@ -16,7 +16,7 @@ use polkadot_sdk::{
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use substrate_runtime::{Balance, Block};
+use substrate_runtime::Balance;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {

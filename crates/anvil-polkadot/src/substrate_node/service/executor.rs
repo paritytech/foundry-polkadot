@@ -1,6 +1,6 @@
 use parking_lot::Mutex;
 use polkadot_sdk::{
-    parachains_common::Hash,
+    parachains_common::{opaque::Block, Hash},
     sc_client_api::{execution_extensions::ExecutionExtensions, Backend as _, CallExecutor},
     sc_executor::{self, RuntimeVersion, RuntimeVersionOf, WasmExecutor},
     sc_service,
@@ -13,7 +13,6 @@ use polkadot_sdk::{
     sp_version,
 };
 use std::{cell::RefCell, sync::Arc};
-use substrate_runtime::Block;
 
 use crate::substrate_node::service::{backend::StorageOverrides, Backend};
 
