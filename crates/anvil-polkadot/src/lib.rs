@@ -101,7 +101,7 @@ pub fn run_command(args: Anvil) -> Result<()> {
         sc_cli::Runner::new(config, tokio_runtime, signals)?;
 
     Ok(runner.run_node_until_exit(|config| async move {
-        let (task_manager, ..) = spawn(anvil_config, config, logging_manager).await?;
+        let (_service, task_manager, ..) = spawn(anvil_config, config, logging_manager).await?;
         Ok::<TaskManager, sc_cli::Error>(task_manager)
     })?)
 }
@@ -110,23 +110,23 @@ pub async fn spawn(
     anvil_config: AnvilNodeConfig,
     substrate_config: sc_service::Configuration,
     logging_manager: LoggingManager,
-) -> Result<(TaskManager, Service, ApiHandle), sc_cli::Error> {
+) -> Result<(Service, TaskManager, ApiHandle), sc_cli::Error> {
     // Spawn the substrate node.
-    let (task_manager, substrate_service) =
+    let (substrate_service, task_manager) =
         substrate_node::service::new(&anvil_config, substrate_config)
             .map_err(sc_cli::Error::Service)?;
 
     // Spawn the other tasks.
-    let api_handle = spawn_anvil_tasks(anvil_config, substrate_service.clone(), logging_manager)
+    let api_handle = spawn_anvil_tasks(anvil_config, &substrate_service, logging_manager)
         .await
         .map_err(|err| sc_cli::Error::Application(err.into()))?;
 
-    Ok((task_manager, substrate_service, api_handle))
+    Ok((substrate_service, task_manager, api_handle))
 }
 
 pub async fn spawn_anvil_tasks(
     anvil_config: AnvilNodeConfig,
-    service: Service,
+    service: &Service,
     logging_manager: LoggingManager,
 ) -> Result<ApiHandle> {
     // Spawn the api server.

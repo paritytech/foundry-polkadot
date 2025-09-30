@@ -1,11 +1,10 @@
-use crate::utils::{TestNode, assert_with_tolerance, unwrap_response};
-use alloy_primitives::U256;
+use crate::utils::{assert_with_tolerance, unwrap_response, TestNode};
+use alloy_primitives::{Address, U256};
 use alloy_rpc_types::{anvil::MineOptions, TransactionRequest};
-use alloy_serde::WithOtherFields;
 use anvil::eth::backend::time::duration_since_unix_epoch;
 use anvil_core::eth::{EthRequest, Params};
 use anvil_polkadot::{
-    api_server::convert::from_h160_to_address,
+    api_server::revive_conversions::ReviveAddress,
     cmd::NodeArgs,
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
@@ -14,11 +13,7 @@ use anvil_rpc::{
     response::ResponseResult,
 };
 use polkadot_sdk::{pallet_revive::evm::Account, sc_cli::clap::Parser};
-use std::{
-    thread::sleep,
-    time::{Duration, SystemTime},
-};
-use subxt_signer::ecdsa::dev;
+use std::time::{Duration, SystemTime};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_invalid_mining() {
@@ -37,7 +32,6 @@ async fn test_invalid_mining() {
         .unwrap(),
         None
     );
-
     assert!(matches!(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(u128::MAX)), None)).await.unwrap(),
         ResponseResult::Error(RpcError {
@@ -194,16 +188,16 @@ async fn test_auto_mine() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     assert_eq!(node.best_block_number().await, 0);
-
-    let fr = from_h160_to_address(Account::from(subxt_signer::eth::dev::alith()).address());
-    let to = from_h160_to_address(Account::from(subxt_signer::eth::dev::baltathar()).address());
-    let tx = TransactionRequest::default().value(U256::from(1)).from(fr).to(to);
-    let r = node
-        .eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx))))
-        .await
-        .unwrap();
-    println!("{:?}", r);
-    sleep(Duration::from_secs(2));
+    let transaction = TransactionRequest::default()
+        .value(U256::from_str_radix("100000000000000000", 10).unwrap())
+        .from(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::alith()).address(),
+        )))
+        .to(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::baltathar()).address(),
+        )));
+    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
+    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 1);
 }
 
@@ -213,10 +207,19 @@ async fn test_mixed_mining() {
     anvil_node_config.mixed_mining = true;
     anvil_node_config.block_time = Some(Duration::from_secs(1));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
-    node.submit_remark(dev::bob()).await;
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+    let transaction = TransactionRequest::default()
+        .value(U256::from_str_radix("100000000000000000", 10).unwrap())
+        .from(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::alith()).address(),
+        )))
+        .to(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::baltathar()).address(),
+        )));
+    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
+    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 1);
-    node.wait_for_block_with_timeout(2, Duration::from_secs(1)).await.unwrap();
+    node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 2);
 }
 

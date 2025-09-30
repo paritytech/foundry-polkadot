@@ -15,10 +15,20 @@ pub enum Error {
     Mining(#[from] MiningError),
     #[error("Invalid params: {0}")]
     InvalidParams(String),
-    #[error("Client error {0:?}")]
-    ClientError(ClientError),
-    #[error("ETH RPC ERROR {0:?}")]
-    EthRpcError(EthRpcError),
+    #[error("Revive call failed: {0}")]
+    ReviveRpc(#[from] EthRpcError),
+}
+
+impl From<subxt::Error> for Error {
+    fn from(err: subxt::Error) -> Self {
+        Self::ReviveRpc(EthRpcError::ClientError(err.into()))
+    }
+}
+
+impl From<ClientError> for Error {
+    fn from(err: ClientError) -> Self {
+        Self::ReviveRpc(EthRpcError::ClientError(err))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -43,8 +53,32 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
     fn to_rpc_result(self) -> ResponseResult {
         match self {
             Ok(val) => to_rpc_result(val),
-            Err(Error::InvalidParams(msg)) => RpcError::invalid_params(msg).into(),
-            Err(err) => RpcError::internal_error_with(err.to_string()).into(),
+            Err(err) => match err {
+                Error::Mining(mining_error) => match mining_error {
+                    MiningError::BlockProducing(error) => {
+                        RpcError::internal_error_with(format!("Failed to produce a block: {error}"))
+                            .into()
+                    }
+                    MiningError::MiningModeMismatch => {
+                        RpcError::invalid_params("Current mining mode can not answer this query.")
+                            .into()
+                    }
+                    MiningError::Timestamp => {
+                        RpcError::invalid_params("Current timestamp is newer.").into()
+                    }
+                    MiningError::ClosedChannel => {
+                        RpcError::internal_error_with("Communication channel was dropped.").into()
+                    }
+                },
+                Error::RpcUnimplemented => RpcError::internal_error_with("Not implemented").into(),
+                Error::InvalidParams(error_message) => {
+                    RpcError::invalid_params(error_message).into()
+                }
+                Error::ReviveRpc(client_error) => {
+                    RpcError::internal_error_with(format!("{client_error}")).into()
+                }
+                err => RpcError::internal_error_with(format!("{err}")).into(),
+            },
         }
     }
 }

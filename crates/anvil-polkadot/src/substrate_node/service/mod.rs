@@ -51,7 +51,7 @@ pub struct Service {
 pub fn new(
     anvil_config: &AnvilNodeConfig,
     config: Configuration,
-) -> Result<(TaskManager, Service), ServiceError> {
+) -> Result<(Service, TaskManager), ServiceError> {
     let storage_overrides = Arc::new(Mutex::new(StorageOverrides::new()));
 
     let (client, backend, keystore, mut task_manager) = client::new_client(
@@ -138,17 +138,18 @@ pub fn new(
         authorship_future,
     );
 
-    let service = Service {
-        spawn_handle: task_manager.spawn_handle(),
-        client,
-        backend,
-        tx_pool: transaction_pool,
-        rpc_handlers,
-        storage_overrides,
-        mining_engine,
-    };
-
-    Ok((task_manager, service))
+    Ok((
+        Service {
+            spawn_handle: task_manager.spawn_handle(),
+            client,
+            backend,
+            tx_pool: transaction_pool,
+            rpc_handlers,
+            mining_engine,
+            storage_overrides,
+        },
+        task_manager,
+    ))
 }
 
 fn spawn_rpc_server(
