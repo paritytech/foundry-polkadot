@@ -130,19 +130,6 @@ impl TestNode {
         StorageKey(key)
     }
 
-    pub async fn get_eth_balance(&mut self, addr: Address, block_number: Option<u64>) -> U256 {
-        unwrap_response::<U256>(
-            self.eth_rpc(EthRequest::EthGetBalance(
-                addr,
-                block_number
-                    .map(|number| BlockId::Number(alloy_eips::BlockNumberOrTag::Number(number))),
-            ))
-            .await
-            .unwrap(),
-        )
-        .unwrap()
-    }
-
     /// Execute an ethereum transfer transaction.
     pub async fn eth_transfer(
         &mut self,

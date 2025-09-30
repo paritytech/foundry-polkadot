@@ -1,12 +1,13 @@
+use crate::utils::{TestNode, unwrap_response};
+use alloy_eips::BlockId;
 use alloy_primitives::{Address, U256};
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::revive_conversions::ReviveAddress,
+    api_server::revive_conversions::{AlloyU256, ReviveAddress},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
 use polkadot_sdk::pallet_revive::evm::Account;
-
-use crate::utils::{TestNode, unwrap_response};
+use subxt::utils::H160;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_impersonate_account() {
@@ -14,32 +15,37 @@ async fn test_impersonate_account() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
+    let latest_block = Some(BlockId::latest());
+
     let alith_account = Account::from(subxt_signer::eth::dev::alith());
     let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
     let dest_addr = Address::random();
+    let dest_h160 = H160::from_slice(dest_addr.as_slice());
     let transfer_amount = U256::from_str_radix("1600000000000000000", 10).unwrap();
 
     // Create a random account with some balance.
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
-    let alith_initial_balance = node.get_eth_balance(alith_addr, None).await;
-    let dest_initial_balance = node.get_eth_balance(dest_addr, None).await;
-    let _tx_hash = node.eth_transfer(alith_addr, dest_addr, transfer_amount, 1).await;
+    let alith_initial_balance = node.get_balance(alith_account.address(), latest_block).await;
+    let dest_initial_balance = node.get_balance(dest_h160, latest_block).await;
+    let tx_hash = node.eth_transfer(alith_addr, dest_addr, transfer_amount, 1).await.unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let receipt_info = node.get_transaction_receipt(tx_hash).await;
 
     // Assert on balances after first transfer.
-    let alith_final_balance = node.get_eth_balance(alith_addr, Some(1)).await;
-    let dest_final_balance = node.get_eth_balance(dest_addr, Some(1)).await;
-    // gas paid 101231061064271000000 (gas_price * gas + transfer_amount)
+    let alith_final_balance = node.get_balance(alith_account.address(), latest_block).await;
+    let dest_final_balance = node.get_balance(dest_h160, latest_block).await;
+    let existential_deposit = U256::from_str_radix("100000000000000000000", 10).unwrap();
     assert_eq!(
         alith_final_balance,
         alith_initial_balance
-            - U256::from(1600000000000000000u64)
-            - U256::from_str_radix("101231061064271000000", 10).unwrap(),
+            - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used).inner()
+            - transfer_amount
+            - existential_deposit,
         "alith's balance should have changed"
     );
     assert_eq!(
         dest_final_balance,
-        dest_initial_balance + U256::from(1600000000000000000u64),
+        dest_initial_balance + transfer_amount,
         "dest's balance should have changed"
     );
 
@@ -47,18 +53,22 @@ async fn test_impersonate_account() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::ImpersonateAccount(dest_addr)).await.unwrap())
         .unwrap();
     let transfer_amount = U256::from_str_radix("100000000000", 10).unwrap();
-    let _tx_hash = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 2).await.unwrap();
+    let tx_hash = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 2).await.unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let receipt_info = node.get_transaction_receipt(tx_hash).await;
 
     // Assert on balances after second transfer.
-    let alith_balance = node.get_eth_balance(alith_addr, Some(2)).await;
-    let dest_balance = node.get_eth_balance(dest_addr, Some(2)).await;
+    let alith_balance = node.get_balance(alith_account.address(), latest_block).await;
+    let dest_balance = node.get_balance(dest_h160, latest_block).await;
     assert_eq!(alith_final_balance, alith_balance - transfer_amount);
-    // gas here is 760108157000000000
     assert_eq!(
-        dest_final_balance - U256::from(760108157000000000u64) - transfer_amount,
+        dest_final_balance
+            - transfer_amount
+            - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used).inner(),
         dest_balance
     );
+    let dest_final_balance = dest_balance;
+    let alith_final_balance = alith_balance;
 
     // Stop impersonating destination, and assert on error when retrying the same transfer.
     unwrap_response::<()>(
@@ -67,24 +77,28 @@ async fn test_impersonate_account() {
     .unwrap();
     let err = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 3).await.unwrap_err();
     assert!(err.to_string().starts_with(
-        r#"Expected success but got error: RpcError { code: InvalidParams, message: "Account not found for address"#
+        r#"Expected success but got error: RpcError { code: InternalError, message: "Account not found for address"#
     ));
 
     // Start impersonating any address now
     unwrap_response::<()>(node.eth_rpc(EthRequest::AutoImpersonateAccount(true)).await.unwrap())
         .unwrap();
 
-    // Transfer at block 3 (same as for previous failed transfer, which did not produce a block).
-    let transfer_amount2 = U256::from_str_radix("10000000", 10).unwrap();
-    let _tx_hash = node.eth_transfer(dest_addr, alith_addr, transfer_amount2, 3).await.unwrap();
+    // Transfer at block 3 (same as for previous failed transfer, which did not result in a block
+    // being produced).
+    let transfer_amount = U256::from_str_radix("10000000", 10).unwrap();
+    let tx_hash = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 3).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let receipt_info = node.get_transaction_receipt(tx_hash).await;
 
-    // Assert on balances after second transfer.
-    let alith_balance = node.get_eth_balance(alith_addr, Some(3)).await;
-    let dest_balance = node.get_eth_balance(dest_addr, Some(3)).await;
-    assert_eq!(alith_final_balance, alith_balance - transfer_amount - transfer_amount2);
-    // gas here is 760108157000000000
+    // Assert on balances after third transfer.
+    let alith_balance = node.get_balance(alith_account.address(), latest_block).await;
+    let dest_balance = node.get_balance(dest_h160, latest_block).await;
+    assert_eq!(alith_final_balance, alith_balance - transfer_amount);
     assert_eq!(
-        dest_final_balance - U256::from(760108157000000000u64) - transfer_amount - transfer_amount2,
+        dest_final_balance
+            - transfer_amount
+            - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used).inner(),
         dest_balance
     );
 }
