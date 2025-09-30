@@ -21,7 +21,7 @@ use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use futures::{StreamExt, channel::mpsc};
 use polkadot_sdk::{
-    pallet_revive::evm::{Account, Block, Bytes, ReceiptInfo},
+    pallet_revive::evm::{Account, Block, Bytes, ReceiptInfo, TransactionSigned},
     pallet_revive_eth_rpc::{
         EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
@@ -401,7 +401,7 @@ impl ApiServer {
 
         let tx = transaction
             .try_into_unsigned()
-            .map_err(|_| Error::EthRpc(EthRpcError::InvalidTransaction))?;
+            .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
 
         let payload = if self.cheats_manager.is_impersonated(from) {
             let mut fake_signature = [0; 65];
@@ -413,7 +413,7 @@ impl ApiServer {
                 .accounts
                 .iter()
                 .find(|account| account.address() == from)
-                .ok_or(Error::EthRpc(EthRpcError::AccountNotFound(from)))?;
+                .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?;
             account.sign_transaction(tx).signed_payload()
         };
 
@@ -469,9 +469,22 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
         (pool, Some(100))
     };
 
-    let receipt_extractor = ReceiptExtractor::new(api.clone(), None)
-        .await
-        .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
+    let receipt_extractor = ReceiptExtractor::new(
+        api.clone(),
+        None,
+        Some(Arc::new(|signed_tx: &TransactionSigned| {
+            let sig = signed_tx.raw_signature()?;
+            if sig[..12] == [0; 12] && sig[32..64] == [0; 32] {
+                let mut res = [0; 20];
+                res.copy_from_slice(&sig[12..32]);
+                Ok(H160::from(res))
+            } else {
+                signed_tx.recover_eth_address()
+            }
+        })),
+    )
+    .await
+    .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
 
     let receipt_provider = ReceiptProvider::new(
         pool,

@@ -67,8 +67,7 @@ async fn test_impersonate_account() {
     .unwrap();
     let err = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 3).await.unwrap_err();
     assert!(err.to_string().starts_with(
-        r#"Expected success but got error: RpcError { code:
-    InvalidParams, message: "Account not found for address"#
+        r#"Expected success but got error: RpcError { code: InvalidParams, message: "Account not found for address"#
     ));
 
     // Start impersonating any address now
@@ -76,19 +75,16 @@ async fn test_impersonate_account() {
         .unwrap();
 
     // Transfer at block 3 (same as for previous failed transfer, which did not produce a block).
-    let transfer_amount = U256::from_str_radix("10000000", 10).unwrap();
-    let _tx_hash = node.eth_transfer(dest_addr, alith_addr, transfer_amount, 3).await.unwrap();
+    let transfer_amount2 = U256::from_str_radix("10000000", 10).unwrap();
+    let _tx_hash = node.eth_transfer(dest_addr, alith_addr, transfer_amount2, 3).await.unwrap();
 
     // Assert on balances after second transfer.
     let alith_balance = node.get_eth_balance(alith_addr, Some(3)).await;
     let dest_balance = node.get_eth_balance(dest_addr, Some(3)).await;
-    assert_eq!(alith_final_balance, alith_balance - transfer_amount - transfer_amount);
+    assert_eq!(alith_final_balance, alith_balance - transfer_amount - transfer_amount2);
     // gas here is 760108157000000000
     assert_eq!(
-        dest_final_balance
-            - U256::from(2 * 760108157000000000u64)
-            - transfer_amount
-            - transfer_amount,
+        dest_final_balance - U256::from(760108157000000000u64) - transfer_amount - transfer_amount2,
         dest_balance
     );
 }
