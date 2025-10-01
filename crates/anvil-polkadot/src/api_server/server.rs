@@ -9,8 +9,8 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
-        impersonation::ImpersonationManager, in_mem_rpc::InMemoryRpcClient, mining_engine::MiningEngine,
-        service::Service,
+        impersonation::ImpersonationManager, in_mem_rpc::InMemoryRpcClient,
+        mining_engine::MiningEngine, service::Service,
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
