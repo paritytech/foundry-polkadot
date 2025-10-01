@@ -91,6 +91,6 @@ pub trait Hashing {
 /// Provides host function that overrides ETH address recovery from
 /// signature in the scope of impersonation.
 pub type SenderAddressRecoveryOverride = self::crypto::HostFunctions;
-/// Provides host function that overrided hashing functions in the
+/// Provides host function that override hashing functions in the
 /// scope of impersonation.
 pub type PublicKeyToHashOverride = self::hashing::HostFunctions;
