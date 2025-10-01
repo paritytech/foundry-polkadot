@@ -1,13 +1,13 @@
 [package]
-name = "substrate-runtime"
-description = "A solochain dev runtime for revive."
-version = "0.0.0"
-authors.workspace = true
-homepage.workspace = true
+name                 = "substrate-runtime"
+description          = "A solochain dev runtime for revive."
+version              = "0.0.0"
+authors.workspace    = true
+homepage.workspace   = true
 repository.workspace = true
-edition.workspace = true
-publish = false
-license.workspace = true
+edition.workspace    = true
+publish              = false
+license.workspace    = true
 
 [dependencies]
 array-bytes = { version = "6.2.2", default-features = false }
@@ -33,4 +33,4 @@ polkadot-sdk = { git = "https://github.com/iulianbarbu/polkadot-sdk.git", branch
 
 [features]
 default = ["std"]
-std = ["codec/std", "polkadot-sdk/std", "scale-info/std", "serde_json/std"]
+std     = ["codec/std", "polkadot-sdk/std", "scale-info/std", "serde_json/std"]
