@@ -136,6 +136,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
       - name: Install clang and zip on ubuntu
         run: |
           sudo apt-get update
