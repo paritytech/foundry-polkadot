@@ -1,20 +1,21 @@
-// Copyright (C) 2023 Polytope Labs (Caymans) Ltd.
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
-
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-//! Host function overrides for signature verification.
+//! Host functions overrides for Ethereum address recovery.
+//!
+//! The host functions overriding is required because of impersonation feature.
+//! Impersonation is used for sending/executing transactions with a signer
+//! where its private key is unknown. Sent transactions require a signature
+//! that is obtained with sender's private key and the pallet-revive
+//! runtime logic can recover the signer's ethereum address from the signature
+//! and the rest of the transaction bytes. The runtime recovers the signer's
+//! address by running `secp256k1 ecdsa recover` to recover the signer's public
+//! key, and `keccak_256` to hash the public key to a 20 byes Ethereum address.
+//! These functions are exposed by `sp-io` and used as host functions by the runtime.
+//! This module implements tweaked versions of the host functions from `sp-io`, which
+//! can recognize fake signatures used for impersonated transactions, and can recover
+//! the signer address from them, while expecting those fake signatures to be built in
+//! a certain way ([0; 12] + sender's Ethereum address + [0; 33]).
+//!
+//! The tweaked host functions are especially useful in the context of overriding the
+//! same `sp-io` host functions in the wasm executor type.
 
 use polkadot_sdk::sp_io::{self, EcdsaVerifyError};
 use sp_runtime_interface::{

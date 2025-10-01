@@ -510,6 +510,5 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
             panic!("Block subscription task failed: {err:?}",)
         }
     });
-
     Ok(eth_rpc_client)
 }

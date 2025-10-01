@@ -32,7 +32,6 @@ pub type Executor = WasmExecutor<
         PublicKeyToHashOverride,
     >,
 >;
-
 pub type FullClient = sc_service::TFullClient<Block, RuntimeApi, Executor>;
 
 pub type Backend = sc_service::TFullBackend<Block>;
