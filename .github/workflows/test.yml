@@ -136,16 +136,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Install clang and zip on ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev zip
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-hack
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install clang on ubuntu
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           target: wasm32-unknown-unknown
