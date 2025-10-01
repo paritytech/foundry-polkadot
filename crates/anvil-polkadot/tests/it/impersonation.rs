@@ -109,4 +109,15 @@ async fn test_impersonate_account() {
             - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used).inner(),
         dest_balance
     );
+
+    // Stop impersonating destination, and assert on error when retrying the same transfer.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::AutoImpersonateAccount(false)).await.unwrap())
+        .unwrap();
+    let transfer_amount = U256::from_str_radix("10000000", 10).unwrap();
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
+    let err = node.send_transaction(transaction.clone(), Some(4)).await.unwrap_err();
+    assert!(err.to_string().starts_with(
+        r#"Expected success but got error: RpcError { code: InternalError, message: "Account not found for address"#
+    ));
 }
