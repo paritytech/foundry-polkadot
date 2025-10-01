@@ -130,7 +130,7 @@ impl TestNode {
         StorageKey(key)
     }
 
-    /// Execute an ethereum transfer transaction.
+    /// Execute an ethereum transaction.
     pub async fn send_transaction(
         &mut self,
         transaction: TransactionRequest,
