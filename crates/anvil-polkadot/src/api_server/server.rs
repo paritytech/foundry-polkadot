@@ -9,7 +9,7 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
-        cheats::CheatsManager, in_mem_rpc::InMemoryRpcClient, mining_engine::MiningEngine,
+        impersonation::ImpersonationManager, in_mem_rpc::InMemoryRpcClient, mining_engine::MiningEngine,
         service::Service,
     },
 };
@@ -46,7 +46,7 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,
-    cheats_manager: CheatsManager,
+    impersonation_manager: ImpersonationManager,
 }
 
 impl ApiServer {
@@ -54,6 +54,7 @@ impl ApiServer {
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
+        impersonation_manager: ImpersonationManager,
     ) -> Result<Self> {
         let eth_rpc_client = create_revive_rpc_client(&substrate_service).await?;
 
@@ -62,7 +63,7 @@ impl ApiServer {
             logging_manager,
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
-            cheats_manager: CheatsManager::default(),
+            impersonation_manager,
             wallet: Wallet {
                 accounts: vec![
                     Account::from(subxt_signer::eth::dev::baltathar()),
@@ -403,7 +404,7 @@ impl ApiServer {
             .try_into_unsigned()
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
 
-        let payload = if self.cheats_manager.is_impersonated(from) {
+        let payload = if self.impersonation_manager.is_impersonated(from) {
             let mut fake_signature = [0; 65];
             fake_signature[12..32].copy_from_slice(from.as_bytes());
             tx.with_signature(fake_signature).signed_payload()
@@ -428,21 +429,21 @@ impl ApiServer {
             .map_err(Error::from)
     }
 
-    fn impersonate_account(&self, addr: H160) -> Result<()> {
+    fn impersonate_account(&mut self, addr: H160) -> Result<()> {
         node_info!("anvil_impersonateAccount");
-        self.cheats_manager.impersonate(addr);
+        self.impersonation_manager.impersonate(addr);
         Ok(())
     }
 
-    fn auto_impersonate_account(&self, enable: bool) -> Result<()> {
+    fn auto_impersonate_account(&mut self, enable: bool) -> Result<()> {
         node_info!("anvil_autoImpersonateAccount");
-        self.cheats_manager.set_auto_impersonate_account(enable);
+        self.impersonation_manager.set_auto_impersonate_account(enable);
         Ok(())
     }
 
-    fn stop_impersonating_account(&self, addr: &H160) -> Result<()> {
+    fn stop_impersonating_account(&mut self, addr: &H160) -> Result<()> {
         node_info!("anvil_stopImpersonatingAccount");
-        self.cheats_manager.stop_impersonating(addr);
+        self.impersonation_manager.stop_impersonating(addr);
         Ok(())
     }
 }
