@@ -132,13 +132,10 @@ jobs:
         run: ./.github/scripts/format.sh --check
 
   crate-checks:
-    runs-on: parity-large-new
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
       - name: Install clang and zip on ubuntu
         run: |
           sudo apt-get update
@@ -147,6 +144,9 @@ jobs:
         run: |
           sudo apt-get install -y build-essential
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - uses: taiki-e/install-action@cargo-hack
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
