@@ -422,13 +422,10 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
 
     let genesis_hash = substrate_service.backend.blockchain().info().genesis_hash;
 
-    let runtime_version =
-        substrate_service.client.runtime_version_at(genesis_hash).unwrap_or_else(|err| {
-            panic!(
-                "Runtime version not found for given genesis hash: {:?}, error: {:?}",
-                genesis_hash, err
-            );
-        });
+    let runtime_version = substrate_service
+        .client
+        .runtime_version_at(genesis_hash)
+        .expect("Runtime version not found for given genesis hash");
     let subxt_runtime_version = SubxtRuntimeVersion {
         spec_version: runtime_version.spec_version,
         transaction_version: runtime_version.transaction_version,
