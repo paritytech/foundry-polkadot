@@ -131,23 +131,24 @@ impl TestNode {
     }
 
     /// Execute an ethereum transfer transaction.
-    pub async fn eth_transfer(
+    pub async fn send_transaction(
         &mut self,
-        from: Address,
-        to: Address,
-        amount: U256,
-        block_nr: u32,
+        transaction: TransactionRequest,
+        block_number: Option<u32>,
     ) -> Result<H256, Box<dyn std::error::Error>> {
         let tx_hash = unwrap_response::<H256>(
             self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
-                TransactionRequest::default().value(amount).from(from).to(to),
+                transaction,
             ))))
             .await
             .unwrap(),
         )?;
-        self.wait_for_block_with_timeout(block_nr, std::time::Duration::from_secs(5))
-            .await
-            .unwrap();
+
+        if let Some(block_nr) = block_number {
+            self.wait_for_block_with_timeout(block_nr, std::time::Duration::from_secs(5))
+                .await
+                .unwrap();
+        }
         Ok(tx_hash)
     }
 
@@ -229,17 +230,6 @@ impl TestNode {
             .unwrap(),
         )
         .unwrap()
-        .unwrap()
-    }
-
-    pub async fn send_transaction(&mut self, transaction_request: TransactionRequest) -> H256 {
-        unwrap_response::<H256>(
-            self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
-                transaction_request.clone(),
-            ))))
-            .await
-            .unwrap(),
-        )
         .unwrap()
     }
 

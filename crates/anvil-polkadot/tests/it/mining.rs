@@ -196,8 +196,7 @@ async fn test_auto_mine() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
-    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
+    let _tx_hash0 = node.send_transaction(transaction, Some(1)).await.unwrap();
     assert_eq!(node.best_block_number().await, 1);
 }
 
@@ -216,8 +215,8 @@ async fn test_mixed_mining() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
-    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
+
+    let _tx_hash0 = node.send_transaction(transaction, Some(1)).await.unwrap();
     assert_eq!(node.best_block_number().await, 1);
     node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 2);
