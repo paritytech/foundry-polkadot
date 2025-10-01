@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use alloy_primitives::{Address, B256, Bytes, keccak256, ruint::aliases::U256};
+use alloy_primitives::{Address, B256, Bytes, hex, ruint::aliases::U256};
 use alloy_rpc_types::BlobTransactionSidecar;
 use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
@@ -387,7 +387,7 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 }
 
                 let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes());
-                Pallet::<Runtime>::set_evm_balance(&account_evm, amount_pvm)
+                Pallet::<Runtime>::set_evm_balance(&account_evm, amount_pvm.min(u128::MAX.into()))
                     .expect("Cannot migrate account balance")
             })
         });
@@ -413,9 +413,8 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
             data.block.timestamp = U256::from(timestamp / 1000);
 
             let test_contract = data.journaled_state.database.get_test_contract_address();
-            // Migrate persistent accounts from PVM state to EVM state
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
-            for address in persistent_accounts {
+            for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
                 let account_evm = H160::from_slice(address.as_slice());
                 let pallet_evm_nonce = Pallet::<Runtime>::evm_nonce(&account_evm);
                 let pallet_evm_balance = Pallet::<Runtime>::evm_balance(&account_evm);
@@ -424,19 +423,17 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 account.info.balance = amount_evm;
                 account.info.nonce = pallet_evm_nonce as u64;
 
-                if !test_contract.map(|addr| addr == address).unwrap_or_default()
-                    && let Some(hash) = AccountInfo::<Runtime>::load_contract(&account_evm)
-                        .map(|info| info.code_hash)
+                // Migrate bytecode for deployed contracts (skip test contract)
+                if test_contract != Some(address)
+                    && let Some(bytecode) = AccountInfo::<Runtime>::load_contract(&account_evm)
+                        .map(|info| hex::encode(info.code_hash))
+                        .and_then(|hash| {
+                            ctx.dual_compiled_contracts.find_by_resolc_bytecode_hash(hash)
+                        })
+                        .and_then(|(_, contract)| contract.evm_deployed_bytecode.as_bytes())
+                        .and_then(|bytes| Bytecode::new_raw_checked(bytes.clone()).ok())
                 {
-                    // Try to find the corresponding EVM bytecode for this PVM contract
-                    if let Some((_, contract)) = ctx
-                        .dual_compiled_contracts
-                        .find_by_resolc_bytecode_hash(format!("{hash:x}"))
-                        && let Some(evm_bytes) = contract.evm_bytecode.as_bytes()
-                    {
-                        account.info.code_hash = keccak256(evm_bytes);
-                        account.info.code = Some(Bytecode::new_raw(evm_bytes.clone()));
-                    }
+                    data.journaled_state.set_code(address, bytecode);
                 }
             }
         })
