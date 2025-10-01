@@ -18,6 +18,7 @@ use alloy_rpc_types::{TransactionRequest, anvil::MineOptions};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
+use codec::Decode;
 use futures::{StreamExt, channel::mpsc};
 use polkadot_sdk::{
     pallet_revive::evm::{Account, Block, Bytes, ReceiptInfo},
@@ -26,12 +27,19 @@ use polkadot_sdk::{
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
         subxt_client::{self, SrcChainConfig},
     },
-    sp_core::{self, keccak_256},
+    sc_client_api::{HeaderBackend, StorageProvider, backend::Backend as _},
+    sc_executor::WasmExecutor,
+    sc_runtime_utilities::fetch_latest_metadata_from_code_blob,
+    sp_core::{self, keccak_256, storage::StorageKey},
+    sp_io::SubstrateHostFunctions,
+    sp_runtime::Cow,
+    sp_storage::well_known_keys::CODE as CODE_KEY,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
 use subxt::{
-    OnlineClient, backend::rpc::RpcClient, config::substrate::H256,
+    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
+    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
     ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
 };
 
@@ -411,7 +419,40 @@ impl ApiServer {
 
 async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcClient> {
     let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
-    let api = OnlineClient::<SrcChainConfig>::from_rpc_client(rpc_client.clone()).await?;
+
+    let genesis_hash = substrate_service.backend.blockchain().info().genesis_hash;
+
+    let runtime_version =
+        substrate_service.client.runtime_version_at(genesis_hash).unwrap_or_else(|err| {
+            panic!(
+                "Runtime version not found for given genesis hash: {:?}, error: {:?}",
+                genesis_hash, err
+            );
+        });
+    let subxt_runtime_version = SubxtRuntimeVersion {
+        spec_version: runtime_version.spec_version,
+        transaction_version: runtime_version.transaction_version,
+    };
+
+    let code_bytes = substrate_service
+        .client
+        .storage(genesis_hash, &StorageKey(CODE_KEY.to_vec()))
+        .expect("Runtime code not found for given genesis hash")
+        .unwrap();
+    let opaque_metadata = fetch_latest_metadata_from_code_blob(
+        &WasmExecutor::<SubstrateHostFunctions>::builder().build(),
+        Cow::Borrowed(code_bytes.0.as_slice()),
+    )
+    .map_err(|_| Error::InvalidParams("Unable to fetch metadata".to_string()))?;
+    let subxt_metadata = SubxtMetadata::decode(&mut (*opaque_metadata).as_slice())
+        .map_err(|_| Error::InvalidParams("Unable to decode metadata".to_string()))?;
+
+    let api = OnlineClient::<SrcChainConfig>::from_rpc_client_with(
+        genesis_hash,
+        subxt_runtime_version,
+        subxt_metadata,
+        rpc_client.clone(),
+    )?;
     let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
 
     let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;

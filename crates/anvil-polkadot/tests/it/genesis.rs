@@ -7,7 +7,7 @@ use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
 async fn test_genesis() {
     let genesis_block_number: u32 = 1000;
     let genesis_timestamp: u64 = 42;
-    let chain_id: u32 = 4242;
+    let chain_id: u64 = 4242;
     let anvil_node_config = AnvilNodeConfig::test_config()
         .with_genesis_block_number(Some(genesis_block_number))
         .with_genesis_timestamp(Some(genesis_timestamp))
@@ -20,7 +20,7 @@ async fn test_genesis() {
     let genesis_hash = node.block_hash_by_number(genesis_block_number).await.unwrap();
     let actual_genesis_timestamp = node.get_decoded_timestamp(Some(genesis_hash)).await;
     // Anvil genesis timestamp is in seconds, while Substrate timestamp is in milliseconds.
-    assert_eq!(actual_genesis_timestamp, genesis_timestamp * 1000);
+    assert_eq!(actual_genesis_timestamp, genesis_timestamp.checked_mul(1000).unwrap());
     let current_chain_id = node.get_decoded_chain_id(Some(genesis_hash)).await;
     assert_eq!(current_chain_id, chain_id);
 
@@ -35,7 +35,7 @@ async fn test_genesis() {
     let hash2 = node.block_hash_by_number(genesis_block_number + 2).await.unwrap();
     let timestamp2 = node.get_decoded_timestamp(Some(hash2)).await;
     assert_with_tolerance(
-        timestamp2.saturating_sub(genesis_timestamp * 1000),
+        timestamp2.saturating_sub(genesis_timestamp.checked_mul(1000).unwrap()),
         2000,
         100,
         "Timestamp is not increasing as expected from genesis.",

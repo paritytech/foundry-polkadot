@@ -149,7 +149,7 @@ impl TestNode {
         Decode::decode(&mut input).unwrap()
     }
 
-    pub async fn get_decoded_chain_id(&self, at: Option<H256>) -> u32 {
+    pub async fn get_decoded_chain_id(&self, at: Option<H256>) -> u64 {
         let storage_key = StorageKey(CHAIN_ID_KEY.to_vec());
         let encoded_value = self.state_get_storage(storage_key, at).await.unwrap().unwrap();
         let bytes =
