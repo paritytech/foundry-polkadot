@@ -140,6 +140,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang libclang-dev zip
+      - name: Install build-essential for tikv-jemalloc-sys
+        run: |
+          sudo apt-get install -y build-essential
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-hack
       - name: Install protobuf-compiler
