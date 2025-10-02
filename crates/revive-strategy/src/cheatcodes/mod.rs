@@ -122,21 +122,13 @@ fn set_balance(address: Address, amount: U256, ecx: Ecx<'_, '_, '_>) -> U256 {
     account.mark_touch();
     account.info.balance = amount;
     let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-    let balance_native =
-        BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-
-    let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
 
     let old_balance = execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
-            let addr = &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(
-                address.as_slice(),
-            ));
-            pallet_balances::Pallet::<Runtime>::set_balance(
-                addr,
-                balance_native.into_rounded_balance().saturating_add(min_balance),
-            );
+            let address = H160::from_slice(address.as_slice());
+            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&address);
+            pallet_revive::Pallet::<Runtime>::set_evm_balance(&address, amount_pvm)
+                .expect("Failed while setting balance");
             old_balance
         })
     });
@@ -396,16 +388,7 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
 
         let amount_pvm =
             sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-        let balance_native =
-            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-        let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
-        let amount_evm = U256::from_limbs(balance.0);
-        if amount != amount_evm {
-            let _ = sh_err!(
-                "Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect."
-            );
-        }
-        let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
+
         execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 let account_id =
@@ -421,10 +404,11 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                     System::inc_account_nonce(&account_id);
                 }
 
-                <Runtime as Config>::Currency::set_balance(
-                    &account_id,
-                    balance_native.into_rounded_balance().saturating_add(min_balance),
-                );
+                pallet_revive::Pallet::<Runtime>::set_evm_balance(
+                    &H160::from_slice(address.as_slice()),
+                    amount_pvm,
+                )
+                .expect("Failed while setting balance");
             })
         });
     }
