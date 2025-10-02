@@ -22,7 +22,7 @@ use polkadot_sdk::{
     pallet_balances,
     pallet_revive::{
         self, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config, DepositLimit,
-        Pallet, evm::GasEncoder,
+        InjectExecEnv, Pallet, evm::GasEncoder,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -35,7 +35,7 @@ use revm::{
     bytecode::opcode as op,
     context::{CreateScheme, JournalTr},
     interpreter::{
-        CallInputs, CallOutcome, CreateOutcome, Gas, InstructionResult, Interpreter,
+        CallInputs, CallOutcome, CallScheme, CreateOutcome, Gas, InstructionResult, Interpreter,
         InterpreterResult, interpreter_types::Jumps,
     },
 };
@@ -411,6 +411,56 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     }
 }
 
+fn create_inject_exec_env(
+    ecx: &Ecx<'_, '_, '_>,
+    caller: &Address,
+    target_address: Option<&Address>,
+    callee: Option<&Address>,
+    state: &mut foundry_cheatcodes::Cheatcodes,
+) -> (InjectExecEnv<Runtime>, bool) {
+    let curr_depth = ecx.journaled_state.depth();
+    let mut prank_enabled = false;
+    let pranked_caller = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+        &H160::from_slice(caller.as_slice()),
+    ));
+
+    let delegated_caller = target_address.map(|addr| {
+        OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&H160::from_slice(
+            addr.as_slice(),
+        )))
+    });
+
+    let mut state_inject = InjectExecEnv::<Runtime> {
+        caller: pranked_caller,
+        delegated_caller,
+        first_call_only: true,
+        callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
+    };
+
+    if let Some(prank) = &state.get_prank(curr_depth) {
+        if curr_depth >= prank.depth {
+            state_inject.first_call_only = prank.single_call;
+            prank_enabled = true;
+        }
+    }
+    (state_inject, prank_enabled)
+}
+
+fn fund_pranked_accounts(prank_enabled: bool, account: Address) {
+    // Fuzzed prank addresses have no balance, so they won't exist in revive, and
+    // calls will fail, this is not a problem when running in REVM.
+    if prank_enabled {
+        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
+        if balance == 0.into() {
+            Pallet::<Runtime>::set_evm_balance(
+                &H160::from_slice(account.as_slice()),
+                u128::MAX.into(),
+            )
+            .expect("Could not fund pranked account");
+        }
+    }
+}
+
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
     /// Try handling the `CREATE` within PVM.
     ///
@@ -423,6 +473,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         input: &dyn CommonCreateInput,
         _executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
     ) -> Option<CreateOutcome> {
+        let (state_inject, prank_enabled) =
+            create_inject_exec_env(&ecx, &input.caller(), None, None, state);
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         if !ctx.using_pvm {
@@ -476,9 +528,17 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             externalities.execute_with(|| {
                 trace::<Runtime, _, _>(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(input.caller().as_slice()),
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
+
+                    fund_pranked_accounts(prank_enabled, ecx.tx.caller);
+
+                    // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
+                    // that here too to replicate the same address generation.
+                    System::inc_account_nonce(&AccountId::to_fallback_account_id(
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                    ));
 
                     let (gas_limit, storage_deposit_limit) =
                     <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::decode(
@@ -510,11 +570,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         data,
                         salt,
                         bump_nonce,
+                        Some(state_inject),
                     )
                 })
             })
         });
-
         let mut gas = Gas::new(input.gas_limit());
         let gas_used =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
@@ -580,6 +640,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         _executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
     ) -> Option<CallOutcome> {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+        let target_address = match call.scheme {
+            CallScheme::DelegateCall => Some(call.target_address),
+            _ => None,
+        };
 
         if !ctx.using_pvm {
             return None;
@@ -609,12 +673,23 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             );
         let gas_limit = sp_core::U256::from(call.gas_limit).min(max_gas);
 
+        let (state_inject, prank_enabled) = create_inject_exec_env(
+            &ecx,
+            &call.caller,
+            target_address.as_ref(),
+            Some(&call.bytecode_address),
+            state,
+        );
+
         let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 trace::<Runtime, _, _>(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(call.caller.as_slice()),
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
+
+                    fund_pranked_accounts(prank_enabled, ecx.tx.caller);
+
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
 
@@ -633,6 +708,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         gas_limit,
                         storage_deposit_limit,
                         call.input.bytes(ecx).to_vec(),
+                        Some(state_inject),
                     )
                 })
             })
