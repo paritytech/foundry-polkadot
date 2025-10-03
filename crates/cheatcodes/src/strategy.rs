@@ -238,6 +238,10 @@ impl Clone for CheatcodeInspectorStrategy {
 
 /// Defined in revive-strategy
 pub trait CheatcodeInspectorStrategyExt {
+    fn is_pvm_enabled(&self, _state: &mut crate::Cheatcodes) -> bool {
+        false
+    }
+
     fn revive_try_create(
         &self,
         _state: &mut crate::Cheatcodes,

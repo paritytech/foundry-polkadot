@@ -22,7 +22,7 @@ use polkadot_sdk::{
     pallet_balances,
     pallet_revive::{
         self, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config, DepositLimit,
-        InjectExecEnv, Pallet, evm::GasEncoder,
+        InjectExecEnv, MockCallDataContext, MockCallReturnData, Pallet, evm::GasEncoder,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -434,7 +434,46 @@ fn create_inject_exec_env(
         caller: pranked_caller,
         delegated_caller,
         first_call_only: true,
+        mocked_calls: state
+            .mocked_calls
+            .iter()
+            .map(|(addr, keys)| {
+                (
+                    H160::from_slice(addr.as_slice()),
+                    keys.iter()
+                        .map(|(k, v)| {
+                            (
+                                MockCallDataContext {
+                                    calldata: k.calldata.as_ref().to_vec().into(),
+                                    value: k.value.map(|value| {
+                                        sp_core::U256::from_little_endian(value.as_le_slice())
+                                    }),
+                                },
+                                v.iter()
+                                    .map(|ret| MockCallReturnData {
+                                        ret_type: ret.ret_type,
+                                        data: ret.data.as_ref().to_vec().into(),
+                                    })
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
         callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
+        mocked_functions: state
+            .mocked_functions
+            .iter()
+            .map(|(addr, keys)| {
+                (
+                    H160::from_slice(addr.as_slice()),
+                    keys.iter()
+                        .map(|(k, v)| (k.to_vec().into(), H160::from_slice(v.as_slice())))
+                        .collect(),
+                )
+            })
+            .collect(),
     };
 
     if let Some(prank) = &state.get_prank(curr_depth) {
@@ -462,6 +501,12 @@ fn fund_pranked_accounts(prank_enabled: bool, account: Address) {
 }
 
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
+    fn is_pvm_enabled(&self, state: &mut foundry_cheatcodes::Cheatcodes) -> bool {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        ctx.using_pvm
+    }
+
     /// Try handling the `CREATE` within PVM.
     ///
     /// If `Some` is returned then the result must be returned immediately, else the call must be

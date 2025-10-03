@@ -199,6 +199,7 @@ fn mock_calls(
     rdata_vec: &[Bytes],
     ret_type: InstructionResult,
 ) {
+    println!("==================== {:?} ====================", cdata);
     state.mocked_calls.entry(*callee).or_default().insert(
         MockCallDataContext { calldata: Bytes::copy_from_slice(cdata), value: value.copied() },
         rdata_vec

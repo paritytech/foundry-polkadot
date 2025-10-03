@@ -913,8 +913,11 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
         );
 
         if let Some(cheatcodes) = self.cheatcodes.as_deref_mut() {
+            let is_pvm_enabled = cheatcodes.is_pvm_enabled();
             // Handle mocked functions, replace bytecode address with mock if matched.
-            if let Some(mocks) = cheatcodes.mocked_functions.get(&call.target_address) {
+            if let Some(mocks) = cheatcodes.mocked_functions.get(&call.target_address)
+                && !is_pvm_enabled
+            {
                 // Check if any mock function set for call data or if catch-all mock function set
                 // for selector.
                 if let Some(target) = mocks.get(&call.input.bytes(ecx)).or_else(|| {

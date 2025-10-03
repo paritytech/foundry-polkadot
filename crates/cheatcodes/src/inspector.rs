@@ -926,6 +926,10 @@ impl Cheatcodes {
         }
     }
 
+    pub fn is_pvm_enabled(&mut self) -> bool {
+        self.strategy.runner.is_pvm_enabled(self)
+    }
+
     pub fn call_with_executor(
         &mut self,
         ecx: Ecx,
