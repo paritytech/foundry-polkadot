@@ -9,7 +9,10 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
-        in_mem_rpc::InMemoryRpcClient, mining_engine::MiningEngine, service::Service,
+        in_mem_rpc::InMemoryRpcClient,
+        mining_engine::MiningEngine,
+        service::{FullClient, Service},
+        snapshot::SnapshotManager,
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
@@ -43,6 +46,7 @@ pub struct ApiServer {
     req_receiver: mpsc::Receiver<ApiRequest>,
     logging_manager: LoggingManager,
     mining_engine: Arc<MiningEngine>,
+    snapshot_manager: SnapshotManager<FullClient>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,
 }
@@ -52,6 +56,7 @@ impl ApiServer {
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
+        snapshot_manager: SnapshotManager<FullClient>,
     ) -> Result<Self> {
         let eth_rpc_client = create_revive_rpc_client(&substrate_service).await?;
 
@@ -60,6 +65,7 @@ impl ApiServer {
             logging_manager,
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
+            snapshot_manager,
             wallet: Wallet {
                 accounts: vec![
                     Account::from(subxt_signer::eth::dev::baltathar()),
@@ -128,6 +134,10 @@ impl ApiServer {
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request.clone()).await.to_rpc_result()
             }
+            // --- Snapshot ---
+            EthRequest::EvmSnapshot(_) => self.snapshot().await.to_rpc_result(),
+            // EthRequest::Rollback(depth) => {}
+            // EthRequest::EvmRevert(id) => {}
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -398,6 +408,11 @@ impl ApiServer {
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
         let payload = account.sign_transaction(tx).signed_payload();
         self.send_raw_transaction(Bytes(payload)).await
+    }
+
+    pub(crate) async fn snapshot(&mut self) -> Result<u64> {
+        node_info!("evm_snapshot");
+        Ok(self.snapshot_manager.snapshot())
     }
 
     // Helpers

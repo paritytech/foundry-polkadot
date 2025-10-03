@@ -6,7 +6,10 @@ use crate::{
     api_server::ApiHandle,
     config::AnvilNodeConfig,
     logging::{LoggingManager, NodeLogLayer},
-    substrate_node::service::Service,
+    substrate_node::{
+        service::{FullClient, Service},
+        snapshot::SnapshotManager,
+    },
 };
 use clap::{CommandFactory, Parser};
 use eyre::Result;
@@ -97,6 +100,7 @@ pub fn run_command(args: Anvil) -> Result<()> {
     } else {
         LoggingManager::default()
     };
+
     let runner: sc_cli::Runner<opts::SubstrateCli> =
         sc_cli::Runner::new(config, tokio_runtime, signals)?;
 
@@ -115,12 +119,22 @@ pub async fn spawn(
     let (substrate_service, task_manager) =
         substrate_node::service::new(&anvil_config, substrate_config)
             .map_err(sc_cli::Error::Service)?;
+    let snapshot_manager = SnapshotManager::new(
+        substrate_service.client.clone(),
+        substrate_service.backend.clone(),
+        anvil_config.get_genesis_number(),
+    );
 
     // Spawn the other tasks.
-    let api_handle =
-        spawn_anvil_tasks(anvil_config, &substrate_service, &task_manager, logging_manager)
-            .await
-            .map_err(|err| sc_cli::Error::Application(err.into()))?;
+    let api_handle = spawn_anvil_tasks(
+        anvil_config,
+        &substrate_service,
+        &task_manager,
+        logging_manager,
+        snapshot_manager,
+    )
+    .await
+    .map_err(|err| sc_cli::Error::Application(err.into()))?;
 
     Ok((substrate_service, task_manager, api_handle))
 }
@@ -130,9 +144,10 @@ pub async fn spawn_anvil_tasks(
     service: &Service,
     task_manager: &TaskManager,
     logging_manager: LoggingManager,
+    snapshot_manager: SnapshotManager<FullClient>,
 ) -> Result<ApiHandle> {
     // Spawn the api server.
-    let api_handle = api_server::spawn(service, logging_manager);
+    let api_handle = api_server::spawn(service, logging_manager, snapshot_manager);
 
     // Spawn the network servers.
     for addr in &anvil_config.host {

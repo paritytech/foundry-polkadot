@@ -1,6 +1,9 @@
 use crate::substrate_node::mining_engine::MiningError;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
-use polkadot_sdk::pallet_revive_eth_rpc::{EthRpcError, client::ClientError};
+use polkadot_sdk::{
+    pallet_revive_eth_rpc::{EthRpcError, client::ClientError},
+    sp_blockchain,
+};
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -13,6 +16,8 @@ pub enum Error {
     InvalidParams(String),
     #[error("Revive call failed: {0}")]
     ReviveRpc(#[from] EthRpcError),
+    #[error("Snapshot error: {0}")]
+    SnapshotRpc(sp_blockchain::Error),
 }
 impl From<subxt::Error> for Error {
     fn from(err: subxt::Error) -> Self {
@@ -68,6 +73,9 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 Error::RpcUnimplemented => RpcError::internal_error_with("Not implemented").into(),
                 Error::InvalidParams(error_message) => {
                     RpcError::invalid_params(error_message).into()
+                }
+                Error::SnapshotRpc(blockchain_err) => {
+                    RpcError::internal_error_with(format!("{blockchain_err}")).into()
                 }
                 Error::ReviveRpc(client_error) => {
                     RpcError::internal_error_with(format!("{client_error}")).into()
