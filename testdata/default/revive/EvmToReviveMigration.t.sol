@@ -22,7 +22,7 @@ contract EvmReviveMigrationTest is DSTest {
 
     function setUp() public {
         vm.deal(alice, 1 ether);
-        // Mark accounts as persistent so they migrate when switching to PVM
+        // Mark accounts as persistent so they migrate when switching between EVM and PVM
         vm.makePersistent(alice);
     }
 
@@ -50,10 +50,8 @@ contract EvmReviveMigrationTest is DSTest {
         uint256 reviveNonce = vm.getNonce(alice);
         assertEq(reviveNonce, 5, "Nonce in Revive should be 5");
 
-        // Migrate to EVM
         vm.pvm(false);
 
-        // Nonce should migrate
         assertEq(vm.getNonce(alice), reviveNonce, "Nonce should migrate from Revive to EVM");
 
         vm.setNonce(alice, 10);
@@ -70,7 +68,6 @@ contract EvmReviveMigrationTest is DSTest {
         uint256 reviveBalance = alice.balance;
         assertEq(reviveBalance, 1123456789123456789, "Balance should be set correctly in Revive");
 
-        // Migrate to EVM
         vm.pvm(false);
 
         assertEq(alice.balance, 1123456789123456789, "Balance precision should be preserved in migration to EVM");
@@ -89,11 +86,9 @@ contract EvmReviveMigrationTest is DSTest {
         // Mark the contract as persistent so it migrates
         vm.makePersistent(address(storageContract));
 
-        // Set initial value in PVM mode
         storageContract.set(42);
         assertEq(storageContract.get(), 42);
 
-        // Switch to EVM mode - bytecode and state should migrate
         vm.pvm(false);
 
         assertEq(storageContract.get(), 42);
