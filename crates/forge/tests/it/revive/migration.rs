@@ -24,7 +24,8 @@ async fn test_revive_nonce_migration() {
 // #[tokio::test(flavor = "multi_thread")]
 // async fn test_revive_precision_preservation() {
 //     let runner = TEST_DATA_REVIVE.runner_revive();
-//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest", ".*/revive/.*");
+//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest",
+// ".*/revive/.*");
 //
 //     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
 // }
