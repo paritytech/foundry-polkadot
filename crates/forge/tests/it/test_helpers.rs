@@ -200,9 +200,15 @@ impl ForgeTestData {
 
         let mut solc_config = (*config).clone();
         solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
-        solc_config.resolc = Default::default();
         solc_config.build_info_path = Some(solc_config.out.join("build-info"));
-        let solc_project = solc_config.project().unwrap();
+        let mut solc_project = solc_config.project().unwrap();
+
+        let output = get_compiled(&mut solc_project);
+
+        // Create resolc config with resolc compilation enabled
+        let mut resolc_config = (*config).clone();
+        resolc_config.resolc.resolc_compile = true;
+        let mut resolc_project = resolc_config.project().unwrap();
 
         // Filter files compatible with resolc
         let all_files: Vec<_> = solc_project.paths.input_files();
@@ -210,41 +216,23 @@ impl ForgeTestData {
             .into_iter()
             .filter(|path| {
                 let path_str = path.to_str().unwrap_or("");
-                let is_in_default_root =
-                    if let Some(default_idx) = path_str.find("/testdata/default/") {
-                        let after_default = &path_str[default_idx + "/testdata/default/".len()..];
-                        !after_default.contains('/')
-                    } else {
-                        false
-                    };
-                (is_in_default_root || path_str.contains("ds-test"))
-                    && !path_str.ends_with("Vm.sol")
+                // We skip all the other sources to avoid deploy-time linking issues
+                path_str.contains("revive/")
             })
             .collect();
-
-        let mut solc_project = solc_project;
-        let output = get_compiled(&mut solc_project);
-
-        let mut revive_config = solc_config.clone();
-        revive_config.resolc.resolc_compile = true;
-        let mut resolc_project = revive_config.project().unwrap();
-
-        let revive_output = get_revive_compiled(&mut resolc_project, files_to_compile);
+        let resolc_output = get_resolc_compiled(&mut resolc_project, files_to_compile);
 
         let dual_compiled_contracts = DualCompiledContracts::new(
             &output,
-            &revive_output,
+            &resolc_output,
             &solc_project.paths,
             &resolc_project.paths,
         );
 
-        // Use solc_config and solc_project to match the output
-        let config = Arc::new(solc_config);
-
         Self {
             project: solc_project,
             output,
-            config,
+            config: Arc::new(solc_config),
             profile,
             dual_compiled_contracts: Some(dual_compiled_contracts),
         }
@@ -443,7 +431,7 @@ pub fn get_compiled(project: &mut Project) -> ProjectCompileOutput {
     out
 }
 
-pub fn get_revive_compiled(
+pub fn get_resolc_compiled(
     project: &mut Project,
     files_to_compile: Vec<PathBuf>,
 ) -> ProjectCompileOutput {
@@ -461,11 +449,11 @@ pub fn get_revive_compiled(
         write = Some(lock.write().unwrap());
     }
 
-    let revive_compiler = ProjectCompiler::new()
+    let resolc_compiler = ProjectCompiler::new()
         .files(files_to_compile)
         .size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
 
-    out = revive_compiler.compile(project).unwrap();
+    out = resolc_compiler.compile(project).unwrap();
 
     if out.has_compiler_errors() {
         panic!("Compiled with errors:\n{out}");
