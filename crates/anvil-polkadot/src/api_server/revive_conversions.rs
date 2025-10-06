@@ -3,8 +3,8 @@ use alloy_primitives::Address;
 use alloy_rpc_types::{AccessList, SignedAuthorization, TransactionRequest};
 use polkadot_sdk::{
     pallet_revive::evm::{
-        AccessListEntry, AuthorizationListEntry, BlockNumberOrTagOrHash, BlockTag, Byte, Bytes,
-        GenericTransaction, InputOrData,
+        self, AccessListEntry, AuthorizationListEntry, BlockNumberOrTagOrHash, BlockTag, Byte,
+        Bytes, GenericTransaction, InputOrData,
     },
     sp_core,
 };
@@ -67,6 +67,27 @@ impl From<ReviveAddress> for Address {
     }
 }
 
+pub struct ReviveBlockNumberOrTag(pub evm::BlockNumberOrTag);
+
+impl From<BlockNumberOrTag> for ReviveBlockNumberOrTag {
+    fn from(value: BlockNumberOrTag) -> Self {
+        Self(match value {
+            BlockNumberOrTag::Latest => evm::BlockNumberOrTag::BlockTag(BlockTag::Latest),
+            BlockNumberOrTag::Finalized => evm::BlockNumberOrTag::BlockTag(BlockTag::Finalized),
+            BlockNumberOrTag::Safe => evm::BlockNumberOrTag::BlockTag(BlockTag::Safe),
+            BlockNumberOrTag::Earliest => evm::BlockNumberOrTag::BlockTag(BlockTag::Earliest),
+            BlockNumberOrTag::Pending => evm::BlockNumberOrTag::BlockTag(BlockTag::Pending),
+            BlockNumberOrTag::Number(num) => evm::BlockNumberOrTag::U256(evm::U256::from(num)),
+        })
+    }
+}
+
+impl ReviveBlockNumberOrTag {
+    pub fn inner(self) -> evm::BlockNumberOrTag {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ReviveBlockId(BlockNumberOrTagOrHash);
 
@@ -84,22 +105,9 @@ impl From<Option<BlockId>> for ReviveBlockId {
                 BlockId::Hash(rpc_hash) => BlockNumberOrTagOrHash::BlockHash(H256::from_slice(
                     rpc_hash.block_hash.as_slice(),
                 )),
-                BlockId::Number(number_or_tag) => match number_or_tag {
-                    BlockNumberOrTag::Number(num) => BlockNumberOrTagOrHash::BlockNumber(
-                        polkadot_sdk::pallet_revive::U256::from(num),
-                    ),
-                    BlockNumberOrTag::Latest => BlockNumberOrTagOrHash::BlockTag(BlockTag::Latest),
-                    BlockNumberOrTag::Earliest => {
-                        BlockNumberOrTagOrHash::BlockTag(BlockTag::Earliest)
-                    }
-                    BlockNumberOrTag::Pending => {
-                        BlockNumberOrTagOrHash::BlockTag(BlockTag::Pending)
-                    }
-                    BlockNumberOrTag::Safe => BlockNumberOrTagOrHash::BlockTag(BlockTag::Safe),
-                    BlockNumberOrTag::Finalized => {
-                        BlockNumberOrTagOrHash::BlockTag(BlockTag::Finalized)
-                    }
-                },
+                BlockId::Number(number_or_tag) => {
+                    ReviveBlockNumberOrTag::from(number_or_tag).inner().into()
+                }
             },
         ))
     }

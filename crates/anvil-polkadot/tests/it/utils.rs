@@ -1,6 +1,6 @@
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, U256, hex};
-use alloy_rpc_types::TransactionRequest;
+use alloy_primitives::{Address, B256, Bytes, U256, hex};
+use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
@@ -16,7 +16,7 @@ use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
 use parity_scale_codec::Decode;
 use polkadot_sdk::{
-    pallet_revive::evm::{Block, ReceiptInfo},
+    pallet_revive::evm::{Block, HashesOrTransactionInfos, ReceiptInfo},
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
@@ -224,6 +224,31 @@ impl TestNode {
         )
         .unwrap()
     }
+
+    pub async fn deploy_contract(
+        &mut self,
+        fixture_name: &str,
+        deployer: H160,
+        block_number: u32,
+    ) -> (Vec<u8>, H256) {
+        let (bytecode, _code_hash) = pallet_revive_fixtures::compile_module(fixture_name).unwrap();
+        let mut deploy_contract_tx = TransactionRequest::default()
+            .from(Address::from(ReviveAddress::new(deployer)))
+            .input(TransactionInput::new(Bytes::from(bytecode.clone())));
+        deploy_contract_tx.set_input_and_data();
+        let tx_hash = self.send_transaction(deploy_contract_tx).await;
+        self.wait_for_block_with_timeout(block_number, std::time::Duration::from_millis(1000))
+            .await
+            .unwrap();
+        (bytecode, tx_hash)
+    }
+}
+
+pub fn transaction_in_block(transactions: &HashesOrTransactionInfos, transaction: H256) -> bool {
+    if let HashesOrTransactionInfos::Hashes(transactions) = transactions {
+        return transactions.contains(&transaction);
+    }
+    false
 }
 
 pub fn assert_with_tolerance<T>(actual: T, expected: T, tolerance: T, message: &str)
@@ -244,7 +269,9 @@ where
     T: serde::de::DeserializeOwned,
 {
     match response {
-        ResponseResult::Success(value) => Ok(serde_json::from_value(value)?),
+        ResponseResult::Success(value) => serde_json::from_value(value.clone())
+            .or_else(|_| serde_json::from_str(&serde_json::to_string(&value)?))
+            .map_err(Into::into),
         ResponseResult::Error(err) => {
             Err(format!("Expected success but got error: {err:?}").into())
         }
