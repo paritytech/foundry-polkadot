@@ -198,7 +198,6 @@ impl ForgeTestData {
         init_tracing();
         let config = Arc::new(profile.config());
 
-        // Setup solc project
         let mut solc_config = (*config).clone();
         solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
         solc_config.resolc = Default::default();
@@ -340,7 +339,6 @@ impl ForgeTestData {
     }
 
     /// Builds a runner with revive strategy for polkadot/substrate testing
-    /// Uses pre-compiled revive_test_data from ForgeTestData
     pub fn runner_revive(&self) -> MultiContractRunner {
         let mut config = (*self.config).clone();
         config.rpc_endpoints = rpc_endpoints();
@@ -360,10 +358,8 @@ impl ForgeTestData {
         let root = self.project.root();
         builder.config = config.clone();
 
-        // Create the revive strategy
         let mut strategy = ExecutorStrategy::new_revive(true);
 
-        // Set dual compiled contracts on the strategy
         strategy
             .runner
             .revive_set_dual_compiled_contracts(strategy.context.as_mut(), dual_compiled_contracts);
