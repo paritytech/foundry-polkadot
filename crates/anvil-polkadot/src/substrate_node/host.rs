@@ -6,7 +6,7 @@
 //! that is obtained with sender's private key and the pallet-revive
 //! runtime logic can recover the signer's ethereum address from the signature
 //! and the rest of the transaction bytes. The runtime recovers the signer's
-//! address by running `secp256k1 ecdsa recover` to recover the signer's public
+//! address by running `secp256k1_ecdsa_recover` to recover the signer's public
 //! key, and `keccak_256` to hash the public key to a 20 byes Ethereum address.
 //! These functions are exposed by `sp-io` and used as host functions by the runtime.
 //! This module implements tweaked versions of the host functions from `sp-io`, which
@@ -26,6 +26,12 @@ use sp_runtime_interface::{
     runtime_interface,
 };
 
+// The host functions in this module expect transactions
+// with fake signatures conforming the format checked in this function.
+fn is_impersonated(sig: &[u8]) -> bool {
+    sig[..12] == [0; 12] && sig[32..64] == [0; 32]
+}
+
 #[runtime_interface]
 pub trait Crypto {
     #[version(1)]
@@ -33,7 +39,7 @@ pub trait Crypto {
         sig: PassPointerAndRead<&[u8; 65], 65>,
         msg: PassPointerAndRead<&[u8; 32], 32>,
     ) -> AllocateAndReturnByCodec<Result<[u8; 64], EcdsaVerifyError>> {
-        if sig[..12].iter().eq([0; 12].iter()) {
+        if is_impersonated(sig) {
             trace!(
                 target = "host_fn_overrides",
                 name = "secp256k1_ecdsa_recover - version 1",
@@ -53,7 +59,7 @@ pub trait Crypto {
         sig: PassPointerAndRead<&[u8; 65], 65>,
         msg: PassPointerAndRead<&[u8; 32], 32>,
     ) -> AllocateAndReturnByCodec<Result<[u8; 64], EcdsaVerifyError>> {
-        if sig[..12] == [0; 12] && sig[32..64] == [0; 32] {
+        if is_impersonated(sig) {
             trace!(
                 target = "host_fn_overrides",
                 name = "secp256k1_ecdsa_recover - version 2",
@@ -72,7 +78,7 @@ pub trait Crypto {
 #[runtime_interface]
 pub trait Hashing {
     fn keccak_256(data: PassFatPointerAndRead<&[u8]>) -> AllocateAndReturnPointer<[u8; 32], 32> {
-        if data.len() == 64 && data[..12] == [0; 12] && data[32..64] == [0; 32] {
+        if data.len() == 64 && is_impersonated(data) {
             trace!(
                 target = "host_fn_overrides",
                 name = "keccak_256",

@@ -24,7 +24,7 @@ use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
 use tokio_stream::wrappers::ReceiverStream;
 
-use super::host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride};
+use crate::substrate_node::host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride};
 
 pub type Executor = WasmExecutor<
     ExtendedHostFunctions<

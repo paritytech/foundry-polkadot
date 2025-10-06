@@ -1,4 +1,6 @@
-use crate::utils::{TestNode, unwrap_response};
+use std::time::Duration;
+
+use crate::utils::{BlockWaitTimeout, TestNode, unwrap_response};
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::TransactionRequest;
 use anvil_core::eth::EthRequest;
@@ -96,8 +98,11 @@ async fn test_send_transaction() {
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let tx_hash = node.send_transaction(transaction, Some(1)).await.unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    let tx_hash = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .await
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(500));
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(1));
@@ -138,8 +143,11 @@ async fn test_send_to_uninitialized() {
     let charleth_addr = Address::from(ReviveAddress::new(charleth.address()));
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(alith_addr).to(charleth_addr);
-    let _tx_hash = node.send_transaction(transaction, Some(1)).await.unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    let _tx_hash = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .await
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(500));
 
     let alith_final_balance = node.get_balance(alith.address(), None).await;
     assert_eq!(node.get_balance(charleth.address(), None).await, transfer_amount);
@@ -148,8 +156,11 @@ async fn test_send_to_uninitialized() {
     let transfer_amount = U256::from_str_radix("100000000000", 10).unwrap();
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(charleth_addr).to(alith_addr);
-    let tx_hash = node.send_transaction(transaction, Some(2)).await.unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    let tx_hash = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
+        .await
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let alith_final_balance_2 = node.get_balance(alith.address(), None).await;
     let charlet_final_balance = node.get_balance(charleth.address(), None).await;

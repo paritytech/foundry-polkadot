@@ -12,7 +12,7 @@ use anvil_polkadot::{
     spawn,
     substrate_node::service::Service,
 };
-use anvil_rpc::response::ResponseResult;
+use anvil_rpc::{error::RpcError, response::ResponseResult};
 use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
 use parity_scale_codec::Decode;
@@ -25,9 +25,23 @@ use polkadot_sdk::{
     sp_core::{H256, storage::StorageKey, twox_128},
 };
 use serde_json::{Value, json};
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Duration};
 use subxt::utils::H160;
 use tempfile::TempDir;
+
+const NATIVE_TO_ETH_RATIO: u128 = 1000000;
+pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
+
+pub struct BlockWaitTimeout {
+    block_number: u32,
+    timeout: Duration,
+}
+
+impl BlockWaitTimeout {
+    pub fn new(block_number: u32, timeout: Duration) -> Self {
+        Self { block_number, timeout }
+    }
+}
 
 pub struct TestNode {
     pub service: Service,
@@ -134,8 +148,8 @@ impl TestNode {
     pub async fn send_transaction(
         &mut self,
         transaction: TransactionRequest,
-        block_number: Option<u32>,
-    ) -> Result<H256, Box<dyn std::error::Error>> {
+        timeout: Option<BlockWaitTimeout>,
+    ) -> Result<H256, RpcError> {
         let tx_hash = unwrap_response::<H256>(
             self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
                 transaction,
@@ -144,10 +158,8 @@ impl TestNode {
             .unwrap(),
         )?;
 
-        if let Some(block_nr) = block_number {
-            self.wait_for_block_with_timeout(block_nr, std::time::Duration::from_secs(5))
-                .await
-                .unwrap();
+        if let Some(BlockWaitTimeout { block_number, timeout }) = timeout {
+            self.wait_for_block_with_timeout(block_number, timeout).await.unwrap();
         }
         Ok(tx_hash)
     }
@@ -256,14 +268,12 @@ where
     }
 }
 
-pub fn unwrap_response<T>(response: ResponseResult) -> Result<T, Box<dyn std::error::Error>>
+pub fn unwrap_response<T>(response: ResponseResult) -> Result<T, RpcError>
 where
     T: serde::de::DeserializeOwned,
 {
     match response {
-        ResponseResult::Success(value) => Ok(serde_json::from_value(value)?),
-        ResponseResult::Error(err) => {
-            Err(format!("Expected success but got error: {err:?}").into())
-        }
+        ResponseResult::Success(value) => Ok(serde_json::from_value(value).unwrap()),
+        ResponseResult::Error(err) => Err(err),
     }
 }
