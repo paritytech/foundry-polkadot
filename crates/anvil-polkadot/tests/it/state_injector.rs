@@ -4,7 +4,7 @@ use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::revive_conversions::ReviveAddress,
+    api_server::revive_conversions::{AlloyU256, ReviveAddress},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
 use anvil_rpc::{
@@ -14,6 +14,7 @@ use anvil_rpc::{
 use assert_matches::assert_matches;
 use polkadot_sdk::pallet_revive::{self, evm::Account};
 use std::time::Duration;
+use subxt::utils::H160;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_set_chain_id() {
@@ -196,6 +197,119 @@ async fn test_set_balance() {
 
     assert_eq!(node.best_block_number().await, 0);
 
-    let address =
-        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
+    let alith = Account::from(subxt_signer::eth::dev::alith()).address();
+
+    assert_eq!(
+        node.get_balance(alith, None).await,
+        // 1000 dollars
+        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+    );
+
+    // Test decreasing the balance to 5 dollars.
+    let new_balance = U256::from(5e20);
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetBalance(Address::from(ReviveAddress::new(alith)), new_balance))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(node.get_balance(alith, None).await, new_balance);
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    assert_eq!(node.get_balance(alith, None).await, new_balance);
+
+    // Send 2 dollars to another account. We'll actually send 3, to cover for the existential
+    // deposit of 1 dollar.
+    let charleth = Account::from(subxt_signer::eth::dev::charleth());
+    let tx = TransactionRequest::default()
+        .value(U256::from(2e20))
+        .from(Address::from(ReviveAddress::new(alith)))
+        .to(Address::from(ReviveAddress::new(charleth.address())));
+
+    let tx_hash = node.send_transaction(tx).await;
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
+
+    assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
+    assert_eq!(transaction_receipt.transaction_hash, tx_hash);
+
+    let alith_new_balance = U256::from(2e20)
+        - AlloyU256::from(transaction_receipt.effective_gas_price * transaction_receipt.gas_used)
+            .inner();
+    assert_eq!(node.get_balance(alith, None).await, alith_new_balance);
+    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e20));
+
+    // Now try sending more money than we have (5 dollars), should fail.
+    let tx = TransactionRequest::default()
+        .value(U256::from(5e20))
+        .from(Address::from(ReviveAddress::new(alith)))
+        .to(Address::from(ReviveAddress::new(charleth.address())));
+
+    assert_matches!(
+        node
+            .eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx))))
+            .await
+            .unwrap(),
+        ResponseResult::Error(RpcError {code, message, ..}) => {
+            assert_eq!(code, ErrorCode::InternalError);
+            message.contains("Invalid Transaction")
+        }
+    );
+    assert_eq!(node.get_balance(alith, None).await, alith_new_balance);
+    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e20));
+
+    // Test increasing the balance of an existing account to 2000 dollars.
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar()).address();
+
+    assert_eq!(
+        node.get_balance(baltathar, None).await,
+        // 1000 dollars
+        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+    );
+
+    let new_balance = U256::from_str_radix("200000000000000000000", 10).unwrap();
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetBalance(
+            Address::from(ReviveAddress::new(baltathar)),
+            new_balance,
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(node.get_balance(baltathar, None).await, new_balance);
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    assert_eq!(node.get_balance(baltathar, None).await, new_balance);
+
+    // Now test adding balance for a random new account.
+    let random_addr = H160::from_slice(Address::random().as_slice());
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetBalance(
+            Address::from(ReviveAddress::new(random_addr)),
+            new_balance,
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(node.get_balance(random_addr, None).await, new_balance);
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(node.get_balance(random_addr, None).await, new_balance);
 }
