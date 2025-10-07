@@ -1,9 +1,10 @@
 use crate::substrate_node::service::Backend;
+use alloy_primitives::U256;
 use polkadot_sdk::{
     sc_client_api::Backend as BackendT,
     sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata, Result},
 };
-use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 use substrate_runtime::OpaqueBlock;
 
 #[derive(Clone, Debug)]
@@ -14,21 +15,21 @@ pub struct Snapshot {
 pub struct SnapshotManager<C> {
     client: Arc<C>,
     backend: Arc<Backend>,
-    next_snapshot_id: u64,
-    snapshots: BTreeMap<u64, Snapshot>,
+    next_snapshot_id: U256,
+    snapshots: BTreeMap<U256, Snapshot>,
 }
 
 impl<C> SnapshotManager<C> {
     pub fn new(client: Arc<C>, backend: Arc<Backend>, genesis_block_number: u64) -> Self {
         let snapshot = Snapshot { best_number: genesis_block_number };
         let mut map = BTreeMap::new();
-        map.insert(0, snapshot);
+        map.insert(U256::ZERO, snapshot);
 
         Self {
             client,
             backend,
             // Start with 1 to mimic Ganache
-            next_snapshot_id: 1,
+            next_snapshot_id: U256::ONE,
             snapshots: map,
         }
     }
@@ -43,17 +44,18 @@ where
         + 'static,
 {
     /// Create a snapshot id corresponding to the best block number.
-    pub fn snapshot(&mut self) -> u64 {
-        self.next_snapshot_id += 1;
+    pub fn snapshot(&mut self) -> U256 {
+        let one = U256::ONE;
+        self.next_snapshot_id += one;
         let snapshot = Snapshot { best_number: self.client.info().best_number.into() };
-        self.snapshots.insert(self.next_snapshot_id - 1, snapshot);
+        self.snapshots.insert(self.next_snapshot_id - one, snapshot);
         // Safe since there is always a snapshot representing genesis.
-        self.next_snapshot_id - 1
+        self.next_snapshot_id - one
     }
 
     /// Revert the chain to the block number represented by the snapshot `id`.
-    pub fn revert(&mut self, id: &NonZeroU64) -> Result<bool> {
-        let maybe_snapshot = self.snapshots.remove(&id.get());
+    pub fn revert(&mut self, id: U256) -> Result<bool> {
+        let maybe_snapshot = self.snapshots.remove(&id);
         let Some(snap) = maybe_snapshot else { return Ok(false) };
 
         let current_best_number: u64 = self.client.info().best_number.into();
@@ -64,7 +66,7 @@ where
             true,
         )?;
 
-        self.snapshots.retain(|&k, _| k < id.get());
+        self.snapshots.retain(|&k, _| k < id);
 
         Ok(true)
     }

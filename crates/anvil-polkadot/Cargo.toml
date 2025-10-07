@@ -19,8 +19,8 @@ path = "bin/main.rs"
 
 [dependencies]
 # foundry internal
-substrate-runtime = { path = "substrate-runtime" }
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = [
+# git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", 
+polkadot-sdk = { path = "../../../polkadot-sdk/umbrella", default-features = false, features = [
 	"sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
@@ -57,8 +57,10 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"substrate-frame-rpc-system",
 	"substrate-rpc-client",
 	"substrate-wasm-builder",
-	"pallet-revive-eth-rpc",
+	# "pallet-revive-eth-rpc",
 ] }
+pallet-revive-eth-rpc = { path = "../../../polkadot-sdk/substrate/frame/revive/rpc" }
+substrate-runtime = { path = "substrate-runtime" }
 anvil.workspace = true
 anvil-core.workspace = true
 anvil-server = { workspace = true, features = ["clap"] }
@@ -128,7 +130,7 @@ parity-scale-codec = "3.7.5"
 subxt = "0.43.0"
 subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
-sqlx = "0.8.6"
+sqlx = { version = "0.8.6", features = ["sqlite"] }
 
 [dev-dependencies]
 alloy-provider = { workspace = true, features = ["txpool-api"] }

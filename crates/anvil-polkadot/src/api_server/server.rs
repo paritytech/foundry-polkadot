@@ -22,13 +22,13 @@ use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use futures::{StreamExt, channel::mpsc};
+use pallet_revive_eth_rpc::{
+    EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
+    client::{Client as EthRpcClient, ClientError, SubscriptionType},
+    subxt_client::{self, SrcChainConfig},
+};
 use polkadot_sdk::{
     pallet_revive::evm::{Account, Block, Bytes, ReceiptInfo},
-    pallet_revive_eth_rpc::{
-        EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
-        client::{Client as EthRpcClient, ClientError, SubscriptionType},
-        subxt_client::{self, SrcChainConfig},
-    },
     sp_core::{self, keccak_256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
@@ -137,7 +137,7 @@ impl ApiServer {
             // --- Snapshot ---
             EthRequest::EvmSnapshot(_) => self.snapshot().await.to_rpc_result(),
             // EthRequest::Rollback(depth) => {}
-            // EthRequest::EvmRevert(id) => {}
+            EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -410,9 +410,14 @@ impl ApiServer {
         self.send_raw_transaction(Bytes(payload)).await
     }
 
-    pub(crate) async fn snapshot(&mut self) -> Result<u64> {
+    pub(crate) async fn snapshot(&mut self) -> Result<U256> {
         node_info!("evm_snapshot");
         Ok(self.snapshot_manager.snapshot())
+    }
+
+    pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
+        node_info!("evm_revert");
+        self.snapshot_manager.revert(id).map_err(Error::SnapshotRpc)
     }
 
     // Helpers

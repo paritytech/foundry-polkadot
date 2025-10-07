@@ -1,9 +1,7 @@
 use crate::substrate_node::mining_engine::MiningError;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
-use polkadot_sdk::{
-    pallet_revive_eth_rpc::{EthRpcError, client::ClientError},
-    sp_blockchain,
-};
+use pallet_revive_eth_rpc::{EthRpcError, client::ClientError};
+use polkadot_sdk::sp_blockchain;
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
