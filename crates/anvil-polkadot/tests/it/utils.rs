@@ -9,7 +9,7 @@ use anvil_polkadot::{
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
-    substrate_node::service::Service,
+    substrate_node::service::{storage::well_known_keys, Service},
 };
 use anvil_rpc::response::ResponseResult;
 use codec::Decode;
@@ -21,7 +21,8 @@ use polkadot_sdk::{
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
     sc_service::TaskManager,
-    sp_core::{storage::StorageKey, twox_128, H256},
+    sp_core::H256,
+    sp_state_machine::StorageKey,
 };
 use serde_json::{json, Value};
 use std::fmt::Debug;
@@ -79,36 +80,6 @@ impl TestNode {
         rx.await.map_err(|e| eyre::eyre!("ApiRequest receiver dropped: {}", e))
     }
 
-    pub async fn substrate_rpc(&self, method: &str, params: Value) -> Result<Value> {
-        let rpc = &self.service.rpc_handlers;
-
-        let request = json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params,
-            "id": 1
-        });
-
-        let (response, _receiver) = rpc
-            .rpc_query(&request.to_string())
-            .await
-            .wrap_err(format!("RPC call failed for method: {method}"))?;
-
-        let response_value: Value =
-            serde_json::from_str(&response).wrap_err("Failed to parse RPC response")?;
-
-        if let Some(error) = response_value.get("error") {
-            return Err(eyre::eyre!("RPC error: {}", error));
-        }
-
-        response_value
-            .get("result")
-            .cloned()
-            .ok_or_else(|| eyre::eyre!("No result in RPC response"))
-    }
-}
-
-impl TestNode {
     pub async fn block_hash_by_number(&self, n: u32) -> eyre::Result<H256> {
         self.service
             .client
@@ -117,44 +88,20 @@ impl TestNode {
             .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
     }
 
-    pub fn create_storage_key(pallet: &str, item: &str) -> StorageKey {
-        let mut key = Vec::new();
-        key.extend_from_slice(&twox_128(pallet.as_bytes()));
-        key.extend_from_slice(&twox_128(item.as_bytes()));
-        StorageKey(key)
-    }
-
-    pub async fn state_get_storage(
-        &self,
-        key: StorageKey,
-        at: Option<H256>,
-    ) -> Result<Option<String>> {
-        let key_hex = format!("0x{}", hex::encode(&key.0));
-        let result = match at {
-            Some(hash) => self.substrate_rpc("state_getStorageAt", json!([key_hex, hash])).await?,
-            None => self.substrate_rpc("state_getStorage", json!([key_hex])).await?,
-        };
-        Ok(result.as_str().map(|s| s.to_string()))
-    }
-
     pub async fn get_decoded_timestamp(&self, at: Option<H256>) -> u64 {
-        let storage_key = Self::create_storage_key("Timestamp", "Now");
-        let encoded_value = self.state_get_storage(storage_key, at).await.unwrap().unwrap();
+        let encoded_value =
+            self.state_get_storage(well_known_keys::TIMESTAMP.to_vec(), at).await.unwrap().unwrap();
         let bytes =
             hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
         let mut input = &bytes[..];
         Decode::decode(&mut input).unwrap()
     }
 
-    async fn wait_for_block_with_number(&self, n: u32) {
-        let mut import_stream = self.service.client.import_notification_stream();
-
-        while let Some(notification) = import_stream.next().await {
-            let block_number = *notification.header.number();
-            if block_number >= n {
-                break;
-            }
-        }
+    pub async fn get_nonce(&mut self, address: Address) -> U256 {
+        unwrap_response::<U256>(
+            self.eth_rpc(EthRequest::EthGetTransactionCount(address, None)).await.unwrap(),
+        )
+        .unwrap()
     }
 
     pub async fn best_block_number(&self) -> u32 {
@@ -178,9 +125,7 @@ impl TestNode {
             .await
             .map_err(|e| e.into())
     }
-}
 
-impl TestNode {
     pub async fn get_balance(&mut self, address: H160, block: Option<BlockId>) -> U256 {
         unwrap_response::<U256>(
             self.eth_rpc(EthRequest::EthGetBalance(
@@ -223,6 +168,54 @@ impl TestNode {
                 .unwrap(),
         )
         .unwrap()
+    }
+
+    async fn wait_for_block_with_number(&self, n: u32) {
+        let mut import_stream = self.service.client.import_notification_stream();
+
+        while let Some(notification) = import_stream.next().await {
+            let block_number = *notification.header.number();
+            if block_number >= n {
+                break;
+            }
+        }
+    }
+
+    async fn substrate_rpc(&self, method: &str, params: Value) -> Result<Value> {
+        let rpc = &self.service.rpc_handlers;
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        });
+
+        let (response, _receiver) = rpc
+            .rpc_query(&request.to_string())
+            .await
+            .wrap_err(format!("RPC call failed for method: {method}"))?;
+
+        let response_value: Value =
+            serde_json::from_str(&response).wrap_err("Failed to parse RPC response")?;
+
+        if let Some(error) = response_value.get("error") {
+            return Err(eyre::eyre!("RPC error: {}", error));
+        }
+
+        response_value
+            .get("result")
+            .cloned()
+            .ok_or_else(|| eyre::eyre!("No result in RPC response"))
+    }
+
+    async fn state_get_storage(&self, key: StorageKey, at: Option<H256>) -> Result<Option<String>> {
+        let key_hex = format!("0x{}", hex::encode(&key));
+        let result = match at {
+            Some(hash) => self.substrate_rpc("state_getStorageAt", json!([key_hex, hash])).await?,
+            None => self.substrate_rpc("state_getStorage", json!([key_hex])).await?,
+        };
+        Ok(result.as_str().map(|s| s.to_string()))
     }
 }
 

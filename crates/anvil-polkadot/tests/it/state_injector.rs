@@ -13,6 +13,7 @@ use anvil_rpc::{
 };
 use assert_matches::assert_matches;
 use polkadot_sdk::pallet_revive::{self, evm::Account};
+use std::time::Duration;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_set_chain_id() {
@@ -81,7 +82,7 @@ async fn test_set_chain_id() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
@@ -100,80 +101,91 @@ async fn test_set_nonce() {
     let address =
         Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
 
-    assert_eq!(
-        unwrap_response::<U256>(
-            node.eth_rpc(EthRequest::EthGetTransactionCount(address.clone(), None)).await.unwrap()
-        )
-        .unwrap(),
-        U256::from(0)
-    );
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(0));
 
     unwrap_response::<()>(
-        node.eth_rpc(EthRequest::SetNonce(address.clone(), U256::from(1))).await.unwrap(),
+        node.eth_rpc(EthRequest::SetNonce(address.clone(), U256::from(10))).await.unwrap(),
     )
     .unwrap();
 
-    assert_eq!(
-        unwrap_response::<U256>(
-            node.eth_rpc(EthRequest::EthGetTransactionCount(address.clone(), None)).await.unwrap()
-        )
-        .unwrap(),
-        U256::from(1)
-    );
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(10));
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
-    assert_eq!(
-        unwrap_response::<U256>(
-            node.eth_rpc(EthRequest::EthGetTransactionCount(address.clone(), None)).await.unwrap()
-        )
-        .unwrap(),
-        U256::from(1)
-    );
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(10));
 
     let to = Address::from(ReviveAddress::new(
         Account::from(subxt_signer::eth::dev::baltathar()).address(),
     ));
-    let tx = TransactionRequest::default().value(U256::from(100)).from(address).to(to).nonce(1);
+    let tx = TransactionRequest::default().value(U256::from(100)).from(address).to(to);
 
-    let tx_hash = node.send_transaction(tx).await;
+    // Send a transaction with the wrong nonce, it will be invalid.
+    assert_matches!(
+        node
+            .eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx.clone().nonce(5)))))
+            .await
+            .unwrap(),
+        ResponseResult::Error(RpcError {code, message, ..}) => {
+            assert_eq!(code, ErrorCode::InternalError);
+            message.contains("Invalid Transaction")
+        }
+    );
+
+    // Send a transaction with the right nonce and mine a block.
+    let tx_hash = node.send_transaction(tx.clone().nonce(10)).await;
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
     assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 
+    // Now set the nonce to a lower value. It should work.
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetNonce(address.clone(), U256::from(5))).await.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(5));
+
+    let tx_hash = node.send_transaction(tx).await;
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
+
+    assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(3));
+    assert_eq!(transaction_receipt.transaction_hash, tx_hash);
+
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(6));
+
     // Set nonce for a non-existant account. Should work.
     let address = Address::from(ReviveAddress::new(
         Account::from(subxt_signer::eth::dev::dorothy()).address(),
     ));
 
-    assert_eq!(
-        unwrap_response::<U256>(
-            node.eth_rpc(EthRequest::EthGetTransactionCount(address.clone(), None)).await.unwrap()
-        )
-        .unwrap(),
-        U256::from(0)
-    );
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(0));
 
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::SetNonce(address.clone(), U256::from(1))).await.unwrap(),
     )
     .unwrap();
 
-    assert_eq!(
-        unwrap_response::<U256>(
-            node.eth_rpc(EthRequest::EthGetTransactionCount(address.clone(), None)).await.unwrap()
-        )
-        .unwrap(),
-        U256::from(1)
-    );
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(1));
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    assert_eq!(node.get_nonce(address.clone()).await, U256::from(1));
 }
 
 #[tokio::test(flavor = "multi_thread")]
