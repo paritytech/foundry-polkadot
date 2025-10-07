@@ -55,6 +55,9 @@ where
 
     /// Revert the chain to the block number represented by the snapshot `id`.
     pub fn revert(&mut self, id: U256) -> Result<bool> {
+        // Remove the snapshot when reverting. We do not want to keep it around
+        // since reverting to an existing snapshot could mean going back to future,
+        // which is not supported.
         let maybe_snapshot = self.snapshots.remove(&id);
         let Some(snap) = maybe_snapshot else { return Ok(false) };
 
@@ -66,7 +69,8 @@ where
             true,
         )?;
 
-        self.snapshots.retain(|&k, _| k < id);
+        self.snapshots
+            .retain(|&k, snap_to_remove| k < id || snap_to_remove.best_number >= snap.best_number);
 
         Ok(true)
     }
