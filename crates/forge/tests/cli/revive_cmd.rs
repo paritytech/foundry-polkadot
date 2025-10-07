@@ -71,79 +71,62 @@ Compiler run successful!
 });
 
 // checks that extra output works
-// TODO: Currently failing - foundry-compilers-polkadot doesn't properly handle extra-output for resolc 0.4.0
-forgetest!(#[ignore = "foundry-compilers-polkadot extra-output support incomplete"] can_emit_extra_output_for_resolc, |prj, cmd| {
-    prj.clear();
-    init_prj(&prj);
+// TODO: Currently failing - foundry-compilers-polkadot doesn't properly handle extra-output for
+// resolc 0.4.0
+forgetest!(
+    #[ignore = "foundry-compilers-polkadot extra-output support incomplete"]
+    can_emit_extra_output_for_resolc,
+    |prj, cmd| {
+        prj.clear();
+        init_prj(&prj);
 
-    cmd.args(["build", "--resolc", "--extra-output", "metadata"]).assert_success().stdout_eq(str![
-        [r#"
+        cmd.args(["build", "--resolc", "--extra-output", "metadata"]).assert_success().stdout_eq(
+            str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
-"#]
-    ]);
+"#]],
+        );
 
-    let artifact_path = prj.artifacts().join(CONTRACT_ARTIFACT_JSON);
-    let artifact: ConfigurableContractArtifact =
-        foundry_compilers::utils::read_json_file(&artifact_path).unwrap();
-    assert!(artifact.metadata.is_some());
+        let artifact_path = prj.artifacts().join(CONTRACT_ARTIFACT_JSON);
+        let artifact: ConfigurableContractArtifact =
+            foundry_compilers::utils::read_json_file(&artifact_path).unwrap();
+        assert!(artifact.metadata.is_some());
 
-    cmd.forge_fuse()
-        .args(["build", "--resolc", "--extra-output-files", "metadata", "--force"])
-        .root_arg()
-        .assert_success()
-        .stdout_eq(str![[r#"
+        cmd.forge_fuse()
+            .args(["build", "--resolc", "--extra-output-files", "metadata", "--force"])
+            .root_arg()
+            .assert_success()
+            .stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
 "#]]);
 
-    let metadata_path = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.metadata.json"));
-    let _artifact: Metadata = foundry_compilers::utils::read_json_file(&metadata_path).unwrap();
-});
+        let metadata_path = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.metadata.json"));
+        let _artifact: Metadata = foundry_compilers::utils::read_json_file(&metadata_path).unwrap();
+    }
+);
 
 // checks that extra output works
-// TODO: Currently failing - foundry-compilers-polkadot doesn't properly handle extra-output for resolc 0.4.0
-forgetest!(#[ignore = "foundry-compilers-polkadot extra-output support incomplete"] can_emit_multiple_extra_output_for_resolc, |prj, cmd| {
-    init_prj(&prj);
-    cmd.args([
-        "build",
-        "--resolc",
-        "--extra-output",
-        "metadata",
-        "ir-optimized",
-        "--extra-output",
-        "ir",
-    ])
-    .assert_success()
-    .stdout_eq(str![[r#"
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-"#]]);
-
-    let artifact_path = prj.artifacts().join(CONTRACT_ARTIFACT_JSON);
-    let artifact: ConfigurableContractArtifact =
-        foundry_compilers::utils::read_json_file(&artifact_path).unwrap();
-    assert!(artifact.metadata.is_some());
-    assert!(artifact.ir.is_some());
-    assert!(artifact.ir_optimized.is_some());
-
-    cmd.forge_fuse()
-        .args([
+// TODO: Currently failing - foundry-compilers-polkadot doesn't properly handle extra-output for
+// resolc 0.4.0
+forgetest!(
+    #[ignore = "foundry-compilers-polkadot extra-output support incomplete"]
+    can_emit_multiple_extra_output_for_resolc,
+    |prj, cmd| {
+        init_prj(&prj);
+        cmd.args([
             "build",
             "--resolc",
-            "--extra-output-files",
+            "--extra-output",
             "metadata",
             "ir-optimized",
+            "--extra-output",
             "ir",
-            "--force",
         ])
-        .root_arg()
         .assert_success()
         .stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
@@ -152,15 +135,42 @@ Compiler run successful!
 
 "#]]);
 
-    let metadata_path = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.metadata.json"));
-    let _artifact: Metadata = foundry_compilers::utils::read_json_file(&metadata_path).unwrap();
+        let artifact_path = prj.artifacts().join(CONTRACT_ARTIFACT_JSON);
+        let artifact: ConfigurableContractArtifact =
+            foundry_compilers::utils::read_json_file(&artifact_path).unwrap();
+        assert!(artifact.metadata.is_some());
+        assert!(artifact.ir.is_some());
+        assert!(artifact.ir_optimized.is_some());
 
-    let iropt = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.iropt"));
-    std::fs::read_to_string(iropt).unwrap();
+        cmd.forge_fuse()
+            .args([
+                "build",
+                "--resolc",
+                "--extra-output-files",
+                "metadata",
+                "ir-optimized",
+                "ir",
+                "--force",
+            ])
+            .root_arg()
+            .assert_success()
+            .stdout_eq(str![[r#"
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
 
-    let ir = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.ir"));
-    std::fs::read_to_string(ir).unwrap();
-});
+"#]]);
+
+        let metadata_path = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.metadata.json"));
+        let _artifact: Metadata = foundry_compilers::utils::read_json_file(&metadata_path).unwrap();
+
+        let iropt = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.iropt"));
+        std::fs::read_to_string(iropt).unwrap();
+
+        let ir = prj.artifacts().join(format!("{CONTRACT_ARTIFACT_BASE}.ir"));
+        std::fs::read_to_string(ir).unwrap();
+    }
+);
 
 forgetest!(can_print_warnings_for_resolc, |prj, cmd| {
     prj.add_source(
@@ -863,11 +873,15 @@ Error: Multiple contracts found in the same file, please specify the target <pat
 });
 
 // TODO: Currently failing - requires evm.methodIdentifiers in extra output with resolc 0.4.0
-forgetest!(#[ignore = "foundry-compilers-polkadot extra-output support incomplete"] inspect_custom_counter_method_identifiers_for_resolc, |prj, cmd| {
-    prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
+forgetest!(
+    #[ignore = "foundry-compilers-polkadot extra-output support incomplete"]
+    inspect_custom_counter_method_identifiers_for_resolc,
+    |prj, cmd| {
+        prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
 
-    cmd.args(["inspect", "--resolc", "Counter", "method-identifiers"]).assert_success().stdout_eq(
-        str![[r#"
+        cmd.args(["inspect", "--resolc", "Counter", "method-identifiers"])
+            .assert_success()
+            .stdout_eq(str![[r#"
 
 ╭----------------------------+------------╮
 | Method                     | Identifier |
@@ -888,9 +902,9 @@ forgetest!(#[ignore = "foundry-compilers-polkadot extra-output support incomplet
 ╰----------------------------+------------╯
 
 
-"#]],
-    );
-});
+"#]]);
+    }
+);
 
 // checks forge bind works correctly on the default project
 forgetest!(can_bind_for_resolc, |prj, cmd| {
