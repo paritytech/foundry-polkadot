@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use crate::utils::{TestNode, transaction_in_block, unwrap_response};
-use alloy_primitives::{Address, B256, Bytes, U256};
-use alloy_rpc_types::{Index, TransactionRequest};
+use crate::utils::{BlockWaitTimeout, TestNode, transaction_in_block, unwrap_response};
+use alloy_primitives::{Address, B256, Bytes, U256, hex};
+use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::{AlloyU256, ReviveAddress},
@@ -61,15 +61,15 @@ async fn test_get_block_by_hash() {
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
     let transfer_amount = U256::from_str_radix("100000000000000000", 10).unwrap();
-    let transaction = TransactionRequest::default()
-        .value(transfer_amount)
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let tx_hash0 = node.send_transaction(transaction.clone()).await;
-    let tx_hash1 = node.send_transaction(transaction.clone().nonce(1)).await;
+    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
+    let baltathar_addr = Address::from(ReviveAddress::new(baltathar.address()));
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(alith_addr).to(baltathar_addr);
+    let tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
+    let tx_hash1 = node.send_transaction(transaction.clone().nonce(1), None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
-    let tx_hash2 = node.send_transaction(transaction.nonce(2)).await;
+    let tx_hash2 = node.send_transaction(transaction.nonce(2), None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     let hash1 = node.block_hash_by_number(1).await.unwrap();
@@ -92,15 +92,16 @@ async fn test_send_transaction() {
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
     let alith_initial_balance = node.get_balance(alith.address(), None).await;
     let baltathar_initial_balance = node.get_balance(baltathar.address(), None).await;
-
     let transfer_amount = U256::from_str_radix("100000000000000000", 10).unwrap();
     let transaction = TransactionRequest::default()
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let tx_hash = node.send_transaction(transaction).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    let tx_hash = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .await
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(500));
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(1));
@@ -137,26 +138,28 @@ async fn test_send_to_uninitialized() {
     let charleth = Account::from(subxt_signer::eth::dev::charleth());
 
     let transfer_amount = U256::from_str_radix("1600000000000000000", 10).unwrap();
-    let transaction = TransactionRequest::default()
-        .value(transfer_amount)
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .to(Address::from(ReviveAddress::new(charleth.address())));
-    let _tx_hash = node.send_transaction(transaction).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
+    let charleth_addr = Address::from(ReviveAddress::new(charleth.address()));
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(alith_addr).to(charleth_addr);
+    let _tx_hash = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .await
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(500));
 
     let alith_final_balance = node.get_balance(alith.address(), None).await;
     assert_eq!(node.get_balance(charleth.address(), None).await, transfer_amount);
 
     let charlet_initial_balance = node.get_balance(charleth.address(), None).await;
     let transfer_amount = U256::from_str_radix("100000000000", 10).unwrap();
-    let transaction = TransactionRequest::default()
-        .value(transfer_amount)
-        .from(Address::from(ReviveAddress::new(charleth.address())))
-        .to(Address::from(ReviveAddress::new(alith.address())));
-    let tx_hash = node.send_transaction(transaction).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(charleth_addr).to(alith_addr);
+    let tx_hash = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
+        .await
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let alith_final_balance_2 = node.get_balance(alith.address(), None).await;
     let charlet_final_balance = node.get_balance(charleth.address(), None).await;
@@ -201,7 +204,7 @@ async fn test_get_block_by_number() {
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let tx_hash = node.send_transaction(transaction).await;
+    let tx_hash = node.send_transaction(transaction, None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     let block_by_number = unwrap_response::<Block>(
         node.eth_rpc(EthRequest::EthGetBlockByNumber(
@@ -303,7 +306,7 @@ async fn test_eth_get_transaction_count() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::alith()).address(),
         )));
-    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
+    let _tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
@@ -334,7 +337,7 @@ async fn test_get_transaction_count_by_hash_number() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::alith()).address(),
         )));
-    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
+    let _tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
     // Check that we get None for missing block
     assert_eq!(
         unwrap_response::<Option<U256>>(
@@ -432,39 +435,6 @@ async fn test_get_code_at() {
     assert!(code.is_empty());
 }
 
-//#[tokio::test(flavor = "multi_thread")]
-//async fn test_get_storage_at() {
-//    let anvil_node_config = AnvilNodeConfig::test_config();
-//    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-//    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-//    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
-//
-//    let alith = Account::from(subxt_signer::eth::dev::alith());
-//    let (bytecode, tx_hash) = node.deploy_contract("storage_size", alith.address(), 1).await;
-//    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-//    let receipt = node.get_transaction_receipt(tx_hash).await;
-//    assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
-//    let contract_address = receipt.contract_address.unwrap();
-//
-//    // Storage key: [1, 0, 0, ..., 0]
-//    let mut key_bytes = [0u8; 32];
-//    key_bytes[0] = 1;
-//    let storage_key = U256::from_be_bytes(key_bytes);
-//
-//    // Verify initial state
-//    let initial = unwrap_response::<Bytes>(
-//        node.eth_rpc(EthRequest::EthGetStorageAt(
-//            Address::from(ReviveAddress::new(contract_address)),
-//            storage_key,
-//            None,
-//        ))
-//        .await
-//        .unwrap(),
-//    )
-//    .unwrap();
-//    assert_eq!(initial, Bytes::from(vec![0u8; 32]));
-//}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_get_transaction_by_hash_and_index() {
     let anvil_node_config = AnvilNodeConfig::test_config();
@@ -478,14 +448,16 @@ async fn test_get_transaction_by_hash_and_index() {
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let tx_hash0 = node.send_transaction(transaction.clone()).await;
+    let tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
     let tx_hash1 = node
         .send_transaction(
             transaction
                 .from(Address::from(ReviveAddress::new(baltathar.address())))
                 .to(Address::from(ReviveAddress::new(alith.address()))),
+            None,
         )
-        .await;
+        .await
+        .unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     assert_eq!(
@@ -545,14 +517,16 @@ async fn test_get_transaction_by_number_and_index() {
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let tx_hash0 = node.send_transaction(transaction.clone()).await;
+    let tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
     let tx_hash1 = node
         .send_transaction(
             transaction
                 .from(Address::from(ReviveAddress::new(baltathar.address())))
                 .to(Address::from(ReviveAddress::new(alith.address()))),
+            None,
         )
-        .await;
+        .await
+        .unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
@@ -600,7 +574,7 @@ async fn test_get_transaction_by_hash() {
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    let tx_hash0 = node.send_transaction(transaction.clone()).await;
+    let tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
@@ -616,4 +590,97 @@ async fn test_get_transaction_by_hash() {
     assert_eq!(first_hash, transaction_info_1.block_hash);
     assert_eq!(transaction_info_1.from, alith.address());
     assert_eq!(tx_hash0, transaction_info_1.hash);
+}
+
+//#[tokio::test(flavor = "multi_thread")]
+//async fn test_fee_history() {
+//    let anvil_node_config = AnvilNodeConfig::test_config();
+//    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+//    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+//
+//    println!("{:#?}", node.eth_rpc(EthRequest::EthFee));
+//}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_get_storage() {
+    let contract_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/it/contracts/SimpleStorage.sol:SimpleStorage.pvm");
+
+    let bytecode = std::fs::read(&contract_path).unwrap();
+
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+
+    // Deploy the cotnract
+    let mut deploy_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .input(TransactionInput::new(Bytes::from(bytecode)));
+    deploy_tx.set_input_and_data();
+
+    let tx_hash = node
+        .send_transaction(
+            deploy_tx,
+            Some(BlockWaitTimeout {
+                block_number: 1,
+                timeout: std::time::Duration::from_millis(1000),
+            }),
+        )
+        .await
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    let contract_address = receipt.contract_address.unwrap();
+
+    let storage_key = U256::from(0);
+
+    let result = node
+        .eth_rpc(EthRequest::EthGetStorageAt(
+            Address::from(ReviveAddress::new(contract_address)),
+            storage_key,
+            None,
+        ))
+        .await
+        .unwrap();
+
+    println!("Storage at slot 0: {:#?}", result);
+
+    let mut call_data = vec![0x55, 0x24, 0x10, 0x77]; // setValue selector
+    let value = 42u64;
+    let mut value_bytes = [0u8; 32];
+    value_bytes[24..32].copy_from_slice(&value.to_be_bytes());
+    call_data.extend_from_slice(&value_bytes);
+
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::new(Bytes::from(call_data)));
+
+    let call_tx_hash = node
+        .send_transaction(
+            call_tx,
+            Some(BlockWaitTimeout {
+                block_number: 2,
+                timeout: std::time::Duration::from_millis(1000),
+            }),
+        )
+        .await
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let storage_key = U256::from(0);
+
+    let result = node
+        .eth_rpc(EthRequest::EthGetStorageAt(
+            Address::from(ReviveAddress::new(contract_address)),
+            storage_key,
+            None,
+        ))
+        .await
+        .unwrap();
+
+    println!("Storage at slot 0: {:#?}", result);
 }
