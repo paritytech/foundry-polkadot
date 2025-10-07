@@ -155,7 +155,7 @@ async fn test_send_to_uninitialized() {
         .from(Address::from(ReviveAddress::new(charleth.address())))
         .to(Address::from(ReviveAddress::new(alith.address())));
     let tx_hash = node.send_transaction(transaction).await;
-    node.wait_for_block_with_timeout(1, Duration::from_secs(2)).await.unwrap();
+    node.wait_for_block_with_timeout(2, Duration::from_secs(2)).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let alith_final_balance_2 = node.get_balance(alith.address(), None).await;

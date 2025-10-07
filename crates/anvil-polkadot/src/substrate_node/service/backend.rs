@@ -57,7 +57,7 @@ impl BackendWithOverlay {
         let key = well_known_keys::CHAIN_ID;
 
         let value = self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingChainId)?;
-        u64::decode(&mut &value[..]).map_err(|err| BackendError::DecodeChainId(err))
+        u64::decode(&mut &value[..]).map_err(BackendError::DecodeChainId)
     }
 
     pub fn read_total_issuance(&self, hash: Hash) -> Result<Balance> {
@@ -65,7 +65,7 @@ impl BackendWithOverlay {
 
         let value =
             self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingTotalIssuance)?;
-        Balance::decode(&mut &value[..]).map_err(|err| BackendError::DecodeTotalIssuance(err))
+        Balance::decode(&mut &value[..]).map_err(BackendError::DecodeTotalIssuance)
     }
 
     pub fn read_system_account_info(
@@ -78,7 +78,7 @@ impl BackendWithOverlay {
         self.read_top_state(hash, key)?
             .map(|value| {
                 SystemAccountInfo::decode(&mut &value[..])
-                    .map_err(|err| BackendError::DecodeSystemAccountInfo(err))
+                    .map_err(BackendError::DecodeSystemAccountInfo)
             })
             .transpose()
     }
@@ -93,7 +93,7 @@ impl BackendWithOverlay {
         self.read_top_state(hash, key)?
             .map(|value| {
                 ReviveAccountInfo::decode(&mut &value[..])
-                    .map_err(|err| BackendError::DecodeReviveAccountInfo(err))
+                    .map_err(BackendError::DecodeReviveAccountInfo)
             })
             .transpose()
     }
@@ -271,9 +271,9 @@ impl StorageOverrides {
 
     fn add(&mut self, latest_block: Hash, changeset: BlockOverrides) {
         if let Some(per_block) = self.per_block.get_mut(&latest_block) {
-            per_block.top.extend(changeset.top.into_iter());
+            per_block.top.extend(changeset.top);
 
-            for (child_key, child_map) in changeset.children.into_iter() {
+            for (child_key, child_map) in changeset.children {
                 per_block.children.entry(child_key).or_default().extend(child_map);
             }
         } else {

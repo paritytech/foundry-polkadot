@@ -72,27 +72,23 @@ impl CallExecutor<Block> for Executor {
         call_data: &[u8],
         context: CallContext,
     ) -> sp_blockchain::Result<Vec<u8>> {
-        if context == CallContext::Offchain {
-            let at_number =
-                self.backend.blockchain().expect_block_number_from_id(&BlockId::Hash(at_hash))?;
-            let extensions = self.execution_extensions().extensions(at_hash, at_number);
+        let at_number =
+            self.backend.blockchain().expect_block_number_from_id(&BlockId::Hash(at_hash))?;
+        let extensions = self.execution_extensions().extensions(at_hash, at_number);
 
-            let mut changes = OverlayedChanges::default();
+        let mut changes = OverlayedChanges::default();
 
-            self.apply_overrides(&at_hash, &mut changes);
+        self.apply_overrides(&at_hash, &mut changes);
 
-            self.contextual_call(
-                at_hash,
-                method,
-                call_data,
-                &RefCell::new(changes),
-                &None,
-                context,
-                &RefCell::new(extensions),
-            )
-        } else {
-            self.inner.call(at_hash, method, call_data, context)
-        }
+        self.contextual_call(
+            at_hash,
+            method,
+            call_data,
+            &RefCell::new(changes),
+            &None,
+            context,
+            &RefCell::new(extensions),
+        )
     }
 
     fn contextual_call(
@@ -105,7 +101,11 @@ impl CallExecutor<Block> for Executor {
         call_context: CallContext,
         extensions: &RefCell<sp_externalities::Extensions>,
     ) -> Result<Vec<u8>, sp_blockchain::Error> {
-        if method == "Core_initialize_block" && call_context == CallContext::Onchain {
+        let apply_overrides = (method == "Core_initialize_block"
+            && call_context == CallContext::Onchain)
+            || call_context == CallContext::Offchain;
+
+        if apply_overrides {
             self.apply_overrides(&at_hash, &mut changes.borrow_mut());
         }
 

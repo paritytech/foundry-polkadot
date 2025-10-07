@@ -467,19 +467,14 @@ impl ApiServer {
         let mut total_issuance = self.backend.read_total_issuance(latest_block)?;
         let (new_balance, dust) = self.construct_balance_with_dust(latest_block, value)?;
 
-        let diff = new_balance as i128 - (system_account_info.data.free as i128);
-
-        if diff < 0 {
-            let diff = diff.abs() as Balance;
-
-            system_account_info.data.free = system_account_info.data.free.saturating_sub(diff);
-            total_issuance = total_issuance.saturating_sub(diff);
-        } else if diff > 0 {
-            let diff = diff.abs() as Balance;
-
-            system_account_info.data.free = system_account_info.data.free.saturating_add(diff);
+        if let Some(diff) = new_balance.checked_sub(system_account_info.data.free) {
             total_issuance = total_issuance.saturating_add(diff);
+        } else {
+            total_issuance =
+                total_issuance.saturating_sub(system_account_info.data.free - new_balance);
         }
+
+        system_account_info.data.free = new_balance;
 
         self.backend.inject_system_account_info(latest_block, account_id, system_account_info);
         self.backend.inject_total_issuance(latest_block, total_issuance);
