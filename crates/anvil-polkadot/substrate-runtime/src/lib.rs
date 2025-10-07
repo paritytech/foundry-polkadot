@@ -311,6 +311,7 @@ impl pallet_revive::Config for Runtime {
     type AddressMapper = AccountId32Mapper<Self>;
     type ChainId = ChainId;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
+    type Balance = Balance;
     type Currency = Balances;
     type NativeToEthRatio = ConstU32<1_000_000>;
     type UploadOrigin = EnsureSigned<Self::AccountId>;
@@ -318,8 +319,9 @@ impl pallet_revive::Config for Runtime {
     type Time = Timestamp;
 }
 
-pallet_revive::impl_runtime_apis_plus_revive!(
+pallet_revive::impl_runtime_apis_plus_revive_traits!(
     Runtime,
+    Revive,
     Executive,
     EthExtraImpl,
 
