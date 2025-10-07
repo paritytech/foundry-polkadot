@@ -20,7 +20,7 @@ path = "bin/main.rs"
 [dependencies]
 # foundry internal
 substrate-runtime = { path = "substrate-runtime" }
-polkadot-sdk = {path = "/home/alexggh/ssd2/repos/polkadot-sdk/umbrella", default-features = false, features = [
+polkadot-sdk = {git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state", default-features = false, features = [
     "sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
@@ -57,7 +57,6 @@ polkadot-sdk = {path = "/home/alexggh/ssd2/repos/polkadot-sdk/umbrella", default
 	"substrate-frame-rpc-system",
 	"substrate-rpc-client",
 	"substrate-wasm-builder",
-	"pallet-revive-eth-rpc"
 ] }
 anvil.workspace = true
 anvil-core.workspace = true

@@ -1,3 +1,4 @@
+mod mock_handler;
 use std::{
     any::{Any, TypeId},
     fmt::Debug,
@@ -13,6 +14,7 @@ use foundry_cheatcodes::{
     CommonCreateInput, DealRecord, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{dealCall, getNonce_0Call, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall, warpCall},
 };
+
 use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
@@ -21,15 +23,18 @@ use polkadot_sdk::{
     frame_support::traits::{Currency, fungible::Mutate},
     pallet_balances,
     pallet_revive::{
-        self, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config, DepositLimit,
-        InjectExecEnv, MockCallDataContext, MockCallReturnData, Pallet, evm::GasEncoder,
+        self, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ExecConfig, Pallet,
     },
+    polkadot_runtime_common::Bounded,
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
     sp_weights::Weight,
 };
 
-use crate::{execute_with_externalities, trace, tracing::apply_prestate_trace};
+use crate::{
+    cheatcodes::mock_handler::MockHandlerImpl, execute_with_externalities, trace,
+    tracing::apply_prestate_trace,
+};
 use alloy_eips::eip7702::SignedAuthorization;
 use revm::{
     bytecode::opcode as op,
@@ -411,95 +416,6 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     }
 }
 
-fn create_inject_exec_env(
-    ecx: &Ecx<'_, '_, '_>,
-    caller: &Address,
-    target_address: Option<&Address>,
-    callee: Option<&Address>,
-    state: &mut foundry_cheatcodes::Cheatcodes,
-) -> (InjectExecEnv<Runtime>, bool) {
-    let curr_depth = ecx.journaled_state.depth();
-    let mut prank_enabled = false;
-    let pranked_caller = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-        &H160::from_slice(caller.as_slice()),
-    ));
-
-    let delegated_caller = target_address.map(|addr| {
-        OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&H160::from_slice(
-            addr.as_slice(),
-        )))
-    });
-
-    let mut state_inject = InjectExecEnv::<Runtime> {
-        caller: pranked_caller,
-        delegated_caller,
-        first_call_only: true,
-        mocked_calls: state
-            .mocked_calls
-            .iter()
-            .map(|(addr, keys)| {
-                (
-                    H160::from_slice(addr.as_slice()),
-                    keys.iter()
-                        .map(|(k, v)| {
-                            (
-                                MockCallDataContext {
-                                    calldata: k.calldata.as_ref().to_vec().into(),
-                                    value: k.value.map(|value| {
-                                        sp_core::U256::from_little_endian(value.as_le_slice())
-                                    }),
-                                },
-                                v.iter()
-                                    .map(|ret| MockCallReturnData {
-                                        ret_type: ret.ret_type,
-                                        data: ret.data.as_ref().to_vec().into(),
-                                    })
-                                    .collect(),
-                            )
-                        })
-                        .collect(),
-                )
-            })
-            .collect(),
-        callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
-        mocked_functions: state
-            .mocked_functions
-            .iter()
-            .map(|(addr, keys)| {
-                (
-                    H160::from_slice(addr.as_slice()),
-                    keys.iter()
-                        .map(|(k, v)| (k.to_vec().into(), H160::from_slice(v.as_slice())))
-                        .collect(),
-                )
-            })
-            .collect(),
-    };
-
-    if let Some(prank) = &state.get_prank(curr_depth) {
-        if curr_depth >= prank.depth {
-            state_inject.first_call_only = prank.single_call;
-            prank_enabled = true;
-        }
-    }
-    (state_inject, prank_enabled)
-}
-
-fn fund_pranked_accounts(prank_enabled: bool, account: Address) {
-    // Fuzzed prank addresses have no balance, so they won't exist in revive, and
-    // calls will fail, this is not a problem when running in REVM.
-    if prank_enabled {
-        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
-        if balance == 0.into() {
-            Pallet::<Runtime>::set_evm_balance(
-                &H160::from_slice(account.as_slice()),
-                u128::MAX.into(),
-            )
-            .expect("Could not fund pranked account");
-        }
-    }
-}
-
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
     fn is_pvm_enabled(&self, state: &mut foundry_cheatcodes::Cheatcodes) -> bool {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
@@ -518,9 +434,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         input: &dyn CommonCreateInput,
         _executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
     ) -> Option<CreateOutcome> {
-        let (state_inject, prank_enabled) =
-            create_inject_exec_env(&ecx, &input.caller(), None, None, state);
-        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+        let mock_handler = MockHandlerImpl::new(&ecx, &input.caller(), None, None, state);
+
+        let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+            get_context_ref_mut(state.strategy.context.as_mut());
 
         if !ctx.using_pvm {
             return None;
@@ -561,14 +478,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let constructor_args = find_contract.constructor_args();
         let contract = find_contract.contract();
 
-        let max_gas =
-            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
-                Weight::MAX,
-                1u128 << 99,
-            );
-        let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
-
         let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 trace::<Runtime, _, _>(|| {
@@ -577,7 +486,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
-                    fund_pranked_accounts(prank_enabled, ecx.tx.caller);
+                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
 
                     // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
                     // that here too to replicate the same address generation.
@@ -585,12 +494,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
 
-                    let (gas_limit, storage_deposit_limit) =
-                    <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::decode(
-                        gas_limit,
-                    )
-                    .expect("gas limit is valid");
-                    let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
+                    let exec_config = ExecConfig {
+                        bump_nonce: true,
+                        collect_deposit_from_hold: false,
+                        effective_gas_price: Some(<Pallet<Runtime>>::evm_gas_price()),
+                        mock_handler: Some(Box::new(mock_handler.clone())),
+                    };
                     let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
                     let data = constructor_args.to_vec();
                     let salt = match input.scheme() {
@@ -604,32 +513,26 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         ),
                         _ => None,
                     };
-                    let bump_nonce = BumpNonce::Yes;
 
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
-                        gas_limit,
-                        storage_deposit_limit,
+                        // TODO: Gas and storage limit handling needs fixing.
+                        Weight::max_value(),
+                        BalanceOf::<Runtime>::max_value(),
                         code,
                         data,
                         salt,
-                        bump_nonce,
-                        Some(state_inject),
+                        exec_config,
                     )
                 })
             })
         });
         let mut gas = Gas::new(input.gas_limit());
-        let gas_used =
-            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                gas_limit,
-                res.gas_required,
-                res.storage_deposit.charge_or_zero(),
-            );
         let result = match &res.result {
             Ok(result) => {
-                let _ = gas.record_cost(gas_used.as_u64());
+                // TODO Needs fixing.
+                let _ = gas.record_cost(input.gas_limit() / 10);
 
                 let outcome = if result.result.did_revert() {
                     CreateOutcome {
@@ -669,6 +572,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         };
 
         apply_prestate_trace(prestate_trace, ecx);
+        mock_handler.update_state_mocks(state);
 
         result
     }
@@ -710,15 +614,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         tracing::info!("running call in PVM {:#?}", call);
 
-        let max_gas =
-            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
-                Weight::MAX,
-                1u128 << 99,
-            );
-        let gas_limit = sp_core::U256::from(call.gas_limit).min(max_gas);
-
-        let (state_inject, prank_enabled) = create_inject_exec_env(
+        let mock_handler = MockHandlerImpl::new(
             &ecx,
             &call.caller,
             target_address.as_ref(),
@@ -733,42 +629,37 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
 
-                    fund_pranked_accounts(prank_enabled, ecx.tx.caller);
+                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
 
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
-
-                    let (gas_limit, storage_deposit_limit) =
-                    <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::decode(
-                        gas_limit,
-                    )
-                    .expect("gas limit is valid");
-                    let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
                     let target = H160::from_slice(call.target_address.as_slice());
-
+                    let exec_config = ExecConfig {
+                        bump_nonce: true,
+                        collect_deposit_from_hold: false,
+                        effective_gas_price: Some(<Pallet<Runtime>>::evm_gas_price()),
+                        mock_handler: Some(Box::new(mock_handler.clone())),
+                    };
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target,
                         evm_value,
-                        gas_limit,
-                        storage_deposit_limit,
+                        Weight::max_value(),
+                        // TODO: gas needs fixing.
+                        BalanceOf::<Runtime>::max_value(),
                         call.input.bytes(ecx).to_vec(),
-                        Some(state_inject),
+                        exec_config,
                     )
                 })
             })
         });
-
+        mock_handler.update_state_mocks(state);
         let mut gas = Gas::new(call.gas_limit);
-        let gas_used =
-            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                gas_limit,
-                res.gas_required,
-                res.storage_deposit.charge_or_zero(),
-            );
+
         let result = match res.result {
             Ok(result) => {
-                let _ = gas.record_cost(gas_used.as_u64());
+                // TODO: gas needs fixing.
+                let _ = gas.record_cost(call.gas_limit / 10);
                 let outcome = if result.did_revert() {
                     tracing::error!("Contract call reverted");
                     CallOutcome {
