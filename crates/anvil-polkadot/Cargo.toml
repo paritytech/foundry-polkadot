@@ -19,6 +19,7 @@ path = "bin/main.rs"
 
 [dependencies]
 # foundry internal
+substrate-runtime = { path = "substrate-runtime" }
 pallet-revive-eth-rpc = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = [
     "sc-allocator",
@@ -58,7 +59,6 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"substrate-rpc-client",
 	"substrate-wasm-builder",
 ] }
-substrate-runtime = { path = "substrate-runtime" }
 anvil.workspace = true
 anvil-core.workspace = true
 anvil-server = { workspace = true, features = ["clap"] }
@@ -123,7 +123,7 @@ eyre.workspace = true
 clap = { version = "4", features = [
     "derive",
     "env",
-    "wrap_help"
+    "wrap_help",
 ] }
 clap_complete = { version = "4" }
 chrono.workspace = true
