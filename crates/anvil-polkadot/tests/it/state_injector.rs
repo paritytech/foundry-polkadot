@@ -95,20 +95,20 @@ async fn test_set_nonce() {
     let address =
         Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(0));
+    assert_eq!(node.get_nonce(address).await, U256::from(0));
 
     unwrap_response::<()>(
-        node.eth_rpc(EthRequest::SetNonce(address.clone(), U256::from(10))).await.unwrap(),
+        node.eth_rpc(EthRequest::SetNonce(address, U256::from(10))).await.unwrap(),
     )
     .unwrap();
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(10));
+    assert_eq!(node.get_nonce(address).await, U256::from(10));
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(10));
+    assert_eq!(node.get_nonce(address).await, U256::from(10));
 
     let to = Address::from(ReviveAddress::new(
         Account::from(subxt_signer::eth::dev::baltathar()).address(),
@@ -139,11 +139,11 @@ async fn test_set_nonce() {
 
     // Now set the nonce to a lower value. It should work.
     unwrap_response::<()>(
-        node.eth_rpc(EthRequest::SetNonce(address.clone(), U256::from(5))).await.unwrap(),
+        node.eth_rpc(EthRequest::SetNonce(address, U256::from(5))).await.unwrap(),
     )
     .unwrap();
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(5));
+    assert_eq!(node.get_nonce(address).await, U256::from(5));
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
@@ -156,27 +156,27 @@ async fn test_set_nonce() {
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(3));
     assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(6));
+    assert_eq!(node.get_nonce(address).await, U256::from(6));
 
     // Set nonce for a non-existant account. Should work.
     let address = Address::from(ReviveAddress::new(
         Account::from(subxt_signer::eth::dev::dorothy()).address(),
     ));
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(0));
+    assert_eq!(node.get_nonce(address).await, U256::from(0));
 
     unwrap_response::<()>(
-        node.eth_rpc(EthRequest::SetNonce(address.clone(), U256::from(1))).await.unwrap(),
+        node.eth_rpc(EthRequest::SetNonce(address, U256::from(1))).await.unwrap(),
     )
     .unwrap();
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(1));
+    assert_eq!(node.get_nonce(address).await, U256::from(1));
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    assert_eq!(node.get_nonce(address.clone()).await, U256::from(1));
+    assert_eq!(node.get_nonce(address).await, U256::from(1));
 }
 
 #[tokio::test(flavor = "multi_thread")]
