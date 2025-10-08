@@ -17,7 +17,6 @@ use polkadot_sdk::{
     sc_utils::mpsc::tracing_unbounded,
     sp_keystore::KeystorePtr,
     sp_timestamp,
-    sp_wasm_interface::ExtendedHostFunctions,
     substrate_frame_rpc_system::SystemApiServer,
 };
 use std::sync::Arc;

@@ -15,11 +15,12 @@ use polkadot_sdk::{
     sp_state_machine::{OverlayedChanges, StorageProof},
     sp_storage::ChildInfo,
     sp_version,
+    sp_wasm_interface::ExtendedHostFunctions,
 };
 use std::{cell::RefCell, sync::Arc};
 
-// Wasm executor which overrides the signature checking host functions for impersonation.
-type WasmExecutor = sc_executor::WasmExecutor<
+/// Wasm executor which overrides the signature checking host functions for impersonation.
+pub type WasmExecutor = sc_executor::WasmExecutor<
     ExtendedHostFunctions<
         ExtendedHostFunctions<sp_io::SubstrateHostFunctions, SenderAddressRecoveryOverride>,
         PublicKeyToHashOverride,

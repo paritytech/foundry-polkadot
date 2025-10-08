@@ -1,16 +1,12 @@
 use crate::utils::{unwrap_response, TestNode};
 use alloy_primitives::{ruint::aliases::U256, Address};
 use alloy_rpc_types::TransactionRequest;
-use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::{AlloyU256, ReviveAddress},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
-use anvil_rpc::{
-    error::{ErrorCode, RpcError},
-    response::ResponseResult,
-};
+use anvil_rpc::error::{ErrorCode, RpcError};
 use assert_matches::assert_matches;
 use polkadot_sdk::pallet_revive::{self, evm::Account};
 use std::time::Duration;
@@ -67,11 +63,8 @@ async fn test_set_chain_id() {
     tx.chain_id = Some(default_chain_id);
 
     assert_matches!(
-        node
-            .eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx))))
-            .await
-            .unwrap(),
-        ResponseResult::Error(RpcError {code, message, ..}) => {
+        node.send_transaction(tx, None).await,
+        Err(RpcError {code, message, ..}) => {
             assert_eq!(code, ErrorCode::InternalError);
             message.contains("Invalid Transaction")
         }
@@ -79,7 +72,7 @@ async fn test_set_chain_id() {
 
     let tx = TransactionRequest::default().value(U256::from(100)).from(fr).to(to);
 
-    let tx_hash = node.send_transaction(tx).await;
+    let tx_hash = node.send_transaction(tx, None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
 
@@ -124,18 +117,15 @@ async fn test_set_nonce() {
 
     // Send a transaction with the wrong nonce, it will be invalid.
     assert_matches!(
-        node
-            .eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx.clone().nonce(5)))))
-            .await
-            .unwrap(),
-        ResponseResult::Error(RpcError {code, message, ..}) => {
+        node.send_transaction(tx.clone(), None).await,
+        Err(RpcError {code, message, ..}) => {
             assert_eq!(code, ErrorCode::InternalError);
             message.contains("Invalid Transaction")
         }
     );
 
     // Send a transaction with the right nonce and mine a block.
-    let tx_hash = node.send_transaction(tx.clone().nonce(10)).await;
+    let tx_hash = node.send_transaction(tx.clone().nonce(10), None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
@@ -155,7 +145,7 @@ async fn test_set_nonce() {
 
     assert_eq!(node.get_nonce(address.clone()).await, U256::from(5));
 
-    let tx_hash = node.send_transaction(tx).await;
+    let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
@@ -230,7 +220,7 @@ async fn test_set_balance() {
         .from(Address::from(ReviveAddress::new(alith)))
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
-    let tx_hash = node.send_transaction(tx).await;
+    let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
@@ -254,11 +244,8 @@ async fn test_set_balance() {
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
     assert_matches!(
-        node
-            .eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(tx))))
-            .await
-            .unwrap(),
-        ResponseResult::Error(RpcError {code, message, ..}) => {
+        node.send_transaction(tx, None).await,
+        Err(RpcError {code, message, ..}) => {
             assert_eq!(code, ErrorCode::InternalError);
             message.contains("Invalid Transaction")
         }
