@@ -43,7 +43,7 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
     "pallet-revive",
     "pallet-balances",
     "pallet-timestamp"
-] }
+]}
 
 
 [lints]
