@@ -9,28 +9,21 @@ use crate::{
 use anvil::eth::backend::time::TimeManager;
 use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
-    sc_executor::WasmExecutor,
+    sc_executor::{RuntimeVersionOf, WasmExecutor},
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
     },
     sc_telemetry::TelemetryHandle,
-    sc_transaction_pool, sp_io, sp_timestamp,
-    sp_wasm_interface::ExtendedHostFunctions,
+    sc_transaction_pool,
+    sp_core::traits::CodeExecutor,
+    sp_timestamp,
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::substrate_node::host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride};
-
-pub type Executor = WasmExecutor<
-    ExtendedHostFunctions<
-        ExtendedHostFunctions<sp_io::SubstrateHostFunctions, SenderAddressRecoveryOverride>,
-        PublicKeyToHashOverride,
-    >,
->;
-pub type FullClient = sc_service::TFullClient<Block, RuntimeApi, Executor>;
+pub type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
 
 pub type Backend = sc_service::TFullBackend<Block>;
 pub type TransactionPoolHandle = sc_transaction_pool::TransactionPoolHandle<Block, FullClient>;
@@ -53,12 +46,14 @@ pub struct Service {
 }
 
 /// Create the initial parts of a full node with a customizable genesis block builder.
-fn new_full_parts_with_custom_genesis(
+fn new_full_parts_with_custom_genesis<TExec>(
     genesis_block_number: u64,
     config: &Configuration,
     telemetry: Option<TelemetryHandle>,
-    executor: WasmExecutor<sp_io::SubstrateHostFunctions>,
-) -> Result<TFullParts<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>, ServiceError>
+    executor: TExec,
+) -> Result<TFullParts<Block, RuntimeApi, TExec>, ServiceError>
+where
+    TExec: CodeExecutor + RuntimeVersionOf + Clone,
 {
     let backend = sc_service::new_db_backend(config.db_config())?;
 
@@ -86,7 +81,7 @@ pub fn new(
     config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
     let (client, backend, keystore_container, mut task_manager) =
-        new_full_parts_with_custom_genesis(
+        new_full_parts_with_custom_genesis::<_>(
             anvil_config.get_genesis_number(),
             &config,
             None,
@@ -121,7 +116,7 @@ pub fn new(
             anvil_config
                 .get_genesis_timestamp()
                 .checked_mul(1000)
-                .map_err(|e| ServiceError::Application(e.into()))?,
+                .ok_or(ServiceError::Application("Genesis timestamp overflow".into()))?,
         )
         .into(),
     ));
