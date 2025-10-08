@@ -661,7 +661,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // TODO: gas needs fixing.
                 let _ = gas.record_cost(call.gas_limit / 10);
                 let outcome = if result.did_revert() {
-                    tracing::error!("Contract call reverted");
+                    tracing::info!("Contract call reverted");
                     CallOutcome {
                         result: InterpreterResult {
                             result: InstructionResult::Revert,

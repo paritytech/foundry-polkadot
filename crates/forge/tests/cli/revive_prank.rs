@@ -1,12 +1,11 @@
 // Just a copy of cheatcodes Prank.t.sol adapted to work with pvm backend.
 // The adaptions are only to switch back and forth between evm and pvm.
-use crate::foundry_test_utils::snapbox::IntoData;
 forgetest!(prank, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
     prj.insert_console();
     prj.add_source(
-        "Balance.t.sol",
+        "Prank.t.sol",
         r#"
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
@@ -872,125 +871,201 @@ Warning: Warning: You are checking for 'tx.origin' in your code, which might lea
 Polkadot comes with native account abstraction support, and therefore the initiator of a
 transaction might be different from the contract calling your code. It is highly recommended NOT
 to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-[FILE]
-Warning: Warning: Your code or one of its dependencies uses the 'extcodesize' instruction, which is
-usually needed in the following cases:
-  1. To detect whether an address belongs to a smart contract.
-  2. To detect whether the deploy code execution has finished.
-Polkadot comes with native account abstraction support (so smart contracts are just accounts
-coverned by code), and you should avoid differentiating between contracts and non-contract
-addresses.
-[FILE]
+   [FILE]:19:15
+    |
+ 19 |         require(tx.origin == expectedOrigin, originMessage);
+    |                 ^^^^^^^^^
 
-Ran 1 test for src/Balance.t.sol:Issue10528
-[PASS] testStartPrankOnContractCreation() ([GAS])
-Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+   [FILE]:31:15
+    |
+ 31 |         require(tx.origin == expectedOrigin, originMessage);
+    |                 ^^^^^^^^^
 
-Ran 1 test for src/Balance.t.sol:Issue9990
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+   [FILE]:70:15
+    |
+ 70 |         require(tx.origin == expectedOrigin, originMessage);
+    |                 ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+   [FILE]:90:19
+    |
+ 90 |         oldOrigin = tx.origin;
+    |                     ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:130:15
+     |
+ 130 |         require(tx.origin == expectedOrigin);
+     |                 ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:258:58
+     |
+ 258 |             sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
+     |                                                            ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:263:59
+     |
+ 263 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
+     |                                                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:270:27
+     |
+ 270 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:290:27
+     |
+ 290 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:345:27
+     |
+ 345 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:379:27
+     |
+ 379 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:405:27
+     |
+ 405 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:440:27
+     |
+ 440 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:454:27
+     |
+ 454 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:474:27
+     |
+ 474 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:506:58
+     |
+ 506 |             sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
+     |                                                            ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:511:59
+     |
+ 511 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
+     |                                                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:528:59
+     |
+ 528 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
+     |                                                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:537:27
+     |
+ 537 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:579:59
+     |
+ 579 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
+     |                                                             ^^^^^^^^^
+
+Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
+Polkadot comes with native account abstraction support, and therefore the initiator of a
+transaction might be different from the contract calling your code. It is highly recommended NOT
+to rely on tx.origin, but use msg.sender instead.
+    [FILE]:677:27
+     |
+ 677 |         address oldOrigin = tx.origin;
+     |                             ^^^^^^^^^
+
+
+Ran 1 test for src/Prank.t.sol:Issue9990
 [PASS] testDelegatePrank() ([GAS])
 Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
 
-Ran 19 tests for src/Balance.t.sol:PrankTest
+Ran 1 test for src/Prank.t.sol:Issue10528
+[PASS] testStartPrankOnContractCreation() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 19 tests for src/Prank.t.sol:PrankTest
 [PASS] testPrank0AfterPrank1(address,address) (runs: 256, [AVG_GAS])
 [PASS] testPrank1AfterPrank0(address,address) (runs: 256, [AVG_GAS])
 [PASS] testPrankConstructorOrigin(address,address) (runs: 256, [AVG_GAS])
