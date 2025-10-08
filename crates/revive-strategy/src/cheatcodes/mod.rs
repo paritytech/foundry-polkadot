@@ -6,8 +6,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall,
-        warpCall,
+        dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall,
+        setNonceUnsafeCall, warpCall,
     },
     journaled_account,
 };
@@ -22,6 +22,7 @@ use std::{
 
 use polkadot_sdk::{
     frame_support::traits::{Currency, fungible::Mutate},
+    frame_system::RawOrigin,
     pallet_balances,
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
@@ -29,6 +30,7 @@ use polkadot_sdk::{
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
+    sp_io::hashing,
     sp_weights::Weight,
 };
 
@@ -266,6 +268,23 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     .map(|b| B256::from_slice(&b))
                     .unwrap_or(B256::ZERO);
                 Ok(result.abi_encode())
+            }
+            t if using_pvm && is::<etchCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                let &etchCall { target, ref newRuntimeBytecode } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+                let target_address_h160 = H160::from_slice(target.as_slice());
+                let code_hash = sp_core::H256(hashing::keccak_256(newRuntimeBytecode.as_ref()));
+                let _ = execute_with_externalities(|externalities| {
+                    externalities.execute_with(|| {
+                        Pallet::<Runtime>::set_code(
+                            RawOrigin::Root.into(),
+                            target_address_h160,
+                            code_hash,
+                        )
+                    })
+                });
+                Ok(Default::default())
             }
             // Not custom, just invoke the default behavior
             _ => cheatcode.dyn_apply(ccx, executor),
