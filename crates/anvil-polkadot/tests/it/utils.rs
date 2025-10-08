@@ -280,6 +280,20 @@ impl TestNode {
             .unwrap();
         (bytecode, tx_hash)
     }
+
+    pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {
+        let result = self
+            .eth_rpc(EthRequest::EthGetStorageAt(
+                Address::from(ReviveAddress::new(contract_address)),
+                storage_key,
+                None,
+            ))
+            .await
+            .unwrap();
+        let hex_string = unwrap_response::<String>(result).unwrap();
+        let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
+        U256::from_str_radix(hex_value, 16).unwrap()
+    }
 }
 
 pub fn transaction_in_block(transactions: &HashesOrTransactionInfos, transaction: H256) -> bool {

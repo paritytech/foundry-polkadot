@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::utils::{BlockWaitTimeout, TestNode, transaction_in_block, unwrap_response};
-use alloy_primitives::{Address, B256, Bytes, U256, hex};
+use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
@@ -14,7 +14,7 @@ use anvil_rpc::{
 };
 use polkadot_sdk::pallet_revive::{
     self,
-    evm::{Account, Block, TransactionInfo},
+    evm::{Account, Block, FeeHistoryResult, TransactionInfo},
 };
 use subxt::utils::H160;
 
@@ -592,20 +592,11 @@ async fn test_get_transaction_by_hash() {
     assert_eq!(tx_hash0, transaction_info_1.hash);
 }
 
-//#[tokio::test(flavor = "multi_thread")]
-//async fn test_fee_history() {
-//    let anvil_node_config = AnvilNodeConfig::test_config();
-//    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-//    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-//
-//    println!("{:#?}", node.eth_rpc(EthRequest::EthFee));
-//}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_get_storage() {
+    // Read the precompiled cotnract.
     let contract_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/it/contracts/SimpleStorage.sol:SimpleStorage.pvm");
-
     let bytecode = std::fs::read(&contract_path).unwrap();
 
     let anvil_node_config = AnvilNodeConfig::test_config();
@@ -614,7 +605,7 @@ async fn test_get_storage() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
     let alith = Account::from(subxt_signer::eth::dev::alith());
 
-    // Deploy the cotnract
+    // Deploy the cotnract.
     let mut deploy_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .input(TransactionInput::new(Bytes::from(bytecode)));
@@ -630,36 +621,26 @@ async fn test_get_storage() {
         )
         .await
         .unwrap();
-
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
-    let storage_key = U256::from(0);
+    // Check the default value for slot 0.
+    let stored_value = node.get_storage_at(U256::from(0), contract_address).await;
+    assert_eq!(stored_value, 511);
 
-    let result = node
-        .eth_rpc(EthRequest::EthGetStorageAt(
-            Address::from(ReviveAddress::new(contract_address)),
-            storage_key,
-            None,
-        ))
-        .await
-        .unwrap();
-
-    println!("Storage at slot 0: {:#?}", result);
-
+    // Set a new value for the slot 0.
     let mut call_data = vec![0x55, 0x24, 0x10, 0x77]; // setValue selector
     let value = 42u64;
     let mut value_bytes = [0u8; 32];
     value_bytes[24..32].copy_from_slice(&value.to_be_bytes());
     call_data.extend_from_slice(&value_bytes);
-
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
         .input(TransactionInput::new(Bytes::from(call_data)));
 
-    let call_tx_hash = node
+    let _call_tx_hash = node
         .send_transaction(
             call_tx,
             Some(BlockWaitTimeout {
@@ -669,18 +650,75 @@ async fn test_get_storage() {
         )
         .await
         .unwrap();
-
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-    let storage_key = U256::from(0);
 
-    let result = node
-        .eth_rpc(EthRequest::EthGetStorageAt(
-            Address::from(ReviveAddress::new(contract_address)),
-            storage_key,
-            None,
+    // Check that the value was updated
+    let stored_value = node.get_storage_at(U256::from(0), contract_address).await;
+    assert_eq!(stored_value, 42);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fee_history() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+    let fee_history = unwrap_response::<FeeHistoryResult>(
+        node.eth_rpc(EthRequest::EthFeeHistory(
+            U256::from(0),
+            alloy_eips::BlockNumberOrTag::Latest,
+            vec![],
         ))
         .await
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(fee_history.base_fee_per_gas.is_empty());
+    assert!(fee_history.gas_used_ratio.is_empty());
+    assert!(fee_history.reward.is_empty());
 
-    println!("Storage at slot 0: {:#?}", result);
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let transfer_amount = U256::from_str_radix("100000000000", 10).unwrap();
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(baltathar.address())));
+
+    for i in 0..10 {
+        let _hash = node
+            .send_transaction(
+                transaction.clone().nonce(i),
+                Some(BlockWaitTimeout::new((i + 1) as u32, std::time::Duration::from_secs(1))),
+            )
+            .await
+            .unwrap();
+    }
+    let fee_history = unwrap_response::<FeeHistoryResult>(
+        node.eth_rpc(EthRequest::EthFeeHistory(
+            U256::from(10),
+            alloy_eips::BlockNumberOrTag::Latest,
+            vec![],
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(fee_history.gas_used_ratio.len(), 10);
+    assert!(fee_history.base_fee_per_gas.iter().all(|&v| v == pallet_revive::U256::from(1000000)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_max_fee_per_gas() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    assert_eq!(
+        "0x30d40",
+        unwrap_response::<String>(
+            node.eth_rpc(EthRequest::EthMaxPriorityFeePerGas(())).await.unwrap()
+        )
+        .unwrap()
+    );
 }

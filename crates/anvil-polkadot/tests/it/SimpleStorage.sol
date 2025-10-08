@@ -5,7 +5,7 @@ contract SimpleStorage {
     uint256 public storedValue;
 
     constructor() {
-        storedValue = 0;
+        storedValue = 511;
     }
 
     function setValue(uint256 _value) public {

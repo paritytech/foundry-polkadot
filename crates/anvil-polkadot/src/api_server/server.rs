@@ -33,6 +33,7 @@ use polkadot_sdk::{
         subxt_client::{self, SrcChainConfig},
     },
     sc_client_api::HeaderBackend,
+    sp_arithmetic::Permill,
     sp_core::{self, keccak_256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
@@ -200,9 +201,10 @@ impl ApiServer {
                 node_info!("eth_feeHistory");
                 self.fee_history(count, newest, Some(reward_percentiles)).await.to_rpc_result()
             }
-            //EthRequest::EthMaxPriorityFeePerGas(_) => {
-            //    self.gas_max_priority_fee_per_gas().to_rpc_result()
-            //}
+            EthRequest::EthMaxPriorityFeePerGas(_) => {
+                node_info!("eth_maxPriorityFeePerGas");
+                self.max_priority_fee_per_gas().await.to_rpc_result()
+            }
             //EthRequest::EthSendRawTransaction(tx) => {
             //    self.send_raw_transaction(tx).await.to_rpc_result()
             //}
@@ -324,6 +326,24 @@ impl ApiServer {
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
 
+    // Impersonation RPC
+    fn impersonate_account(&mut self, addr: H160) -> Result<()> {
+        node_info!("anvil_impersonateAccount");
+        self.impersonation_manager.impersonate(addr);
+        Ok(())
+    }
+
+    fn auto_impersonate_account(&mut self, enable: bool) -> Result<()> {
+        node_info!("anvil_autoImpersonateAccount");
+        self.impersonation_manager.set_auto_impersonate_account(enable);
+        Ok(())
+    }
+
+    fn stop_impersonating_account(&mut self, addr: &H160) -> Result<()> {
+        node_info!("anvil_stopImpersonatingAccount");
+        self.impersonation_manager.stop_impersonating(addr);
+        Ok(())
+    }
     // Eth RPCs
     fn eth_chain_id(&self) -> Result<U64> {
         node_info!("eth_chainId");
@@ -597,30 +617,18 @@ impl ApiServer {
             .await?;
         Ok(result)
     }
+
+    async fn max_priority_fee_per_gas(&self) -> Result<sp_core::U256> {
+        let gas_price = self.gas_price().await?;
+        Ok(Permill::from_percent(20).mul_ceil(gas_price))
+    }
+
     // Helpers
     async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
         self.eth_rpc_client
             .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
             .await
             .map_err(Error::from)
-    }
-
-    fn impersonate_account(&mut self, addr: H160) -> Result<()> {
-        node_info!("anvil_impersonateAccount");
-        self.impersonation_manager.impersonate(addr);
-        Ok(())
-    }
-
-    fn auto_impersonate_account(&mut self, enable: bool) -> Result<()> {
-        node_info!("anvil_autoImpersonateAccount");
-        self.impersonation_manager.set_auto_impersonate_account(enable);
-        Ok(())
-    }
-
-    fn stop_impersonating_account(&mut self, addr: &H160) -> Result<()> {
-        node_info!("anvil_stopImpersonatingAccount");
-        self.impersonation_manager.stop_impersonating(addr);
-        Ok(())
     }
 }
 
