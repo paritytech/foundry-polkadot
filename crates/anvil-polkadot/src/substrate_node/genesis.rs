@@ -63,9 +63,12 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
         Self {
             chain_id: anvil_config.get_chain_id(),
             // Anvil genesis timestamp is in seconds, while Substrate timestamp is in milliseconds.
-            timestamp: anvil_config.get_genesis_timestamp() * 1000,
+            timestamp: anvil_config
+                .get_genesis_timestamp()
+                .checked_mul(1000)
+                .expect("Genesis timestamp overflow"),
             alloc: anvil_config.genesis.as_ref().map(|g| g.alloc.clone()),
-            number: anvil_config.get_genesis_number() as u32,
+            number: anvil_config.get_genesis_number().try_into().expect("Genesis number overflow"),
             base_fee_per_gas: anvil_config.get_base_fee(),
             gas_limit: anvil_config.gas_limit,
         }
@@ -174,20 +177,9 @@ impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf> BuildGenesisBlock<Bl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polkadot_sdk::sp_core::twox_128;
 
     #[test]
     fn test_storage_encoding() {
-        let system_hash = twox_128(b"System");
-        let number_hash = twox_128(b"Number");
-        let mut concatenated_number_hash = [0u8; 32];
-        concatenated_number_hash[..16].copy_from_slice(&system_hash);
-        concatenated_number_hash[16..].copy_from_slice(&number_hash);
-        let timestamp_hash = twox_128(b"Timestamp");
-        let now_hash = twox_128(b"Now");
-        let mut concatenated_timestamp_hash = [0u8; 32];
-        concatenated_timestamp_hash[..16].copy_from_slice(&timestamp_hash);
-        concatenated_timestamp_hash[16..].copy_from_slice(&now_hash);
         let block_number: u32 = 5;
         let timestamp: u64 = 10;
         let chain_id: u64 = 42;
@@ -195,11 +187,11 @@ mod tests {
             GenesisConfig { number: block_number, timestamp, chain_id, ..Default::default() };
         let genesis_storage = genesis_config.as_storage_key_value();
         assert!(
-            genesis_storage.contains(&(concatenated_number_hash.to_vec(), block_number.encode())),
+            genesis_storage.contains(&(BLOCK_NUMBER_KEY.to_vec(), block_number.encode())),
             "Block number not found in genesis key-value storage"
         );
         assert!(
-            genesis_storage.contains(&(concatenated_timestamp_hash.to_vec(), timestamp.encode())),
+            genesis_storage.contains(&(TIMESTAMP_KEY.to_vec(), timestamp.encode())),
             "Timestamp not found in genesis key-value storage"
         );
         assert!(

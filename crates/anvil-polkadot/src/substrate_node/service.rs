@@ -15,13 +15,8 @@ use polkadot_sdk::{
         error::Error as ServiceError,
     },
     sc_telemetry::TelemetryHandle,
-    sc_transaction_pool::{self, TransactionPoolWrapper},
-    sc_utils::mpsc::tracing_unbounded,
-    sp_io,
-    sp_keystore::KeystorePtr,
-    sp_timestamp,
+    sc_transaction_pool, sp_io, sp_timestamp,
     sp_wasm_interface::ExtendedHostFunctions,
-    substrate_frame_rpc_system::SystemApiServer,
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
@@ -122,7 +117,13 @@ pub fn new(
     let mining_mode =
         MiningMode::new(anvil_config.block_time, anvil_config.mixed_mining, anvil_config.no_mining);
     let time_manager = Arc::new(TimeManager::new_with_milliseconds(
-        sp_timestamp::Timestamp::from(1000 * anvil_config.get_genesis_timestamp()).into(),
+        sp_timestamp::Timestamp::from(
+            anvil_config
+                .get_genesis_timestamp()
+                .checked_mul(1000)
+                .map_err(|e| ServiceError::Application(e.into()))?,
+        )
+        .into(),
     ));
     let mining_engine = Arc::new(MiningEngine::new(
         mining_mode,
