@@ -68,7 +68,10 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 .checked_mul(1000)
                 .expect("Genesis timestamp overflow"),
             alloc: anvil_config.genesis.as_ref().map(|g| g.alloc.clone()),
-            number: anvil_config.get_genesis_number().try_into().expect("Genesis number overflow"),
+            number: anvil_config
+                .get_genesis_number()
+                .try_into()
+                .expect("Genesis block number overflow"),
             base_fee_per_gas: anvil_config.get_base_fee(),
             gas_limit: anvil_config.gas_limit,
         }
@@ -125,7 +128,16 @@ impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf>
         executor: E,
     ) -> sp_blockchain::Result<Self> {
         Ok(Self {
-            genesis_number: genesis_number as u32,
+            genesis_number: genesis_number.try_into().map_err(|_| {
+                sp_blockchain::Error::Application(
+                    format!(
+                        "Genesis number {} is too large for u32 (max: {})",
+                        genesis_number,
+                        u32::MAX
+                    )
+                    .into(),
+                )
+            })?,
             genesis_storage,
             commit_genesis_state,
             backend,

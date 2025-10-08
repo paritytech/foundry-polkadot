@@ -28,7 +28,7 @@ use polkadot_sdk::{
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
         subxt_client::{self, SrcChainConfig},
     },
-    sc_client_api::StorageProvider,
+    sc_client_api::{HeaderBackend, StorageProvider},
     sc_executor::WasmExecutor,
     sc_runtime_utilities::fetch_latest_metadata_from_code_blob,
     sp_core::{self, keccak_256, storage::StorageKey},
@@ -459,10 +459,21 @@ impl ApiServer {
 async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcClient> {
     let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
 
-    // Using best_hash because genesis hash is only set if genesis block number is equal to 0, but
-    // Anvil allows a custom genesis block number.
-    // https://github.com/paritytech/polkadot-sdk/blob/62c3a80f913a272c4f5dba2c91320056d39ec68e/substrate/client/api/src/in_mem.rs#L178
-    let genesis_hash = substrate_service.client.chain_info().best_hash;
+    let genesis_block_number = substrate_service.genesis_block_number.try_into().map_err(|_| {
+        Error::InvalidParams(format!(
+            "Genesis block number {} is too large for u32 (max: {})",
+            substrate_service.genesis_block_number,
+            u32::MAX
+        ))
+    })?;
+
+    let Some(genesis_hash) = substrate_service.client.hash(genesis_block_number).ok().flatten()
+    else {
+        return Err(Error::InvalidParams(format!(
+            "Genesis hash not found for genesis block number {}",
+            substrate_service.genesis_block_number
+        )));
+    };
 
     let runtime_version = substrate_service
         .client

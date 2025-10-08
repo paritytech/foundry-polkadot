@@ -41,6 +41,7 @@ pub struct Service {
     pub tx_pool: Arc<TransactionPoolHandle>,
     pub rpc_handlers: RpcHandlers,
     pub mining_engine: Arc<MiningEngine>,
+    pub genesis_block_number: u64,
 }
 
 /// Create the initial parts of a full node with a customizable genesis block builder.
@@ -179,6 +180,7 @@ pub fn new(
             tx_pool: transaction_pool,
             rpc_handlers,
             mining_engine,
+            genesis_block_number: anvil_config.get_genesis_number(),
         },
         task_manager,
     ))
