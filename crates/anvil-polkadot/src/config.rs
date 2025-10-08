@@ -459,7 +459,7 @@ Genesis Number
             no_mining: true,
             mixed_mining: false,
             enable_tracing: true,
-            silent: true,
+            silent: false,
             ..Default::default()
         }
     }
