@@ -426,20 +426,20 @@ impl ApiServer {
         };
 
         let latest_block = self.latest_block();
-        let lates_block_id = Some(BlockId::hash(
+        let latest_block_id = Some(BlockId::hash(
             AlloyU256::from(sp_core::U256::from_big_endian(latest_block.as_bytes())).inner().into(),
         ));
 
         if transaction.gas.is_none() {
             transaction.gas =
-                Some(self.estimate_gas(transaction_req.clone(), lates_block_id).await?);
+                Some(self.estimate_gas(transaction_req.clone(), latest_block_id).await?);
         }
 
         if transaction.gas_price.is_none() {
             transaction.gas_price = Some(self.gas_price().await?);
         }
         if transaction.nonce.is_none() {
-            transaction.nonce = Some(self.get_transaction_count(from, lates_block_id).await?);
+            transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
         }
         if transaction.chain_id.is_none() {
             transaction.chain_id =

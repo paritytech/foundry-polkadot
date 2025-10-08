@@ -145,14 +145,14 @@ impl BackendWithOverlay {
     }
 
     fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {
-        let maybe_overriden_val = {
+        let maybe_overridden_val = {
             let mut guard = self.overrides.lock();
 
             guard.per_block.get(&hash).and_then(|overrides| overrides.top.get(&key).cloned())
         };
 
-        if let Some(overriden_val) = maybe_overriden_val {
-            return Ok(overriden_val);
+        if let Some(overridden_val) = maybe_overridden_val {
+            return Ok(overridden_val);
         }
 
         let state = self.backend.state_at(hash, TrieCacheContext::Trusted)?;
