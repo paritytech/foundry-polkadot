@@ -147,7 +147,7 @@ pub async fn spawn_anvil_tasks(
     snapshot_manager: SnapshotManager<FullClient>,
 ) -> Result<ApiHandle> {
     // Spawn the api server.
-    let api_handle = api_server::spawn(service, logging_manager, snapshot_manager);
+    let api_handle = api_server::spawn(&anvil_config, service, logging_manager, snapshot_manager);
 
     // Spawn the network servers.
     for addr in &anvil_config.host {
@@ -178,7 +178,7 @@ pub async fn spawn_anvil_tasks(
     Ok(api_handle)
 }
 
-fn init_tracing(silent: bool) -> LoggingManager {
+pub fn init_tracing(silent: bool) -> LoggingManager {
     use tracing_subscriber::prelude::*;
 
     let manager = LoggingManager::default();

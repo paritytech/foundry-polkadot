@@ -1,3 +1,4 @@
+mod impersonation;
 mod mining;
 mod snapshot;
 mod standard_rpc;
