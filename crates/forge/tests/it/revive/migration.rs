@@ -20,28 +20,18 @@ async fn test_revive_nonce_migration() {
     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
 }
 
-// Enable it after new pallet-revive is being used
-// #[tokio::test(flavor = "multi_thread")]
-// async fn test_revive_precision_preservation() {
-//     let runner = TEST_DATA_REVIVE.runner_revive();
-//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest",
-// ".*/revive/.*");
-//
-//     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
-// }
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_revive_bytecode_migration() {
     let runner = TEST_DATA_REVIVE.runner_revive();
-    let filter = Filter::new("testBytecodeMigration", "EvmReviveMigrationTest", ".*/revive/.*");
+    let filter = Filter::new("testBytecodeMigrationToEvm", "EvmReviveMigrationTest", ".*/revive/.*");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
 }
 
-// #[tokio::test(flavor = "multi_thread")]
-// async fn test_revive_timestamp_migration() {
-//     let runner = TEST_DATA_REVIVE.runner_revive();
-//     let filter = Filter::new("testTimestampMigration", "EvmReviveMigrationTest", ".*/revive/.*");
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_bytecode_migration() {
+    let runner = TEST_DATA_REVIVE.runner_revive();
+    let filter = Filter::new("testBytecodeMigrationToRevive", "EvmReviveMigrationTest", ".*/revive/.*");
 
-//     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
-// }
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
+}
