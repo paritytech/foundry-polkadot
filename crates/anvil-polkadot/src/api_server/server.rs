@@ -475,10 +475,11 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
         )));
     };
 
-    let runtime_version = substrate_service
-        .client
-        .runtime_version_at(genesis_hash)
-        .expect("Runtime version not found for given genesis hash");
+    let Ok(runtime_version) = substrate_service.client.runtime_version_at(genesis_hash) else {
+        return Err(Error::InvalidParams(
+            "Runtime version not found for given genesis hash".to_string(),
+        ));
+    };
     let subxt_runtime_version = SubxtRuntimeVersion {
         spec_version: runtime_version.spec_version,
         transaction_version: runtime_version.transaction_version,
@@ -487,8 +488,16 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
     let code_bytes = substrate_service
         .client
         .storage(genesis_hash, &StorageKey(CODE_KEY.to_vec()))
-        .expect("Runtime code not found for given genesis hash")
-        .unwrap();
+        .map_err(|_| {
+            Error::InvalidParams(
+                "Failed to access runtime code storage for given genesis hash".to_string(),
+            )
+        })?
+        .ok_or_else(|| {
+            Error::InvalidParams(
+                "Runtime code not found in storage for given genesis hash".to_string(),
+            )
+        })?;
     let opaque_metadata = fetch_latest_metadata_from_code_blob(
         &WasmExecutor::<SubstrateHostFunctions>::builder().build(),
         Cow::Borrowed(code_bytes.0.as_slice()),
