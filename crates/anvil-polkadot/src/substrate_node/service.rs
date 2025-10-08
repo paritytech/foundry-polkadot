@@ -9,15 +9,13 @@ use crate::{
 use anvil::eth::backend::time::TimeManager;
 use polkadot_sdk::{
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
-    sc_executor::{RuntimeVersionOf, WasmExecutor},
+    sc_executor::WasmExecutor,
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
     },
     sc_telemetry::TelemetryHandle,
-    sc_transaction_pool,
-    sp_core::traits::CodeExecutor,
-    sp_timestamp,
+    sc_transaction_pool, sp_timestamp,
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
@@ -46,15 +44,12 @@ pub struct Service {
 }
 
 /// Create the initial parts of a full node with a customizable genesis block builder.
-fn new_full_parts_with_custom_genesis<TExec>(
+fn new_full_parts_with_custom_genesis(
     genesis_block_number: u64,
     config: &Configuration,
     telemetry: Option<TelemetryHandle>,
-    executor: TExec,
-) -> Result<TFullParts<Block, RuntimeApi, TExec>, ServiceError>
-where
-    TExec: CodeExecutor + RuntimeVersionOf + Clone,
-{
+    executor: WasmExecutor,
+) -> Result<TFullParts<Block, RuntimeApi, WasmExecutor>, ServiceError> {
     let backend = sc_service::new_db_backend(config.db_config())?;
 
     let genesis_block_builder = DevelopmentGenesisBlockBuilder::new(
@@ -81,7 +76,7 @@ pub fn new(
     config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
     let (client, backend, keystore_container, mut task_manager) =
-        new_full_parts_with_custom_genesis::<_>(
+        new_full_parts_with_custom_genesis(
             anvil_config.get_genesis_number(),
             &config,
             None,
