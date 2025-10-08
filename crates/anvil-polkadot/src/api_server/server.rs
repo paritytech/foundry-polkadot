@@ -9,6 +9,7 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
+        impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
@@ -30,7 +31,7 @@ use codec::Encode;
 use futures::{channel::mpsc, StreamExt};
 use polkadot_sdk::{
     pallet_revive::{
-        evm::{Account, Block, Bytes, ReceiptInfo},
+        evm::{Account, Block, Bytes, ReceiptInfo, TransactionSigned},
         ReviveApi,
     },
     pallet_revive_eth_rpc::{
@@ -61,6 +62,7 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,
+    impersonation_manager: ImpersonationManager,
 }
 
 impl ApiServer {
@@ -68,6 +70,7 @@ impl ApiServer {
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
+        impersonation_manager: ImpersonationManager,
     ) -> Result<Self> {
         let eth_rpc_client = create_revive_rpc_client(&substrate_service).await?;
 
@@ -81,6 +84,7 @@ impl ApiServer {
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
+            impersonation_manager,
             wallet: Wallet {
                 accounts: vec![
                     Account::from(subxt_signer::eth::dev::baltathar()),
@@ -166,6 +170,17 @@ impl ApiServer {
                 self.set_storage_at(address, key, value).to_rpc_result()
             }
             EthRequest::SetChainId(chain_id) => self.set_chain_id(chain_id).to_rpc_result(),
+
+            // -- Impersonation --
+            EthRequest::ImpersonateAccount(addr) => {
+                self.impersonate_account(H160::from_slice(addr.0.as_ref())).to_rpc_result()
+            }
+            EthRequest::StopImpersonatingAccount(addr) => {
+                self.stop_impersonating_account(&H160::from_slice(addr.0.as_ref())).to_rpc_result()
+            }
+            EthRequest::AutoImpersonateAccount(enable) => {
+                self.auto_impersonate_account(enable).to_rpc_result()
+            }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -415,17 +430,6 @@ impl ApiServer {
             AlloyU256::from(sp_core::U256::from_big_endian(latest_block.as_bytes())).inner().into(),
         ));
 
-        let account = self
-            .wallet
-            .accounts
-            .iter()
-            .find(|account| account.address() == from)
-            .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?;
-
-        if transaction.gas.is_none() {
-            transaction.gas =
-                Some(self.estimate_gas(transaction_req.clone(), lates_block_id).await?);
-        }
         if transaction.gas_price.is_none() {
             transaction.gas_price = Some(self.gas_price().await?);
         }
@@ -440,7 +444,21 @@ impl ApiServer {
         let tx = transaction
             .try_into_unsigned()
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
-        let payload = account.sign_transaction(tx).signed_payload();
+
+        let payload = if self.impersonation_manager.is_impersonated(from) {
+            let mut fake_signature = [0; 65];
+            fake_signature[12..32].copy_from_slice(from.as_bytes());
+            tx.with_signature(fake_signature).signed_payload()
+        } else {
+            let account = self
+                .wallet
+                .accounts
+                .iter()
+                .find(|account| account.address() == from)
+                .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?;
+            account.sign_transaction(tx).signed_payload()
+        };
+
         self.send_raw_transaction(Bytes(payload)).await
     }
 
@@ -586,6 +604,25 @@ impl ApiServer {
         Ok(())
     }
 
+    // ---- Impersonation RPCs
+    fn impersonate_account(&mut self, addr: H160) -> Result<()> {
+        node_info!("anvil_impersonateAccount");
+        self.impersonation_manager.impersonate(addr);
+        Ok(())
+    }
+
+    fn auto_impersonate_account(&mut self, enable: bool) -> Result<()> {
+        node_info!("anvil_autoImpersonateAccount");
+        self.impersonation_manager.set_auto_impersonate_account(enable);
+        Ok(())
+    }
+
+    fn stop_impersonating_account(&mut self, addr: &H160) -> Result<()> {
+        node_info!("anvil_stopImpersonatingAccount");
+        self.impersonation_manager.stop_impersonating(addr);
+        Ok(())
+    }
+
     // ----- Helpers
     async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
         self.eth_rpc_client
@@ -657,9 +694,22 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
         (pool, Some(100))
     };
 
-    let receipt_extractor = ReceiptExtractor::new(api.clone(), None)
-        .await
-        .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
+    let receipt_extractor = ReceiptExtractor::new_with_custom_address_recovery(
+        api.clone(),
+        None,
+        Arc::new(|signed_tx: &TransactionSigned| {
+            let sig = signed_tx.raw_signature()?;
+            if sig[..12] == [0; 12] && sig[32..64] == [0; 32] {
+                let mut res = [0; 20];
+                res.copy_from_slice(&sig[12..32]);
+                Ok(H160::from(res))
+            } else {
+                signed_tx.recover_eth_address()
+            }
+        }),
+    )
+    .await
+    .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
 
     let receipt_provider = ReceiptProvider::new(
         pool,

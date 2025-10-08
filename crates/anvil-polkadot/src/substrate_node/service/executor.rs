@@ -1,8 +1,12 @@
+use crate::substrate_node::{
+    host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride},
+    service::{backend::StorageOverrides, Backend},
+};
 use parking_lot::Mutex;
 use polkadot_sdk::{
     parachains_common::{opaque::Block, Hash},
     sc_client_api::{execution_extensions::ExecutionExtensions, Backend as _, CallExecutor},
-    sc_executor::{self, RuntimeVersion, RuntimeVersionOf, WasmExecutor},
+    sc_executor::{self, RuntimeVersion, RuntimeVersionOf},
     sc_service,
     sp_api::{CallContext, ProofRecorder},
     sp_blockchain::{self, HeaderBackend},
@@ -14,15 +18,18 @@ use polkadot_sdk::{
 };
 use std::{cell::RefCell, sync::Arc};
 
-use crate::substrate_node::service::{backend::StorageOverrides, Backend};
-
-type InnerLocalCallExecutor = sc_service::client::LocalCallExecutor<
-    Block,
-    Backend,
-    WasmExecutor<sp_io::SubstrateHostFunctions>,
+// Wasm executor which overrides the signature checking host functions for impersonation.
+type WasmExecutor = sc_executor::WasmExecutor<
+    ExtendedHostFunctions<
+        ExtendedHostFunctions<sp_io::SubstrateHostFunctions, SenderAddressRecoveryOverride>,
+        PublicKeyToHashOverride,
+    >,
 >;
 
+type InnerLocalCallExecutor = sc_service::client::LocalCallExecutor<Block, Backend, WasmExecutor>;
+
 #[derive(Clone)]
+/// State-injecting executor implementation.
 pub struct Executor {
     inner: InnerLocalCallExecutor,
     storage_overrides: Arc<Mutex<StorageOverrides>>,

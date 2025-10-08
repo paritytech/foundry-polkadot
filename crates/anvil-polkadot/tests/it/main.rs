@@ -1,3 +1,4 @@
+mod impersonation;
 mod mining;
 mod standard_rpc;
 mod state_injector;
