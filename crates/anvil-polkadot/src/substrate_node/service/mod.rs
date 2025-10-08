@@ -52,7 +52,7 @@ pub fn new(
     anvil_config: &AnvilNodeConfig,
     config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
-    let storage_overrides = Arc::new(Mutex::new(StorageOverrides::new()));
+    let storage_overrides = Arc::new(Mutex::new(StorageOverrides::default()));
 
     let (client, backend, keystore, mut task_manager) = client::new_client(
         &config,

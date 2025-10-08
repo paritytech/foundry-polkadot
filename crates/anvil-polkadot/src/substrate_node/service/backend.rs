@@ -174,11 +174,13 @@ pub struct StorageOverrides {
     per_block: LruCache<Hash, BlockOverrides>,
 }
 
-impl StorageOverrides {
-    pub fn new() -> Self {
+impl Default for StorageOverrides {
+    fn default() -> Self {
         Self { per_block: LruCache::new(NonZeroUsize::new(10).expect("10 is greater than 0")) }
     }
+}
 
+impl StorageOverrides {
     pub fn get(&mut self, block: &Hash) -> Option<BlockOverrides> {
         self.per_block.get(block).cloned()
     }

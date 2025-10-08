@@ -482,7 +482,7 @@ impl ApiServer {
         let mut revive_account_info = self
             .backend
             .read_revive_account_info(latest_block, address)?
-            .unwrap_or_else(|| ReviveAccountInfo { account_type: AccountType::EOA, dust: 0 });
+            .unwrap_or(ReviveAccountInfo { account_type: AccountType::EOA, dust: 0 });
 
         if revive_account_info.dust != dust {
             revive_account_info.dust = dust;
