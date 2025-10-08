@@ -52,7 +52,7 @@ pub mod well_known_keys {
     use codec::Encode;
     use polkadot_sdk::{
         parachains_common::AccountId,
-        sp_core::{blake2_128, twox_128, H160, H256},
+        sp_core::{H160, H256, blake2_128, twox_128},
     };
 
     // Hex-encoded key: 0xc2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80

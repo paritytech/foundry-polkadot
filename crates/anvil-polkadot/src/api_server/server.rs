@@ -1,10 +1,10 @@
 use crate::{
     api_server::{
+        ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId, SubstrateU256,
+            AlloyU256, ReviveAddress, ReviveBlockId, SubstrateU256, convert_to_generic_transaction,
         },
-        ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
@@ -13,42 +13,42 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
+            BackendWithOverlay, Client, Service,
             storage::{
                 AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
-            BackendWithOverlay, Client, Service,
         },
     },
 };
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, U256, U64};
+use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{anvil::MineOptions, request::TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use codec::Encode;
-use futures::{channel::mpsc, StreamExt};
+use futures::{StreamExt, channel::mpsc};
 use polkadot_sdk::{
     pallet_revive::{
-        evm::{Account, Block, Bytes, ReceiptInfo, TransactionSigned},
         ReviveApi,
+        evm::{Account, Block, Bytes, ReceiptInfo, TransactionSigned},
     },
     pallet_revive_eth_rpc::{
+        EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
         subxt_client::{self, SrcChainConfig},
-        EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     },
     parachains_common::{AccountId, Hash},
     sc_client_api::HeaderBackend,
     sp_api::ProvideRuntimeApi,
-    sp_core::{self, keccak_256, Hasher, H160, H256},
+    sp_core::{self, H160, H256, Hasher, keccak_256},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
 use substrate_runtime::Balance;
-use subxt::{backend::rpc::RpcClient, ext::subxt_rpcs::LegacyRpcMethods, OnlineClient};
+use subxt::{OnlineClient, backend::rpc::RpcClient, ext::subxt_rpcs::LegacyRpcMethods};
 
 pub struct Wallet {
     accounts: Vec<Account>,
