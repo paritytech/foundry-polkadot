@@ -1,4 +1,3 @@
-
 use crate::{
     api_server::{
         ApiRequest,
@@ -10,11 +9,11 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
+        impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{FullClient, Service},
         snapshot::SnapshotManager,
-        impersonation::ImpersonationManager,
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
@@ -25,19 +24,23 @@ use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use futures::{StreamExt, channel::mpsc};
 use pallet_revive_eth_rpc::{
-    EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
-    client::{Client as EthRpcClient, ClientError, SubscriptionType},
+    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
+    client::{Client as EthRpcClient, ClientError, SubscriptionType, SubstrateBlock},
     subxt_client::{self, SrcChainConfig},
 };
 use polkadot_sdk::{
     pallet_revive::evm::{Account, Block, Bytes, ReceiptInfo, TransactionSigned},
+    sc_service::SpawnTaskHandle,
     sp_core::{self, keccak_256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
 use subxt::{
-    OnlineClient, backend::rpc::RpcClient, config::substrate::H256,
-    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    OnlineClient,
+    backend::{legacy::LegacyRpcMethods, rpc::RpcClient},
+    client::OnlineClientT,
+    config::substrate::H256,
+    utils::H160,
 };
 
 pub struct Wallet {
@@ -50,6 +53,7 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     snapshot_manager: SnapshotManager<FullClient>,
     eth_rpc_client: EthRpcClient,
+    block_provider: SubxtBlockInfoProvider,
     wallet: Wallet,
     impersonation_manager: ImpersonationManager,
 }
@@ -62,9 +66,22 @@ impl ApiServer {
         snapshot_manager: SnapshotManager<FullClient>,
         impersonation_manager: ImpersonationManager,
     ) -> Result<Self> {
-        let eth_rpc_client = create_revive_rpc_client(&substrate_service).await?;
+        let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
+        let api = OnlineClient::<SrcChainConfig>::from_rpc_client(rpc_client.clone()).await?;
+        let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
+        let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
+
+        let eth_rpc_client = create_revive_rpc_client(
+            api.clone(),
+            rpc_client.clone(),
+            rpc,
+            block_provider.clone(),
+            substrate_service.spawn_handle.clone(),
+        )
+        .await?;
 
         Ok(Self {
+            block_provider,
             req_receiver,
             logging_manager,
             mining_engine: substrate_service.mining_engine.clone(),
@@ -439,7 +456,18 @@ impl ApiServer {
 
     pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
         node_info!("evm_revert");
-        self.snapshot_manager.revert(id).map_err(Error::SnapshotRpc)
+        let block_number = self.snapshot_manager.block_number_for(id);
+        let res =
+            self.snapshot_manager.revert(id).map_err(|err| Error::SnapshotRpc(err.to_string()))?;
+        if res && let Some(number) = block_number {
+            let block_reverted_to =
+                self.block_provider.block_by_number(number.try_into().unwrap()).await.unwrap();
+            if let Ok(block) = Arc::try_unwrap(block_reverted_to.unwrap()) {
+                println!("---> updated block provider to block number: {}", block.number());
+                self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
+            }
+        }
+        Ok(res)
     }
 
     // Helpers
@@ -469,13 +497,13 @@ impl ApiServer {
     }
 }
 
-async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcClient> {
-    let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
-    let api = OnlineClient::<SrcChainConfig>::from_rpc_client(rpc_client.clone()).await?;
-    let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
-
-    let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
-
+async fn create_revive_rpc_client(
+    api: OnlineClient<SrcChainConfig>,
+    rpc_client: RpcClient,
+    rpc: LegacyRpcMethods<SrcChainConfig>,
+    block_provider: SubxtBlockInfoProvider,
+    task_spawn_handle: SpawnTaskHandle,
+) -> Result<EthRpcClient> {
     let (pool, keep_latest_n_blocks) = {
         // see sqlite in-memory issue: https://github.com/launchbadge/sqlx/issues/2510
         let pool = SqlitePoolOptions::new()
@@ -521,7 +549,7 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
         .await
         .map_err(Error::from)?;
     let eth_rpc_client_clone = eth_rpc_client.clone();
-    substrate_service.spawn_handle.spawn("block-subscription", "None", async move {
+    task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;
         let best_future =
             eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::BestBlocks);

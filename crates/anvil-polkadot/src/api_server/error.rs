@@ -1,7 +1,6 @@
 use crate::substrate_node::mining_engine::MiningError;
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use pallet_revive_eth_rpc::{EthRpcError, client::ClientError};
-use polkadot_sdk::sp_blockchain;
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -15,12 +14,9 @@ pub enum Error {
     #[error("Revive call failed: {0}")]
     ReviveRpc(#[from] EthRpcError),
     #[error("Snapshot error: {0}")]
-    SnapshotRpc(sp_blockchain::Error),
-}
-impl From<subxt::Error> for Error {
-    fn from(err: subxt::Error) -> Self {
-        Self::ReviveRpc(EthRpcError::ClientError(err.into()))
-    }
+    SnapshotRpc(String),
+    #[error("Subxt error: {0}")]
+    Subxt(#[from] subxt::error::Error),
 }
 
 impl From<ClientError> for Error {
@@ -72,11 +68,12 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 Error::InvalidParams(error_message) => {
                     RpcError::invalid_params(error_message).into()
                 }
-                Error::SnapshotRpc(blockchain_err) => {
-                    RpcError::internal_error_with(format!("{blockchain_err}")).into()
-                }
+                Error::SnapshotRpc(err) => RpcError::internal_error_with(err).into(),
                 Error::ReviveRpc(client_error) => {
                     RpcError::internal_error_with(format!("{client_error}")).into()
+                }
+                Error::Subxt(subxt_err) => {
+                    RpcError::internal_error_with(format!("{subxt_err}")).into()
                 }
             },
         }

@@ -346,7 +346,7 @@ async fn seal_now(
     let (sender, receiver) = oneshot::channel();
     let seal_command = EngineCommand::SealNewBlock {
         create_empty: true,
-        finalize: false,
+        finalize: true,
         parent_hash: None,
         sender: Some(sender),
     };

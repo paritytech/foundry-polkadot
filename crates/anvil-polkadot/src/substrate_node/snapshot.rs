@@ -43,6 +43,11 @@ where
         + Sync
         + 'static,
 {
+    /// Get the block number associated to a snapshot id.
+    pub fn block_number_for(&mut self, snapshot_id: U256) -> Option<u64> {
+        self.snapshots.get(&snapshot_id).map(|snap| snap.best_number)
+    }
+
     /// Create a snapshot id corresponding to the best block number.
     pub fn snapshot(&mut self) -> U256 {
         let one = U256::ONE;
@@ -54,11 +59,11 @@ where
     }
 
     /// Revert the chain to the block number represented by the snapshot `id`.
-    pub fn revert(&mut self, id: U256) -> Result<bool> {
+    pub fn revert(&mut self, snapshot_id: U256) -> Result<bool> {
         // Remove the snapshot when reverting. We do not want to keep it around
         // since reverting to an existing snapshot could mean going back to future,
         // which is not supported.
-        let maybe_snapshot = self.snapshots.remove(&id);
+        let maybe_snapshot = self.snapshots.remove(&snapshot_id);
         let Some(snap) = maybe_snapshot else { return Ok(false) };
 
         let current_best_number: u64 = self.client.info().best_number.into();
@@ -69,8 +74,9 @@ where
             true,
         )?;
 
-        self.snapshots
-            .retain(|&k, snap_to_remove| k < id || snap_to_remove.best_number >= snap.best_number);
+        self.snapshots.retain(|&k, snap_to_remove| {
+            k < snapshot_id || snap_to_remove.best_number >= snap.best_number
+        });
 
         Ok(true)
     }
