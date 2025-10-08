@@ -117,7 +117,7 @@ async fn test_set_nonce() {
 
     // Send a transaction with the wrong nonce, it will be invalid.
     assert_matches!(
-        node.send_transaction(tx.clone(), None).await,
+        node.send_transaction(tx.clone().nonce(5), None).await,
         Err(RpcError {code, message, ..}) => {
             assert_eq!(code, ErrorCode::InternalError);
             message.contains("Invalid Transaction")

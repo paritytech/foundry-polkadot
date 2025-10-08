@@ -430,6 +430,11 @@ impl ApiServer {
             AlloyU256::from(sp_core::U256::from_big_endian(latest_block.as_bytes())).inner().into(),
         ));
 
+        if transaction.gas.is_none() {
+            transaction.gas =
+                Some(self.estimate_gas(transaction_req.clone(), lates_block_id).await?);
+        }
+
         if transaction.gas_price.is_none() {
             transaction.gas_price = Some(self.gas_price().await?);
         }
