@@ -1,9 +1,9 @@
+use crate::substrate_node::service::{Backend, FullClient};
 use jsonrpsee::RpcModule;
 use polkadot_sdk::{
     sc_chain_spec::ChainSpec,
     sc_client_api::{Backend as ClientBackend, HeaderBackend},
     sc_client_db::{BlocksPruning, PruningMode},
-    sc_executor::WasmExecutor,
     sc_network_types::{self, multiaddr::Multiaddr},
     sc_rpc::{
         author::AuthorApiServer,
@@ -25,17 +25,11 @@ use polkadot_sdk::{
     },
     sc_transaction_pool::TransactionPoolWrapper,
     sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded},
-    sp_io,
     sp_keystore::KeystorePtr,
     substrate_frame_rpc_system::SystemApiServer as _,
 };
 use std::sync::Arc;
-use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
-
-pub type FullClient =
-    sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>;
-
-pub type Backend = sc_service::TFullBackend<Block>;
+use substrate_runtime::OpaqueBlock as Block;
 
 // Re-implement RPC module generation without the check on the genesis block number.
 // The code is identical to the one in

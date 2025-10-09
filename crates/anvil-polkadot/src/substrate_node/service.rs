@@ -2,36 +2,36 @@ use crate::{
     AnvilNodeConfig,
     substrate_node::{
         genesis::DevelopmentGenesisBlockBuilder,
+        host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride},
         mining_engine::{MiningEngine, MiningMode, run_mining_engine},
         rpc::spawn_rpc_server,
     },
 };
 use anvil::eth::backend::time::TimeManager;
 use polkadot_sdk::{
-    sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
-    sc_executor::WasmExecutor,
+    sc_basic_authorship, sc_consensus, sc_consensus_manual_seal, sc_executor,
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
     },
-    sc_telemetry::TelemetryHandle,
-    sc_transaction_pool, sp_timestamp,
+    sc_transaction_pool, sp_io, sp_timestamp,
+    sp_wasm_interface::ExtendedHostFunctions,
 };
 use std::sync::Arc;
 use substrate_runtime::{OpaqueBlock as Block, RuntimeApi};
 use tokio_stream::wrappers::ReceiverStream;
 
-pub type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
+type Executor = sc_executor::WasmExecutor<
+    ExtendedHostFunctions<
+        ExtendedHostFunctions<sp_io::SubstrateHostFunctions, SenderAddressRecoveryOverride>,
+        PublicKeyToHashOverride,
+    >,
+>;
+pub type FullClient = sc_service::TFullClient<Block, RuntimeApi, Executor>;
 
 pub type Backend = sc_service::TFullBackend<Block>;
 pub type TransactionPoolHandle = sc_transaction_pool::TransactionPoolHandle<Block, FullClient>;
 type SelectChain = sc_consensus::LongestChain<Backend, Block>;
-type TFullParts<TBl, TRtApi, TExec> = (
-    sc_service::TFullClient<TBl, TRtApi, TExec>,
-    Arc<sc_service::TFullBackend<TBl>>,
-    sc_service::KeystoreContainer,
-    sc_service::TaskManager,
-);
 
 #[derive(Clone)]
 pub struct Service {
@@ -44,44 +44,30 @@ pub struct Service {
     pub genesis_block_number: u64,
 }
 
-/// Create the initial parts of a full node with a customizable genesis block builder.
-fn new_full_parts_with_custom_genesis(
-    genesis_block_number: u64,
-    config: &Configuration,
-    telemetry: Option<TelemetryHandle>,
-    executor: WasmExecutor,
-) -> Result<TFullParts<Block, RuntimeApi, WasmExecutor>, ServiceError> {
-    let backend = sc_service::new_db_backend(config.db_config())?;
-
-    let genesis_block_builder = DevelopmentGenesisBlockBuilder::new(
-        genesis_block_number,
-        config.chain_spec.as_storage_builder(),
-        !config.no_genesis(),
-        backend.clone(),
-        executor.clone(),
-    )?;
-
-    sc_service::new_full_parts_with_genesis_builder(
-        config,
-        telemetry,
-        executor,
-        backend,
-        genesis_block_builder,
-        false,
-    )
-}
-
 /// Builds a new service for a full client.
 pub fn new(
     anvil_config: &AnvilNodeConfig,
     config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
+    let backend = sc_service::new_db_backend(config.db_config())?;
+
+    let wasm_executor = sc_service::new_wasm_executor(&config.executor);
+    let genesis_block_builder = DevelopmentGenesisBlockBuilder::new(
+        anvil_config.get_genesis_number(),
+        config.chain_spec.as_storage_builder(),
+        !config.no_genesis(),
+        backend.clone(),
+        wasm_executor.clone(),
+    )?;
+
     let (client, backend, keystore_container, mut task_manager) =
-        new_full_parts_with_custom_genesis(
-            anvil_config.get_genesis_number(),
+        sc_service::new_full_parts_with_genesis_builder(
             &config,
             None,
-            sc_service::new_wasm_executor(&config.executor),
+            wasm_executor,
+            backend,
+            genesis_block_builder,
+            false,
         )?;
     let client = Arc::new(client);
 
