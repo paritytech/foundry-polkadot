@@ -215,9 +215,8 @@ impl ForgeTestData {
         let files_to_compile: Vec<_> = all_files
             .into_iter()
             .filter(|path| {
-                let path_str = path.to_str().unwrap_or("");
                 // We skip all the other sources to avoid deploy-time linking issues
-                path_str.contains("revive/")
+                path.components().any(|c| c.as_os_str() == "revive")
             })
             .collect();
         let resolc_output = get_resolc_compiled(&mut resolc_project, files_to_compile);
