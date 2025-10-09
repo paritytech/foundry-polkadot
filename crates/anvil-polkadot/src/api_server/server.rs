@@ -482,12 +482,26 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
         transaction_version: runtime_version.transaction_version,
     };
 
+    let Ok(supported_metadata_versions) =
+        substrate_service.client.runtime_api().metadata_versions(genesis_hash)
+    else {
+        return Err(Error::InvalidParams("Unable to fetch metadata versions".to_string()));
+    };
+    let Some(latest_metadata_version) = supported_metadata_versions.into_iter().max() else {
+        return Err(Error::InvalidParams("No stable metadata versions supported".to_string()));
+    };
     let opaque_metadata = substrate_service
         .client
         .runtime_api()
-        .metadata_at_version(genesis_hash, 16)
-        .unwrap()
-        .unwrap();
+        .metadata_at_version(genesis_hash, latest_metadata_version)
+        .map_err(|_| {
+            Error::InvalidParams("Failed to get runtime API for genesis hash".to_string())
+        })?
+        .ok_or_else(|| {
+            Error::InvalidParams(format!(
+                "Metadata not found for version {latest_metadata_version} at genesis hash"
+            ))
+        })?;
     let subxt_metadata = SubxtMetadata::decode(&mut (*opaque_metadata).as_slice())
         .map_err(|_| Error::InvalidParams("Unable to decode metadata".to_string()))?;
 
