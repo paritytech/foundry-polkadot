@@ -308,8 +308,8 @@ async fn test_set_balance() {
 
 #[tokio::test(flavor = "multi_thread")]
 // Test setting the code of an existing contract.
-async fn test_set_code() {
-    let anvil_node_config = AnvilNodeConfig::test_config().set_silent(false).with_tracing(true);
+async fn test_set_code_existing_contract() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
@@ -428,5 +428,64 @@ async fn test_set_code() {
     assert_eq!(value, U256::from(20));
 }
 
-// Test setting the code of a new contract.
-// Test setting the code of an EOA.
+#[tokio::test(flavor = "multi_thread")]
+// Test setting the code of a non-existing contract.
+async fn test_set_code_new() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let ContractCode { runtime: Some(runtime_bytecode), .. } = get_contract_code("SimpleStorage")
+    else {
+        panic!("Missing runtime bytecode")
+    };
+
+    let contract_address =
+        Address::from(ReviveAddress::new(H160::from_slice(Address::random().as_slice())));
+
+    let code = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthGetCodeAt(contract_address, Some(BlockId::number(0))))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(code.is_empty());
+
+    // Set empty code first.
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetCode(contract_address, Bytes(vec![].into()))).await.unwrap(),
+    )
+    .unwrap();
+
+    let code = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthGetCodeAt(contract_address, Some(BlockId::number(0))))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(code.is_empty());
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetCode(contract_address, Bytes(runtime_bytecode.clone().into())))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let code = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthGetCodeAt(contract_address, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(code, Bytes::from(runtime_bytecode.clone()));
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    assert_eq!(code, Bytes::from(runtime_bytecode));
+
+    // We don't test interacting with the contract. Due to the fact that we directly set the code in
+    // the storage, the child trie state is not initialised.
+}

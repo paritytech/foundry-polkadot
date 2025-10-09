@@ -600,10 +600,12 @@ impl ApiServer {
 
                     if code_info.refcount == 1 && contract_info.code_hash != code_hash {
                         // Remove the pristine code and code info for the old hash.
-                        // TODO: only delete if refcount: 1
-                        // self.backend.inject_pristine_code(latest_block, contract_info.code_hash,
-                        // None); self.backend.inject_code_info(latest_block,
-                        // contract_info.code_hash, None);
+                        self.backend.inject_pristine_code(
+                            latest_block,
+                            contract_info.code_hash,
+                            None,
+                        );
+                        self.backend.inject_code_info(latest_block, contract_info.code_hash, None);
                     }
 
                     old_code_info = Some(code_info);
