@@ -434,13 +434,11 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     let block_number = data.block.number;
     let timestamp = data.block.timestamp;
 
-    // Set block number and timestamp from the block environment
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
 
-            // Migrate accounts from EVM to PVM
             let test_contract = data.journaled_state.database.get_test_contract_address();
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
 
@@ -460,7 +458,6 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
                 let amount_evm = U256::from_limbs(balance.0);
 
-                // Warn if precision loss occurred
                 if amount != amount_evm {
                     let _ = sh_err!(
                         "Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect."
@@ -468,7 +465,6 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 }
 
                 let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
-                // Set balance with minimum balance requirement
                 <Runtime as Config>::Currency::set_balance(
                     &account_id,
                     balance_native.into_rounded_balance().saturating_add(min_balance),
@@ -476,14 +472,11 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 // END OF THE BLOCK TO BE REMOVED
 
                 let current_nonce = System::account_nonce(&account_id);
-
-                // Ensure nonce consistency
                 assert!(
                     current_nonce as u64 <= nonce,
                     "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
                 );
 
-                // Increment nonce to match EVM state
                 while (System::account_nonce(&account_id) as u64) < nonce {
                     System::inc_account_nonce(&account_id);
                 }
@@ -540,7 +533,6 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     tracing::info!("switching to EVM");
     ctx.using_pvm = false;
 
-    // Migrate state from PVM back to EVM
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
             let block_number = System::block_number();
