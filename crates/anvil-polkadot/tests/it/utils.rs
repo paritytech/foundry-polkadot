@@ -278,11 +278,13 @@ where
     }
 }
 
+#[allow(unused)]
 pub struct ContractCode {
     pub init: Vec<u8>,
     pub runtime: Option<Vec<u8>>,
 }
 
+#[allow(unused)]
 pub fn get_contract_code(name: &str) -> ContractCode {
     let contract_path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("test-data/{name}.json"));
