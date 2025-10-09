@@ -1,8 +1,10 @@
 use codec::{Decode, Encode};
 use polkadot_sdk::{
+    frame_support::BoundedVec,
     frame_system,
     pallet_balances::AccountData,
     parachains_common::{AccountId, Nonce},
+    sp_core::ConstU32,
 };
 use substrate_runtime::{Balance, Hash};
 
@@ -20,7 +22,7 @@ pub enum AccountType {
 
 #[derive(Encode, Decode)]
 pub struct ContractInfo {
-    pub trie_id: Vec<u8>,
+    pub trie_id: BoundedVec<u8, ConstU32<128>>,
     pub code_hash: Hash,
     pub storage_bytes: u32,
     pub storage_items: u32,
@@ -33,7 +35,9 @@ pub struct ContractInfo {
 #[derive(Encode, Decode)]
 pub struct CodeInfo {
     pub owner: AccountId,
+    #[codec(compact)]
     pub deposit: Balance,
+    #[codec(compact)]
     pub refcount: u64,
     pub code_len: u32,
     pub code_type: ByteCodeType,

@@ -151,6 +151,7 @@ impl ApiServer {
             EthRequest::EthEstimateGas(call, block, _overrides, _block_overrides) => {
                 self.estimate_gas(call, block).await.to_rpc_result()
             }
+            EthRequest::EthCall(call, block, _, _) => self.call(call, block).await.to_rpc_result(),
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request.clone()).await.to_rpc_result()
             }
@@ -387,6 +388,21 @@ impl ApiServer {
         Ok(dry_run.eth_gas)
     }
 
+    async fn call(
+        &self,
+        request: WithOtherFields<TransactionRequest>,
+        block: Option<alloy_rpc_types::BlockId>,
+    ) -> Result<Bytes> {
+        node_info!("eth_call");
+
+        let hash = self.get_block_hash_for_tag(block).await?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let dry_run =
+            runtime_api.dry_run(convert_to_generic_transaction(request.into_inner())).await?;
+
+        Ok(dry_run.data.into())
+    }
+
     async fn gas_price(&self) -> Result<sp_core::U256> {
         node_info!("eth_gasPrice");
 
@@ -548,7 +564,7 @@ impl ApiServer {
 
         self.backend.inject_child_storage(
             latest_block,
-            contract_info.trie_id,
+            contract_info.trie_id.to_vec(),
             key.to_be_bytes_vec(),
             value.to_vec(),
         );
@@ -565,6 +581,8 @@ impl ApiServer {
 
         let code_hash = H256(keccak_256(&bytes));
 
+        let mut old_code_info = None;
+
         let account_info = match self.backend.read_revive_account_info(latest_block, address)? {
             None => {
                 let contract_info = new_contract_info(&address, code_hash);
@@ -575,10 +593,20 @@ impl ApiServer {
                 account_type: AccountType::Contract(mut contract_info),
                 dust,
             }) => {
-                if contract_info.code_hash != code_hash {
-                    // Remove the pristine code and code info for the old hash.
-                    self.backend.inject_pristine_code(latest_block, contract_info.code_hash, None);
-                    self.backend.inject_code_info(latest_block, contract_info.code_hash, None);
+                if let Some(code_info) =
+                    self.backend.read_code_info(latest_block, contract_info.code_hash)?
+                {
+                    println!("Existing code info!");
+
+                    if code_info.refcount == 1 && contract_info.code_hash != code_hash {
+                        // Remove the pristine code and code info for the old hash.
+                        // TODO: only delete if refcount: 1
+                        // self.backend.inject_pristine_code(latest_block, contract_info.code_hash,
+                        // None); self.backend.inject_code_info(latest_block,
+                        // contract_info.code_hash, None);
+                    }
+
+                    old_code_info = Some(code_info);
                 }
 
                 contract_info.code_hash = code_hash;
@@ -594,14 +622,20 @@ impl ApiServer {
 
         self.backend.inject_revive_account_info(latest_block, address, account_info);
 
-        let code_info = CodeInfo {
-            owner: <[u8; 32]>::from(account_id).into(),
-            deposit: 0,
-            refcount: 0,
-            code_len: bytes.len() as u32,
-            behaviour_version: 0,
-            code_type: ByteCodeType::Evm,
-        };
+        let code_info = old_code_info
+            .map(|mut code_info| {
+                code_info.code_len = bytes.len() as u32;
+                code_info.code_type = ByteCodeType::Evm;
+                code_info
+            })
+            .unwrap_or_else(|| CodeInfo {
+                owner: <[u8; 32]>::from(account_id).into(),
+                deposit: Default::default(),
+                refcount: 1,
+                code_len: bytes.len() as u32,
+                behaviour_version: 0,
+                code_type: ByteCodeType::Evm,
+            });
 
         self.backend.inject_pristine_code(latest_block, code_hash, Some(bytes));
         self.backend.inject_code_info(latest_block, code_hash, Some(code_info));
@@ -661,8 +695,12 @@ fn new_contract_info(address: &Address, code_hash: H256) -> ContractInfo {
     let address = H160::from_slice(address.as_slice());
 
     let trie_id = {
+        // TODO: is this nonce correct?
         let buf = ("bcontract_trie_v1", address, 0).using_encoded(BlakeTwo256::hash);
-        buf.as_ref().to_vec()
+        buf.as_ref()
+            .to_vec()
+            .try_into()
+            .expect("Runtime uses a reasonable hash size. Hence sizeof(T::Hash) <= 128; qed")
     };
 
     ContractInfo {

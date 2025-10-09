@@ -25,16 +25,18 @@ pub enum BackendError {
     MissingTotalIssuance,
     #[error("Could not find chain id in the state")]
     MissingChainId,
-    #[error("Unable to decode total issuance")]
+    #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
-    #[error("Unable to decode chain id")]
+    #[error("Unable to decode chain id {0}")]
     DecodeChainId(codec::Error),
-    #[error("Unable to decode balance")]
+    #[error("Unable to decode balance {0}")]
     DecodeBalance(codec::Error),
-    #[error("Unable to decode revive account info")]
+    #[error("Unable to decode revive account info {0}")]
     DecodeReviveAccountInfo(codec::Error),
-    #[error("Unable to decode system account info")]
+    #[error("Unable to decode system account info {0}")]
     DecodeSystemAccountInfo(codec::Error),
+    #[error("Unable to decode revive code info {0}")]
+    DecodeCodeInfo(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -95,6 +97,14 @@ impl BackendWithOverlay {
                 ReviveAccountInfo::decode(&mut &value[..])
                     .map_err(BackendError::DecodeReviveAccountInfo)
             })
+            .transpose()
+    }
+
+    pub fn read_code_info(&self, hash: Hash, code_hash: H256) -> Result<Option<CodeInfo>> {
+        let key = well_known_keys::code_info(code_hash);
+
+        self.read_top_state(hash, key)?
+            .map(|value| CodeInfo::decode(&mut &value[..]).map_err(BackendError::DecodeCodeInfo))
             .transpose()
     }
 
@@ -239,7 +249,7 @@ impl StorageOverrides {
 
         changeset
             .top
-            .insert(well_known_keys::pristine_code(code_hash), code.map(|code| code.encode()));
+            .insert(well_known_keys::pristine_code(code_hash), code.map(|code| code.0.encode()));
 
         self.add(latest_block, changeset);
     }
