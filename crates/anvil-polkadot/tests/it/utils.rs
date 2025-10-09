@@ -217,6 +217,9 @@ impl TestNode {
         n: u32,
         timeout: std::time::Duration,
     ) -> eyre::Result<()> {
+        if n <= self.best_block_number().await {
+            return Ok(());
+        }
         tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
             .await
             .map_err(|e| e.into())
@@ -257,26 +260,22 @@ impl TestNode {
         .unwrap()
     }
 
-    pub async fn deploy_contract(&mut self, deployer: H160, block_number: u32) -> (Vec<u8>, H256) {
-        // Read the precompiled cotnract.
-        let contract_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/it/contracts/SimpleStorage.sol:SimpleStorage.pvm");
-        let bytecode = std::fs::read(&contract_path).unwrap();
+    pub async fn deploy_contract(
+        &mut self,
+        code: &[u8],
+        deployer: H160,
+        block_number: Option<u32>,
+    ) -> H256 {
         let mut deploy_contract_tx = TransactionRequest::default()
             .from(Address::from(ReviveAddress::new(deployer)))
-            .input(TransactionInput::new(Bytes::from(bytecode.clone())));
+            .input(TransactionInput::new(Bytes::copy_from_slice(code)));
         deploy_contract_tx.set_input_and_data();
-        let tx_hash = self
-            .send_transaction(
-                deploy_contract_tx,
-                Some(BlockWaitTimeout {
-                    block_number,
-                    timeout: std::time::Duration::from_millis(1000),
-                }),
-            )
-            .await
-            .unwrap();
-        (bytecode, tx_hash)
+        let block_wait = block_number.map(|bn| BlockWaitTimeout {
+            block_number: bn,
+            timeout: std::time::Duration::from_millis(1000),
+        });
+        let tx_hash = self.send_transaction(deploy_contract_tx, block_wait).await.unwrap();
+        tx_hash
     }
 
     pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {
@@ -327,6 +326,7 @@ where
 }
 
 #[allow(unused)]
+#[derive(Clone)]
 pub struct ContractCode {
     pub init: Vec<u8>,
     pub runtime: Option<Vec<u8>>,

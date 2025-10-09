@@ -1,9 +1,13 @@
 use std::time::Duration;
 
-use crate::utils::{BlockWaitTimeout, TestNode, transaction_in_block, unwrap_response};
+use crate::{
+    abi::SimpleStorage::{self},
+    utils::{BlockWaitTimeout, TestNode, get_contract_code, transaction_in_block, unwrap_response},
+};
 use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
+use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::{AlloyU256, ReviveAddress},
@@ -12,7 +16,7 @@ use anvil_polkadot::{
 use anvil_rpc::error::ErrorCode;
 use polkadot_sdk::pallet_revive::{
     self,
-    evm::{Account, Block, Bytes as EvmBytes, FeeHistoryResult, FilterResults, TransactionInfo},
+    evm::{Account, Block, FeeHistoryResult, FilterResults, TransactionInfo},
 };
 use subxt::utils::H160;
 
@@ -423,7 +427,8 @@ async fn test_get_code_at() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     let alith = Account::from(subxt_signer::eth::dev::alith());
-    let (bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
+    let contract_code = get_contract_code("SimpleStorage");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
@@ -442,7 +447,7 @@ async fn test_get_code_at() {
     assert!(!code.is_empty(), "Contract code should not be empty");
     assert_eq!(
         code,
-        Bytes::from(bytecode),
+        Bytes::from(contract_code.runtime.unwrap()),
         "Retrieved code should exactly match deployed bytecode"
     );
 
@@ -623,26 +628,22 @@ async fn test_get_storage() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
     let alith = Account::from(subxt_signer::eth::dev::alith());
 
-    // Deploy the cotnract.
-    let (_bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
+    let contract_code = get_contract_code("SimpleStorage");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
     // Check the default value for slot 0.
     let stored_value = node.get_storage_at(U256::from(0), contract_address).await;
-    assert_eq!(stored_value, 511);
+    assert_eq!(stored_value, 0);
 
     // Set a new value for the slot 0.
-    let mut call_data = vec![0x55, 0x24, 0x10, 0x77]; // setValue selector
-    let value = 42u64;
-    let mut value_bytes = [0u8; 32];
-    value_bytes[24..32].copy_from_slice(&value.to_be_bytes());
-    call_data.extend_from_slice(&value_bytes);
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(511),)).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
-        .input(TransactionInput::new(Bytes::from(call_data)));
+        .input(TransactionInput::both(set_value_data.into()));
 
     let _call_tx_hash = node
         .send_transaction(
@@ -658,7 +659,7 @@ async fn test_get_storage() {
 
     // Check that the value was updated
     let stored_value = node.get_storage_at(U256::from(0), contract_address).await;
-    assert_eq!(stored_value, 42);
+    assert_eq!(stored_value, 511);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -756,46 +757,44 @@ async fn test_get_logs() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
-    let alith = Account::from(subxt_signer::eth::dev::alith());
 
-    let (_bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let contract_code = get_contract_code("SimpleStorage");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
-    // Set a new value for the slot 0.
-    let mut call_data = vec![0x55, 0x24, 0x10, 0x77]; // setValue selector
-    let value = 42u64;
-    let mut value_bytes = [0u8; 32];
-    value_bytes[24..32].copy_from_slice(&value.to_be_bytes());
-    call_data.extend_from_slice(&value_bytes);
-    let call_tx = TransactionRequest::default()
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .to(Address::from(ReviveAddress::new(contract_address)))
-        .input(TransactionInput::new(Bytes::from(call_data)));
+    for i in 0..2 {
+        let set_value_data = SimpleStorage::setValueCall::new((U256::from(511 + i),)).abi_encode();
+        let call_tx = TransactionRequest::default()
+            .from(Address::from(ReviveAddress::new(alith.address())))
+            .to(Address::from(ReviveAddress::new(contract_address)))
+            .input(TransactionInput::both(set_value_data.into()))
+            .nonce(i + 1);
 
-    let _call_tx_hash = node
-        .send_transaction(
-            call_tx,
-            Some(BlockWaitTimeout {
-                block_number: 2,
-                timeout: std::time::Duration::from_millis(1000),
-            }),
-        )
-        .await
-        .unwrap();
+        let _call_tx_hash = node.send_transaction(call_tx, None).await.unwrap();
+    }
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
     let filter = alloy_rpc_types::Filter::new()
         .address(Address::from(ReviveAddress::new(contract_address)))
         .from_block(0)
         .to_block(2);
-    let logs = unwrap_response::<FilterResults>(
+    let logs = match unwrap_response::<FilterResults>(
         node.eth_rpc(EthRequest::EthGetLogs(filter)).await.unwrap(),
     )
-    .unwrap();
-    println!("{:#?}", logs);
+    .unwrap() {
+        FilterResults::Logs(entries) => entries,
+        _ => panic!("This should be a vec of logs."),
+    };
+    assert_eq!(logs.len(), 3);
+    assert_eq!(logs[1].block_number, pallet_revive::U256::from(2));
+    assert_eq!(logs[2].block_number, pallet_revive::U256::from(2));
+    assert_eq!(logs[0].transaction_hash, tx_hash);
+    assert_eq!(logs[2]. transaction_index, pallet_revive::U256::from(2));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -806,7 +805,8 @@ async fn test_call() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
     let alith = Account::from(subxt_signer::eth::dev::alith());
 
-    let (_bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
+    let contract_code = get_contract_code("SimpleStorage");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
     tokio::time::sleep(Duration::from_millis(500)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
@@ -816,12 +816,12 @@ async fn test_call() {
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
         .input(TransactionInput::new(Bytes::from(call_data)));
-    let res: String = unwrap_response(
+    let res: Bytes = unwrap_response(
         node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
             .await
             .unwrap(),
     )
     .unwrap();
-    let dec = U256::from_str_radix(res.strip_prefix("0x").unwrap_or(&res), 16).unwrap();
-    assert_eq!(dec, U256::from(511));
+    let value = SimpleStorage::getValueCall::abi_decode_returns(&res.0).unwrap();
+    assert_eq!(U256::from(0), value);
 }
