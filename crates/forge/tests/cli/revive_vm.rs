@@ -404,3 +404,65 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 
 "#]]);
 });
+
+forgetest!(vm_etch, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+    prj.add_source(
+        "Counter.sol",
+        r#"
+  // SPDX-License-Identifier: UNLICENSED
+  pragma solidity ^0.8.13;
+
+  contract Counter {
+      uint256 public number;
+
+      constructor (uint256 number_) {
+        number = number_;
+      }
+  }
+  "#,
+    )
+    .unwrap();
+    prj.add_source(
+        "Etch.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {console} from "./console.sol";
+import {Counter} from "./Counter.sol";
+
+contract Etch is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function test_Etch() public {
+        vm.pvm(true);
+        Counter counter = new Counter(7);
+        bytes memory code = address(counter).code;
+        address targetAddr = address(0x1234567);
+        vm.etch(targetAddr, code);
+        console.log(address(targetAddr).code);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
+    res.stderr_eq(str![""]).stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/Etch.t.sol:Etch
+[PASS] test_Etch(uint256) (runs: 256, [AVG_GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
