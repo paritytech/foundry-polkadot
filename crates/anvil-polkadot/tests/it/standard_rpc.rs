@@ -423,7 +423,7 @@ async fn test_get_code_at() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     let alith = Account::from(subxt_signer::eth::dev::alith());
-    let (bytecode, tx_hash) = node.deploy_contract("dummy", alith.address(), 1).await;
+    let (bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
@@ -617,11 +617,6 @@ async fn test_get_transaction_by_hash() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_get_storage() {
-    // Read the precompiled cotnract.
-    let contract_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/it/contracts/SimpleStorage.sol:SimpleStorage.pvm");
-    let bytecode = std::fs::read(&contract_path).unwrap();
-
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
@@ -629,21 +624,7 @@ async fn test_get_storage() {
     let alith = Account::from(subxt_signer::eth::dev::alith());
 
     // Deploy the cotnract.
-    let mut deploy_tx = TransactionRequest::default()
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .input(TransactionInput::new(Bytes::from(bytecode)));
-    deploy_tx.set_input_and_data();
-
-    let tx_hash = node
-        .send_transaction(
-            deploy_tx,
-            Some(BlockWaitTimeout {
-                block_number: 1,
-                timeout: std::time::Duration::from_millis(1000),
-            }),
-        )
-        .await
-        .unwrap();
+    let (_bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();

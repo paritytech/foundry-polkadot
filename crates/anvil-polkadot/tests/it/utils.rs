@@ -259,11 +259,13 @@ impl TestNode {
 
     pub async fn deploy_contract(
         &mut self,
-        fixture_name: &str,
         deployer: H160,
         block_number: u32,
     ) -> (Vec<u8>, H256) {
-        let (bytecode, _code_hash) = pallet_revive_fixtures::compile_module(fixture_name).unwrap();
+        // Read the precompiled cotnract.
+        let contract_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/it/contracts/SimpleStorage.sol:SimpleStorage.pvm");
+        let bytecode = std::fs::read(&contract_path).unwrap();
         let mut deploy_contract_tx = TransactionRequest::default()
             .from(Address::from(ReviveAddress::new(deployer)))
             .input(TransactionInput::new(Bytes::from(bytecode.clone())));
