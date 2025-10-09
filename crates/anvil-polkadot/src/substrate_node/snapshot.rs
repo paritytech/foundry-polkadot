@@ -59,17 +59,17 @@ where
     }
 
     /// Revert the chain to the block number represented by the snapshot `id`.
-    pub fn revert(&mut self, snapshot_id: U256) -> Result<bool> {
+    pub fn revert(&mut self, snapshot_id: U256) -> Result<u64> {
         // Remove the snapshot when reverting. We do not want to keep it around
         // since reverting to an existing snapshot could mean going back to future,
         // which is not supported.
         let maybe_snapshot = self.snapshots.remove(&snapshot_id);
-        let Some(snap) = maybe_snapshot else { return Ok(false) };
+        let Some(snap) = maybe_snapshot else { return Ok(0) };
 
         let current_best_number: u64 = self.client.info().best_number.into();
         let number_of_blocks_to_revert = current_best_number - snap.best_number;
 
-        self.backend.revert(
+        let (reverted, _) = self.backend.revert(
             number_of_blocks_to_revert.try_into().expect("to not surpass u32 bounds"),
             true,
         )?;
@@ -78,7 +78,7 @@ where
             k < snapshot_id || snap_to_remove.best_number >= snap.best_number
         });
 
-        Ok(true)
+        Ok(reverted.into())
     }
 
     pub fn rollback(&self) -> Result<bool> {

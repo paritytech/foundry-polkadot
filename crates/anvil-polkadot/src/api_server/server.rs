@@ -25,7 +25,7 @@ use anvil_rpc::response::ResponseResult;
 use futures::{StreamExt, channel::mpsc};
 use pallet_revive_eth_rpc::{
     BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
-    client::{Client as EthRpcClient, ClientError, SubscriptionType, SubstrateBlock},
+    client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
 };
 use polkadot_sdk::{
@@ -38,7 +38,6 @@ use std::{sync::Arc, time::Duration};
 use subxt::{
     OnlineClient,
     backend::{legacy::LegacyRpcMethods, rpc::RpcClient},
-    client::OnlineClientT,
     config::substrate::H256,
     utils::H160,
 };
@@ -454,20 +453,21 @@ impl ApiServer {
         Ok(self.snapshot_manager.snapshot())
     }
 
-    pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
+    pub(crate) async fn revert(&mut self, id: U256) -> Result<u64> {
         node_info!("evm_revert");
         let block_number = self.snapshot_manager.block_number_for(id);
-        let res =
+        let reverted =
             self.snapshot_manager.revert(id).map_err(|err| Error::SnapshotRpc(err.to_string()))?;
-        if res && let Some(number) = block_number {
+        if reverted > 0
+            && let Some(number) = block_number
+        {
             let block_reverted_to =
                 self.block_provider.block_by_number(number.try_into().unwrap()).await.unwrap();
             if let Ok(block) = Arc::try_unwrap(block_reverted_to.unwrap()) {
-                println!("---> updated block provider to block number: {}", block.number());
                 self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
             }
         }
-        Ok(res)
+        Ok(reverted)
     }
 
     // Helpers

@@ -41,10 +41,11 @@ async fn test_evm_revert() {
     // Revert to the second snapshot and assert best block number is 10.
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
     assert_eq!(snapshot_id, U256::from(2));
-    let success =
-        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+    let reverted =
+        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
-    assert!(success);
+    assert_eq!(reverted, 5);
+    // tokio::time::sleep(std::time::Duration::from_secs(600)).await;
     assert_eq!(node.best_block_number().await, 10);
 
     // Check mining works fine after reverting.
@@ -63,30 +64,30 @@ async fn test_evm_revert() {
 
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
     assert_eq!(snapshot_id, U256::from(3));
-    let success =
-        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+    let reverted =
+        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
-    assert!(success);
+    assert_eq!(reverted, 0);
     assert_eq!(node.best_block_number().await, 20);
 
     // Test the case of revert id -> revert same id.
-    let success =
-        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
+    let reverted =
+        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
             .unwrap();
-    assert!(success);
+    assert_eq!(reverted, 15);
     assert_eq!(node.best_block_number().await, 5);
 
-    let success =
-        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
+    let reverted =
+        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
             .unwrap();
-    assert!(!success);
+    assert_eq!(reverted, 0);
 
     // Test reverting down to genesis.
     // The snapshot at genesis block is automatically created
     // at node startup.
-    let success =
-        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ZERO)).await.unwrap())
+    let reverted =
+        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(U256::ZERO)).await.unwrap())
             .unwrap();
-    assert!(success);
+    assert_eq!(reverted, 5);
     assert_eq!(node.best_block_number().await, 0);
 }
