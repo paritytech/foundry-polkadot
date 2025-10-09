@@ -786,7 +786,8 @@ async fn test_get_logs() {
     let logs = match unwrap_response::<FilterResults>(
         node.eth_rpc(EthRequest::EthGetLogs(filter)).await.unwrap(),
     )
-    .unwrap() {
+    .unwrap()
+    {
         FilterResults::Logs(entries) => entries,
         _ => panic!("This should be a vec of logs."),
     };
@@ -794,7 +795,7 @@ async fn test_get_logs() {
     assert_eq!(logs[1].block_number, pallet_revive::U256::from(2));
     assert_eq!(logs[2].block_number, pallet_revive::U256::from(2));
     assert_eq!(logs[0].transaction_hash, tx_hash);
-    assert_eq!(logs[2]. transaction_index, pallet_revive::U256::from(2));
+    assert_eq!(logs[2].transaction_index, pallet_revive::U256::from(2));
 }
 
 #[tokio::test(flavor = "multi_thread")]

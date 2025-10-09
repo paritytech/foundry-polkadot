@@ -108,9 +108,7 @@ impl ApiServer {
             EthRequest::GetAutoMine(_) => self.get_auto_mine().to_rpc_result(),
             EthRequest::SetAutomine(enabled) => self.set_auto_mine(enabled).to_rpc_result(),
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
-            //EthRequest::EvmMineDetailed(mine) => {
-            //    self.evm_mine_detailed(mine.and_then(|p| p.params)).await.to_rpc_result()
-            //}
+            EthRequest::EvmMineDetailed(mine) => self.evm_mine_detailed(mine).await.to_rpc_result(),
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
@@ -296,8 +294,23 @@ impl ApiServer {
         Ok("0x0".to_string())
     }
 
-    async fn evm_mine_detailed(&self, mine: Option<MineParams<Option<MineOptions>>>) {
+    async fn evm_mine_detailed(
+        &self,
+        mine: Option<MineParams<Option<MineOptions>>>,
+    ) -> Result<Vec<Block>> {
         node_info!("evm_mine_detailed");
+        let mined_blocks = self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+        let mut blocks = Vec::with_capacity(mined_blocks as usize);
+        let last_block = self.client.info().best_number as u64;
+        let starting = last_block - mined_blocks + 1;
+        for block_number in starting..=last_block {
+            if let Some(block) =
+                self.get_block_by_number(BlockNumberOrTag::Number(block_number), true).await?
+            {
+                blocks.push(block);
+            }
+        }
+        Ok(blocks)
     }
 
     // TimeMachine RPCs

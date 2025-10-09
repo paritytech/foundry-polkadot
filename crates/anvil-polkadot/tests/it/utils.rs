@@ -274,8 +274,7 @@ impl TestNode {
             block_number: bn,
             timeout: std::time::Duration::from_millis(1000),
         });
-        let tx_hash = self.send_transaction(deploy_contract_tx, block_wait).await.unwrap();
-        tx_hash
+        self.send_transaction(deploy_contract_tx, block_wait).await.unwrap()
     }
 
     pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {
