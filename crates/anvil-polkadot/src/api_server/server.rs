@@ -28,13 +28,9 @@ use polkadot_sdk::{
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
         subxt_client::{self, SrcChainConfig},
     },
-    sc_client_api::{HeaderBackend, StorageProvider},
-    sc_executor::WasmExecutor,
-    sc_runtime_utilities::fetch_latest_metadata_from_code_blob,
-    sp_core::{self, keccak_256, storage::StorageKey},
-    sp_io::SubstrateHostFunctions,
-    sp_runtime::Cow,
-    sp_storage::well_known_keys::CODE as CODE_KEY,
+    sc_client_api::HeaderBackend,
+    sp_api::{Metadata, ProvideRuntimeApi},
+    sp_core::{self, keccak_256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
@@ -480,29 +476,18 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
             "Runtime version not found for given genesis hash".to_string(),
         ));
     };
+
     let subxt_runtime_version = SubxtRuntimeVersion {
         spec_version: runtime_version.spec_version,
         transaction_version: runtime_version.transaction_version,
     };
 
-    let code_bytes = substrate_service
+    let opaque_metadata = substrate_service
         .client
-        .storage(genesis_hash, &StorageKey(CODE_KEY.to_vec()))
-        .map_err(|_| {
-            Error::InvalidParams(
-                "Failed to access runtime code storage for given genesis hash".to_string(),
-            )
-        })?
-        .ok_or_else(|| {
-            Error::InvalidParams(
-                "Runtime code not found in storage for given genesis hash".to_string(),
-            )
-        })?;
-    let opaque_metadata = fetch_latest_metadata_from_code_blob(
-        &WasmExecutor::<SubstrateHostFunctions>::builder().build(),
-        Cow::Borrowed(code_bytes.0.as_slice()),
-    )
-    .map_err(|_| Error::InvalidParams("Unable to fetch metadata".to_string()))?;
+        .runtime_api()
+        .metadata_at_version(genesis_hash, 16)
+        .unwrap()
+        .unwrap();
     let subxt_metadata = SubxtMetadata::decode(&mut (*opaque_metadata).as_slice())
         .map_err(|_| Error::InvalidParams("Unable to decode metadata".to_string()))?;
 
