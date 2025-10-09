@@ -4,12 +4,16 @@ contract SimpleStorage {
     // Storage slot 0
     uint256 public storedValue;
 
+    event ValueChanged(address indexed changer, uint256 oldValue, uint256 newValue);
     constructor() {
         storedValue = 511;
+        emit ValueChanged(address(0), 0, 511);
     }
 
     function setValue(uint256 _value) public {
+        uint256 oldValue = storedValue;
         storedValue = _value;
+        emit ValueChanged(msg.sender, oldValue, _value);
     }
 
     function getValue() public view returns (uint256) {

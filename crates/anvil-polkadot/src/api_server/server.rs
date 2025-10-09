@@ -108,6 +108,9 @@ impl ApiServer {
             EthRequest::GetAutoMine(_) => self.get_auto_mine().to_rpc_result(),
             EthRequest::SetAutomine(enabled) => self.set_auto_mine(enabled).to_rpc_result(),
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
+            //EthRequest::EvmMineDetailed(mine) => {
+            //    self.evm_mine_detailed(mine.and_then(|p| p.params)).await.to_rpc_result()
+            //}
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
@@ -291,6 +294,10 @@ impl ApiServer {
 
         self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
         Ok("0x0".to_string())
+    }
+
+    async fn evm_mine_detailed(&self, mine: Option<MineParams<Option<MineOptions>>>) {
+        node_info!("evm_mine_detailed");
     }
 
     // TimeMachine RPCs

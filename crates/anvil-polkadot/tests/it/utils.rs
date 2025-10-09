@@ -257,11 +257,7 @@ impl TestNode {
         .unwrap()
     }
 
-    pub async fn deploy_contract(
-        &mut self,
-        deployer: H160,
-        block_number: u32,
-    ) -> (Vec<u8>, H256) {
+    pub async fn deploy_contract(&mut self, deployer: H160, block_number: u32) -> (Vec<u8>, H256) {
         // Read the precompiled cotnract.
         let contract_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/it/contracts/SimpleStorage.sol:SimpleStorage.pvm");

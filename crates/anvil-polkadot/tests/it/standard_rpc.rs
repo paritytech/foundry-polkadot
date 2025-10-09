@@ -12,7 +12,7 @@ use anvil_polkadot::{
 use anvil_rpc::error::ErrorCode;
 use polkadot_sdk::pallet_revive::{
     self,
-    evm::{Account, Block, FeeHistoryResult, TransactionInfo},
+    evm::{Account, Block, Bytes as EvmBytes, FeeHistoryResult, FilterResults, TransactionInfo},
 };
 use subxt::utils::H160;
 
@@ -752,7 +752,51 @@ async fn test_get_accounts() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_get_logs() {}
+async fn test_get_logs() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+
+    let (_bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    let contract_address = receipt.contract_address.unwrap();
+
+    // Set a new value for the slot 0.
+    let mut call_data = vec![0x55, 0x24, 0x10, 0x77]; // setValue selector
+    let value = 42u64;
+    let mut value_bytes = [0u8; 32];
+    value_bytes[24..32].copy_from_slice(&value.to_be_bytes());
+    call_data.extend_from_slice(&value_bytes);
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::new(Bytes::from(call_data)));
+
+    let _call_tx_hash = node
+        .send_transaction(
+            call_tx,
+            Some(BlockWaitTimeout {
+                block_number: 2,
+                timeout: std::time::Duration::from_millis(1000),
+            }),
+        )
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+
+    let filter = alloy_rpc_types::Filter::new()
+        .address(Address::from(ReviveAddress::new(contract_address)))
+        .from_block(0)
+        .to_block(2);
+    let logs = unwrap_response::<FilterResults>(
+        node.eth_rpc(EthRequest::EthGetLogs(filter)).await.unwrap(),
+    )
+    .unwrap();
+    println!("{:#?}", logs);
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_call() {
@@ -760,4 +804,24 @@ async fn test_call() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+
+    let (_bytecode, tx_hash) = node.deploy_contract(alith.address(), 1).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    let contract_address = receipt.contract_address.unwrap();
+
+    let call_data = vec![0x20, 0x96, 0x52, 0x55]; // getValue selector
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::new(Bytes::from(call_data)));
+    let res: String = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let dec = U256::from_str_radix(res.strip_prefix("0x").unwrap_or(&res), 16).unwrap();
+    assert_eq!(dec, U256::from(511));
 }

@@ -17,9 +17,9 @@ pub struct AlloyU256(alloy_primitives::U256);
 
 impl From<polkadot_sdk::sp_core::U256> for AlloyU256 {
     fn from(value: polkadot_sdk::sp_core::U256) -> Self {
-        unsafe {
-            Self(std::mem::transmute(value))
-        }
+        let mut bytes = [0u8; 32];
+        value.write_as_big_endian(&mut bytes);
+        Self(alloy_primitives::U256::from_be_bytes(bytes))
     }
 }
 
