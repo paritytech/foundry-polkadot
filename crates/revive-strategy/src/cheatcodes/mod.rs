@@ -473,6 +473,7 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                     &account_id,
                     balance_native.into_rounded_balance().saturating_add(min_balance),
                 );
+                // END OF THE BLOCK TO BE REMOVED
 
                 let current_nonce = System::account_nonce(&account_id);
 
@@ -487,96 +488,44 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                     System::inc_account_nonce(&account_id);
                 }
 
+                // TODO handle immutables
                 // Migrate bytecode for deployed contracts (skip test contract)
                 if test_contract != Some(address)
                     && let Some(bytecode) = acc.data.info.code.as_ref() {
-                        let account_h160 = H160::from_slice(address.as_slice());
 
-                        tracing::debug!(
-                            address = ?address,
-                            bytecode_len = bytecode.len(),
-                            "attempting bytecode migration"
-                        );
+                    let account_h160 = H160::from_slice(address.as_slice());
 
-                        // Check if contract already exists in PVM
-                        if AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
-                            tracing::debug!(
-                                address = ?address,
-                                "contract already exists in PVM, skipping bytecode migration"
-                            );
-                        } else if let Some((name, contract)) = ctx
-                            .dual_compiled_contracts
+                    // Skip if contract already exists in PVM
+                    if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
+                        if let Some(pvm_bytecode) = ctx.dual_compiled_contracts
                             .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
+                            .and_then(|(_, contract)| {
+                                contract.resolc_bytecode.as_bytes()
+                            })
                         {
-                            tracing::info!(
-                                address = ?address,
-                                name = ?name.name,
-                                "found dual-compiled contract for bytecode migration"
-                            );
+                            let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
+                            let code_hash = Pallet::<Runtime>::bare_upload_code(
+                                origin,
+                                pvm_bytecode.to_vec(),
+                                BalanceOf::<Runtime>::MAX,
+                            )
+                            .ok()
+                            .map(|upload_result| upload_result.code_hash)
+                            .expect("Failed to upload PVM bytecode");
 
-                            if let Some(pvm_bytecode) = contract.resolc_bytecode.as_bytes() {
-                                // Use a signed origin (similar to create/call operations)
-                                // Using the pallet account as the uploader
-                                let uploader_account_id = Pallet::<Runtime>::account_id();
-                                let origin = OriginFor::<Runtime>::signed(uploader_account_id);
+                            let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                .expect("Failed to create contract info");
 
-                                let storage_deposit_limit = BalanceOf::<Runtime>::max_value();
+                            AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
 
-                                // Upload the PVM bytecode using bare_upload_code
-                                // This properly handles both PristineCode and CodeInfoOf storage
-                                match Pallet::<Runtime>::bare_upload_code(
-                                    origin,
-                                    pvm_bytecode.to_vec(),
-                                    storage_deposit_limit,
-                                ) {
-                                    Ok(upload_result) => {
-                                        // Create contract info with the uploaded code hash
-                                        match ContractInfo::<Runtime>::new(
-                                            &account_h160,
-                                            nonce as u32,
-                                            upload_result.code_hash,
-                                        ) {
-                                            Ok(contract_info) => {
-                                                // Insert contract at the SAME address as EVM
-                                                AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
-
-                                                tracing::info!(
-                                                    address = ?address,
-                                                    code_hash = ?upload_result.code_hash,
-                                                    "successfully migrated bytecode to PVM at same address"
-                                                );
-                                            }
-                                            Err(e) => {
-                                                tracing::warn!(
-                                                    address = ?address,
-                                                    error = ?e,
-                                                    "failed to create contract info"
-                                                );
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            address = ?address,
-                                            error = ?e,
-                                            "failed to upload PVM bytecode"
-                                        );
-                                    }
-                                }
-                            } else {
-                                tracing::warn!(
-                                    address = ?address,
-                                    name = ?name.name,
-                                    "no resolc bytecode found for contract"
-                                );
-                            }
                         } else {
-                            tracing::debug!(
+                            tracing::info!(
                                 address = ?address,
                                 "no PVM equivalent found for EVM bytecode, skipping migration"
                             );
                         }
                     }
+                }
             }
         })
     });
@@ -619,20 +568,22 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                     if let Some((code_hash, bytecode)) = ctx
                         .dual_compiled_contracts
                         .find_by_resolc_bytecode_hash(hash)
-                        .map(|(_, contract)| {
-                            (
-                                contract.evm_bytecode_hash,
-                                Bytecode::new_raw_checked(
-                                    contract.evm_deployed_bytecode.as_bytes().unwrap().clone(),
+                        .and_then(|(_, contract)| {
+                            contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                                (
+                                    contract.evm_bytecode_hash,
+                                    Bytecode::new_raw(evm_bytecode.clone()),
                                 )
-                                .ok(),
-                            )
+                            })
                         })
                     {
                         account.info.code_hash = code_hash;
-                        account.info.code.clone_from(&bytecode);
+                        account.info.code = Some(bytecode);
                     } else {
-                        panic!("Bytecode has not been migrated to EVM.")
+                        tracing::info!(
+                            address = ?address,
+                            "no EVM equivalent found for PVM bytecode, skipping migration"
+                        );
                     }
                 }
             }
