@@ -11,31 +11,34 @@ use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, DealRecord, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
-    Vm::{dealCall, getNonce_0Call, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall, warpCall},
+    CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
+    Vm::{
+        dealCall, etchCall, getNonce_0Call, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall,
+        warpCall,
+    },
 };
 
 use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 
+use crate::{
+    cheatcodes::mock_handler::MockHandlerImpl, execute_with_externalities, trace,
+    tracing::apply_prestate_trace,
+};
+use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     frame_support::traits::{Currency, fungible::Mutate},
     pallet_balances,
     pallet_revive::{
-        self, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ExecConfig, Pallet,
+        self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ContractInfo,
+        ExecConfig, Executable, Pallet,
     },
     polkadot_runtime_common::Bounded,
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
     sp_weights::Weight,
 };
-
-use crate::{
-    cheatcodes::mock_handler::MockHandlerImpl, execute_with_externalities, trace,
-    tracing::apply_prestate_trace,
-};
-use alloy_eips::eip7702::SignedAuthorization;
 use revm::{
     bytecode::opcode as op,
     context::{CreateScheme, JournalTr},
@@ -157,6 +160,44 @@ fn set_block_number(new_height: U256, ecx: Ecx<'_, '_, '_>) {
     });
 }
 
+// Implements the `etch` cheatcode for PVM.
+fn etch_call(target: &Address, new_runtime_code: &Bytes, ecx: Ecx<'_, '_, '_>) -> Result {
+    let origin_address = H160::from_slice(ecx.tx.caller.as_slice());
+    let origin_account = AccountId::to_fallback_account_id(&origin_address);
+
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let contract_blob = Pallet::<Runtime>::try_upload_pvm_code(
+                origin_account.clone(),
+                new_runtime_code.to_vec(),
+                BalanceOf::<Runtime>::max_value(),
+                &ExecConfig::new_substrate_tx(),
+            )
+            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
+            .0;
+            let mut contract_info = if let Some(contract_info) =
+                AccountInfo::<Runtime>::load_contract(&H160::from_slice(target.as_slice()))
+            {
+                contract_info
+            } else {
+                ContractInfo::<Runtime>::new(
+                    &origin_address,
+                    System::account_nonce(origin_account),
+                    *contract_blob.code_hash(),
+                )
+                .map_err(|_| <&str as Into<Error>>::into("Could not create contract info"))?
+            };
+            contract_info.code_hash = *contract_blob.code_hash();
+            AccountInfo::<Runtime>::insert_contract(
+                &H160::from_slice(target.as_slice()),
+                contract_info,
+            );
+            Ok::<(), Error>(())
+        })
+    })?;
+    Ok(Default::default())
+}
+
 fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
     // Set timestamp in EVM context.
     ecx.block.timestamp = new_timestamp;
@@ -250,6 +291,12 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 set_timestamp(newTimestamp, ccx.ecx);
 
                 Ok(Default::default())
+            }
+            t if using_pvm && is::<etchCall>(t) => {
+                let &etchCall { ref target, ref newRuntimeBytecode } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+                etch_call(target, newRuntimeBytecode, ccx.ecx)?;
+                cheatcode.dyn_apply(ccx, executor)
             }
             // Not custom, just invoke the default behavior
             _ => cheatcode.dyn_apply(ccx, executor),

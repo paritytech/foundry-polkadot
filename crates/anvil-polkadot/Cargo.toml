@@ -20,7 +20,7 @@ path = "bin/main.rs"
 [dependencies]
 # foundry internal
 substrate-runtime = { path = "substrate-runtime" }
-polkadot-sdk = {git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state", default-features = false, features = [
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/etch_dependencies", default-features = false, features = [
     "sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
