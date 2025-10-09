@@ -60,8 +60,6 @@ impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
 }
 
 /// Controls the automatic migration to PVM mode during test execution.
-///
-/// This follows the same pattern as foundry-zksync's startup migration state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PvmStartupMigration {
     /// Defer database migration to a later execution point.
@@ -230,10 +228,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let pvmCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
-
-                // User is taking manual control - disable automatic migration
-                ctx.pvm_startup_migration.done();
-
                 if *enabled {
                     select_pvm(ctx, ccx.ecx);
                 } else {
@@ -377,12 +371,11 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     ) {
         let ctx = get_context_ref_mut(ctx);
 
-        // Only migrate once: when state is Allow and not already in PVM
         if ctx.pvm_startup_migration.is_allowed() && !ctx.using_pvm {
-            tracing::info!("automatic startup PVM migration initiated");
+            tracing::info!("startup PVM migration initiated");
             select_pvm(ctx, ecx);
             ctx.pvm_startup_migration.done();
-            tracing::debug!("startup PVM migration completed");
+            tracing::info!("startup PVM migration completed");
         }
     }
 
@@ -606,9 +599,6 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
 
             data.block.number = U256::from(block_number);
             data.block.timestamp = U256::from(timestamp / 1000);
-
-            tracing::info!("migrated timestamp: {} -> {}", timestamp, timestamp / 1000);
-            tracing::info!("data.block.timestamp set to: {}", data.block.timestamp);
 
             let test_contract = data.journaled_state.database.get_test_contract_address();
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();

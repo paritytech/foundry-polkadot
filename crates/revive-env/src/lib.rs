@@ -57,11 +57,14 @@ impl ExtBuilder {
         ext.execute_with(|| {
             System::set_block_number(0);
 
-            // Set a large balance for pallet account to handle storage deposits during contract migration
-            // Using a reasonable large value to avoid overflow when minting
+            // Set a large balance for pallet account to handle storage deposits during contract
+            // migration Using a reasonable large value to avoid overflow when minting
             let pallet_account = pallet_revive::Pallet::<Runtime>::account_id();
             let large_balance: Balance = 1_000_000_000_000_000_000_000_000_000_u128;
-            let _ = <Runtime as pallet_revive::Config>::Currency::mint_into(&pallet_account, large_balance);
+            let _ = <Runtime as pallet_revive::Config>::Currency::mint_into(
+                &pallet_account,
+                large_balance,
+            );
         });
         ext
     }
