@@ -1,10 +1,12 @@
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::Address;
-use alloy_rpc_types::{AccessList, SignedAuthorization, TransactionRequest};
+use alloy_rpc_types::{
+    AccessList, FilterBlockOption, FilterSet, SignedAuthorization, Topic, TransactionRequest,
+};
 use polkadot_sdk::{
     pallet_revive::evm::{
-        self, AccessListEntry, AuthorizationListEntry, BlockNumberOrTagOrHash, BlockTag, Byte,
-        Bytes, GenericTransaction, InputOrData,
+        self, AccessListEntry, AddressOrAddresses, AuthorizationListEntry, BlockNumberOrTagOrHash,
+        BlockTag, Byte, Bytes, Filter, FilterTopic, FilterTopics, GenericTransaction, InputOrData,
     },
     sp_core,
 };
@@ -226,5 +228,87 @@ pub(crate) fn convert_to_generic_transaction(
             .map(|addr| ReviveAddress::from(addr).inner()),
         r#type: transaction_request.transaction_type.map(Byte::from),
         value: transaction_request.value.map(|value| SubstrateU256::from(value).inner()),
+    }
+}
+
+struct ReviveFilterTopics(FilterTopics);
+
+impl ReviveFilterTopics {
+    fn into_inner(self) -> FilterTopics {
+        self.0
+    }
+}
+
+impl From<[Topic; 4]> for ReviveFilterTopics {
+    fn from(value: [Topic; 4]) -> Self {
+        let topics: Vec<FilterTopic> = value
+            .into_iter()
+            .filter(|t| !t.is_empty())
+            .map(|topic| {
+                let hashes: Vec<H256> =
+                    topic.into_iter().map(|hash| H256::from_slice(hash.as_ref())).collect();
+                match hashes.len() {
+                    1 => FilterTopic::Single(hashes[0]),
+                    _ => FilterTopic::Multiple(hashes),
+                }
+            })
+            .collect();
+        Self(topics)
+    }
+}
+
+struct ReviveAddressOrAddresses(AddressOrAddresses);
+
+impl ReviveAddressOrAddresses {
+    fn into_inner(self) -> AddressOrAddresses {
+        self.0
+    }
+}
+
+impl From<FilterSet<Address>> for ReviveAddressOrAddresses {
+    fn from(value: FilterSet<Address>) -> Self {
+        let addresses: Vec<Address> = value.into_iter().collect();
+        let address_or_addresses = match addresses.len() {
+            0 => AddressOrAddresses::Address(Default::default()),
+            1 => AddressOrAddresses::Address(ReviveAddress::from(addresses[0]).inner()),
+            _ => AddressOrAddresses::Addresses(
+                addresses.into_iter().map(|address| ReviveAddress::from(address).inner()).collect(),
+            ),
+        };
+        Self(address_or_addresses)
+    }
+}
+
+pub struct ReviveFilter(Filter);
+
+impl ReviveFilter {
+    pub fn into_inner(self) -> Filter {
+        self.0
+    }
+}
+
+impl From<alloy_rpc_types::Filter> for ReviveFilter {
+    fn from(value: alloy_rpc_types::Filter) -> Self {
+        let address = if value.address.is_empty() {
+            None
+        } else {
+            Some(ReviveAddressOrAddresses::from(value.address).into_inner())
+        };
+        let topics = if value.topics.iter().all(|t| t.is_empty()) {
+            None
+        } else {
+            Some(ReviveFilterTopics::from(value.topics).into_inner())
+        };
+        let (from_block, to_block, block_hash) = match value.block_option {
+            FilterBlockOption::Range { from_block, to_block } => (
+                from_block.map(|fb| ReviveBlockNumberOrTag::from(fb).inner()),
+                to_block.map(|tb| ReviveBlockNumberOrTag::from(tb).inner()),
+                None,
+            ),
+            FilterBlockOption::AtBlockHash(hash) => {
+                (None, None, Some(H256::from_slice(hash.as_ref())))
+            }
+        };
+        Self(Filter { address, from_block, to_block, block_hash, topics })
     }
 }

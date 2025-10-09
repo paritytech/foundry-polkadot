@@ -32,22 +32,18 @@ async fn test_invalid_mining() {
         .unwrap(),
         None
     );
-    assert!(matches!(
+    let err = unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(u128::MAX)), None)).await.unwrap(),
-        ResponseResult::Error(RpcError {
-            code: ErrorCode::InvalidParams,
-            message,
-            data: None
-        }) if message == "The number of blocks is too large"
-    ));
-    assert!(matches!(
+    )
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+    assert_eq!(err.message, "The number of blocks is too large");
+    let err = unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(None, Some(U256::from(u128::MAX)))).await.unwrap(),
-        ResponseResult::Error(RpcError {
-            code: ErrorCode::InvalidParams,
-            message,
-            data: None
-        }) if message == "The interval between blocks is too large"
-    ));
+    )
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+    assert_eq!(err.message, "The interval between blocks is too large");
 }
 
 #[tokio::test(flavor = "multi_thread")]

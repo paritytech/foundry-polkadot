@@ -18,14 +18,15 @@ use crate::{
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
-use alloy_rpc_types::{TransactionRequest, anvil::MineOptions};
+use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use futures::{StreamExt, channel::mpsc};
 use polkadot_sdk::{
     pallet_revive::evm::{
-        Account, Block, Bytes, FeeHistoryResult, ReceiptInfo, TransactionInfo, TransactionSigned,
+        Account, Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
+        TransactionSigned,
     },
     pallet_revive_eth_rpc::{
         EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
@@ -37,11 +38,13 @@ use polkadot_sdk::{
     sp_core::{self, keccak_256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use subxt::{
     OnlineClient, backend::rpc::RpcClient, config::substrate::H256,
     ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
 };
+
+use super::revive_conversions::{ReviveBytes, ReviveFilter};
 
 pub const CLIENT_VERSION: &str = concat!("anvil/v", env!("CARGO_PKG_VERSION"));
 
@@ -158,7 +161,6 @@ impl ApiServer {
                 node_info!("eth_getBlockByNumber");
                 self.get_block_by_number(num, hydrated).await.to_rpc_result()
             }
-            //EthRequest::EthAccounts(_) => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
             EthRequest::EthBlockNumber(()) => {
                 node_info!("eth_blockNumber");
                 Ok(U256::from(self.client.info().best_number)).to_rpc_result()
@@ -205,15 +207,22 @@ impl ApiServer {
                 node_info!("eth_maxPriorityFeePerGas");
                 self.max_priority_fee_per_gas().await.to_rpc_result()
             }
-            //EthRequest::EthSendRawTransaction(tx) => {
-            //    self.send_raw_transaction(tx).await.to_rpc_result()
-            //}
-            //EthRequest::EthAccounts(_) => self.accounts().to_rpc_result(),
-            //EthRequest::EthGetLogs(filter) => Err::<(),
-            // _>(Error::RpcUnimplemented).to_rpc_result(), EthRequest::EthCall(call,
-            // block, state_override, block_overrides) => {    Err::<(),
-            // _>(Error::RpcUnimplemented).to_rpc_result()
-            //}
+            EthRequest::EthSendRawTransaction(tx) => {
+                node_info!("eth_sendRawTransaction");
+                self.send_raw_transaction(ReviveBytes::from(tx).inner()).await.to_rpc_result()
+            }
+            EthRequest::EthAccounts(_) => {
+                node_info!("eth_accounts");
+                self.accounts().to_rpc_result()
+            }
+            EthRequest::EthGetLogs(filter) => {
+                node_info!("eth_getLogs");
+                self.get_logs(filter).await.to_rpc_result()
+            }
+            EthRequest::EthCall(call, block, _state_override, _block_overrides) => {
+                node_info!("eth_call");
+                self.call(call, block).await.to_rpc_result()
+            }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -621,6 +630,39 @@ impl ApiServer {
     async fn max_priority_fee_per_gas(&self) -> Result<sp_core::U256> {
         let gas_price = self.gas_price().await?;
         Ok(Permill::from_percent(20).mul_ceil(gas_price))
+    }
+
+    pub fn accounts(&self) -> Result<Vec<H160>> {
+        // Spoiler this method will be modified extensively after implementing
+        // the wallet related RPCs.
+        node_info!("eth_accounts");
+        let mut unique = HashSet::new();
+        for acc in &self.wallet.accounts {
+            unique.insert(acc.address());
+        }
+        for acc in &self.impersonation_manager.impersonated_accounts {
+            unique.insert(*acc);
+        }
+        Ok(unique.into_iter().collect())
+    }
+
+    async fn call(
+        &self,
+        transaction_req: WithOtherFields<TransactionRequest>,
+        block: Option<BlockId>,
+    ) -> Result<Bytes> {
+        let transaction = convert_to_generic_transaction(transaction_req.clone().into_inner());
+
+        let hash =
+            self.eth_rpc_client.block_hash_for_tag(ReviveBlockId::from(block).inner()).await?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let dry_run = runtime_api.dry_run(transaction).await?;
+        Ok(dry_run.data.into())
+    }
+
+    async fn get_logs(&self, filter: Filter) -> Result<FilterResults> {
+        let logs = self.eth_rpc_client.logs(Some(ReviveFilter::from(filter).into_inner())).await?;
+        Ok(FilterResults::Logs(logs))
     }
 
     // Helpers

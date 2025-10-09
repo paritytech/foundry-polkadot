@@ -3,15 +3,13 @@ use std::time::Duration;
 use crate::utils::{BlockWaitTimeout, TestNode, transaction_in_block, unwrap_response};
 use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
+use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::{AlloyU256, ReviveAddress},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
-use anvil_rpc::{
-    error::{ErrorCode, RpcError},
-    response::ResponseResult,
-};
+use anvil_rpc::error::ErrorCode;
 use polkadot_sdk::pallet_revive::{
     self,
     evm::{Account, Block, FeeHistoryResult, TransactionInfo},
@@ -177,7 +175,34 @@ async fn test_send_to_uninitialized() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_estimate_gas() {
-    // How do we even test this?
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let transfer_amount = U256::from_str_radix("100000000000000000", 10).unwrap();
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(baltathar.address())));
+
+    let estimated_gas: pallet_revive::U256 = unwrap_response(
+        node.eth_rpc(EthRequest::EthEstimateGas(
+            WithOtherFields::new(transaction.clone()),
+            None,
+            None,
+            None,
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    let tx_hash = node.send_transaction(transaction, None).await.unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+
+    assert!(estimated_gas > receipt.gas_used);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -218,18 +243,17 @@ async fn test_get_block_by_number() {
     assert!(transaction_in_block(&block_by_number.transactions, tx_hash));
     // Check that GetBlockByNumber fails if the block number does not fit in u32
     // TODO: expand the error conversion for ReviveRpc type
-    assert!(matches!(
+    let err = unwrap_response::<Option<Block>>(
         node.eth_rpc(EthRequest::EthGetBlockByNumber(
             alloy_eips::BlockNumberOrTag::Number(u64::MAX),
-            true
+            true,
         ))
-        .await.unwrap(),
-        ResponseResult::Error(RpcError {
-            code: ErrorCode::InternalError,
-            message,
-            data: None
-        })if message == "Client error: conversion failed"
-    ));
+        .await
+        .unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InternalError);
+    assert_eq!(err.message, "Client error: conversion failed");
     // Assert that we can not find blocks that do not exist.
     assert_eq!(
         unwrap_response::<Option<Block>>(
@@ -273,18 +297,17 @@ async fn test_eth_get_transaction_count() {
     let alith = Account::from(subxt_signer::eth::dev::alith());
 
     // Get transaction count from a block that does not exist yet
-    assert!(matches!( node
-        .eth_rpc(EthRequest::EthGetTransactionCount(
+    let err = unwrap_response::<pallet_revive::U256>(
+        node.eth_rpc(EthRequest::EthGetTransactionCount(
             Address::from(ReviveAddress::new(alith.address())),
             Some(alloy_eips::BlockId::Number(alloy_eips::BlockNumberOrTag::Number(1))),
         ))
         .await
-        .unwrap(), ResponseResult::Error(RpcError {
-            code: ErrorCode::InternalError,
-            message,
-            data: None
-        }) if message == "Client error: hash not found"
-    ));
+        .unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InternalError);
+    assert_eq!(err.message, "Client error: hash not found");
 
     assert_eq!(
         unwrap_response::<U256>(
@@ -721,4 +744,39 @@ async fn test_max_fee_per_gas() {
         )
         .unwrap()
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_get_accounts() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    let dorothy = Account::from(subxt_signer::eth::dev::dorothy()).address();
+    let accounts =
+        unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
+            .unwrap();
+    assert_eq!(accounts.len(), 3);
+    node.eth_rpc(EthRequest::ImpersonateAccount(Address::from(ReviveAddress::new(accounts[0]))))
+        .await
+        .unwrap();
+    node.eth_rpc(EthRequest::ImpersonateAccount(Address::from(ReviveAddress::new(dorothy))))
+        .await
+        .unwrap();
+    let accounts_with_impersonation =
+        unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
+            .unwrap();
+    assert_eq!(accounts_with_impersonation.len(), 4);
+    assert!(accounts_with_impersonation.contains(&dorothy));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_get_logs() {}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_call() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 }
