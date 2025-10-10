@@ -3,7 +3,7 @@ use crate::{
     utils::{ContractCode, TestNode, get_contract_code, unwrap_response},
 };
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, Bytes, ruint::aliases::U256};
+use alloy_primitives::{Address, B256, Bytes, ruint::aliases::U256};
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
@@ -322,11 +322,9 @@ async fn test_set_code_existing_contract() {
         panic!("Missing runtime bytecode")
     };
 
-    let deploy_tx = TransactionRequest::default()
-        .from(alith)
-        .input(TransactionInput::both(Bytes::from(bytecode.clone())));
-
-    let tx_hash = node.send_transaction(deploy_tx, None).await.unwrap();
+    let tx_hash = node
+        .deploy_contract(&bytecode, Account::from(subxt_signer::eth::dev::alith()).address(), None)
+        .await;
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
@@ -607,4 +605,61 @@ async fn test_set_code_of_regular_account() {
     let value = SimpleStorage::getValueCall::abi_decode_returns(&value.0).unwrap();
 
     assert_eq!(value, U256::from(10));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_set_storage() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+
+    let contract_code = get_contract_code("SimpleStorage");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    let contract_address = receipt.contract_address.unwrap();
+
+    // Check the default value for slot 0.
+    let result = node
+        .eth_rpc(EthRequest::EthGetStorageAt(
+            Address::from(ReviveAddress::new(contract_address)),
+            U256::from(0),
+            None,
+        ))
+        .await
+        .unwrap();
+    let hex_string = unwrap_response::<String>(result).unwrap();
+    let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
+    let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
+    assert_eq!(stored_value, 0);
+
+    // Set a new value for the slot 0.
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetStorageAt(
+            Address::from(ReviveAddress::new(contract_address)),
+            U256::from(0),
+            B256::from(U256::from(511)),
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Check that the value was updated
+    let result = node
+        .eth_rpc(EthRequest::EthGetStorageAt(
+            Address::from(ReviveAddress::new(contract_address)),
+            U256::from(0),
+            None,
+        ))
+        .await
+        .unwrap();
+    let hex_string = unwrap_response::<String>(result).unwrap();
+    let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
+    let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
+    assert_eq!(stored_value, 511);
 }

@@ -1,6 +1,6 @@
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, U256, hex};
-use alloy_rpc_types::TransactionRequest;
+use alloy_primitives::{Address, B256, Bytes, U256, hex};
+use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
@@ -197,6 +197,22 @@ impl TestNode {
                 .unwrap(),
         )
         .unwrap()
+    }
+
+    pub async fn deploy_contract(
+        &mut self,
+        code: &[u8],
+        deployer: H160,
+        block_number: Option<u32>,
+    ) -> H256 {
+        let mut deploy_contract_tx = TransactionRequest::default()
+            .from(Address::from(ReviveAddress::new(deployer)))
+            .input(TransactionInput::both(Bytes::copy_from_slice(code)));
+        let block_wait = block_number.map(|bn| BlockWaitTimeout {
+            block_number: bn,
+            timeout: std::time::Duration::from_millis(1000),
+        });
+        self.send_transaction(deploy_contract_tx, block_wait).await.unwrap()
     }
 
     async fn wait_for_block_with_number(&self, n: u32) {
