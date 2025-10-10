@@ -31,12 +31,73 @@ use polkadot_sdk::{
 use std::sync::Arc;
 use substrate_runtime::OpaqueBlock as Block;
 
+pub fn spawn_rpc_server(
+    genesis_number: u64,
+    task_manager: &mut TaskManager,
+    client: Arc<FullClient>,
+    mut config: Configuration,
+    transaction_pool: Arc<TransactionPoolWrapper<Block, FullClient>>,
+    keystore: KeystorePtr,
+    backend: Arc<Backend>,
+) -> Result<RpcHandlers, ServiceError> {
+    let (system_rpc_tx, system_rpc_rx) = tracing_unbounded("mpsc_system_rpc", 10_000);
+
+    let rpc_id_provider = config.rpc.id_provider.take();
+
+    let gen_rpc_module = || {
+        gen_rpc_module(
+            genesis_number,
+            task_manager.spawn_handle(),
+            client.clone(),
+            transaction_pool.clone(),
+            keystore.clone(),
+            system_rpc_tx.clone(),
+            config.impl_name.clone(),
+            config.impl_version.clone(),
+            config.chain_spec.as_ref(),
+            &config.state_pruning,
+            config.blocks_pruning,
+            backend.clone(),
+        )
+    };
+
+    let rpc_server_handle = sc_service::start_rpc_servers(
+        &config.rpc,
+        config.prometheus_registry(),
+        &config.tokio_handle,
+        gen_rpc_module,
+        rpc_id_provider,
+    )?;
+
+    let listen_addrs = rpc_server_handle
+        .listen_addrs()
+        .iter()
+        .map(|socket_addr| {
+            let mut multiaddr: Multiaddr = socket_addr.ip().into();
+            multiaddr.push(sc_network_types::multiaddr::Protocol::Tcp(socket_addr.port()));
+            multiaddr
+        })
+        .collect();
+
+    let in_memory_rpc = {
+        let mut module = gen_rpc_module()?;
+        module.extensions_mut().insert(DenyUnsafe::No);
+        module
+    };
+
+    let in_memory_rpc_handle = RpcHandlers::new(Arc::new(in_memory_rpc), listen_addrs);
+
+    task_manager.keep_alive((config.base_path, rpc_server_handle, system_rpc_rx));
+
+    Ok(in_memory_rpc_handle)
+}
+
 // Re-implement RPC module generation without the check on the genesis block number.
 // The code is identical to the one in
 // https://github.com/paritytech/polkadot-sdk/blob/9e0636567bebf312b065ca3acb285a8b32499df7/substrate/client/service/src/builder.rs#L754
 // apart from the creation of the RPC builder inside the function and the genesis number check.
 #[allow(clippy::too_many_arguments)]
-pub fn gen_rpc_module(
+fn gen_rpc_module(
     genesis_number: u64,
     spawn_handle: SpawnTaskHandle,
     client: Arc<FullClient>,
@@ -173,65 +234,4 @@ pub fn gen_rpc_module(
     rpc_api.merge(extra_rpcs).map_err(|e| ServiceError::Application(e.into()))?;
 
     Ok(rpc_api)
-}
-
-pub fn spawn_rpc_server(
-    genesis_number: u64,
-    task_manager: &mut TaskManager,
-    client: Arc<FullClient>,
-    mut config: Configuration,
-    transaction_pool: Arc<TransactionPoolWrapper<Block, FullClient>>,
-    keystore: KeystorePtr,
-    backend: Arc<Backend>,
-) -> Result<RpcHandlers, ServiceError> {
-    let (system_rpc_tx, system_rpc_rx) = tracing_unbounded("mpsc_system_rpc", 10_000);
-
-    let rpc_id_provider = config.rpc.id_provider.take();
-
-    let gen_rpc_module = || {
-        gen_rpc_module(
-            genesis_number,
-            task_manager.spawn_handle(),
-            client.clone(),
-            transaction_pool.clone(),
-            keystore.clone(),
-            system_rpc_tx.clone(),
-            config.impl_name.clone(),
-            config.impl_version.clone(),
-            config.chain_spec.as_ref(),
-            &config.state_pruning,
-            config.blocks_pruning,
-            backend.clone(),
-        )
-    };
-
-    let rpc_server_handle = sc_service::start_rpc_servers(
-        &config.rpc,
-        config.prometheus_registry(),
-        &config.tokio_handle,
-        gen_rpc_module,
-        rpc_id_provider,
-    )?;
-
-    let listen_addrs = rpc_server_handle
-        .listen_addrs()
-        .iter()
-        .map(|socket_addr| {
-            let mut multiaddr: Multiaddr = socket_addr.ip().into();
-            multiaddr.push(sc_network_types::multiaddr::Protocol::Tcp(socket_addr.port()));
-            multiaddr
-        })
-        .collect();
-
-    let in_memory_rpc = {
-        let mut module = gen_rpc_module()?;
-        module.extensions_mut().insert(DenyUnsafe::No);
-        module
-    };
-
-    let in_memory_rpc_handle = RpcHandlers::new(Arc::new(in_memory_rpc), listen_addrs);
-
-    task_manager.keep_alive((config.base_path, rpc_server_handle, system_rpc_rx));
-
-    Ok(in_memory_rpc_handle)
 }
