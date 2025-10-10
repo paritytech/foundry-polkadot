@@ -205,7 +205,7 @@ impl TestNode {
         deployer: H160,
         block_number: Option<u32>,
     ) -> H256 {
-        let mut deploy_contract_tx = TransactionRequest::default()
+        let deploy_contract_tx = TransactionRequest::default()
             .from(Address::from(ReviveAddress::new(deployer)))
             .input(TransactionInput::both(Bytes::copy_from_slice(code)));
         let block_wait = block_number.map(|bn| BlockWaitTimeout {
