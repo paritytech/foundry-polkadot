@@ -1,4 +1,4 @@
-use crate::utils::{TestNode, assert_with_tolerance, unwrap_response};
+use crate::utils::{TestNode, assert_with_tolerance, to_hex_string, unwrap_response};
 use alloy_primitives::U256;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
@@ -22,8 +22,9 @@ async fn test_genesis() {
     let genesis_timestamp = anvil_genesis_timestamp.checked_mul(1000).unwrap();
     let actual_genesis_timestamp = node.get_decoded_timestamp(Some(genesis_hash)).await;
     assert_eq!(actual_genesis_timestamp, genesis_timestamp);
-    let current_chain_id = node.get_decoded_chain_id(Some(genesis_hash)).await;
-    assert_eq!(current_chain_id, chain_id);
+    let current_chain_id_hex =
+        unwrap_response::<String>(node.eth_rpc(EthRequest::EthChainId(())).await.unwrap()).unwrap();
+    assert_eq!(current_chain_id_hex, to_hex_string(chain_id));
 
     // Manually mine two blocks and force the timestamp to be increasing with 1 second each time.
     unwrap_response::<()>(

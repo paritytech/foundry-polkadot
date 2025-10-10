@@ -10,10 +10,7 @@ use anvil_polkadot::{
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
-    substrate_node::{
-        genesis::{CHAIN_ID_KEY, GenesisConfig},
-        service::Service,
-    },
+    substrate_node::{genesis::GenesisConfig, service::Service},
 };
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use codec::Decode;
@@ -189,15 +186,6 @@ impl TestNode {
         Decode::decode(&mut input).unwrap()
     }
 
-    pub async fn get_decoded_chain_id(&self, at: Option<H256>) -> u64 {
-        let storage_key = StorageKey(CHAIN_ID_KEY.to_vec());
-        let encoded_value = self.state_get_storage(storage_key, at).await.unwrap().unwrap();
-        let bytes =
-            hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
-        let mut input = &bytes[..];
-        Decode::decode(&mut input).unwrap()
-    }
-
     async fn wait_for_block_with_number(&self, n: u32) {
         let mut import_stream = self.service.client.import_notification_stream();
 
@@ -311,4 +299,11 @@ pub fn get_contract_code(name: &str) -> ContractCode {
         contract_json.get("bin-runtime").map(|code| hex::decode(code.as_str().unwrap()).unwrap());
 
     ContractCode { init, runtime }
+}
+
+pub fn to_hex_string(value: u64) -> String {
+    let hex = hex::encode(value.to_be_bytes());
+    let trimmed = hex.trim_start_matches('0');
+    let result = if trimmed.is_empty() { "0" } else { trimmed };
+    format!("0x{result}")
 }
