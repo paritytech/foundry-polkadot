@@ -12,6 +12,7 @@ use polkadot_sdk::{
     sc_client_db::BlockchainDb,
     sp_blockchain,
     sp_core::{H160, H256},
+    sp_io::hashing::blake2_256,
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
@@ -275,7 +276,7 @@ impl StorageOverrides {
         let mut changeset = BlockOverrides::default();
 
         let mut child_map = Storage::with_capacity(1);
-        child_map.insert(key, Some(value));
+        child_map.insert(blake2_256(key.as_slice()).to_vec(), Some(value));
 
         changeset.children.insert(child_key, child_map);
 
