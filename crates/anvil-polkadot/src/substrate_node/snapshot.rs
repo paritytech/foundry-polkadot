@@ -2,7 +2,7 @@ use crate::substrate_node::service::Backend;
 use alloy_primitives::U256;
 use polkadot_sdk::{
     sc_client_api::Backend as BackendT,
-    sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata, Result},
+    sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata, Info, Result},
 };
 use std::{collections::BTreeMap, sync::Arc};
 use substrate_runtime::OpaqueBlock;
@@ -10,6 +10,11 @@ use substrate_runtime::OpaqueBlock;
 #[derive(Clone, Debug)]
 pub struct Snapshot {
     pub best_number: u64,
+}
+
+pub struct RevertInfo {
+    pub info: Info<OpaqueBlock>,
+    pub reverted: u64,
 }
 
 pub struct SnapshotManager<C> {
@@ -43,11 +48,6 @@ where
         + Sync
         + 'static,
 {
-    /// Get the block number associated to a snapshot id.
-    pub fn block_number_for(&mut self, snapshot_id: U256) -> Option<u64> {
-        self.snapshots.get(&snapshot_id).map(|snap| snap.best_number)
-    }
-
     /// Create a snapshot id corresponding to the best block number.
     pub fn snapshot(&mut self) -> U256 {
         let one = U256::ONE;
@@ -59,12 +59,14 @@ where
     }
 
     /// Revert the chain to the block number represented by the snapshot `id`.
-    pub fn revert(&mut self, snapshot_id: U256) -> Result<u64> {
+    pub fn revert(&mut self, snapshot_id: U256) -> Result<Option<RevertInfo>> {
         // Remove the snapshot when reverting. We do not want to keep it around
         // since reverting to an existing snapshot could mean going back to future,
         // which is not supported.
         let maybe_snapshot = self.snapshots.remove(&snapshot_id);
-        let Some(snap) = maybe_snapshot else { return Ok(0) };
+        let Some(snap) = maybe_snapshot else {
+            return Ok(None);
+        };
 
         let current_best_number: u64 = self.client.info().best_number.into();
         let number_of_blocks_to_revert = current_best_number - snap.best_number;
@@ -78,13 +80,13 @@ where
             k < snapshot_id || snap_to_remove.best_number >= snap.best_number
         });
 
-        Ok(reverted.into())
+        Ok(Some(RevertInfo { reverted: reverted.into(), info: self.client.info() }))
     }
 
-    pub fn rollback(&self) -> Result<bool> {
-        let current_best_number = self.client.info().best_number;
-        self.backend.revert(current_best_number, true)?;
-
-        Ok(true)
+    pub fn rollback(&self, depth: Option<u64>) -> Result<RevertInfo> {
+        let (reverted, _) = self
+            .backend
+            .revert(depth.unwrap_or(1).try_into().expect("to not surpass u32 bounds"), true)?;
+        Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
     }
 }

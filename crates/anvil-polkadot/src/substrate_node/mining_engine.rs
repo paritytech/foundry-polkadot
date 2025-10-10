@@ -305,6 +305,11 @@ impl MiningEngine {
         self.time_manager.remove_block_timestamp_interval()
     }
 
+    /// Get the current block timestamp
+    pub fn current_block_timestamp(&self) -> u64 {
+        self.time_manager.current_call_timestamp()
+    }
+
     //---------- Helpers ---------------
 
     fn wake(&self) {

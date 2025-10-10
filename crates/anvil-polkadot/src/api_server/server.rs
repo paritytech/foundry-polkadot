@@ -47,11 +47,12 @@ pub struct Wallet {
 }
 
 pub struct ApiServer {
+    api: OnlineClient<SrcChainConfig>,
+    eth_rpc_client: EthRpcClient,
     req_receiver: mpsc::Receiver<ApiRequest>,
     logging_manager: LoggingManager,
     mining_engine: Arc<MiningEngine>,
     snapshot_manager: SnapshotManager<FullClient>,
-    eth_rpc_client: EthRpcClient,
     block_provider: SubxtBlockInfoProvider,
     wallet: Wallet,
     impersonation_manager: ImpersonationManager,
@@ -80,6 +81,7 @@ impl ApiServer {
         .await?;
 
         Ok(Self {
+            api,
             block_provider,
             req_receiver,
             logging_manager,
@@ -157,7 +159,7 @@ impl ApiServer {
             }
             // --- Snapshot ---
             EthRequest::EvmSnapshot(_) => self.snapshot().await.to_rpc_result(),
-            // EthRequest::Rollback(depth) => {}
+            EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
             EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
             // -- Impersonation --
             EthRequest::ImpersonateAccount(addr) => {
@@ -455,19 +457,49 @@ impl ApiServer {
 
     pub(crate) async fn revert(&mut self, id: U256) -> Result<u64> {
         node_info!("evm_revert");
-        let block_number = self.snapshot_manager.block_number_for(id);
-        let reverted =
+        let revert_info =
             self.snapshot_manager.revert(id).map_err(|err| Error::SnapshotRpc(err.to_string()))?;
-        if reverted > 0
-            && let Some(number) = block_number
-        {
-            let block_reverted_to =
-                self.block_provider.block_by_number(number.try_into().unwrap()).await.unwrap();
-            if let Ok(block) = Arc::try_unwrap(block_reverted_to.unwrap()) {
+        let Some(revert) = revert_info else { return Ok(0) };
+        let new_best_block = self.block_provider.block_by_number(revert.info.best_number).await?;
+
+        let new_finalized_block =
+            self.block_provider.block_by_number(revert.info.finalized_number).await?;
+        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
+        }
+
+        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
+        }
+
+        self.update_time().await?;
+
+        Ok(revert.reverted)
+    }
+
+    pub(crate) async fn rollback(&mut self, depth: Option<u64>) -> Result<u64> {
+        node_info!("anvil_rollback");
+        let revert_info = self
+            .snapshot_manager
+            .rollback(depth)
+            .map_err(|err| Error::SnapshotRpc(err.to_string()))?;
+
+        if revert_info.reverted > 0 {
+            let new_best_block =
+                self.block_provider.block_by_number(revert_info.info.best_number).await?;
+            let new_finalized_block =
+                self.block_provider.block_by_number(revert_info.info.finalized_number).await?;
+            if let Some(block) = new_best_block.and_then(Arc::into_inner) {
                 self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
             }
+            if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
+                self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
+            }
         }
-        Ok(reverted)
+
+        self.update_time().await?;
+
+        Ok(revert_info.reverted)
     }
 
     // Helpers
@@ -476,6 +508,26 @@ impl ApiServer {
             .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
             .await
             .map_err(Error::from)
+    }
+
+    async fn update_time(&self) -> Result<()> {
+        let timestamp: u64 = self
+            .api
+            .storage()
+            .at_latest()
+            .await?
+            .fetch(&subxt::dynamic::storage("Timestamp", "Now", vec![]))
+            .await?
+            .map(|decodable| {
+                decodable.as_type().map_err(|_| {
+                    Error::SnapshotRpc("Failed to get current timestamp from storage".to_string())
+                })
+            })
+            .ok_or(Error::SnapshotRpc(
+                "Failed to configure the time manager after revert".to_string(),
+            ))??;
+        self.mining_engine.set_time(Duration::from_millis(timestamp));
+        Ok(())
     }
 
     fn impersonate_account(&mut self, addr: H160) -> Result<()> {
@@ -497,7 +549,7 @@ impl ApiServer {
     }
 }
 
-async fn create_revive_rpc_client(
+pub async fn create_revive_rpc_client(
     api: OnlineClient<SrcChainConfig>,
     rpc_client: RpcClient,
     rpc: LegacyRpcMethods<SrcChainConfig>,

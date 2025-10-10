@@ -1,11 +1,11 @@
 use crate::{
+    AnvilNodeConfig,
     logging::LoggingManager,
     substrate_node::{
-        service::{FullClient, Service},
         impersonation::ImpersonationManager,
+        service::{FullClient, Service},
         snapshot::SnapshotManager,
     },
-    AnvilNodeConfig,
 };
 use anvil_core::eth::EthRequest;
 use anvil_rpc::response::ResponseResult;
@@ -15,6 +15,8 @@ use server::ApiServer;
 pub mod error;
 pub mod revive_conversions;
 mod server;
+
+pub use server::create_revive_rpc_client;
 
 pub type ApiHandle = mpsc::Sender<ApiRequest>;
 
@@ -35,9 +37,15 @@ pub fn spawn(
     let mut impersonation_manager = ImpersonationManager::default();
     impersonation_manager.set_auto_impersonate_account(config.enable_auto_impersonate);
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
-        let api_server = ApiServer::new(service, receiver, logging_manager, snapshot_manager, impersonation_manager)
-            .await
-            .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));
+        let api_server = ApiServer::new(
+            service,
+            receiver,
+            logging_manager,
+            snapshot_manager,
+            impersonation_manager,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));
         api_server.run().await;
     });
 

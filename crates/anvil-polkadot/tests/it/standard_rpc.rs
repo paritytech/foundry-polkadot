@@ -102,7 +102,7 @@ async fn test_send_transaction() {
         .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
         .await
         .unwrap();
-    std::thread::sleep(Duration::from_millis(500));
+    tokio::time::sleep(Duration::from_millis(500)).await;
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(1));

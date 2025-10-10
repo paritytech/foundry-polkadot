@@ -4,20 +4,24 @@ use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::{self, ApiHandle, revive_conversions::ReviveAddress},
+    api_server::{
+        self, ApiHandle, create_revive_rpc_client,
+        revive_conversions::{AlloyU256, ReviveAddress},
+    },
     config::{AnvilNodeConfig, SubstrateNodeConfig},
     init_tracing,
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
-    substrate_node::service::Service,
+    substrate_node::{in_mem_rpc::InMemoryRpcClient, service::Service},
 };
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
+use pallet_revive_eth_rpc::{SubxtBlockInfoProvider, client::Client as EthRpcClient};
 use parity_scale_codec::Decode;
 use polkadot_sdk::{
-    pallet_revive::evm::{Block, ReceiptInfo},
+    pallet_revive::evm::{self, Block, ReceiptInfo},
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
@@ -26,12 +30,16 @@ use polkadot_sdk::{
 };
 use serde_json::{Value, json};
 use std::{fmt::Debug, time::Duration};
-use subxt::utils::H160;
+use subxt::{
+    OnlineClient, PolkadotConfig, backend::rpc::RpcClient, ext::subxt_rpcs::LegacyRpcMethods,
+    utils::H160,
+};
 use tempfile::TempDir;
 
 const NATIVE_TO_ETH_RATIO: u128 = 1000000;
 pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
 
+#[derive(Clone)]
 pub struct BlockWaitTimeout {
     block_number: u32,
     timeout: Duration,
@@ -46,6 +54,7 @@ impl BlockWaitTimeout {
 pub struct TestNode {
     pub service: Service,
     pub api: ApiHandle,
+    pub eth_rpc_client: EthRpcClient,
     _temp_dir: Option<TempDir>,
     _task_manager: TaskManager,
 }
@@ -85,9 +94,27 @@ impl TestNode {
             LoggingManager::default()
         };
 
+        // Initialized api can tap into the pallet revive's client via the network, but we should
+        // also enable the access to the client programatically, to be able to call into
+        // methods that are relevant to the overall testing but not exposed as anvil RPC
+        // methods.
         let (service, task_manager, api) = spawn(anvil_config, config, logging_manager).await?;
 
-        Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
+        let rpc_client = RpcClient::new(InMemoryRpcClient(service.rpc_handlers.clone()));
+        let subxt_api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client.clone()).await?;
+        let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
+        let block_provider = SubxtBlockInfoProvider::new(subxt_api.clone(), rpc.clone()).await?;
+
+        let eth_rpc_client = create_revive_rpc_client(
+            subxt_api,
+            rpc_client,
+            rpc,
+            block_provider,
+            service.spawn_handle.clone(),
+        )
+        .await?;
+
+        Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager, eth_rpc_client })
     }
 
     pub async fn eth_rpc(&mut self, req: EthRequest) -> Result<ResponseResult> {
@@ -135,6 +162,13 @@ impl TestNode {
             .block_hash(n)
             .wrap_err("client.block_hash failed")?
             .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
+    }
+
+    pub async fn nonce(&self, n: u32, address: H160) -> eyre::Result<evm::U256> {
+        let hash = self.block_hash_by_number(n).await?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let nonce = runtime_api.nonce(address).await?;
+        Ok(nonce)
     }
 
     pub fn create_storage_key(pallet: &str, item: &str) -> StorageKey {
@@ -252,6 +286,57 @@ impl TestNode {
                 .unwrap(),
         )
         .unwrap()
+    }
+
+    // Initialize with some balance a random account and return its address.
+    //
+    // Returns the initialized random account address and transaction hash.
+    // When a block wait time is provided, it is assumed that automine was
+    // previously enabled on the node.
+    pub async fn eth_transfer_to_unitialized_random_account(
+        &mut self,
+        from: Address,
+        transfer_amount: U256,
+        block_wait_timeout: Option<BlockWaitTimeout>,
+    ) -> (Address, H256) {
+        let dest_addr = Address::random();
+        let dest_h160 = H160::from_slice(dest_addr.as_slice());
+        let from_h160 = H160::from_slice(from.as_slice());
+
+        // Create a random account with some balance.
+        let from_initial_balance = self.get_balance(from_h160, None).await;
+        let dest_initial_balance = self.get_balance(dest_h160, None).await;
+        assert_eq!(dest_initial_balance, U256::ZERO);
+
+        let transaction =
+            TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
+        let is_automine = block_wait_timeout.is_some();
+        let tx_hash = self.send_transaction(transaction, block_wait_timeout).await.unwrap();
+
+        if is_automine {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let receipt_info = self.get_transaction_receipt(tx_hash).await;
+
+            // Assert on balances after first transfer.
+            let from_balance = self.get_balance(from_h160, None).await;
+            let dest_balance = self.get_balance(dest_h160, None).await;
+            assert_eq!(
+                from_balance,
+                from_initial_balance
+                    - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used)
+                        .inner()
+                    - transfer_amount
+                    - U256::from(EXISTENTIAL_DEPOSIT),
+                "signer's balance should have changed"
+            );
+            assert_eq!(
+                dest_balance,
+                dest_initial_balance + transfer_amount,
+                "dest's balance should have changed"
+            );
+        }
+
+        (dest_addr, tx_hash)
     }
 }
 
