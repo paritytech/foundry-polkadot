@@ -440,6 +440,8 @@ async fn test_set_code_new() {
         panic!("Missing runtime bytecode")
     };
 
+    let alith =
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
     let contract_address =
         Address::from(ReviveAddress::new(H160::from_slice(Address::random().as_slice())));
 
@@ -486,6 +488,123 @@ async fn test_set_code_new() {
 
     assert_eq!(code, Bytes::from(runtime_bytecode));
 
-    // We don't test interacting with the contract. Due to the fact that we directly set the code in
-    // the storage, the child trie state is not initialised.
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(10),)).abi_encode();
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(set_value_data.into()));
+
+    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let _receipt = node.get_transaction_receipt(tx_hash).await;
+
+    // assert new value
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(SimpleStorage::getValueCall.abi_encode().into()));
+
+    let value = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthCall(tx.into(), None, None, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    let value = SimpleStorage::getValueCall::abi_decode_returns(&value.0).unwrap();
+
+    assert_eq!(value, U256::from(10));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+// Test setting the code of an existing, EOA account
+async fn test_set_code_of_regular_account() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let ContractCode { runtime: Some(runtime_bytecode), .. } = get_contract_code("SimpleStorage")
+    else {
+        panic!("Missing runtime bytecode")
+    };
+
+    let alith =
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
+    let contract_address = Address::from(ReviveAddress::new(
+        Account::from(subxt_signer::eth::dev::baltathar()).address(),
+    ));
+
+    let code = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthGetCodeAt(contract_address, Some(BlockId::number(0))))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(code.is_empty());
+
+    // Set empty code first.
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetCode(contract_address, Bytes(vec![].into()))).await.unwrap(),
+    )
+    .unwrap();
+
+    let code = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthGetCodeAt(contract_address, Some(BlockId::number(0))))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(code.is_empty());
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetCode(contract_address, Bytes(runtime_bytecode.clone().into())))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let code = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthGetCodeAt(contract_address, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(code, Bytes::from(runtime_bytecode.clone()));
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    assert_eq!(code, Bytes::from(runtime_bytecode));
+
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(10),)).abi_encode();
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(set_value_data.into()));
+
+    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let _receipt = node.get_transaction_receipt(tx_hash).await;
+
+    // assert new value
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(SimpleStorage::getValueCall.abi_encode().into()));
+
+    let value = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthCall(tx.into(), None, None, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    let value = SimpleStorage::getValueCall::abi_decode_returns(&value.0).unwrap();
+
+    assert_eq!(value, U256::from(10));
 }

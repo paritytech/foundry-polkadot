@@ -39,7 +39,7 @@ use polkadot_sdk::{
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
         subxt_client::{self, SrcChainConfig},
     },
-    parachains_common::{AccountId, Hash},
+    parachains_common::{AccountId, Hash, Nonce},
     sc_client_api::HeaderBackend,
     sp_api::ProvideRuntimeApi,
     sp_core::{self, H160, H256, Hasher, keccak_256},
@@ -498,25 +498,10 @@ impl ApiServer {
 
         let latest_block = self.latest_block();
 
-        let account_id = self.get_account_id(latest_block, address)?;
-        let mut system_account_info = self
-            .backend
-            .read_system_account_info(latest_block, account_id.clone())?
-            .unwrap_or_else(|| SystemAccountInfo { providers: 1, ..Default::default() });
-        let mut total_issuance = self.backend.read_total_issuance(latest_block)?;
         let (new_balance, dust) = self.construct_balance_with_dust(latest_block, value)?;
 
-        if let Some(diff) = new_balance.checked_sub(system_account_info.data.free) {
-            total_issuance = total_issuance.saturating_add(diff);
-        } else {
-            total_issuance =
-                total_issuance.saturating_sub(system_account_info.data.free - new_balance);
-        }
-
-        system_account_info.data.free = new_balance;
-
-        self.backend.inject_system_account_info(latest_block, account_id, system_account_info);
-        self.backend.inject_total_issuance(latest_block, total_issuance);
+        let account_id = self.get_account_id(latest_block, address)?;
+        self.set_frame_system_balance(latest_block, account_id, new_balance)?;
 
         let mut revive_account_info = self
             .backend
@@ -581,13 +566,32 @@ impl ApiServer {
 
         let code_hash = H256(keccak_256(&bytes));
 
-        let mut old_code_info = None;
+        let maybe_system_account_info =
+            self.backend.read_system_account_info(latest_block, account_id.clone())?;
+        let nonce = maybe_system_account_info.as_ref().map(|info| info.nonce).unwrap_or_default();
 
-        let account_info = match self.backend.read_revive_account_info(latest_block, address)? {
+        if maybe_system_account_info.is_none() {
+            self.set_frame_system_balance(
+                latest_block,
+                account_id.clone(),
+                substrate_runtime::currency::DOLLARS,
+            )?;
+        }
+
+        let mut old_code_info = None;
+        let revive_account_info = match self
+            .backend
+            .read_revive_account_info(latest_block, address)?
+        {
             None => {
-                let contract_info = new_contract_info(&address, code_hash);
+                let contract_info = new_contract_info(&address, code_hash, nonce);
 
                 ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust: 0 }
+            }
+            Some(ReviveAccountInfo { account_type: AccountType::EOA, dust }) => {
+                let contract_info = new_contract_info(&address, code_hash, nonce);
+
+                ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust }
             }
             Some(ReviveAccountInfo {
                 account_type: AccountType::Contract(mut contract_info),
@@ -613,14 +617,9 @@ impl ApiServer {
 
                 ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust }
             }
-            Some(ReviveAccountInfo { account_type: AccountType::EOA, dust }) => {
-                let contract_info = new_contract_info(&address, code_hash);
-
-                ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust }
-            }
         };
 
-        self.backend.inject_revive_account_info(latest_block, address, account_info);
+        self.backend.inject_revive_account_info(latest_block, address, revive_account_info);
 
         let code_info = old_code_info
             .map(|mut code_info| {
@@ -689,14 +688,40 @@ impl ApiServer {
     fn latest_block(&self) -> H256 {
         self.backend.blockchain().info().best_hash
     }
+
+    fn set_frame_system_balance(
+        &self,
+        latest_block: H256,
+        account_id: AccountId,
+        balance: Balance,
+    ) -> Result<()> {
+        let mut total_issuance = self.backend.read_total_issuance(latest_block)?;
+
+        let mut system_account_info = self
+            .backend
+            .read_system_account_info(latest_block, account_id.clone())?
+            .unwrap_or_else(|| SystemAccountInfo { providers: 1, ..Default::default() });
+
+        if let Some(diff) = balance.checked_sub(system_account_info.data.free) {
+            total_issuance = total_issuance.saturating_add(diff);
+        } else {
+            total_issuance = total_issuance.saturating_sub(system_account_info.data.free - balance);
+        }
+
+        system_account_info.data.free = balance;
+
+        self.backend.inject_system_account_info(latest_block, account_id, system_account_info);
+        self.backend.inject_total_issuance(latest_block, total_issuance);
+
+        Ok(())
+    }
 }
 
-fn new_contract_info(address: &Address, code_hash: H256) -> ContractInfo {
+fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
     let address = H160::from_slice(address.as_slice());
 
     let trie_id = {
-        // TODO: is this nonce correct?
-        let buf = ("bcontract_trie_v1", address, 0).using_encoded(BlakeTwo256::hash);
+        let buf = ("bcontract_trie_v1", address, nonce).using_encoded(BlakeTwo256::hash);
         buf.as_ref()
             .to_vec()
             .try_into()
