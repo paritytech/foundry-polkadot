@@ -479,7 +479,7 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
     let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
 
     let genesis_block_number = substrate_service.genesis_block_number.try_into().map_err(|_| {
-        Error::InvalidParams(format!(
+        Error::InternalError(format!(
             "Genesis block number {} is too large for u32 (max: {})",
             substrate_service.genesis_block_number,
             u32::MAX
@@ -488,14 +488,14 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
 
     let Some(genesis_hash) = substrate_service.client.hash(genesis_block_number).ok().flatten()
     else {
-        return Err(Error::InvalidParams(format!(
+        return Err(Error::InternalError(format!(
             "Genesis hash not found for genesis block number {}",
             substrate_service.genesis_block_number
         )));
     };
 
     let Ok(runtime_version) = substrate_service.client.runtime_version_at(genesis_hash) else {
-        return Err(Error::InvalidParams(
+        return Err(Error::InternalError(
             "Runtime version not found for given genesis hash".to_string(),
         ));
     };
@@ -508,25 +508,25 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
     let Ok(supported_metadata_versions) =
         substrate_service.client.runtime_api().metadata_versions(genesis_hash)
     else {
-        return Err(Error::InvalidParams("Unable to fetch metadata versions".to_string()));
+        return Err(Error::InternalError("Unable to fetch metadata versions".to_string()));
     };
     let Some(latest_metadata_version) = supported_metadata_versions.into_iter().max() else {
-        return Err(Error::InvalidParams("No stable metadata versions supported".to_string()));
+        return Err(Error::InternalError("No stable metadata versions supported".to_string()));
     };
     let opaque_metadata = substrate_service
         .client
         .runtime_api()
         .metadata_at_version(genesis_hash, latest_metadata_version)
         .map_err(|_| {
-            Error::InvalidParams("Failed to get runtime API for genesis hash".to_string())
+            Error::InternalError("Failed to get runtime API for genesis hash".to_string())
         })?
         .ok_or_else(|| {
-            Error::InvalidParams(format!(
+            Error::InternalError(format!(
                 "Metadata not found for version {latest_metadata_version} at genesis hash"
             ))
         })?;
     let subxt_metadata = SubxtMetadata::decode(&mut (*opaque_metadata).as_slice())
-        .map_err(|_| Error::InvalidParams("Unable to decode metadata".to_string()))?;
+        .map_err(|_| Error::InternalError("Unable to decode metadata".to_string()))?;
 
     let api = OnlineClient::<SrcChainConfig>::from_rpc_client_with(
         genesis_hash,
