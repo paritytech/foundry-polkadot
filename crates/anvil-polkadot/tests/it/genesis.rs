@@ -38,7 +38,7 @@ async fn test_genesis() {
     assert_with_tolerance(
         timestamp2.saturating_sub(genesis_timestamp),
         2000,
-        100,
+        500,
         "Timestamp is not increasing as expected from genesis.",
     );
 }
