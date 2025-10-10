@@ -9,8 +9,10 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
-        impersonation::ImpersonationManager, in_mem_rpc::InMemoryRpcClient,
-        mining_engine::MiningEngine, service::Service,
+        impersonation::ImpersonationManager,
+        in_mem_rpc::InMemoryRpcClient,
+        mining_engine::MiningEngine,
+        service::{Backend, Service},
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
@@ -28,7 +30,8 @@ use polkadot_sdk::{
         client::{Client as EthRpcClient, ClientError, SubscriptionType},
         subxt_client::{self, SrcChainConfig},
     },
-    sc_client_api::HeaderBackend,
+    parachains_common::Hash,
+    sc_client_api::{Backend as _, HeaderBackend, StateBackend, TrieCacheContext},
     sp_api::{Metadata, ProvideRuntimeApi},
     sp_core::{self, keccak_256},
 };
@@ -47,6 +50,7 @@ pub struct Wallet {
 pub struct ApiServer {
     req_receiver: mpsc::Receiver<ApiRequest>,
     logging_manager: LoggingManager,
+    backend: Arc<Backend>,
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,
@@ -65,6 +69,7 @@ impl ApiServer {
         Ok(Self {
             req_receiver,
             logging_manager,
+            backend: substrate_service.backend.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
             impersonation_manager,
@@ -261,12 +266,14 @@ impl ApiServer {
     // Eth RPCs
     fn eth_chain_id(&self) -> Result<U64> {
         node_info!("eth_chainId");
-        Ok(U256::from(self.eth_rpc_client.chain_id()).to::<U64>())
+        let latest_block_hash = self.backend.blockchain().info().best_hash;
+        Ok(U256::from(self.chain_id(latest_block_hash)).to::<U64>())
     }
 
     fn network_id(&self) -> Result<u64> {
         node_info!("eth_networkId");
-        Ok(self.eth_rpc_client.chain_id())
+        let latest_block_hash = self.backend.blockchain().info().best_hash;
+        Ok(self.chain_id(latest_block_hash))
     }
 
     fn net_listening(&self) -> Result<bool> {
@@ -449,6 +456,22 @@ impl ApiServer {
         node_info!("anvil_stopImpersonatingAccount");
         self.impersonation_manager.stop_impersonating(addr);
         Ok(())
+    }
+
+    fn chain_id(&self, at: Hash) -> u64 {
+        let chain_id_key: [u8; 16] = [
+            149u8, 39u8, 54u8, 105u8, 39u8, 71u8, 142u8, 113u8, 13u8, 63u8, 127u8, 183u8, 124u8,
+            109u8, 31u8, 137u8,
+        ];
+        if let Ok(state_at) = self.backend.state_at(at, TrieCacheContext::Trusted) {
+            if let Ok(Some(encoded_chain_id)) = state_at.storage(chain_id_key.as_slice()) {
+                if let Ok(chain_id) = u64::decode(&mut &encoded_chain_id[..]) {
+                    return chain_id;
+                }
+            }
+        }
+        // if the chain id is not found, use the default chain id
+        self.eth_rpc_client.chain_id()
     }
 }
 
