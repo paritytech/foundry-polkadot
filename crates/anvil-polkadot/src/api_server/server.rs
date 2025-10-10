@@ -463,13 +463,13 @@ impl ApiServer {
             149u8, 39u8, 54u8, 105u8, 39u8, 71u8, 142u8, 113u8, 13u8, 63u8, 127u8, 183u8, 124u8,
             109u8, 31u8, 137u8,
         ];
-        if let Ok(state_at) = self.backend.state_at(at, TrieCacheContext::Trusted) {
-            if let Ok(Some(encoded_chain_id)) = state_at.storage(chain_id_key.as_slice()) {
-                if let Ok(chain_id) = u64::decode(&mut &encoded_chain_id[..]) {
-                    return chain_id;
-                }
-            }
+        if let Ok(state_at) = self.backend.state_at(at, TrieCacheContext::Trusted)
+            && let Ok(Some(encoded_chain_id)) = state_at.storage(chain_id_key.as_slice())
+            && let Ok(chain_id) = u64::decode(&mut &encoded_chain_id[..])
+        {
+            return chain_id;
         }
+
         // if the chain id is not found, use the default chain id
         self.eth_rpc_client.chain_id()
     }
