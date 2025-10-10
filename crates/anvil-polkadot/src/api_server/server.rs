@@ -596,8 +596,6 @@ impl ApiServer {
                 if let Some(code_info) =
                     self.backend.read_code_info(latest_block, contract_info.code_hash)?
                 {
-                    println!("Existing code info!");
-
                     if code_info.refcount == 1 && contract_info.code_hash != code_hash {
                         // Remove the pristine code and code info for the old hash.
                         self.backend.inject_pristine_code(
