@@ -14,9 +14,12 @@ use anvil_polkadot::{
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
 use anvil_rpc::error::ErrorCode;
-use polkadot_sdk::pallet_revive::{
-    self,
-    evm::{Account, Block, FeeHistoryResult, FilterResults, TransactionInfo},
+use polkadot_sdk::{
+    pallet_revive::{
+        self,
+        evm::{Account, Block, FeeHistoryResult, FilterResults, TransactionInfo},
+    },
+    sp_core::{H256, keccak_256},
 };
 use subxt::utils::H160;
 
@@ -759,6 +762,7 @@ async fn test_get_logs() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_address = ReviveAddress::new(alith.address());
     let contract_code = get_contract_code("SimpleStorage");
     let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
@@ -769,7 +773,7 @@ async fn test_get_logs() {
     for i in 0..2 {
         let set_value_data = SimpleStorage::setValueCall::new((U256::from(511 + i),)).abi_encode();
         let call_tx = TransactionRequest::default()
-            .from(Address::from(ReviveAddress::new(alith.address())))
+            .from(Address::from(alith_address))
             .to(Address::from(ReviveAddress::new(contract_address)))
             .input(TransactionInput::both(set_value_data.into()))
             .nonce(i + 1);
@@ -791,11 +795,28 @@ async fn test_get_logs() {
         FilterResults::Logs(entries) => entries,
         _ => panic!("This should be a vec of logs."),
     };
+
     assert_eq!(logs.len(), 3);
     assert_eq!(logs[1].block_number, pallet_revive::U256::from(2));
     assert_eq!(logs[2].block_number, pallet_revive::U256::from(2));
     assert_eq!(logs[0].transaction_hash, tx_hash);
     assert_eq!(logs[2].transaction_index, pallet_revive::U256::from(2));
+    // Check that our topic is the ValueChanged event.
+    let event_hash = keccak_256(b"ValueChanged(address,uint256,uint256)");
+    assert_eq!(logs[2].topics[0], H256::from(event_hash));
+    // Assert the values changed
+    let data = logs[2].data.as_ref().unwrap();
+
+    let old_value = pallet_revive::U256::from_big_endian(&data.0[0..32]);
+    let new_value = pallet_revive::U256::from_big_endian(&data.0[32..64]);
+    assert_eq!(old_value, pallet_revive::U256::from(511));
+    assert_eq!(new_value, pallet_revive::U256::from(512));
+
+    // Assert the changer address
+    let changer_topic = logs[2].topics[1].as_bytes();
+    let mut changer = [0u8; 20];
+    changer.copy_from_slice(&changer_topic[12..32]);
+    assert_eq!(alith_address.inner(), H160(changer));
 }
 
 #[tokio::test(flavor = "multi_thread")]
