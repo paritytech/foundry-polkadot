@@ -17,6 +17,8 @@ pub enum Error {
     SnapshotRpc(String),
     #[error("Subxt error: {0}")]
     Subxt(#[from] subxt::error::Error),
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 impl From<ClientError> for Error {
@@ -74,6 +76,9 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 }
                 Error::Subxt(subxt_err) => {
                     RpcError::internal_error_with(format!("{subxt_err}")).into()
+                }
+                Error::InternalError(error_message) => {
+                    RpcError::internal_error_with(error_message).into()
                 }
             },
         }
