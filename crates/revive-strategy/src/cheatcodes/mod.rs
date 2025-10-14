@@ -60,23 +60,18 @@ impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
 }
 
 /// Controls the automatic migration to PVM mode during test execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PvmStartupMigration {
     /// Defer database migration to a later execution point.
     /// This is the initial state - waiting for the test contract to be deployed.
     Defer,
     /// Allow database migration to PVM.
     /// Set by `base_contract_deployed()` when the test contract is deployed.
+    #[default]
     Allow,
     /// Database migration has already been performed.
     /// Prevents redundant migrations.
     Done,
-}
-
-impl Default for PvmStartupMigration {
-    fn default() -> Self {
-        Self::Defer
-    }
 }
 
 impl PvmStartupMigration {
@@ -95,7 +90,6 @@ impl PvmStartupMigration {
         *self = Self::Done;
     }
 }
-
 /// PVM-specific strategy context.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyContext {
