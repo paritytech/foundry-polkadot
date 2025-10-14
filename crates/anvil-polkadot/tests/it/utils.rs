@@ -5,7 +5,7 @@ use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{
-        self, ApiHandle, create_revive_rpc_client,
+        self, ApiHandle,
         revive_conversions::{AlloyU256, ReviveAddress},
     },
     config::{AnvilNodeConfig, SubstrateNodeConfig},
@@ -13,15 +13,14 @@ use anvil_polkadot::{
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
-    substrate_node::{in_mem_rpc::InMemoryRpcClient, service::Service},
+    substrate_node::service::Service,
 };
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
-use pallet_revive_eth_rpc::{SubxtBlockInfoProvider, client::Client as EthRpcClient};
 use parity_scale_codec::Decode;
 use polkadot_sdk::{
-    pallet_revive::evm::{self, Block, ReceiptInfo},
+    pallet_revive::evm::{Block, ReceiptInfo},
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
@@ -30,10 +29,7 @@ use polkadot_sdk::{
 };
 use serde_json::{Value, json};
 use std::{fmt::Debug, time::Duration};
-use subxt::{
-    OnlineClient, PolkadotConfig, backend::rpc::RpcClient, ext::subxt_rpcs::LegacyRpcMethods,
-    utils::H160,
-};
+use subxt::utils::H160;
 use tempfile::TempDir;
 
 const NATIVE_TO_ETH_RATIO: u128 = 1000000;
@@ -54,7 +50,6 @@ impl BlockWaitTimeout {
 pub struct TestNode {
     pub service: Service,
     pub api: ApiHandle,
-    pub eth_rpc_client: EthRpcClient,
     _temp_dir: Option<TempDir>,
     _task_manager: TaskManager,
 }
@@ -99,22 +94,7 @@ impl TestNode {
         // methods that are relevant to the overall testing but not exposed as anvil RPC
         // methods.
         let (service, task_manager, api) = spawn(anvil_config, config, logging_manager).await?;
-
-        let rpc_client = RpcClient::new(InMemoryRpcClient(service.rpc_handlers.clone()));
-        let subxt_api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client.clone()).await?;
-        let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
-        let block_provider = SubxtBlockInfoProvider::new(subxt_api.clone(), rpc.clone()).await?;
-
-        let eth_rpc_client = create_revive_rpc_client(
-            subxt_api,
-            rpc_client,
-            rpc,
-            block_provider,
-            service.spawn_handle.clone(),
-        )
-        .await?;
-
-        Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager, eth_rpc_client })
+        Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }
 
     pub async fn eth_rpc(&mut self, req: EthRequest) -> Result<ResponseResult> {
@@ -164,11 +144,14 @@ impl TestNode {
             .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
     }
 
-    pub async fn nonce(&self, n: u32, address: H160) -> eyre::Result<evm::U256> {
-        let hash = self.block_hash_by_number(n).await?;
-        let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let nonce = runtime_api.nonce(address).await?;
-        Ok(nonce)
+    pub async fn nonce(
+        &mut self,
+        address: Address,
+        block_id: Option<BlockId>,
+    ) -> Result<U256, RpcError> {
+        unwrap_response::<U256>(
+            self.eth_rpc(EthRequest::EthGetTransactionCount(address, block_id)).await.unwrap(),
+        )
     }
 
     pub fn create_storage_key(pallet: &str, item: &str) -> StorageKey {

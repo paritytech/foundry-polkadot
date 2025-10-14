@@ -3,7 +3,8 @@ use crate::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            AlloyU256, ReviveAddress, ReviveBlockId, convert_to_generic_transaction,
+            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag,
+            convert_to_generic_transaction,
         },
     },
     logging::LoggingManager,
@@ -150,6 +151,20 @@ impl ApiServer {
             }
             EthRequest::EthGetBlockByHash(hash, full) => {
                 self.get_block_by_hash(hash, full).await.to_rpc_result()
+            }
+            EthRequest::EthGetTransactionCount(addr, block) => {
+                node_info!("eth_getTransactionCount");
+                self.get_transaction_count(ReviveAddress::from(addr).inner(), block)
+                    .await
+                    .to_rpc_result()
+            }
+            EthRequest::EthGetTransactionCountByNumber(num) => {
+                node_info!("eth_getBlockTransactionCountByNumber");
+                self.get_block_transaction_count_by_number(num).await.to_rpc_result()
+            }
+            EthRequest::EthGetBlockByNumber(num, hydrated) => {
+                node_info!("eth_getBlockByNumber");
+                self.get_block_by_number(num, hydrated).await.to_rpc_result()
             }
             EthRequest::EthEstimateGas(call, block, _overrides, _block_overrides) => {
                 self.estimate_gas(call, block).await.to_rpc_result()
@@ -342,6 +357,32 @@ impl ApiServer {
             .code(ReviveAddress::from(address).inner())
             .await?;
         Ok(code.into())
+    }
+
+    async fn get_block_transaction_count_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<Option<U256>> {
+        let Some(block) = self.get_block_by_number(block_number, false).await? else {
+            return Ok(None);
+        };
+        Ok(self.eth_rpc_client.receipts_count_per_block(&block.hash).await.map(U256::from))
+    }
+
+    async fn get_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+        hydrated_transactions: bool,
+    ) -> Result<Option<Block>> {
+        let Some(block) = self
+            .eth_rpc_client
+            .block_by_number_or_tag(&ReviveBlockNumberOrTag::from(block_number).inner())
+            .await?
+        else {
+            return Ok(None);
+        };
+        let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
+        Ok(Some(block))
     }
 
     async fn get_block_by_hash(
