@@ -496,11 +496,11 @@ impl ApiServer {
         Ok(self.snapshot_manager.snapshot())
     }
 
-    pub(crate) async fn revert(&mut self, id: U256) -> Result<u64> {
+    pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
         node_info!("evm_revert");
         let revert_info =
             self.snapshot_manager.revert(id).map_err(|err| Error::SnapshotRpc(err.to_string()))?;
-        let Some(revert) = revert_info else { return Ok(0) };
+        let Some(revert) = revert_info else { return Ok(false) };
         let new_best_block = self.block_provider.block_by_number(revert.info.best_number).await?;
 
         let new_finalized_block =
@@ -515,10 +515,10 @@ impl ApiServer {
 
         self.update_time().await?;
 
-        Ok(revert.reverted)
+        Ok(true)
     }
 
-    pub(crate) async fn rollback(&mut self, depth: Option<u64>) -> Result<u64> {
+    pub(crate) async fn rollback(&mut self, depth: Option<u64>) -> Result<()> {
         node_info!("anvil_rollback");
         let revert_info = self
             .snapshot_manager
@@ -540,7 +540,7 @@ impl ApiServer {
 
         self.update_time().await?;
 
-        Ok(revert_info.reverted)
+        Ok(())
     }
 
     // Helpers

@@ -401,3 +401,7 @@ async fn test_rollback() {
     assert_eq!(reverted, 1);
     assert_block_number(&mut node, 12).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+// TODO
+async fn test_revert_with_txs_in_mempool() {}
