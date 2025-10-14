@@ -812,11 +812,11 @@ async fn test_call() {
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
-    let call_data = vec![0x20, 0x96, 0x52, 0x55]; // getValue selector
+    let get_value_data = SimpleStorage::getValueCall::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
-        .input(TransactionInput::new(Bytes::from(call_data)));
+        .input(TransactionInput::both(get_value_data.into()));
     let res: Bytes = unwrap_response(
         node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
             .await
