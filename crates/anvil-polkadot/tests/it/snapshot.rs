@@ -78,9 +78,9 @@ async fn test_best_after_evm_revert() {
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
     assert_eq!(snapshot_id, U256::from(2));
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
-    assert_eq!(reverted, 5);
+    assert!(reverted);
     assert_block_number(&mut node, 10).await;
 
     // Check mining works fine after reverting.
@@ -100,26 +100,27 @@ async fn test_best_after_evm_revert() {
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
     assert_eq!(snapshot_id, U256::from(3));
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
-    assert_eq!(reverted, 0);
+    assert!(reverted);
     assert_block_number(&mut node, 20).await;
 
     // Test the case of revert id -> revert same id.
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
             .unwrap();
-    assert_eq!(reverted, 15);
+    assert!(reverted);
     assert_block_number(&mut node, 5).await;
 
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
             .unwrap();
-    assert_eq!(reverted, 0);
+    assert!(reverted);
 
     // Test reverting down to genesis.
     // The snapshot at genesis block is automatically created
-    // at node startup.
+    // at node startup, but we can not revert to it due to not being able
+    // to determine `Now` storage value from `pallet-timestamp`.
     let err =
         unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(U256::ZERO)).await.unwrap())
             .unwrap_err();
@@ -221,9 +222,9 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
     assert_eq!(snapshot_id, U256::from(1));
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
-    assert_eq!(reverted, 2);
+    assert!(reverted);
     assert_block_number(&mut node, 5).await;
 
     // Assert on accounts balances to be the initial balances.
@@ -343,9 +344,9 @@ async fn test_evm_revert_and_timestamp() {
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
     assert_eq!(snapshot_id, U256::from(1));
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
-    assert_eq!(reverted, 1);
+    assert!(reverted);
     assert_eq!(node.best_block_number().await, 2);
     assert_with_tolerance(
         node.get_decoded_timestamp(None).await.saturating_sub(second_timestamp),
@@ -384,8 +385,9 @@ async fn test_rollback() {
 
     // Rollback 2 blocks.
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap()).unwrap();
-    assert_eq!(reverted, 2);
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap())
+            .unwrap();
+    assert!(reverted);
     assert_block_number(&mut node, 3).await;
 
     // Check mining works fine after reverting.
@@ -397,11 +399,107 @@ async fn test_rollback() {
 
     // Rollback 1 blocks.
     let reverted =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert_eq!(reverted, 1);
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
+    assert!(reverted);
     assert_block_number(&mut node, 12).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// TODO
-async fn test_revert_with_txs_in_mempool() {}
+async fn test_revert_with_valid_txs_in_mempool() {
+    let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    // Assert on initial best block number.
+    assert_block_number(&mut node, 0).await;
+
+    // Mine 5 blocks and assert on the new best block.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
+    assert_block_number(&mut node, 5).await;
+
+    // Snapshot at block number 5.
+    let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
+        .unwrap();
+    assert_eq!(id, "0x1".to_string());
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
+    assert_block_number(&mut node, 10).await;
+
+    // Get known accounts.
+    let alith_account = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
+    let baltathar_account = Account::from(subxt_signer::eth::dev::baltathar());
+    let baltathar_addr = Address::from(ReviveAddress::new(baltathar_account.address()));
+
+    // Initialize a random account.
+    let transfer_amount = U256::from(16e17);
+    let (dest_addr, _) =
+        node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount, None).await;
+
+    // Make another regular transfer between known accounts.
+    let transfer_amount = U256::from(1e17);
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(baltathar_addr).to(alith_addr);
+    let _ = node.send_transaction(transaction, None).await.unwrap();
+
+    // Revert to a block before the transactions have been sent.
+    let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
+    assert_eq!(snapshot_id, U256::from(1));
+    let reverted =
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+            .unwrap();
+    assert!(reverted);
+    assert_block_number(&mut node, 5).await;
+    let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
+        .unwrap();
+    assert_eq!(id, "0x2".to_string());
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    assert_block_number(&mut node, 6).await;
+
+    let txs_in_block = unwrap_response::<U256>(
+        node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
+            alloy_eips::BlockNumberOrTag::Latest,
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(txs_in_block, U256::from(2));
+
+    // Now make two more txs again with same senders, with different nonces than the actual
+    // accounts nonces at block 5.
+    let transfer_amount = U256::from(1e15);
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(baltathar_addr).to(alith_addr);
+    let _ = node.send_transaction(transaction, None).await.unwrap();
+    let _ = node
+        .send_transaction(
+            TransactionRequest::default().value(transfer_amount).from(alith_addr).to(dest_addr),
+            None,
+        )
+        .await
+        .unwrap();
+
+    let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
+    let reverted =
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+            .unwrap();
+    assert!(reverted);
+    assert_block_number(&mut node, 5).await;
+
+    let txs_in_block = unwrap_response::<U256>(
+        node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
+            alloy_eips::BlockNumberOrTag::Latest,
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    // TODO: check how to trigger a chain event so that transactions are revalidated at the block
+    // we revert to
+    assert_eq!(txs_in_block, U256::ZERO);
+}
