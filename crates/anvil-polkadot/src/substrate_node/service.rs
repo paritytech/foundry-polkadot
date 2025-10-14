@@ -164,6 +164,7 @@ fn spawn_rpc_server(
     let rpc_extensions_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();
+
         Box::new(move |_| {
             Ok(polkadot_sdk::substrate_frame_rpc_system::System::new(client.clone(), pool.clone())
                 .into_rpc())

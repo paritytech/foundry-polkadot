@@ -280,6 +280,14 @@ impl MiningEngine {
         Duration::from_millis(offset).as_secs()
     }
 
+    /// Resets time to genesis timestamp.
+    pub fn reset_to_genesis_timestamp(&self) -> u64 {
+        let now = self.time_manager.current_call_timestamp();
+        let genesis_timestamp = self.time_manager.reset_to_genesis_timestamp();
+        let offset = genesis_timestamp.saturating_sub(now);
+        Duration::from_millis(offset).as_secs()
+    }
+
     /// Configure automatic timestamp intervals between blocks.
     ///
     /// Sets a fixed time interval that will be automatically added to each
@@ -303,11 +311,6 @@ impl MiningEngine {
     /// * `false` - No timestamp interval was configured
     pub fn remove_block_timestamp_interval(&self) -> bool {
         self.time_manager.remove_block_timestamp_interval()
-    }
-
-    /// Get the current block timestamp
-    pub fn current_block_timestamp(&self) -> u64 {
-        self.time_manager.current_call_timestamp()
     }
 
     //---------- Helpers ---------------

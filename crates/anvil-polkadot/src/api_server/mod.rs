@@ -2,9 +2,7 @@ use crate::{
     AnvilNodeConfig,
     logging::LoggingManager,
     substrate_node::{
-        impersonation::ImpersonationManager,
-        service::{FullClient, Service},
-        snapshot::SnapshotManager,
+        impersonation::ImpersonationManager, service::Service, snapshot::SnapshotManager,
     },
 };
 use anvil_core::eth::EthRequest;
@@ -15,8 +13,6 @@ use server::ApiServer;
 pub mod error;
 pub mod revive_conversions;
 mod server;
-
-pub use server::create_revive_rpc_client;
 
 pub type ApiHandle = mpsc::Sender<ApiRequest>;
 
@@ -29,7 +25,7 @@ pub fn spawn(
     config: &AnvilNodeConfig,
     substrate_service: &Service,
     logging_manager: LoggingManager,
-    snapshot_manager: SnapshotManager<FullClient>,
+    snapshot_manager: SnapshotManager,
 ) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
 

@@ -6,10 +6,7 @@ use crate::{
     api_server::ApiHandle,
     config::AnvilNodeConfig,
     logging::{LoggingManager, NodeLogLayer},
-    substrate_node::{
-        service::{FullClient, Service},
-        snapshot::SnapshotManager,
-    },
+    substrate_node::{service::Service, snapshot::SnapshotManager},
 };
 use clap::{CommandFactory, Parser};
 use eyre::Result;
@@ -144,7 +141,7 @@ pub async fn spawn_anvil_tasks(
     service: &Service,
     task_manager: &TaskManager,
     logging_manager: LoggingManager,
-    snapshot_manager: SnapshotManager<FullClient>,
+    snapshot_manager: SnapshotManager,
 ) -> Result<ApiHandle> {
     // Spawn the api server.
     let api_handle = api_server::spawn(&anvil_config, service, logging_manager, snapshot_manager);

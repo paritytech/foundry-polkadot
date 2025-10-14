@@ -1,8 +1,8 @@
-use crate::substrate_node::service::Backend;
+use crate::substrate_node::service::{Backend, FullClient};
 use alloy_primitives::U256;
 use polkadot_sdk::{
     sc_client_api::Backend as BackendT,
-    sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata, Info, Result},
+    sp_blockchain::{HeaderBackend, Info, Result},
 };
 use std::{collections::BTreeMap, sync::Arc};
 use substrate_runtime::OpaqueBlock;
@@ -17,15 +17,15 @@ pub struct RevertInfo {
     pub reverted: u64,
 }
 
-pub struct SnapshotManager<C> {
-    client: Arc<C>,
+pub struct SnapshotManager {
+    client: Arc<FullClient>,
     backend: Arc<Backend>,
     next_snapshot_id: U256,
     snapshots: BTreeMap<U256, Snapshot>,
 }
 
-impl<C> SnapshotManager<C> {
-    pub fn new(client: Arc<C>, backend: Arc<Backend>, genesis_block_number: u64) -> Self {
+impl SnapshotManager {
+    pub fn new(client: Arc<FullClient>, backend: Arc<Backend>, genesis_block_number: u64) -> Self {
         let snapshot = Snapshot { best_number: genesis_block_number };
         let mut map = BTreeMap::new();
         map.insert(U256::ZERO, snapshot);
@@ -40,14 +40,7 @@ impl<C> SnapshotManager<C> {
     }
 }
 
-impl<C> SnapshotManager<C>
-where
-    C: HeaderBackend<OpaqueBlock>
-        + HeaderMetadata<OpaqueBlock, Error = BlockChainError>
-        + Send
-        + Sync
-        + 'static,
-{
+impl SnapshotManager {
     /// Create a snapshot id corresponding to the best block number.
     pub fn snapshot(&mut self) -> U256 {
         let one = U256::ONE;

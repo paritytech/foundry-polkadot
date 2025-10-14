@@ -10,11 +10,8 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
-        impersonation::ImpersonationManager,
-        in_mem_rpc::InMemoryRpcClient,
-        mining_engine::MiningEngine,
-        service::{FullClient, Service},
-        snapshot::SnapshotManager,
+        impersonation::ImpersonationManager, in_mem_rpc::InMemoryRpcClient,
+        mining_engine::MiningEngine, service::Service, snapshot::SnapshotManager,
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
@@ -32,10 +29,12 @@ use pallet_revive_eth_rpc::{
 use polkadot_sdk::{
     pallet_revive::evm::{Account, Block, Bytes, ReceiptInfo, TransactionSigned},
     sc_service::SpawnTaskHandle,
+    sp_blockchain::Info,
     sp_core::{self, keccak_256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
+use substrate_runtime::OpaqueBlock;
 use subxt::{
     OnlineClient,
     backend::{legacy::LegacyRpcMethods, rpc::RpcClient},
@@ -53,7 +52,7 @@ pub struct ApiServer {
     req_receiver: mpsc::Receiver<ApiRequest>,
     logging_manager: LoggingManager,
     mining_engine: Arc<MiningEngine>,
-    snapshot_manager: SnapshotManager<FullClient>,
+    snapshot_manager: SnapshotManager,
     block_provider: SubxtBlockInfoProvider,
     wallet: Wallet,
     impersonation_manager: ImpersonationManager,
@@ -64,7 +63,7 @@ impl ApiServer {
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
-        snapshot_manager: SnapshotManager<FullClient>,
+        snapshot_manager: SnapshotManager,
         impersonation_manager: ImpersonationManager,
     ) -> Result<Self> {
         let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
@@ -498,19 +497,12 @@ impl ApiServer {
 
     pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
         node_info!("evm_revert");
-        let revert_info =
+        let res =
             self.snapshot_manager.revert(id).map_err(|err| Error::SnapshotRpc(err.to_string()))?;
-        let Some(revert) = revert_info else { return Ok(false) };
-        let new_best_block = self.block_provider.block_by_number(revert.info.best_number).await?;
+        let Some(res) = res else { return Ok(false) };
 
-        let new_finalized_block =
-            self.block_provider.block_by_number(revert.info.finalized_number).await?;
-        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
-        }
-
-        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
+        if res.reverted > 0 {
+            self.update_block_provider(res.info).await?;
         }
 
         self.update_time().await?;
@@ -520,25 +512,14 @@ impl ApiServer {
 
     pub(crate) async fn rollback(&mut self, depth: Option<u64>) -> Result<()> {
         node_info!("anvil_rollback");
-        let revert_info = self
+        let res = self
             .snapshot_manager
             .rollback(depth)
             .map_err(|err| Error::SnapshotRpc(err.to_string()))?;
 
-        if revert_info.reverted > 0 {
-            let new_best_block =
-                self.block_provider.block_by_number(revert_info.info.best_number).await?;
-            let new_finalized_block =
-                self.block_provider.block_by_number(revert_info.info.finalized_number).await?;
-            if let Some(block) = new_best_block.and_then(Arc::into_inner) {
-                self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
-            }
-            if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
-                self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
-            }
+        if res.reverted > 0 {
+            self.update_block_provider(res.info).await?;
         }
-
-        self.update_time().await?;
 
         Ok(())
     }
@@ -551,6 +532,21 @@ impl ApiServer {
             .map_err(Error::from)
     }
 
+    async fn update_block_provider(&self, info: Info<OpaqueBlock>) -> Result<()> {
+        let new_best_block = self.block_provider.block_by_number(info.best_number).await?;
+        let new_finalized_block =
+            self.block_provider.block_by_number(info.finalized_number).await?;
+
+        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
+        }
+
+        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
+        }
+
+        Ok(())
+    }
     async fn update_time(&self) -> Result<()> {
         let timestamp: u64 = self
             .api
