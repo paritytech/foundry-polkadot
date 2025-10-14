@@ -25,7 +25,7 @@ pub struct TimeManager {
     offset: Arc<RwLock<i128>>,
     /// Substrate genesis block doesn't contain the timestamp inherent,
     /// so this field should be used when resetting time manager after
-    /// a revert to genesis.
+    /// a revert to genesis. It is assumed to be set in milliseconds.
     genesis_timestamp: u64,
     /// The timestamp of the last block header
     last_timestamp: Arc<RwLock<u64>>,
@@ -87,6 +87,7 @@ impl TimeManager {
     /// Resets the current time manager to genesis timestamp.
     pub fn reset_to_genesis_timestamp(&self) -> u64 {
         let current = duration_since_unix_epoch().as_millis() as i128;
+        // Genesis timestamp is in milliseconds.
         *self.last_timestamp.write() = self.genesis_timestamp;
         *self.offset.write() = (self.genesis_timestamp as i128) - current;
         self.next_exact_timestamp.write().take();

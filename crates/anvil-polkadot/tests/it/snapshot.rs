@@ -8,7 +8,6 @@ use anvil_polkadot::{
     api_server::revive_conversions::{AlloyU256, ReviveAddress},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
-use anvil_rpc::error::ErrorCode;
 use polkadot_sdk::pallet_revive::{
     self,
     evm::{Account, Block},
@@ -115,17 +114,15 @@ async fn test_best_after_evm_revert() {
     let reverted =
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
             .unwrap();
-    assert!(reverted);
+    assert!(!reverted);
 
-    // Test reverting down to genesis.
-    // The snapshot at genesis block is automatically created
-    // at node startup, but we can not revert to it due to not being able
-    // to determine `Now` storage value from `pallet-timestamp`.
-    let err =
-        unwrap_response::<u64>(node.eth_rpc(EthRequest::EvmRevert(U256::ZERO)).await.unwrap())
-            .unwrap_err();
-    assert_eq!(err.code, ErrorCode::InternalError);
-    assert_eq!(err.message, "Failed to configure the time manager after revert");
+    // Test reverting down to genesis. The snapshot at genesis block is
+    // automatically created.
+    let reverted =
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ZERO)).await.unwrap())
+            .unwrap();
+    assert!(reverted);
+    assert_block_number(&mut node, 0).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -278,25 +275,24 @@ async fn test_evm_revert_and_timestamp() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
     assert_eq!(node.best_block_number().await, 1);
+    let first_timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
-        node.get_decoded_timestamp(None)
-            .await
-            .saturating_div(1000)
-            .saturating_sub(genesis_timestamp),
-        20,
-        5,
+        first_timestamp.saturating_div(1000).saturating_sub(genesis_timestamp),
+        0,
+        1,
         "wrong timestamp at first block",
     );
 
-    let first_timestamp = node.get_decoded_timestamp(None).await;
-    let second_timestamp = first_timestamp.saturating_div(1000).saturating_add(3600);
+    let second_timestamp = first_timestamp.saturating_add(3000);
     assert_with_tolerance(
         unwrap_response::<u64>(
-            node.eth_rpc(EthRequest::EvmSetTime(U256::from(second_timestamp))).await.unwrap(),
+            node.eth_rpc(EthRequest::EvmSetTime(U256::from(second_timestamp.saturating_div(1000))))
+                .await
+                .unwrap(),
         )
         .unwrap(),
-        3600,
-        5,
+        3,
+        1,
         "Wrong offset 1",
     );
 
@@ -306,26 +302,27 @@ async fn test_evm_revert_and_timestamp() {
     assert_eq!(node.best_block_number().await, 2);
     let second_timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
-        second_timestamp.saturating_sub(first_timestamp).saturating_div(1000),
-        3600,
-        5,
+        second_timestamp.saturating_sub(first_timestamp),
+        3000,
+        100,
         "wrong timestamp at second block",
     );
-
     // Snapshot at block number 2 and then mine 1 more block.
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
         .unwrap();
     assert_eq!(id, "0x1".to_string());
 
     // Seconds
-    let third_timestamp = second_timestamp.saturating_div(1000).saturating_add(3600);
+    let third_timestamp = second_timestamp.saturating_add(3000);
     assert_with_tolerance(
         unwrap_response::<u64>(
-            node.eth_rpc(EthRequest::EvmSetTime(U256::from(third_timestamp))).await.unwrap(),
+            node.eth_rpc(EthRequest::EvmSetTime(U256::from(third_timestamp.saturating_div(1000))))
+                .await
+                .unwrap(),
         )
         .unwrap(),
-        3600,
-        5,
+        3,
+        1,
         "Wrong offset 2",
     );
 
@@ -334,9 +331,9 @@ async fn test_evm_revert_and_timestamp() {
     assert_eq!(node.best_block_number().await, 3);
     let third_timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
-        third_timestamp.saturating_sub(second_timestamp).saturating_div(1000),
-        3600,
-        5,
+        third_timestamp.saturating_sub(second_timestamp),
+        3000,
+        100,
         "wrong timestamp at third block",
     );
 
@@ -348,8 +345,9 @@ async fn test_evm_revert_and_timestamp() {
             .unwrap();
     assert!(reverted);
     assert_eq!(node.best_block_number().await, 2);
+    let seconds_ts_after_revert = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
-        node.get_decoded_timestamp(None).await.saturating_sub(second_timestamp),
+        seconds_ts_after_revert.saturating_sub(second_timestamp),
         0,
         5,
         "wrong timestamp at reverted second block",
@@ -361,12 +359,37 @@ async fn test_evm_revert_and_timestamp() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
         .unwrap();
     assert_eq!(node.best_block_number().await, 3);
+    let remined_third_block_ts = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
-        node.get_decoded_timestamp(None).await.saturating_sub(second_timestamp),
+        remined_third_block_ts.saturating_sub(second_timestamp),
         1000,
-        10,
+        100,
         "wrong timestamp at remined third block",
     );
+
+    // Revert to genesis block number.
+    let reverted =
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ZERO)).await.unwrap())
+            .unwrap();
+    assert!(reverted);
+    assert_eq!(node.best_block_number().await, 0);
+    let reverted_genesis_block_ts = node.get_decoded_timestamp(None).await;
+    assert_with_tolerance(
+        reverted_genesis_block_ts.saturating_div(1000).saturating_sub(genesis_timestamp),
+        0,
+        5,
+        "wrong timestamp at reverted genesis block",
+    );
+
+    // Mine 1 block and check the timestamp. We don't check on a specific
+    // timestamp, but expect the time has increased a bit since the revert, which set the time back
+    // to genesis timestamp.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    assert_eq!(node.best_block_number().await, 1);
+    let remined_first_block_ts = node.get_decoded_timestamp(None).await;
+    // Here assert that the time is increasing.
+    assert!(remined_first_block_ts > genesis_timestamp * 1000);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -384,10 +407,7 @@ async fn test_rollback() {
     assert_block_number(&mut node, 5).await;
 
     // Rollback 2 blocks.
-    let reverted =
-        unwrap_response::<bool>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap())
-            .unwrap();
-    assert!(reverted);
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap()).unwrap();
     assert_block_number(&mut node, 3).await;
 
     // Check mining works fine after reverting.
@@ -398,14 +418,12 @@ async fn test_rollback() {
     assert_block_number(&mut node, 13).await;
 
     // Rollback 1 blocks.
-    let reverted =
-        unwrap_response::<bool>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert!(reverted);
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
     assert_block_number(&mut node, 12).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_revert_with_valid_txs_in_mempool() {
+async fn test_revert_with_txs_in_mempool() {
     let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();

@@ -61,10 +61,11 @@ pub struct ApiServer {
     logging_manager: LoggingManager,
     backend: Arc<Backend>,
     mining_engine: Arc<MiningEngine>,
-    snapshot_manager: SnapshotManager,
     block_provider: SubxtBlockInfoProvider,
     wallet: Wallet,
+    snapshot_manager: SnapshotManager,
     impersonation_manager: ImpersonationManager,
+    genesis_block_number: u64,
 }
 
 impl ApiServer {
@@ -106,6 +107,7 @@ impl ApiServer {
                     Account::from(subxt_signer::eth::dev::charleth()),
                 ],
             },
+            genesis_block_number: substrate_service.genesis_block_number,
         })
     }
 
@@ -514,10 +516,14 @@ impl ApiServer {
         let Some(res) = res else { return Ok(false) };
 
         if res.reverted > 0 {
-            self.update_block_provider(res.info).await?;
+            self.update_block_provider(&res.info).await?;
         }
 
-        self.update_time().await?;
+        if Into::<u64>::into(res.info.best_number) == self.genesis_block_number {
+            self.mining_engine.reset_to_genesis_timestamp();
+        } else {
+            self.update_time().await?;
+        }
 
         Ok(true)
     }
@@ -530,7 +536,13 @@ impl ApiServer {
             .map_err(|err| Error::SnapshotRpc(err.to_string()))?;
 
         if res.reverted > 0 {
-            self.update_block_provider(res.info).await?;
+            self.update_block_provider(&res.info).await?;
+        }
+
+        if Into::<u64>::into(res.info.best_number) == self.genesis_block_number {
+            self.mining_engine.reset_to_genesis_timestamp();
+        } else {
+            self.update_time().await?;
         }
 
         Ok(())
@@ -544,7 +556,7 @@ impl ApiServer {
             .map_err(Error::from)
     }
 
-    async fn update_block_provider(&self, info: Info<OpaqueBlock>) -> Result<()> {
+    async fn update_block_provider(&self, info: &Info<OpaqueBlock>) -> Result<()> {
         let new_best_block = self.block_provider.block_by_number(info.best_number).await?;
         let new_finalized_block =
             self.block_provider.block_by_number(info.finalized_number).await?;
