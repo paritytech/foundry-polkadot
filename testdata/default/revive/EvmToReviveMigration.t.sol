@@ -80,7 +80,6 @@ contract EvmReviveMigrationTest is DSTest {
         assertEq(alice.balance, evmBalance, "Balance precision should be preserved in migration back to Revive");
     }
 
-
     function testBytecodeMigrationToEvm() public {
         SimpleStorage storageContract = new SimpleStorage();
 
