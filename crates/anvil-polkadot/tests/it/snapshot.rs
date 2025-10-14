@@ -12,6 +12,7 @@ use polkadot_sdk::pallet_revive::{self, evm::Account};
 use subxt::utils::H160;
 
 #[tokio::test(flavor = "multi_thread")]
+// TODO: expect on block number as returned by block provider.
 async fn test_best_after_evm_revert() {
     let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
@@ -100,6 +101,7 @@ async fn test_best_after_evm_revert() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+// TODO: expect on block number as returned by block provider.
 async fn test_balances_and_txs_index_after_evm_revert() {
     let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
@@ -255,6 +257,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
 #[tokio::test(flavor = "multi_thread")]
 // TODO: add a test where we call a contract that queries the timestamp
 // at a certain block before and after a revert, while mining blocks
+// TODO: expect on block number as returned by block provider.
 async fn test_evm_revert_and_timestamp() {
     let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
     // Generate the current timestamp and pass it to anvil config.
