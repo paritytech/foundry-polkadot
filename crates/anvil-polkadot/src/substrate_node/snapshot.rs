@@ -1,11 +1,11 @@
-use crate::substrate_node::service::{Backend, FullClient};
+use crate::substrate_node::service::{Backend, Client};
 use alloy_primitives::U256;
 use polkadot_sdk::{
+    polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::Backend as BackendT,
     sp_blockchain::{HeaderBackend, Info, Result},
 };
 use std::{collections::BTreeMap, sync::Arc};
-use substrate_runtime::OpaqueBlock;
 
 #[derive(Clone, Debug)]
 pub struct Snapshot {
@@ -18,14 +18,14 @@ pub struct RevertInfo {
 }
 
 pub struct SnapshotManager {
-    client: Arc<FullClient>,
+    client: Arc<Client>,
     backend: Arc<Backend>,
     next_snapshot_id: U256,
     snapshots: BTreeMap<U256, Snapshot>,
 }
 
 impl SnapshotManager {
-    pub fn new(client: Arc<FullClient>, backend: Arc<Backend>) -> Self {
+    pub fn new(client: Arc<Client>, backend: Arc<Backend>) -> Self {
         Self { client, backend, next_snapshot_id: U256::ZERO, snapshots: BTreeMap::new() }
     }
 }

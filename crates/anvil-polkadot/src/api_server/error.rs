@@ -1,6 +1,7 @@
-use crate::substrate_node::mining_engine::MiningError;
+use crate::substrate_node::{mining_engine::MiningError, service::BackendError};
 use anvil_rpc::{error::RpcError, response::ResponseResult};
 use pallet_revive_eth_rpc::{EthRpcError, client::ClientError};
+use polkadot_sdk::sp_api;
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -17,6 +18,16 @@ pub enum Error {
     SnapshotRpc(String),
     #[error("Subxt error: {0}")]
     Subxt(#[from] subxt::error::Error),
+    #[error("Internal error: {0}")]
+    InternalError(String),
+    #[error(transparent)]
+    Backend(#[from] BackendError),
+    #[error("Nonce overflowing the substrate nonce type")]
+    NonceOverflow,
+    #[error(transparent)]
+    RuntimeApi(#[from] sp_api::ApiError),
+    #[error("Error encountered while creating a BalanceWithDust from a U256 balance")]
+    BalanceConversion,
     #[error("Internal error: {0}")]
     InternalError(String),
 }
@@ -77,9 +88,7 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 Error::Subxt(subxt_err) => {
                     RpcError::internal_error_with(format!("{subxt_err}")).into()
                 }
-                Error::InternalError(error_message) => {
-                    RpcError::internal_error_with(error_message).into()
-                }
+                err => RpcError::internal_error_with(format!("{err}")).into(),
             },
         }
     }
