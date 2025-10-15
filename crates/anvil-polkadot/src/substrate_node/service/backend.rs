@@ -182,6 +182,9 @@ pub struct BlockOverrides {
 }
 
 pub struct StorageOverrides {
+    // We keep N most recently used block state overrides because we may later get RPC calls which
+    // query the state of past blocks. When state is mutated by the `set_*` RPCs, it gets committed
+    // to the state DB only in the next block.
     per_block: LruCache<Hash, BlockOverrides>,
 }
 

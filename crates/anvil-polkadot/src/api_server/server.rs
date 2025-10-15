@@ -115,6 +115,7 @@ impl ApiServer {
             EthRequest::GetIntervalMining(_) => self.get_interval_mining().to_rpc_result(),
             EthRequest::GetAutoMine(_) => self.get_auto_mine().to_rpc_result(),
             EthRequest::SetAutomine(enabled) => self.set_auto_mine(enabled).to_rpc_result(),
+            //------- TimeMachine---------
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
@@ -442,9 +443,7 @@ impl ApiServer {
         };
 
         let latest_block = self.latest_block();
-        let latest_block_id = Some(BlockId::hash(
-            AlloyU256::from(sp_core::U256::from_big_endian(latest_block.as_bytes())).inner().into(),
-        ));
+        let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block.as_ref())));
 
         if transaction.gas.is_none() {
             transaction.gas =
@@ -670,8 +669,7 @@ impl ApiServer {
     }
 
     fn chain_id(&self, at: Hash) -> u64 {
-        // TODO: remove this unwrap_or() once the genesis customisation PR is merged.
-        self.backend.read_chain_id(at).unwrap_or(420_420_420)
+        self.backend.read_chain_id(at).expect("Chain ID is populated on genesis")
     }
 
     fn get_account_id(&self, block: Hash, address: Address) -> Result<AccountId> {

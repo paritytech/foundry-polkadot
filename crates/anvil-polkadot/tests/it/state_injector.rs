@@ -3,7 +3,7 @@ use crate::{
     utils::{ContractCode, TestNode, get_contract_code, unwrap_response},
 };
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, Bytes, ruint::aliases::U256};
+use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
