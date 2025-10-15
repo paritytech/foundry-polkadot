@@ -106,7 +106,7 @@ async fn test_send_transaction() {
         .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
         .await
         .unwrap();
-    std::thread::sleep(Duration::from_millis(500));
+    tokio::time::sleep(Duration::from_millis(500)).await;
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(1));
@@ -151,7 +151,7 @@ async fn test_send_to_uninitialized() {
         .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
         .await
         .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     let alith_final_balance = node.get_balance(alith.address(), None).await;
     assert_eq!(node.get_balance(charleth.address(), None).await, transfer_amount);
@@ -164,7 +164,7 @@ async fn test_send_to_uninitialized() {
         .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
         .await
         .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    tokio::time::sleep(Duration::from_millis(500)).await;
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let alith_final_balance_2 = node.get_balance(alith.address(), None).await;
     let charlet_final_balance = node.get_balance(charleth.address(), None).await;
@@ -260,7 +260,7 @@ async fn test_get_block_by_number() {
     )
     .unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
-    assert_eq!(err.message, "Client error: conversion failed");
+    assert_eq!(err.message, "Revive call failed: Client error: conversion failed");
     // Assert that we can not find blocks that do not exist.
     assert_eq!(
         unwrap_response::<Option<Block>>(
@@ -314,7 +314,7 @@ async fn test_eth_get_transaction_count() {
     )
     .unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
-    assert_eq!(err.message, "Client error: hash not found");
+    assert_eq!(err.message, "Revive call failed: Client error: hash not found");
 
     assert_eq!(
         unwrap_response::<U256>(
