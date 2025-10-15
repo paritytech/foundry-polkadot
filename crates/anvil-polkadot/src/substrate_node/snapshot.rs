@@ -25,18 +25,8 @@ pub struct SnapshotManager {
 }
 
 impl SnapshotManager {
-    pub fn new(client: Arc<FullClient>, backend: Arc<Backend>, genesis_block_number: u64) -> Self {
-        let snapshot = Snapshot { best_number: genesis_block_number };
-        let mut map = BTreeMap::new();
-        map.insert(U256::ZERO, snapshot);
-
-        Self {
-            client,
-            backend,
-            // Start with 1 to mimic Ganache
-            next_snapshot_id: U256::ONE,
-            snapshots: map,
-        }
+    pub fn new(client: Arc<FullClient>, backend: Arc<Backend>) -> Self {
+        Self { client, backend, next_snapshot_id: U256::ZERO, snapshots: BTreeMap::new() }
     }
 }
 
@@ -69,9 +59,7 @@ impl SnapshotManager {
             true,
         )?;
 
-        self.snapshots.retain(|&k, snap_to_remove| {
-            k < snapshot_id || snap_to_remove.best_number >= snap.best_number
-        });
+        self.snapshots.retain(|_, snap_to_remove| snap_to_remove.best_number < snap.best_number);
 
         Ok(Some(RevertInfo { reverted: reverted.into(), info: self.client.info() }))
     }

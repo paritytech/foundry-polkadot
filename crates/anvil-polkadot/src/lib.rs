@@ -118,11 +118,8 @@ pub async fn spawn(
     let (substrate_service, task_manager) =
         substrate_node::service::new(&anvil_config, substrate_config)
             .map_err(sc_cli::Error::Service)?;
-    let snapshot_manager = SnapshotManager::new(
-        substrate_service.client.clone(),
-        substrate_service.backend.clone(),
-        anvil_config.get_genesis_number(),
-    );
+    let snapshot_manager =
+        SnapshotManager::new(substrate_service.client.clone(), substrate_service.backend.clone());
 
     // Spawn the other tasks.
     let api_handle = spawn_anvil_tasks(
