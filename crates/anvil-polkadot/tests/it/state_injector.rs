@@ -49,8 +49,7 @@ async fn test_set_chain_id() {
         10u64,
     );
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     assert_eq!(
         unwrap_response::<String>(node.eth_rpc(EthRequest::EthChainId(())).await.unwrap()).unwrap(),
@@ -78,8 +77,7 @@ async fn test_set_chain_id() {
     let tx = TransactionRequest::default().value(U256::from(100)).from(fr).to(to);
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -109,8 +107,7 @@ async fn test_set_nonce() {
 
     assert_eq!(node.get_nonce(address).await, U256::from(10));
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_nonce(address).await, U256::from(10));
@@ -132,8 +129,7 @@ async fn test_set_nonce() {
     // Send a transaction with the right nonce and mine a block.
     let tx_hash = node.send_transaction(tx.clone().nonce(10), None).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -152,8 +148,7 @@ async fn test_set_nonce() {
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
@@ -177,8 +172,7 @@ async fn test_set_nonce() {
 
     assert_eq!(node.get_nonce(address).await, U256::from(1));
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_nonce(address).await, U256::from(1));
@@ -211,8 +205,7 @@ async fn test_set_balance() {
 
     assert_eq!(node.get_balance(alith, None).await, new_balance);
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_balance(alith, None).await, new_balance);
@@ -227,8 +220,7 @@ async fn test_set_balance() {
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
@@ -280,8 +272,7 @@ async fn test_set_balance() {
 
     assert_eq!(node.get_balance(baltathar, None).await, new_balance);
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_balance(baltathar, None).await, new_balance);
@@ -300,8 +291,7 @@ async fn test_set_balance() {
     .unwrap();
 
     assert_eq!(node.get_balance(random_addr, None).await, new_balance);
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
     assert_eq!(node.get_balance(random_addr, None).await, new_balance);
 }
@@ -326,8 +316,7 @@ async fn test_set_code_existing_contract() {
         .deploy_contract(&bytecode, Account::from(subxt_signer::eth::dev::alith()).address(), None)
         .await;
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let receipt = node.get_transaction_receipt(tx_hash).await;
@@ -356,8 +345,7 @@ async fn test_set_code_existing_contract() {
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
@@ -404,13 +392,12 @@ async fn test_set_code_existing_contract() {
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
 
-    // assert new value
+    // assert new value. The new code is doubling all values before setting them in storage.
     let tx = TransactionRequest::default()
         .from(alith)
         .to(contract_address)
@@ -480,8 +467,7 @@ async fn test_set_code_new() {
 
     assert_eq!(code, Bytes::from(runtime_bytecode.clone()));
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(code, Bytes::from(runtime_bytecode));
@@ -494,8 +480,7 @@ async fn test_set_code_new() {
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
@@ -571,8 +556,7 @@ async fn test_set_code_of_regular_account() {
 
     assert_eq!(code, Bytes::from(runtime_bytecode.clone()));
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(code, Bytes::from(runtime_bytecode));
@@ -585,8 +569,7 @@ async fn test_set_code_of_regular_account() {
 
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
@@ -616,8 +599,7 @@ async fn test_set_storage() {
 
     let contract_code = get_contract_code("SimpleStorage");
     let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
