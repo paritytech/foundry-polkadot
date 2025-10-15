@@ -27,7 +27,7 @@ use alloy_rpc_types::{anvil::MineOptions, request::TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
-use codec::Encode;
+use codec::{Decode, Encode};
 use futures::{StreamExt, channel::mpsc};
 use polkadot_sdk::{
     pallet_revive::{
@@ -40,15 +40,19 @@ use polkadot_sdk::{
         subxt_client::{self, SrcChainConfig},
     },
     parachains_common::{AccountId, Hash, Nonce},
-    sc_client_api::HeaderBackend,
-    sp_api::ProvideRuntimeApi,
+    sc_client_api::{Backend as _, HeaderBackend, StateBackend, TrieCacheContext},
+    sp_api::{Metadata, ProvideRuntimeApi},
     sp_core::{self, H160, H256, Hasher, keccak_256},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{sync::Arc, time::Duration};
 use substrate_runtime::Balance;
-use subxt::{OnlineClient, backend::rpc::RpcClient, ext::subxt_rpcs::LegacyRpcMethods};
+use subxt::{
+    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
+    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
+    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+};
 
 pub struct Wallet {
     accounts: Vec<Account>,
@@ -59,6 +63,7 @@ pub struct ApiServer {
     backend: BackendWithOverlay,
     logging_manager: LoggingManager,
     client: Arc<Client>,
+    backend: Arc<Backend>,
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,
@@ -740,7 +745,63 @@ fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> Contra
 
 async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcClient> {
     let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
-    let api = OnlineClient::<SrcChainConfig>::from_rpc_client(rpc_client.clone()).await?;
+
+    let genesis_block_number = substrate_service.genesis_block_number.try_into().map_err(|_| {
+        Error::InternalError(format!(
+            "Genesis block number {} is too large for u32 (max: {})",
+            substrate_service.genesis_block_number,
+            u32::MAX
+        ))
+    })?;
+
+    let Some(genesis_hash) = substrate_service.client.hash(genesis_block_number).ok().flatten()
+    else {
+        return Err(Error::InternalError(format!(
+            "Genesis hash not found for genesis block number {}",
+            substrate_service.genesis_block_number
+        )));
+    };
+
+    let Ok(runtime_version) = substrate_service.client.runtime_version_at(genesis_hash) else {
+        return Err(Error::InternalError(
+            "Runtime version not found for given genesis hash".to_string(),
+        ));
+    };
+
+    let subxt_runtime_version = SubxtRuntimeVersion {
+        spec_version: runtime_version.spec_version,
+        transaction_version: runtime_version.transaction_version,
+    };
+
+    let Ok(supported_metadata_versions) =
+        substrate_service.client.runtime_api().metadata_versions(genesis_hash)
+    else {
+        return Err(Error::InternalError("Unable to fetch metadata versions".to_string()));
+    };
+    let Some(latest_metadata_version) = supported_metadata_versions.into_iter().max() else {
+        return Err(Error::InternalError("No stable metadata versions supported".to_string()));
+    };
+    let opaque_metadata = substrate_service
+        .client
+        .runtime_api()
+        .metadata_at_version(genesis_hash, latest_metadata_version)
+        .map_err(|_| {
+            Error::InternalError("Failed to get runtime API for genesis hash".to_string())
+        })?
+        .ok_or_else(|| {
+            Error::InternalError(format!(
+                "Metadata not found for version {latest_metadata_version} at genesis hash"
+            ))
+        })?;
+    let subxt_metadata = SubxtMetadata::decode(&mut (*opaque_metadata).as_slice())
+        .map_err(|_| Error::InternalError("Unable to decode metadata".to_string()))?;
+
+    let api = OnlineClient::<SrcChainConfig>::from_rpc_client_with(
+        genesis_hash,
+        subxt_runtime_version,
+        subxt_metadata,
+        rpc_client.clone(),
+    )?;
     let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
 
     let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;

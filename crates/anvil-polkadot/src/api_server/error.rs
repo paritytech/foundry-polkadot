@@ -24,6 +24,8 @@ pub enum Error {
     RuntimeApi(#[from] sp_api::ApiError),
     #[error("Error encountered while creating a BalanceWithDust from a U256 balance")]
     BalanceConversion,
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 impl From<subxt::Error> for Error {
@@ -80,9 +82,6 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 Error::RpcUnimplemented => RpcError::internal_error_with("Not implemented").into(),
                 Error::InvalidParams(error_message) => {
                     RpcError::invalid_params(error_message).into()
-                }
-                Error::ReviveRpc(client_error) => {
-                    RpcError::internal_error_with(format!("{client_error}")).into()
                 }
                 err => RpcError::internal_error_with(format!("{err}")).into(),
             },

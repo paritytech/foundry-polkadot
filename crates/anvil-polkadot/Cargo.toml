@@ -38,13 +38,16 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"sc-executor-common",
 	"sc-executor-wasmtime",
 	"sc-keystore",
+	"sc-network",
 	"sc-network-types",
     "sc-rpc",
 	"sc-rpc-api",
 	"sc-rpc-server",
 	"sc-rpc-spec-v2",
+	"sc-runtime-utilities",
 	"sc-service",
 	"sc-state-db",
+	"sc-telemetry",
 	"sc-tracing",
 	"sc-transaction-pool",
 	"sc-transaction-pool-api",
@@ -133,10 +136,10 @@ clap = { version = "4", features = [
 clap_complete = { version = "4" }
 chrono.workspace = true
 clap_complete_fig = "4"
-
 subxt = "0.43.0"
 subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
+jsonrpsee = "0.24.9"
 sqlx = "0.8.6"
 
 [dev-dependencies]

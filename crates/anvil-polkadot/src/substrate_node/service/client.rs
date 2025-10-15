@@ -1,7 +1,10 @@
-use crate::substrate_node::service::{
-    Backend,
-    backend::StorageOverrides,
-    executor::{Executor, WasmExecutor},
+use crate::substrate_node::{
+    genesis::DevelopmentGenesisBlockBuilder,
+    service::{
+        Backend,
+        backend::StorageOverrides,
+        executor::{Executor, WasmExecutor},
+    },
 };
 use parking_lot::Mutex;
 use polkadot_sdk::{
@@ -20,18 +23,31 @@ use substrate_runtime::RuntimeApi;
 pub type Client = sc_service::client::Client<Backend, Executor, Block, RuntimeApi>;
 
 pub fn new_client(
+    genesis_block_number: u64,
     config: &sc_service::Configuration,
     executor: WasmExecutor,
     storage_overrides: Arc<Mutex<StorageOverrides>>,
 ) -> Result<(Arc<Client>, Arc<Backend>, KeystorePtr, TaskManager), sc_service::error::Error> {
     let backend = new_db_backend(config.db_config())?;
 
-    let genesis_block_builder = GenesisBlockBuilder::new(
+    let genesis_block_builder = DevelopmentGenesisBlockBuilder::new(
+        genesis_block_number,
         config.chain_spec.as_storage_builder(),
         !config.no_genesis(),
         backend.clone(),
         executor.clone(),
     )?;
+
+    let (client, backend, keystore_container, mut task_manager) =
+        sc_service::new_full_parts_with_genesis_builder(
+            &config,
+            None,
+            executor.clone(),
+            backend,
+            genesis_block_builder,
+            false,
+        )?;
+    let client = Arc::new(client);
 
     let keystore_container = KeystoreContainer::new(&config.keystore)?;
 
