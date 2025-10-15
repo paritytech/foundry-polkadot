@@ -7,7 +7,7 @@ use crate::{
 use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
-use alloy_sol_types::SolCall;
+use alloy_sol_types::{SolCall, SolEvent};
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::{AlloyU256, ReviveAddress},
@@ -806,11 +806,12 @@ async fn test_get_logs() {
     assert_eq!(logs[2].topics[0], H256::from(event_hash));
     // Assert the values changed
     let data = logs[2].data.as_ref().unwrap();
+    let decoded_data = SimpleStorage::ValueChanged::abi_decode_data(&data.0).unwrap();
 
-    let old_value = pallet_revive::U256::from_big_endian(&data.0[0..32]);
-    let new_value = pallet_revive::U256::from_big_endian(&data.0[32..64]);
-    assert_eq!(old_value, pallet_revive::U256::from(511));
-    assert_eq!(new_value, pallet_revive::U256::from(512));
+    // Assert the old value
+    assert_eq!(decoded_data.0, U256::from(511));
+    // Assert the new value
+    assert_eq!(decoded_data.1, U256::from(512));
 
     // Assert the changer address
     let changer_topic = logs[2].topics[1].as_bytes();
