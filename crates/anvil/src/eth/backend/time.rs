@@ -23,10 +23,6 @@ pub enum TimePrecision {
 pub struct TimeManager {
     /// tracks the overall applied timestamp offset
     offset: Arc<RwLock<i128>>,
-    /// Substrate genesis block doesn't contain the timestamp inherent,
-    /// so this field should be used when resetting time manager after
-    /// a revert to genesis. It is assumed to be set in milliseconds.
-    genesis_timestamp: u64,
     /// The timestamp of the last block header
     last_timestamp: Arc<RwLock<u64>>,
     /// Contains the next timestamp to use
@@ -46,7 +42,6 @@ impl TimeManager {
             next_exact_timestamp: Default::default(),
             interval: Default::default(),
             precision: TimePrecision::Seconds,
-            genesis_timestamp: to_milliseconds(start_timestamp),
         };
         time_manager.reset(start_timestamp);
         time_manager
@@ -59,7 +54,6 @@ impl TimeManager {
             next_exact_timestamp: Default::default(),
             interval: Default::default(),
             precision: TimePrecision::Milliseconds,
-            genesis_timestamp: to_milliseconds(start_timestamp),
         };
         let start_timestamp = start_timestamp.saturating_div(1000);
         time_manager.reset(start_timestamp);
@@ -82,16 +76,6 @@ impl TimeManager {
         *self.last_timestamp.write() = start_timestamp;
         *self.offset.write() = (start_timestamp as i128) - current;
         self.next_exact_timestamp.write().take();
-    }
-
-    /// Resets the current time manager to genesis timestamp.
-    pub fn reset_to_genesis_timestamp(&self) -> u64 {
-        let current = duration_since_unix_epoch().as_millis() as i128;
-        // Genesis timestamp is in milliseconds.
-        *self.last_timestamp.write() = self.genesis_timestamp;
-        *self.offset.write() = (self.genesis_timestamp as i128) - current;
-        self.next_exact_timestamp.write().take();
-        self.genesis_timestamp
     }
 
     pub fn offset(&self) -> i128 {

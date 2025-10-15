@@ -26,10 +26,14 @@ pub enum BackendError {
     MissingTotalIssuance,
     #[error("Could not find chain id in the state")]
     MissingChainId,
+    #[error("Could not find timestamp in the state")]
+    MissingTimestamp,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
     DecodeChainId(codec::Error),
+    #[error("Unable to decode timestamp {0}")]
+    DecodeTimestamp(codec::Error),
     #[error("Unable to decode balance {0}")]
     DecodeBalance(codec::Error),
     #[error("Unable to decode revive account info {0}")]
@@ -124,6 +128,11 @@ impl BackendWithOverlay {
         overrides.set_chain_id(at, chain_id);
     }
 
+    pub fn inject_timestamp(&self, at: Hash, timestamp: u64) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_timestamp(at, timestamp);
+    }
+
     pub fn inject_total_issuance(&self, at: Hash, value: Balance) {
         let mut overrides = self.overrides.lock();
         overrides.set_total_issuance(at, value);
@@ -155,7 +164,7 @@ impl BackendWithOverlay {
         overrides.set_child_storage(at, child_key, key, value);
     }
 
-    fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {
+    pub fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {
         let maybe_overridden_val = {
             let mut guard = self.overrides.lock();
 
@@ -206,7 +215,6 @@ impl StorageOverrides {
         self.add(latest_block, changeset);
     }
 
-    #[allow(unused)]
     fn set_timestamp(&mut self, latest_block: Hash, timestamp: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(timestamp.encode()));

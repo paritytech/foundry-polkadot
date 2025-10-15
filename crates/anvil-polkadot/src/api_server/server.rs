@@ -14,13 +14,13 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
-            BackendWithOverlay, Client, Service,
+            BackendError, BackendWithOverlay, Client, Service,
             storage::{
-                AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
+                self, AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
         },
-        snapshot::SnapshotManager,
+        snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
@@ -64,7 +64,6 @@ pub struct Wallet {
 }
 
 pub struct ApiServer {
-    api: OnlineClient<SrcChainConfig>,
     eth_rpc_client: EthRpcClient,
     req_receiver: mpsc::Receiver<ApiRequest>,
     backend: BackendWithOverlay,
@@ -75,7 +74,6 @@ pub struct ApiServer {
     wallet: Wallet,
     snapshot_manager: SnapshotManager,
     impersonation_manager: ImpersonationManager,
-    genesis_block_number: u64,
 }
 
 impl ApiServer {
@@ -90,7 +88,10 @@ impl ApiServer {
         let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
         let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
         let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
-
+        let backend = BackendWithOverlay::new(
+            substrate_service.backend.clone(),
+            substrate_service.storage_overrides.clone(),
+        );
         let eth_rpc_client = create_revive_rpc_client(
             api.clone(),
             rpc_client.clone(),
@@ -100,15 +101,15 @@ impl ApiServer {
         )
         .await?;
 
+        // Update `Now` timestamp.
+        let info = substrate_service.client.info();
+        backend.inject_timestamp(info.best_hash, substrate_service.genesis_block_timestamp);
+
         Ok(Self {
-            api,
             block_provider,
             req_receiver,
             logging_manager,
-            backend: BackendWithOverlay::new(
-                substrate_service.backend.clone(),
-                substrate_service.storage_overrides.clone(),
-            ),
+            backend,
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
@@ -121,7 +122,6 @@ impl ApiServer {
                     Account::from(subxt_signer::eth::dev::charleth()),
                 ],
             },
-            genesis_block_number: substrate_service.genesis_block_number,
         })
     }
 
@@ -179,11 +179,6 @@ impl ApiServer {
             EthRequest::EthGetBlockByHash(hash, full) => {
                 self.get_block_by_hash(hash, full).await.to_rpc_result()
             }
-            EthRequest::EthGetTransactionCount(addr, block) => self
-                .get_transaction_count(ReviveAddress::from(addr).inner(), block)
-                .await
-                .map(|val| AlloyU256::from(val).inner())
-                .to_rpc_result(),
             EthRequest::EthGetTransactionCountByNumber(num) => {
                 node_info!("eth_getBlockTransactionCountByNumber");
                 self.get_block_transaction_count_by_number(num).await.to_rpc_result()
@@ -199,6 +194,11 @@ impl ApiServer {
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request.clone()).await.to_rpc_result()
             }
+            EthRequest::EthGetTransactionCount(addr, block) => self
+                .get_transaction_count(ReviveAddress::from(addr).inner(), block)
+                .await
+                .map(|val| AlloyU256::from(val).inner())
+                .to_rpc_result(),
             // --- Snapshot ---
             EthRequest::EvmSnapshot(_) => self.snapshot().await.to_rpc_result(),
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
@@ -561,15 +561,7 @@ impl ApiServer {
             self.snapshot_manager.revert(id).map_err(|err| Error::SnapshotRpc(err.to_string()))?;
         let Some(res) = res else { return Ok(false) };
 
-        if res.reverted > 0 {
-            self.update_block_provider(&res.info).await?;
-        }
-
-        if Into::<u64>::into(res.info.best_number) == self.genesis_block_number {
-            self.mining_engine.reset_to_genesis_timestamp();
-        } else {
-            self.update_time().await?;
-        }
+        self.on_revert_update(res).await?;
 
         Ok(true)
     }
@@ -581,15 +573,7 @@ impl ApiServer {
             .rollback(depth)
             .map_err(|err| Error::SnapshotRpc(err.to_string()))?;
 
-        if res.reverted > 0 {
-            self.update_block_provider(&res.info).await?;
-        }
-
-        if Into::<u64>::into(res.info.best_number) == self.genesis_block_number {
-            self.mining_engine.reset_to_genesis_timestamp();
-        } else {
-            self.update_time().await?;
-        }
+        self.on_revert_update(res).await?;
 
         Ok(())
     }
@@ -607,6 +591,33 @@ impl ApiServer {
         if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
             self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
         }
+
+        Ok(())
+    }
+
+    async fn update_time(&self, best_hash: Hash) -> Result<()> {
+        let value = self
+            .backend
+            .read_top_state(best_hash, storage::well_known_keys::TIMESTAMP.to_vec())
+            .map_err(Error::Backend)?
+            .ok_or(Error::Backend(BackendError::MissingTimestamp))?;
+        let timestamp = u64::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)?;
+
+        self.mining_engine.set_time(Duration::from_millis(timestamp));
+        Ok(())
+    }
+
+    async fn on_revert_update(&self, revert_info: RevertInfo) -> Result<()> {
+        if revert_info.reverted > 0 {
+            self.update_block_provider(&revert_info.info).await?;
+        }
+
+        let hash = self
+            .get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Number(
+                revert_info.info.best_number.into(),
+            ))))
+            .await?;
+        self.update_time(hash).await?;
 
         Ok(())
     }
@@ -642,26 +653,6 @@ impl ApiServer {
             self.backend.inject_revive_account_info(latest_block, address, revive_account_info);
         }
 
-        Ok(())
-    }
-
-    async fn update_time(&self) -> Result<()> {
-        let timestamp: u64 = self
-            .api
-            .storage()
-            .at_latest()
-            .await?
-            .fetch(&subxt::dynamic::storage("Timestamp", "Now", vec![]))
-            .await?
-            .map(|decodable| {
-                decodable.as_type().map_err(|_| {
-                    Error::SnapshotRpc("Failed to get current timestamp from storage".to_string())
-                })
-            })
-            .ok_or(Error::SnapshotRpc(
-                "Failed to configure the time manager after revert".to_string(),
-            ))??;
-        self.mining_engine.set_time(Duration::from_millis(timestamp));
         Ok(())
     }
 
