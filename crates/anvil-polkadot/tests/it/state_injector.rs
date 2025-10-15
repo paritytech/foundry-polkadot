@@ -25,16 +25,16 @@ async fn test_set_chain_id() {
 
     assert_eq!(node.best_block_number().await, 0);
 
-    let default_chain_id = 420_420_420u64;
+    let default_chain_id = 31337u64;
 
     assert_eq!(
         unwrap_response::<String>(node.eth_rpc(EthRequest::EthChainId(())).await.unwrap()).unwrap(),
-        "0x190f1b44",
+        "0x7a69",
     );
 
     assert_eq!(
         unwrap_response::<u64>(node.eth_rpc(EthRequest::EthNetworkId(())).await.unwrap()).unwrap(),
-        420_420_420u64,
+        default_chain_id,
     );
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetChainId(10)).await.unwrap()).unwrap();

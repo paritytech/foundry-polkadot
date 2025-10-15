@@ -1,8 +1,6 @@
 use crate::{
     AnvilNodeConfig,
     substrate_node::{
-        genesis::DevelopmentGenesisBlockBuilder,
-        host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride},
         mining_engine::{MiningEngine, MiningMode, run_mining_engine},
         rpc::spawn_rpc_server,
     },
@@ -12,8 +10,6 @@ use parking_lot::Mutex;
 use polkadot_sdk::{
     parachains_common::opaque::Block,
     sc_basic_authorship, sc_consensus, sc_consensus_manual_seal,
-    sc_network_types::{self, multiaddr::Multiaddr},
-    sc_rpc_api::DenyUnsafe,
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,

@@ -11,10 +11,7 @@ use polkadot_sdk::{
     parachains_common::opaque::Block,
     sc_chain_spec::get_extension,
     sc_client_api::{BadBlocks, ForkBlocks, execution_extensions::ExecutionExtensions},
-    sc_service::{
-        self, GenesisBlockBuilder, KeystoreContainer, LocalCallExecutor, TaskManager,
-        new_db_backend,
-    },
+    sc_service::{self, KeystoreContainer, LocalCallExecutor, TaskManager, new_db_backend},
     sp_keystore::KeystorePtr,
 };
 use std::{collections::HashMap, sync::Arc};
@@ -37,17 +34,6 @@ pub fn new_client(
         backend.clone(),
         executor.clone(),
     )?;
-
-    let (client, backend, keystore_container, mut task_manager) =
-        sc_service::new_full_parts_with_genesis_builder(
-            &config,
-            None,
-            executor.clone(),
-            backend,
-            genesis_block_builder,
-            false,
-        )?;
-    let client = Arc::new(client);
 
     let keystore_container = KeystoreContainer::new(&config.keystore)?;
 

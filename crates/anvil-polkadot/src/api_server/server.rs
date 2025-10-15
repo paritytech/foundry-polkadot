@@ -40,7 +40,7 @@ use polkadot_sdk::{
         subxt_client::{self, SrcChainConfig},
     },
     parachains_common::{AccountId, Hash, Nonce},
-    sc_client_api::{Backend as _, HeaderBackend, StateBackend, TrieCacheContext},
+    sc_client_api::HeaderBackend,
     sp_api::{Metadata, ProvideRuntimeApi},
     sp_core::{self, H160, H256, Hasher, keccak_256},
     sp_runtime::traits::BlakeTwo256,
@@ -50,8 +50,7 @@ use std::{sync::Arc, time::Duration};
 use substrate_runtime::Balance;
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
-    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
-    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    client::RuntimeVersion as SubxtRuntimeVersion, ext::subxt_rpcs::LegacyRpcMethods,
 };
 
 pub struct Wallet {
@@ -63,7 +62,6 @@ pub struct ApiServer {
     backend: BackendWithOverlay,
     logging_manager: LoggingManager,
     client: Arc<Client>,
-    backend: Arc<Backend>,
     mining_engine: Arc<MiningEngine>,
     eth_rpc_client: EthRpcClient,
     wallet: Wallet,

@@ -77,6 +77,15 @@ pub mod well_known_keys {
         244, 98, 205, 207, 132, 224, 241, 214, 4, 93, 252, 187,
     ];
 
+    // Hex-encoded key: 0x26aa394eea5630e07c48ae0c9558cef702a5c1b19ab7a04f536c519aca4983ac
+    // twox_128(b"System") ++ twox_128(b"Number")
+    // corresponds to `System::Number` storage item in pallet-system
+    pub const BLOCK_NUMBER_KEY: [u8; 32] = [
+        38u8, 170u8, 57u8, 78u8, 234u8, 86u8, 48u8, 224u8, 124u8, 72u8, 174u8, 12u8, 149u8, 88u8,
+        206u8, 247u8, 2u8, 165u8, 193u8, 177u8, 154u8, 183u8, 160u8, 79u8, 83u8, 108u8, 81u8,
+        154u8, 202u8, 73u8, 131u8, 172u8,
+    ];
+
     pub fn system_account_info(account_id: AccountId) -> Vec<u8> {
         let mut key = Vec::new();
         key.extend_from_slice(&twox_128("System".as_bytes()));
