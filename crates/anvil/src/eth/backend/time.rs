@@ -132,6 +132,7 @@ impl TimeManager {
     /// Sets an interval to use when computing the next timestamp
     ///
     /// If an interval already exists, this will update the interval, otherwise a new interval will
+    /// be set starting with the current timestamp.
     pub fn set_block_timestamp_interval(&self, interval: u64) {
         trace!(target: "time", "set interval {}", interval);
         let interval = to_milliseconds(interval);

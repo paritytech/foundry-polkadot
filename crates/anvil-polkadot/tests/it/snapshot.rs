@@ -423,7 +423,7 @@ async fn test_rollback() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_revert_with_txs_in_mempool() {
+async fn test_mine_with_txs_in_mempool_before_revert() {
     let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
@@ -517,7 +517,72 @@ async fn test_revert_with_txs_in_mempool() {
         .unwrap(),
     )
     .unwrap();
-    // TODO: check how to trigger a chain event so that transactions are revalidated at the block
-    // we revert to
     assert_eq!(txs_in_block, U256::ZERO);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mine_with_txs_in_mempool_after_revert() {
+    let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    // Assert on initial best block number.
+    assert_block_number(&mut node, 0).await;
+
+    // Mine 5 blocks and assert on the new best block.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
+    assert_block_number(&mut node, 5).await;
+
+    // Snapshot at block number 5.
+    let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
+        .unwrap();
+    assert_eq!(id, "0x1".to_string());
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
+    assert_block_number(&mut node, 10).await;
+
+    // Get known accounts.
+    let alith_account = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
+    let baltathar_account = Account::from(subxt_signer::eth::dev::baltathar());
+    let baltathar_addr = Address::from(ReviveAddress::new(baltathar_account.address()));
+
+    // Revert to a block before the transactions have been sent.
+    let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
+    assert_eq!(snapshot_id, U256::from(1));
+    let reverted =
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
+            .unwrap();
+    assert!(reverted);
+    assert_block_number(&mut node, 5).await;
+    let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
+        .unwrap();
+    assert_eq!(id, "0x2".to_string());
+
+    // Initialize a random account.
+    let transfer_amount = U256::from(16e17);
+    let _ =
+        node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount, None).await;
+
+    // Make another regular transfer between known accounts.
+    let transfer_amount = U256::from(1e17);
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(baltathar_addr).to(alith_addr);
+    let _ = node.send_transaction(transaction, None).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
+        .unwrap();
+    assert_block_number(&mut node, 6).await;
+
+    let txs_in_block = unwrap_response::<U256>(
+        node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
+            alloy_eips::BlockNumberOrTag::Latest,
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(txs_in_block, U256::from(2));
 }

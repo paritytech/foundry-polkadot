@@ -35,7 +35,6 @@ use tempfile::TempDir;
 const NATIVE_TO_ETH_RATIO: u128 = 1000000;
 pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
 
-#[derive(Clone)]
 pub struct BlockWaitTimeout {
     block_number: u32,
     timeout: Duration,
@@ -89,11 +88,8 @@ impl TestNode {
             LoggingManager::default()
         };
 
-        // Initialized api can tap into the pallet revive's client via the network, but we should
-        // also enable the access to the client programatically, to be able to call into
-        // methods that are relevant to the overall testing but not exposed as anvil RPC
-        // methods.
         let (service, task_manager, api) = spawn(anvil_config, config, logging_manager).await?;
+
         Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }
 
