@@ -37,7 +37,6 @@ impl SnapshotManager {
         self.next_snapshot_id += one;
         let snapshot = Snapshot { best_number: self.client.info().best_number.into() };
         self.snapshots.insert(self.next_snapshot_id - one, snapshot);
-        // Safe since there is always a snapshot representing genesis.
         self.next_snapshot_id - one
     }
 

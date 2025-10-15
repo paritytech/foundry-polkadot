@@ -114,13 +114,6 @@ impl TestNode {
             .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
     }
 
-    pub fn create_storage_key(pallet: &str, item: &str) -> StorageKey {
-        let mut key = Vec::new();
-        key.extend_from_slice(&twox_128(pallet.as_bytes()));
-        key.extend_from_slice(&twox_128(item.as_bytes()));
-        StorageKey(key)
-    }
-
     /// Execute an ethereum transaction.
     pub async fn send_transaction(
         &mut self,

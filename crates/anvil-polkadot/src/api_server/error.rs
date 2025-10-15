@@ -18,8 +18,6 @@ pub enum Error {
     SnapshotRpc(String),
     #[error("Subxt error: {0}")]
     Subxt(#[from] subxt::error::Error),
-    #[error("Internal error: {0}")]
-    InternalError(String),
     #[error(transparent)]
     Backend(#[from] BackendError),
     #[error("Nonce overflowing the substrate nonce type")]
