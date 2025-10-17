@@ -43,7 +43,6 @@ pub struct Service {
     pub mining_engine: Arc<MiningEngine>,
     pub storage_overrides: Arc<Mutex<StorageOverrides>>,
     pub genesis_block_number: u64,
-    pub genesis_block_timestamp: u64,
 }
 
 /// Builds a new service for a full client.
@@ -82,12 +81,15 @@ pub fn new(
 
     let mining_mode =
         MiningMode::new(anvil_config.block_time, anvil_config.mixed_mining, anvil_config.no_mining);
-    let now = anvil_config
-        .get_genesis_timestamp()
-        .checked_mul(1000)
-        .ok_or(ServiceError::Application("Genesis timestamp overflow".into()))?;
-    let time_manager =
-        Arc::new(TimeManager::new_with_milliseconds(sp_timestamp::Timestamp::from(now).into()));
+    let time_manager = Arc::new(TimeManager::new_with_milliseconds(
+        sp_timestamp::Timestamp::from(
+            anvil_config
+                .get_genesis_timestamp()
+                .checked_mul(1000)
+                .ok_or(ServiceError::Application("Genesis timestamp overflow".into()))?,
+        )
+        .into(),
+    ));
 
     let mining_engine = Arc::new(MiningEngine::new(
         mining_mode,
@@ -155,7 +157,6 @@ pub fn new(
             mining_engine,
             storage_overrides,
             genesis_block_number: anvil_config.get_genesis_number(),
-            genesis_block_timestamp: now,
         },
         task_manager,
     ))

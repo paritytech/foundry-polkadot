@@ -101,10 +101,6 @@ impl ApiServer {
         )
         .await?;
 
-        // Update `Now` timestamp.
-        let info = substrate_service.client.info();
-        backend.inject_timestamp(info.best_hash, substrate_service.genesis_block_timestamp);
-
         Ok(Self {
             block_provider,
             req_receiver,
