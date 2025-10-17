@@ -287,7 +287,7 @@ impl TestNode {
     }
 }
 
-pub fn transaction_in_block(transactions: &HashesOrTransactionInfos, transaction: H256) -> bool {
+pub fn is_transaction_in_block(transactions: &HashesOrTransactionInfos, transaction: H256) -> bool {
     if let HashesOrTransactionInfos::Hashes(transactions) = transactions {
         return transactions.contains(&transaction);
     }

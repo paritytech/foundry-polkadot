@@ -60,7 +60,7 @@ use subxt::{
     ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
 };
 
-pub const CLIENT_VERSION: &str = concat!("anvil/v", env!("CARGO_PKG_VERSION"));
+pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
 
 pub struct Wallet {
     accounts: Vec<Account>,

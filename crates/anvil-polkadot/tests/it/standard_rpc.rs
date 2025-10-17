@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use crate::{
     abi::SimpleStorage::{self},
-    utils::{BlockWaitTimeout, TestNode, get_contract_code, transaction_in_block, unwrap_response},
+    utils::{
+        BlockWaitTimeout, TestNode, get_contract_code, is_transaction_in_block, unwrap_response,
+    },
 };
 use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
@@ -81,9 +83,9 @@ async fn test_get_block_by_hash() {
     let hash2 = node.block_hash_by_number(2).await.unwrap();
     let block1 = node.get_block_by_hash(hash1).await;
     let block2 = node.get_block_by_hash(hash2).await;
-    assert!(transaction_in_block(&block1.transactions, tx_hash0));
-    assert!(transaction_in_block(&block1.transactions, tx_hash1));
-    assert!(transaction_in_block(&block2.transactions, tx_hash2));
+    assert!(is_transaction_in_block(&block1.transactions, tx_hash0));
+    assert!(is_transaction_in_block(&block1.transactions, tx_hash1));
+    assert!(is_transaction_in_block(&block2.transactions, tx_hash2));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -208,7 +210,10 @@ async fn test_estimate_gas() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
-
+    // https://github.com/paritytech/polkadot-sdk/blob/b21cbb58ab50d5d10371393967537f6f221bb92f/substrate/frame/revive/src/primitives.rs#L76
+    // eth_gas that is returned by estimate_gas holds both the storage deposit and
+    // the weight, hence it is expected to be higher than the
+    // gas amount actually used.
     assert!(estimated_gas > receipt.gas_used);
 }
 
@@ -247,7 +252,7 @@ async fn test_get_block_by_number() {
         .unwrap(),
     )
     .unwrap();
-    assert!(transaction_in_block(&block_by_number.transactions, tx_hash));
+    assert!(is_transaction_in_block(&block_by_number.transactions, tx_hash));
     // Check that GetBlockByNumber fails if the block number does not fit in u32
     // TODO: expand the error conversion for ReviveRpc type
     let err = unwrap_response::<Option<Block>>(
@@ -429,6 +434,13 @@ async fn test_get_code_at() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
+    // Check random address
+    let code = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthGetCodeAt(Address::random(), None)).await.unwrap(),
+    )
+    .unwrap();
+
+    assert!(code.is_empty(), "Contract code should be empty");
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let contract_code = get_contract_code("SimpleStorage");
     let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
@@ -609,7 +621,7 @@ async fn test_get_transaction_by_hash() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
-    let transaction_info_1 = unwrap_response::<Option<TransactionInfo>>(
+    let transaction_info = unwrap_response::<Option<TransactionInfo>>(
         node.eth_rpc(EthRequest::EthGetTransactionByHash(B256::from_slice(tx_hash0.as_ref())))
             .await
             .unwrap(),
@@ -618,9 +630,9 @@ async fn test_get_transaction_by_hash() {
     .unwrap();
 
     let first_hash = node.block_hash_by_number(1).await.unwrap();
-    assert_eq!(first_hash, transaction_info_1.block_hash);
-    assert_eq!(transaction_info_1.from, alith.address());
-    assert_eq!(tx_hash0, transaction_info_1.hash);
+    assert_eq!(first_hash, transaction_info.block_hash);
+    assert_eq!(transaction_info.from, alith.address());
+    assert_eq!(tx_hash0, transaction_info.hash);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -663,6 +675,9 @@ async fn test_get_storage() {
     // Check that the value was updated
     let stored_value = node.get_storage_at(U256::from(0), contract_address).await;
     assert_eq!(stored_value, 511);
+    // Check value that has not been set
+    let stored_value = node.get_storage_at(U256::from(1), contract_address).await;
+    assert_eq!(stored_value, 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -834,6 +849,24 @@ async fn test_call() {
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(511),)).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(set_value_data.into()));
+
+    let _call_tx_hash = node
+        .send_transaction(
+            call_tx,
+            Some(BlockWaitTimeout {
+                block_number: 2,
+                timeout: std::time::Duration::from_millis(1000),
+            }),
+        )
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+
     let get_value_data = SimpleStorage::getValueCall::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
@@ -846,5 +879,5 @@ async fn test_call() {
     )
     .unwrap();
     let value = SimpleStorage::getValueCall::abi_decode_returns(&res.0).unwrap();
-    assert_eq!(U256::from(0), value);
+    assert_eq!(U256::from(511), value);
 }
