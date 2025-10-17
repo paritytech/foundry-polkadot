@@ -197,7 +197,11 @@ async fn test_auto_mine() {
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
     let _tx_hash0 = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
     assert_eq!(node.best_block_number().await, 1);
@@ -221,7 +225,11 @@ async fn test_mixed_mining() {
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
     let _tx_hash0 = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
     assert_eq!(node.best_block_number().await, 1);

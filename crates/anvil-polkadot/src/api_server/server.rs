@@ -157,7 +157,7 @@ impl ApiServer {
             }
             EthRequest::EthCall(call, block, _, _) => self.call(call, block).await.to_rpc_result(),
             EthRequest::EthSendTransaction(request) => {
-                self.send_transaction(*request.clone()).await.to_rpc_result()
+                self.send_transaction(*request.clone(), false).await.to_rpc_result()
             }
             EthRequest::EthGetTransactionCount(addr, block) => self
                 .get_transaction_count(ReviveAddress::from(addr).inner(), block)
@@ -185,6 +185,10 @@ impl ApiServer {
             }
             EthRequest::AutoImpersonateAccount(enable) => {
                 self.auto_impersonate_account(enable).to_rpc_result()
+            }
+            EthRequest::EthSendUnsignedTransaction(request) => {
+                node_info!("eth_sendUnsignedTransaction");
+                self.send_transaction(*request.clone(), true).await.to_rpc_result()
             }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
@@ -438,6 +442,7 @@ impl ApiServer {
     async fn send_transaction(
         &self,
         transaction_req: WithOtherFields<TransactionRequest>,
+        unsigned_tx: bool,
     ) -> Result<H256> {
         node_info!("eth_sendTransaction");
         let mut transaction = convert_to_generic_transaction(transaction_req.clone().into_inner());
@@ -468,7 +473,7 @@ impl ApiServer {
             .try_into_unsigned()
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
 
-        let payload = if self.impersonation_manager.is_impersonated(from) {
+        let payload = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             let mut fake_signature = [0; 65];
             fake_signature[12..32].copy_from_slice(from.as_bytes());
             tx.with_signature(fake_signature).signed_payload()

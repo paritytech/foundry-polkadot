@@ -32,7 +32,11 @@ async fn transfer_to_unitialized_random_account(
 
     let transaction = TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
     let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
 
@@ -85,7 +89,11 @@ async fn test_impersonate_account() {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
     let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(2, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -109,7 +117,7 @@ async fn test_impersonate_account() {
     .unwrap();
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let err = node.send_transaction(transaction.clone(), None).await.unwrap_err();
+    let err = node.send_transaction(transaction.clone(), None, false).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
     assert!(err.message.contains(
         format!("Account not found for address {}", dest_addr.to_string().to_lowercase()).as_str()
@@ -155,7 +163,11 @@ async fn test_auto_impersonate(#[case] rpc_driven: bool) {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
     let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(2, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -177,9 +189,51 @@ async fn test_auto_impersonate(#[case] rpc_driven: bool) {
         .unwrap();
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let err = node.send_transaction(transaction.clone(), None).await.unwrap_err();
+    let err = node.send_transaction(transaction.clone(), None, false).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
     assert!(err.message.contains(
         format!("Account not found for address {}", dest_addr.to_string().to_lowercase()).as_str()
     ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_send_unsigned_tx() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    // Enable automine.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Create a random account.
+    let alith_account = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
+    let transfer_amount = U256::from(16e17);
+    let dest_addr =
+        transfer_to_unitialized_random_account(&mut node, alith_addr, transfer_amount).await;
+    let dest_h160 = H160::from_slice(dest_addr.as_slice());
+
+    // Impersonate destination
+    let transfer_amount = U256::from(1e11);
+    let alith_balance = node.get_balance(alith_account.address(), None).await;
+    let dest_balance = node.get_balance(dest_h160, None).await;
+    let transaction =
+        TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
+    let tx_hash = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))), true)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let receipt_info = node.get_transaction_receipt(tx_hash).await;
+
+    // Assert on balances after second transfer.
+    let alith_final_balance = node.get_balance(alith_account.address(), None).await;
+    let dest_final_balance = node.get_balance(dest_h160, None).await;
+    assert_eq!(alith_final_balance, alith_balance + transfer_amount);
+    assert_eq!(
+        dest_final_balance,
+        dest_balance
+            - transfer_amount
+            - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used).inner()
+    );
 }

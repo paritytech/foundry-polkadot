@@ -116,14 +116,25 @@ impl TestNode {
         &mut self,
         transaction: TransactionRequest,
         timeout: Option<BlockWaitTimeout>,
+        unsigned: bool,
     ) -> Result<H256, RpcError> {
-        let tx_hash = unwrap_response::<H256>(
-            self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
-                transaction,
-            ))))
-            .await
-            .unwrap(),
-        )?;
+        let tx_hash = if unsigned {
+            unwrap_response::<H256>(
+                self.eth_rpc(EthRequest::EthSendUnsignedTransaction(Box::new(
+                    WithOtherFields::new(transaction),
+                )))
+                .await
+                .unwrap(),
+            )?
+        } else {
+            unwrap_response::<H256>(
+                self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
+                    transaction,
+                ))))
+                .await
+                .unwrap(),
+            )?
+        };
 
         if let Some(BlockWaitTimeout { block_number, timeout }) = timeout {
             self.wait_for_block_with_timeout(block_number, timeout).await.unwrap();
@@ -215,7 +226,7 @@ impl TestNode {
             block_number: bn,
             timeout: std::time::Duration::from_millis(1000),
         });
-        self.send_transaction(deploy_contract_tx, block_wait).await.unwrap()
+        self.send_transaction(deploy_contract_tx, block_wait, false).await.unwrap()
     }
 
     async fn wait_for_block_with_number(&self, n: u32) {

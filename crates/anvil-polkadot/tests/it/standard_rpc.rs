@@ -60,11 +60,11 @@ async fn test_get_block_by_hash() {
     let baltathar_addr = Address::from(ReviveAddress::new(baltathar.address()));
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(alith_addr).to(baltathar_addr);
-    let tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
-    let tx_hash1 = node.send_transaction(transaction.clone().nonce(1), None).await.unwrap();
+    let tx_hash0 = node.send_transaction(transaction.clone(), None, false).await.unwrap();
+    let tx_hash1 = node.send_transaction(transaction.clone().nonce(1), None, false).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
-    let tx_hash2 = node.send_transaction(transaction.nonce(2), None).await.unwrap();
+    let tx_hash2 = node.send_transaction(transaction.nonce(2), None, false).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     let hash1 = node.block_hash_by_number(1).await.unwrap();
@@ -98,7 +98,11 @@ async fn test_send_transaction() {
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
     let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -143,7 +147,11 @@ async fn test_send_to_uninitialized() {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(alith_addr).to(charleth_addr);
     let _tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -156,7 +164,11 @@ async fn test_send_to_uninitialized() {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(charleth_addr).to(alith_addr);
     let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
+        .send_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(2, Duration::from_secs(1))),
+            false,
+        )
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
