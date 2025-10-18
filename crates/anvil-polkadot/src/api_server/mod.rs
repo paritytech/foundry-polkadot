@@ -29,10 +29,12 @@ pub fn spawn(
     let service = substrate_service.clone();
     let mut impersonation_manager = ImpersonationManager::default();
     impersonation_manager.set_auto_impersonate_account(config.enable_auto_impersonate);
+    let signers = config.signer_accounts.clone();
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
-        let api_server = ApiServer::new(service, receiver, logging_manager, impersonation_manager)
-            .await
-            .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));
+        let api_server =
+            ApiServer::new(service, receiver, logging_manager, impersonation_manager, signers)
+                .await
+                .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));
         api_server.run().await;
     });
 

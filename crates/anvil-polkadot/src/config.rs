@@ -1,14 +1,16 @@
+use crate::api_server::revive_conversions::ReviveAddress;
 use alloy_genesis::Genesis;
-use alloy_primitives::{U256, hex, map::HashMap, utils::Unit};
-use alloy_signer::Signer;
+use alloy_primitives::{Address, U256, hex, map::HashMap, utils::Unit};
+use alloy_signer::{Signer, k256::ecdsa::SigningKey};
 use alloy_signer_local::{
-    MnemonicBuilder, PrivateKeySigner,
+    LocalSigner, MnemonicBuilder, PrivateKeySigner,
     coins_bip39::{English, Mnemonic},
 };
 use anvil_server::ServerConfig;
 use eyre::{Context, Result};
 use foundry_common::{duration_since_unix_epoch, sh_println};
 use polkadot_sdk::{
+    pallet_revive::evm::Account,
     sc_cli::{
         self, CliConfiguration as SubstrateCliConfiguration, Cors, RPC_DEFAULT_MAX_CONNECTIONS,
         RPC_DEFAULT_MAX_REQUEST_SIZE_MB, RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
@@ -27,6 +29,7 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
+use subxt_signer::eth::Keypair;
 use yansi::Paint;
 
 pub use foundry_common::version::SHORT_VERSION as VERSION_MESSAGE;
@@ -454,14 +457,37 @@ Genesis Number
     }
 
     pub fn test_config() -> Self {
-        Self {
+        fn extend_accounts_list(
+            accounts_list: &mut Vec<PrivateKeySigner>,
+            keypairs: &[Keypair],
+            chain_id: Option<u64>,
+        ) {
+            accounts_list.extend(keypairs.iter().map(|dev_account| {
+                let account = Account::from(dev_account.clone());
+                let credential = SigningKey::from_slice(&dev_account.secret_key())
+                    .expect("Invalid secret key for dev account");
+                LocalSigner::new_with_credential(
+                    credential,
+                    Address::from(ReviveAddress::new(account.address())),
+                    chain_id,
+                )
+            }));
+        }
+        let mut anvil_node_config = Self {
             port: 0,
             no_mining: true,
             mixed_mining: false,
             enable_tracing: false,
             silent: true,
             ..Default::default()
-        }
+        };
+        let chain_id = anvil_node_config.chain_id;
+        let mut dev_accounts =
+            vec![subxt_signer::eth::dev::alith(), subxt_signer::eth::dev::baltathar()];
+        extend_accounts_list(&mut anvil_node_config.genesis_accounts, &dev_accounts, chain_id);
+        dev_accounts.push(subxt_signer::eth::dev::charleth());
+        extend_accounts_list(&mut anvil_node_config.signer_accounts, &dev_accounts, chain_id);
+        anvil_node_config
     }
 }
 

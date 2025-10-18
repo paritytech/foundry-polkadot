@@ -26,6 +26,8 @@ pub enum Error {
     BalanceConversion,
     #[error("Internal error: {0}")]
     InternalError(String),
+    #[error("Keypair error: {0}")]
+    KeypairError(String),
 }
 
 impl From<subxt::Error> for Error {

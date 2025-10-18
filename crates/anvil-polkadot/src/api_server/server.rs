@@ -11,6 +11,7 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
+        chain_spec::keypairs_from_private_keys,
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
@@ -27,6 +28,7 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions};
 use alloy_serde::WithOtherFields;
+use alloy_signer_local::PrivateKeySigner;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use codec::{Decode, Encode};
@@ -83,6 +85,7 @@ impl ApiServer {
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
         impersonation_manager: ImpersonationManager,
+        signers: Vec<PrivateKeySigner>,
     ) -> Result<Self> {
         let eth_rpc_client = create_revive_rpc_client(&substrate_service).await?;
 
@@ -98,11 +101,11 @@ impl ApiServer {
             eth_rpc_client,
             impersonation_manager,
             wallet: Wallet {
-                accounts: vec![
-                    Account::from(subxt_signer::eth::dev::baltathar()),
-                    Account::from(subxt_signer::eth::dev::alith()),
-                    Account::from(subxt_signer::eth::dev::charleth()),
-                ],
+                accounts: keypairs_from_private_keys(&signers)
+                    .map_err(Error::KeypairError)?
+                    .iter()
+                    .map(|k| Account::from(k.clone()))
+                    .collect(),
             },
         })
     }
@@ -560,6 +563,17 @@ impl ApiServer {
 
         let latest_block = self.latest_block();
         let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block.as_ref())));
+        let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
+            None
+        } else {
+            Some(
+                self.wallet
+                    .accounts
+                    .iter()
+                    .find(|account| account.address() == from)
+                    .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?,
+            )
+        };
 
         if transaction.gas.is_none() {
             transaction.gas =
@@ -581,18 +595,13 @@ impl ApiServer {
             .try_into_unsigned()
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
 
-        let payload = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
-            let mut fake_signature = [0; 65];
-            fake_signature[12..32].copy_from_slice(from.as_bytes());
-            tx.with_signature(fake_signature).signed_payload()
-        } else {
-            let account = self
-                .wallet
-                .accounts
-                .iter()
-                .find(|account| account.address() == from)
-                .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?;
-            account.sign_transaction(tx).signed_payload()
+        let payload = match account {
+            Some(acc) => acc.sign_transaction(tx).signed_payload(),
+            None => {
+                let mut fake_signature = [0; 65];
+                fake_signature[12..32].copy_from_slice(from.as_bytes());
+                tx.with_signature(fake_signature).signed_payload()
+            }
         };
 
         self.send_raw_transaction(Bytes(payload)).await

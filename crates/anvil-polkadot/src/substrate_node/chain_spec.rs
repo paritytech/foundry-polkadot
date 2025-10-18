@@ -1,15 +1,21 @@
 use crate::substrate_node::genesis::GenesisConfig;
+use alloy_signer_local::PrivateKeySigner;
 use polkadot_sdk::{
+    frame_support,
+    pallet_revive::evm::Account,
     sc_chain_spec::{ChainSpec, GetExtension},
     sc_executor::HostFunctions,
     sc_network::config::MultiaddrWithPeerId,
     sc_service::{ChainType, GenericChainSpec, Properties},
     sc_telemetry::TelemetryEndpoints,
     sp_core::storage::Storage,
-    sp_genesis_builder,
-    sp_runtime::BuildStorage,
+    sp_runtime::{AccountId32, BuildStorage},
 };
-use substrate_runtime::WASM_BINARY;
+use std::collections::BTreeMap;
+use substrate_runtime::{
+    BalancesConfig, RuntimeGenesisConfig, WASM_BINARY, genesis_config_presets::ENDOWMENT,
+};
+use subxt_signer::eth::Keypair;
 
 /// This is a wrapper around the general Substrate ChainSpec type that allows manual changes to the
 /// genesis block.
@@ -110,7 +116,22 @@ fn props() -> Properties {
 
 pub fn development_chain_spec(
     genesis_config: GenesisConfig,
+    signers: &[PrivateKeySigner],
 ) -> Result<DevelopmentChainSpec, String> {
+    let mut balance_map: BTreeMap<AccountId32, u128> = keypairs_from_private_keys(signers)?
+        .into_iter()
+        .map(|keypair| (Account::from(keypair).substrate_account(), ENDOWMENT))
+        .collect();
+    if let Some(alloc) = &genesis_config.alloc {
+        balance_map.extend(alloc.iter().map(|(eth_addr, gen_account)| {
+            let mut substrate_account = AccountId32::new([0xEE; 32]);
+            <AccountId32 as AsMut<[u8; 32]>>::as_mut(&mut substrate_account)[..20]
+                .copy_from_slice(eth_addr.as_slice());
+            let balance = gen_account.balance.try_into().unwrap_or(ENDOWMENT);
+            (substrate_account, balance)
+        }));
+    }
+    let balances: Vec<(AccountId32, u128)> = balance_map.into_iter().collect();
     let inner = GenericChainSpec::builder(
         WASM_BINARY.expect("Development wasm not available"),
         Default::default(),
@@ -118,8 +139,22 @@ pub fn development_chain_spec(
     .with_name("Development")
     .with_id("dev")
     .with_chain_type(ChainType::Development)
-    .with_genesis_config_preset_name(sp_genesis_builder::DEV_RUNTIME_PRESET)
+    .with_genesis_config_patch(frame_support::build_struct_json_patch!(RuntimeGenesisConfig {
+        balances: BalancesConfig { balances }
+    }))
     .with_properties(props())
     .build();
     Ok(DevelopmentChainSpec { inner, genesis_config })
+}
+
+pub fn keypairs_from_private_keys(accounts: &[PrivateKeySigner]) -> Result<Vec<Keypair>, String> {
+    accounts
+        .iter()
+        .map(|signer| {
+            let key =
+                subxt_signer::eth::Keypair::from_secret_key(signer.credential().to_bytes().into())
+                    .map_err(|e| e.to_string())?;
+            Ok(key)
+        })
+        .collect()
 }

@@ -10,7 +10,10 @@ use anvil_polkadot::{
 };
 use anvil_rpc::error::ErrorCode;
 use polkadot_sdk::{
-    pallet_revive::evm::{Account, Block, HashesOrTransactionInfos},
+    pallet_revive::{
+        self,
+        evm::{Account, Block, HashesOrTransactionInfos, TransactionSigned},
+    },
     sc_cli::clap::Parser,
     sp_core,
 };
@@ -204,7 +207,7 @@ async fn test_auto_mine() {
 async fn test_mixed_mining() {
     let mut anvil_node_config = AnvilNodeConfig::test_config();
     anvil_node_config.mixed_mining = true;
-    anvil_node_config.block_time = Some(Duration::from_secs(1));
+    anvil_node_config.block_time = Some(Duration::from_secs(2));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
@@ -366,12 +369,19 @@ async fn test_evm_mine_detailed() {
     )
     .unwrap();
     assert_eq!(mine_detailed.len(), 3);
-    let transactions =
-        if let HashesOrTransactionInfos::TransactionInfos(ti) = &mine_detailed[0].transactions {
-            ti
-        } else {
-            &vec![]
-        };
+    let transactions = if let HashesOrTransactionInfos::TransactionInfos(mut ti) =
+        mine_detailed[0].transactions.clone()
+    {
+        ti.sort_by_key(|tx| match &tx.transaction_signed {
+            TransactionSigned::TransactionLegacySigned(signed) => {
+                signed.transaction_legacy_unsigned.nonce
+            }
+            _ => pallet_revive::U256::from(0),
+        });
+        ti
+    } else {
+        vec![]
+    };
     assert_eq!(transactions.len(), 3);
     for i in 0..3 {
         assert_eq!(tx_hashes[i], transactions[i].hash);

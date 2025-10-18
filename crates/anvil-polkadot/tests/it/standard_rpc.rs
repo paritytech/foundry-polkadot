@@ -756,7 +756,7 @@ async fn test_get_accounts() {
     let accounts =
         unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
             .unwrap();
-    assert_eq!(accounts.len(), 3);
+    assert_eq!(accounts.len(), 13);
     node.eth_rpc(EthRequest::ImpersonateAccount(Address::from(ReviveAddress::new(accounts[0]))))
         .await
         .unwrap();
@@ -766,7 +766,7 @@ async fn test_get_accounts() {
     let accounts_with_impersonation =
         unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
             .unwrap();
-    assert_eq!(accounts_with_impersonation.len(), 4);
+    assert_eq!(accounts_with_impersonation.len(), 14);
     assert!(accounts_with_impersonation.contains(&dorothy));
 }
 
