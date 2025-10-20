@@ -131,7 +131,7 @@ async fn test_best_block_after_evm_revert() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_balances_and_txs_index_after_evm_revert() {
-    let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
+    let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
@@ -248,7 +248,6 @@ async fn test_balances_and_txs_index_after_evm_revert() {
         .unwrap();
     assert_block_number(&mut node, 6).await;
 
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let receipt_info = node.get_transaction_receipt(tx_hash1).await;
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
     assert_eq!(receipt_info.transaction_index, pallet_revive::U256::one());
@@ -276,7 +275,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
 // TODO: add a test where we call a contract that queries the timestamp
 // at a certain block before and after a revert, while mining blocks
 async fn test_evm_revert_and_timestamp() {
-    let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
+    let anvil_node_config = AnvilNodeConfig::test_config();
     // Generate the current timestamp and pass it to anvil config.
     let genesis_timestamp = anvil_node_config.get_genesis_timestamp();
     let anvil_node_config = anvil_node_config.with_genesis_timestamp(Some(genesis_timestamp));
@@ -411,7 +410,7 @@ async fn test_evm_revert_and_timestamp() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_rollback() {
-    let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
+    let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
@@ -441,7 +440,7 @@ async fn test_rollback() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mine_with_txs_in_mempool_before_revert() {
-    let anvil_node_config = AnvilNodeConfig::test_config().with_no_mining(true);
+    let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
