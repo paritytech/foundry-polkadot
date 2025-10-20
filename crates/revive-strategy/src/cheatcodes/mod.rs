@@ -496,8 +496,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
                     let exec_config = ExecConfig {
                         bump_nonce: true,
-                        collect_deposit_from_hold: false,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_gas_price()),
+                        collect_deposit_from_hold: None,
+                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
                         mock_handler: Some(Box::new(mock_handler.clone())),
                     };
                     let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
@@ -636,8 +636,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let target = H160::from_slice(call.target_address.as_slice());
                     let exec_config = ExecConfig {
                         bump_nonce: true,
-                        collect_deposit_from_hold: false,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_gas_price()),
+                        collect_deposit_from_hold: None,
+                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
                         mock_handler: Some(Box::new(mock_handler.clone())),
                     };
                     Pallet::<Runtime>::bare_call(
