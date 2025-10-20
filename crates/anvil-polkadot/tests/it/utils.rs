@@ -116,6 +116,23 @@ impl TestNode {
         &mut self,
         transaction: TransactionRequest,
         timeout: Option<BlockWaitTimeout>,
+    ) -> Result<H256, RpcError> {
+        self.send_transaction_inner(transaction, timeout, false).await
+    }
+
+    /// Execute an impersonated ethereum transaction.
+    pub async fn send_unsigned_transaction(
+        &mut self,
+        transaction: TransactionRequest,
+        timeout: Option<BlockWaitTimeout>,
+    ) -> Result<H256, RpcError> {
+        self.send_transaction_inner(transaction, timeout, true).await
+    }
+
+    async fn send_transaction_inner(
+        &mut self,
+        transaction: TransactionRequest,
+        timeout: Option<BlockWaitTimeout>,
         unsigned: bool,
     ) -> Result<H256, RpcError> {
         let tx_hash = if unsigned {
@@ -226,7 +243,7 @@ impl TestNode {
             block_number: bn,
             timeout: std::time::Duration::from_millis(1000),
         });
-        self.send_transaction(deploy_contract_tx, block_wait, false).await.unwrap()
+        self.send_transaction(deploy_contract_tx, block_wait).await.unwrap()
     }
 
     async fn wait_for_block_with_number(&self, n: u32) {

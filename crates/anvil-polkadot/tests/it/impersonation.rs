@@ -32,11 +32,7 @@ async fn transfer_to_unitialized_random_account(
 
     let transaction = TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
     let tx_hash = node
-        .send_transaction(
-            transaction,
-            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
-            false,
-        )
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
         .await
         .unwrap();
 
@@ -89,11 +85,7 @@ async fn test_impersonate_account() {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
     let tx_hash = node
-        .send_transaction(
-            transaction,
-            Some(BlockWaitTimeout::new(2, Duration::from_secs(1))),
-            false,
-        )
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
         .await
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -117,7 +109,7 @@ async fn test_impersonate_account() {
     .unwrap();
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let err = node.send_transaction(transaction.clone(), None, false).await.unwrap_err();
+    let err = node.send_transaction(transaction.clone(), None).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
     assert!(err.message.contains(
         format!("Account not found for address {}", dest_addr.to_string().to_lowercase()).as_str()
@@ -163,11 +155,7 @@ async fn test_auto_impersonate(#[case] rpc_driven: bool) {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
     let tx_hash = node
-        .send_transaction(
-            transaction,
-            Some(BlockWaitTimeout::new(2, Duration::from_secs(1))),
-            false,
-        )
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
         .await
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -189,7 +177,7 @@ async fn test_auto_impersonate(#[case] rpc_driven: bool) {
         .unwrap();
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let err = node.send_transaction(transaction.clone(), None, false).await.unwrap_err();
+    let err = node.send_transaction(transaction.clone(), None).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
     assert!(err.message.contains(
         format!("Account not found for address {}", dest_addr.to_string().to_lowercase()).as_str()
@@ -220,7 +208,10 @@ async fn test_send_unsigned_tx() {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
     let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))), true)
+        .send_unsigned_transaction(
+            transaction,
+            Some(BlockWaitTimeout::new(2, Duration::from_secs(1))),
+        )
         .await
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
