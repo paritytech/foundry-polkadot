@@ -26,8 +26,6 @@ pub enum BackendError {
     MissingTotalIssuance,
     #[error("Could not find chain id in the state")]
     MissingChainId,
-    #[error("Could not find timestamp in the state")]
-    MissingTimestamp,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
