@@ -4,11 +4,7 @@
 
 use frame_support::{runtime, traits::FindAuthor, weights::constants::WEIGHT_REF_TIME_PER_SECOND};
 use pallet_revive::AccountId32Mapper;
-use polkadot_sdk::{
-    polkadot_sdk_frame::{log, runtime::prelude::*},
-    sp_runtime::AccountId32,
-    *,
-};
+use polkadot_sdk::{polkadot_sdk_frame::runtime::prelude::*, sp_runtime::AccountId32, *};
 
 pub type Balance = u128;
 pub type AccountId = pallet_revive::AccountId32Mapper<Runtime>;
@@ -67,6 +63,7 @@ parameter_types! {
     pub const DepositPerByte: Balance = 1;
     pub const DepositPerItem: Balance = 2;
     pub const CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(0);
+    pub const NativeToEthRatio: u32 = 1_000_000;
     pub BlockWeights: frame_system::limits::BlockWeights =
         frame_system::limits::BlockWeights::simple_max(
             Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
@@ -88,6 +85,7 @@ impl pallet_revive::Config for Runtime {
     type InstantiateOrigin = EnsureSigned<AccountId32>;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type ChainId = ConstU64<420_420_420>;
+    type NativeToEthRatio = ConstU32<1_000_000_000>;
     type FindAuthor = Self;
 }
 

@@ -19,8 +19,12 @@ path = "bin/main.rs"
 
 [dependencies]
 # foundry internal
+codec = { version = "3.7.5", default-features = true, package = "parity-scale-codec" }
 substrate-runtime = { path = "substrate-runtime" }
-polkadot-sdk = {git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state", default-features = false, features = [
+secp256k1 = { version = "0.28.0", default-features = false }
+libsecp256k1 = { version = "0.7.0", default-features = false }
+sp-runtime-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state", default-features = false }
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state", default-features = false, features = [
     "sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
@@ -34,13 +38,16 @@ polkadot-sdk = {git = "https://github.com/paritytech/polkadot-sdk.git", branch =
 	"sc-executor-common",
 	"sc-executor-wasmtime",
 	"sc-keystore",
+	"sc-network",
 	"sc-network-types",
     "sc-rpc",
 	"sc-rpc-api",
 	"sc-rpc-server",
 	"sc-rpc-spec-v2",
+	"sc-runtime-utilities",
 	"sc-service",
 	"sc-state-db",
+	"sc-telemetry",
 	"sc-tracing",
 	"sc-transaction-pool",
 	"sc-transaction-pool-api",
@@ -117,6 +124,7 @@ tempfile.workspace = true
 itertools.workspace = true
 rand_08.workspace = true
 eyre.workspace = true
+lru = "0.16.0"
 
 # cli
 clap = { version = "4", features = [
@@ -127,16 +135,19 @@ clap = { version = "4", features = [
 clap_complete = { version = "4" }
 chrono.workspace = true
 clap_complete_fig = "4"
-parity-scale-codec = "3.7.5"
 subxt = "0.43.0"
 subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
+jsonrpsee = "0.24.9"
+sqlx = "0.8.6"
 
 [dev-dependencies]
 alloy-provider = { workspace = true, features = ["txpool-api"] }
 alloy-pubsub.workspace = true
 foundry-test-utils.workspace = true
 tokio = { workspace = true, features = ["full"] }
+assert_matches = "1.5.0"
+rstest = "0.26.1"
 
 op-alloy-rpc-types.workspace = true
 
