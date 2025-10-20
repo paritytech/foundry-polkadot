@@ -113,9 +113,10 @@ impl PvmCheatcodeInspectorStrategyContext {
         dual_compiled_contracts: DualCompiledContracts,
         runtime_mode: crate::ReviveRuntimeMode,
     ) -> Self {
-            Self {
-            using_pvm: false, // Start in REVM mode by default
-            pvm_startup_migration: PvmStartupMigration::Defer, // Will be set to Allow when test contract deploys
+        Self {
+            using_pvm: false,                                  // Start in REVM mode by default
+            pvm_startup_migration: PvmStartupMigration::Defer, /* Will be set to Allow when test
+                                                                * contract deploys */
             dual_compiled_contracts,
             runtime_mode,
         }
@@ -430,7 +431,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
         return;
     }
 
-    tracing::info!("switching to pallet-revive ({} mode)",  ctx.runtime_mode);
+    tracing::info!("switching to pallet-revive ({} mode)", ctx.runtime_mode);
     ctx.using_pvm = true;
 
     let block_number = data.block.number;
@@ -604,8 +605,6 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
         })
     });
 }
-
-impl PvmCheatcodeInspectorStrategyRunner {}
 
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
     /// Try handling the `CREATE` within PVM.

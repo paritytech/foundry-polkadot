@@ -387,4 +387,3 @@ contract CounterTest is DSTest {
     // Test with --polkadot flag (EVM backend on pallet-revive)
     cmd.args(["test", "--polkadot", "-vvv"]).assert_success();
 });
-

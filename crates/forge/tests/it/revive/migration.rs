@@ -2,8 +2,8 @@
 
 use crate::{config::*, test_helpers::TEST_DATA_REVIVE};
 use foundry_test_utils::Filter;
-use revm::primitives::hardfork::SpecId;
 use revive_strategy::ReviveRuntimeMode;
+use revm::primitives::hardfork::SpecId;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_revive_balance_migration_pvm() {
@@ -42,17 +42,17 @@ async fn test_revive_nonce_migration_evm() {
 // async fn test_revive_precision_preservation_pvm() {
 //     let runtime_mode = ReviveRuntimeMode::Pvm;
 //     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest", ".*/revive/.*");
-//     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
-// }
+//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest",
+// ".*/revive/.*");     TestConfig::with_filter(runner,
+// filter).spec_id(SpecId::SHANGHAI).run().await; }
 
 // #[tokio::test(flavor = "multi_thread")]
 // async fn test_revive_precision_preservation_evm() {
 //     let runtime_mode = ReviveRuntimeMode::Evm;
 //     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest", ".*/revive/.*");
-//     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
-// }
+//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest",
+// ".*/revive/.*");     TestConfig::with_filter(runner,
+// filter).spec_id(SpecId::SHANGHAI).run().await; }
 
 // Bytecode migration tests - currently only PVM mode is fully supported
 // EVM mode bytecode migration is a work in progress as pallet-revive's EVM mode
@@ -61,7 +61,8 @@ async fn test_revive_nonce_migration_evm() {
 async fn test_revive_bytecode_migration() {
     let runtime_mode = ReviveRuntimeMode::Pvm;
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testBytecodeMigrationToEvm", "EvmReviveMigrationTest", ".*/revive/.*");
+    let filter =
+        Filter::new("testBytecodeMigrationToEvm", "EvmReviveMigrationTest", ".*/revive/.*");
     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
 }
 
@@ -69,7 +70,8 @@ async fn test_revive_bytecode_migration() {
 async fn test_evm_bytecode_migration() {
     let runtime_mode = ReviveRuntimeMode::Pvm;
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testBytecodeMigrationToRevive", "EvmReviveMigrationTest", ".*/revive/.*");
+    let filter =
+        Filter::new("testBytecodeMigrationToRevive", "EvmReviveMigrationTest", ".*/revive/.*");
     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
 }
 

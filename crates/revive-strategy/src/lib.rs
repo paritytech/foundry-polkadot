@@ -39,8 +39,8 @@ pub enum ReviveRuntimeMode {
 impl Display for ReviveRuntimeMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReviveRuntimeMode::Pvm => write!(f, "PVM"),
-            ReviveRuntimeMode::Evm => write!(f, "EVM"),
+            Self::Pvm => write!(f, "PVM"),
+            Self::Evm => write!(f, "EVM"),
         }
     }
 }
