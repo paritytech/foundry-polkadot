@@ -60,6 +60,7 @@ impl SnapshotManager {
         Ok(Some(RevertInfo { reverted: reverted.into(), info: self.client.info() }))
     }
 
+/// Revert from best block to a parent represented by current block height minus depth.
     pub fn rollback(&self, depth: Option<u64>) -> Result<RevertInfo> {
         let (reverted, _) = self
             .backend
