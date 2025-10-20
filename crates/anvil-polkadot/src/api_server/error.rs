@@ -14,10 +14,6 @@ pub enum Error {
     InvalidParams(String),
     #[error("Revive call failed: {0}")]
     ReviveRpc(#[from] EthRpcError),
-    #[error("Snapshot error: {0}")]
-    SnapshotRpc(String),
-    #[error("Subxt error: {0}")]
-    Subxt(#[from] subxt::error::Error),
     #[error(transparent)]
     Backend(#[from] BackendError),
     #[error("Nonce overflowing the substrate nonce type")]
@@ -28,6 +24,12 @@ pub enum Error {
     BalanceConversion,
     #[error("Internal error: {0}")]
     InternalError(String),
+}
+
+impl From<subxt::Error> for Error {
+    fn from(err: subxt::Error) -> Self {
+        Self::ReviveRpc(EthRpcError::ClientError(err.into()))
+    }
 }
 
 impl From<ClientError> for Error {
@@ -78,13 +80,6 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 Error::RpcUnimplemented => RpcError::internal_error_with("Not implemented").into(),
                 Error::InvalidParams(error_message) => {
                     RpcError::invalid_params(error_message).into()
-                }
-                Error::SnapshotRpc(err) => RpcError::internal_error_with(err).into(),
-                Error::ReviveRpc(client_error) => {
-                    RpcError::internal_error_with(format!("{client_error}")).into()
-                }
-                Error::Subxt(subxt_err) => {
-                    RpcError::internal_error_with(format!("{subxt_err}")).into()
                 }
                 err => RpcError::internal_error_with(format!("{err}")).into(),
             },

@@ -17,7 +17,7 @@ use crate::{
         service::{
             BackendError, BackendWithOverlay, Client, Service,
             storage::{
-                self, AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
+                AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
         },
@@ -210,7 +210,7 @@ impl ApiServer {
                 .map(|val| AlloyU256::from(val).inner())
                 .to_rpc_result(),
             // --- Snapshot ---
-            EthRequest::EvmSnapshot(_) => self.snapshot().await.to_rpc_result(),
+            EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
             EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
 
@@ -640,8 +640,10 @@ impl ApiServer {
 
     pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
         node_info!("evm_revert");
-        let res =
-            self.snapshot_manager.revert(id).map_err(|err| Error::SnapshotRpc(err.to_string()))?;
+        let res = self
+            .snapshot_manager
+            .revert(id)
+            .map_err(|err| Error::Backend(BackendError::Client(err)))?;
         let Some(res) = res else { return Ok(false) };
 
         self.on_revert_update(res).await?;
@@ -654,53 +656,9 @@ impl ApiServer {
         let res = self
             .snapshot_manager
             .rollback(depth)
-            .map_err(|err| Error::SnapshotRpc(err.to_string()))?;
+            .map_err(|err| Error::Backend(BackendError::Client(err)))?;
 
         self.on_revert_update(res).await?;
-
-        Ok(())
-    }
-
-    // Helpers
-    async fn update_block_provider(&self, info: &Info<OpaqueBlock>) -> Result<()> {
-        let new_best_block = self.block_provider.block_by_number(info.best_number).await?;
-        let new_finalized_block =
-            self.block_provider.block_by_number(info.finalized_number).await?;
-
-        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
-        }
-
-        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
-        }
-
-        Ok(())
-    }
-
-    async fn update_time(&self, best_hash: Hash) -> Result<()> {
-        let value = self
-            .backend
-            .read_top_state(best_hash, storage::well_known_keys::TIMESTAMP.to_vec())
-            .map_err(Error::Backend)?
-            .ok_or(Error::Backend(BackendError::MissingTimestamp))?;
-        let timestamp = u64::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)?;
-
-        self.mining_engine.set_time(Duration::from_millis(timestamp));
-        Ok(())
-    }
-
-    async fn on_revert_update(&self, revert_info: RevertInfo) -> Result<()> {
-        if revert_info.reverted > 0 {
-            self.update_block_provider(&revert_info.info).await?;
-        }
-
-        let hash = self
-            .get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Number(
-                revert_info.info.best_number.into(),
-            ))))
-            .await?;
-        self.update_time(hash).await?;
 
         Ok(())
     }
@@ -818,14 +776,6 @@ impl ApiServer {
     async fn get_logs(&self, filter: Filter) -> Result<FilterResults> {
         let logs = self.eth_rpc_client.logs(Some(ReviveFilter::from(filter).into_inner())).await?;
         Ok(FilterResults::Logs(logs))
-    }
-
-    // Helpers
-    async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
-        self.eth_rpc_client
-            .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
-            .await
-            .map_err(Error::from)
     }
 
     // State injector RPCs
@@ -986,7 +936,52 @@ impl ApiServer {
 
         Ok(())
     }
+
     // ----- Helpers
+    async fn update_block_provider_on_revert(&self, info: &Info<OpaqueBlock>) -> Result<()> {
+        let new_best_block = self.block_provider.block_by_number(info.best_number).await?;
+        let new_finalized_block =
+            self.block_provider.block_by_number(info.finalized_number).await?;
+
+        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
+        }
+
+        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
+        }
+
+        Ok(())
+    }
+
+    async fn update_time_on_revert(&self, best_hash: Hash) -> Result<()> {
+        let timestamp = self.backend.read_timestamp(best_hash)?;
+        self.mining_engine.set_time(Duration::from_millis(timestamp));
+        Ok(())
+    }
+
+    async fn on_revert_update(&self, revert_info: RevertInfo) -> Result<()> {
+        if revert_info.reverted > 0 {
+            self.update_block_provider_on_revert(&revert_info.info).await?;
+        }
+
+        let hash = self
+            .get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Number(
+                revert_info.info.best_number.into(),
+            ))))
+            .await?;
+        self.update_time_on_revert(hash).await?;
+
+        Ok(())
+    }
+
+    async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
+        self.eth_rpc_client
+            .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
+            .await
+            .map_err(Error::from)
+    }
+
     fn get_account_id(&self, block: Hash, address: Address) -> Result<AccountId> {
         Ok(self.client.runtime_api().account_id(block, ReviveAddress::from(address).inner())?)
     }
@@ -1115,7 +1110,9 @@ async fn create_online_client(
         subxt_metadata,
         rpc_client,
     )
-    .map_err(Error::Subxt)
+    .map_err(|err| {
+        Error::InternalError(format!("Failed to initialize the subxt online client: {err}"))
+    })
 }
 
 async fn create_revive_rpc_client(

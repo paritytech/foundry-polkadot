@@ -64,7 +64,7 @@ const BANNER: &str = r"
 pub struct SubstrateNodeConfig {
     shared_params: sc_cli::SharedParams,
     rpc_params: sc_cli::RpcParams,
-    import_params: Option<sc_cli::ImportParams>,
+    import_params: sc_cli::ImportParams,
 }
 
 impl SubstrateNodeConfig {
@@ -100,6 +100,10 @@ impl SubstrateNodeConfig {
             rpc_cors: None,
         };
 
+        // Anvil node requires these cli params configured by default except the state_pruning and
+        // block_pruning params. They must be set to `DatabasePruningMode::Archive` because
+        // chain reversion RPCs must revert the state db for finalized blocks, which is a no
+        // operation when pruning is not configured as an archive for both blocks & state.
         let import_params = sc_cli::ImportParams {
             pruning_params: sc_cli::PruningParams {
                 state_pruning: Some(sc_cli::DatabasePruningMode::Archive),
@@ -121,7 +125,7 @@ impl SubstrateNodeConfig {
             warm_up_trie_cache: None,
         };
 
-        Self { shared_params, rpc_params, import_params: Some(import_params) }
+        Self { shared_params, rpc_params, import_params }
     }
 
     pub fn set_base_path(&mut self, base_path: Option<PathBuf>) {
@@ -135,7 +139,7 @@ impl SubstrateCliConfiguration for SubstrateNodeConfig {
     }
 
     fn import_params(&self) -> Option<&sc_cli::ImportParams> {
-        self.import_params.as_ref()
+        Some(&self.import_params)
     }
 
     fn network_params(&self) -> Option<&sc_cli::NetworkParams> {

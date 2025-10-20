@@ -60,6 +60,14 @@ impl BackendWithOverlay {
         self.backend.blockchain()
     }
 
+    pub fn read_timestamp(&self, hash: Hash) -> Result<u64> {
+        let key = well_known_keys::TIMESTAMP;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingTimestamp)?;
+        u64::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)
+    }
+
     pub fn read_chain_id(&self, hash: Hash) -> Result<u64> {
         let key = well_known_keys::CHAIN_ID;
 
@@ -159,7 +167,7 @@ impl BackendWithOverlay {
         overrides.set_child_storage(at, child_key, key, value);
     }
 
-    pub fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {
+    fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {
         let maybe_overridden_val = {
             let mut guard = self.overrides.lock();
 

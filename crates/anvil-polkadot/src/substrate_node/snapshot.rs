@@ -7,10 +7,7 @@ use polkadot_sdk::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-#[derive(Clone, Debug)]
-pub struct Snapshot {
-    pub best_number: u64,
-}
+type Snapshot = u64;
 
 pub struct RevertInfo {
     pub info: Info<OpaqueBlock>,
@@ -33,11 +30,11 @@ impl SnapshotManager {
 impl SnapshotManager {
     /// Create a snapshot id corresponding to the best block number.
     pub fn snapshot(&mut self) -> U256 {
-        let one = U256::ONE;
-        self.next_snapshot_id += one;
-        let snapshot = Snapshot { best_number: self.client.info().best_number.into() };
-        self.snapshots.insert(self.next_snapshot_id - one, snapshot);
-        self.next_snapshot_id - one
+        let current_snapshot_id = self.next_snapshot_id;
+        self.next_snapshot_id += U256::ONE;
+        let snapshot = self.client.info().best_number.into();
+        self.snapshots.insert(current_snapshot_id, snapshot);
+        current_snapshot_id
     }
 
     /// Revert the chain to the block number represented by the snapshot `id`.
@@ -51,14 +48,14 @@ impl SnapshotManager {
         };
 
         let current_best_number: u64 = self.client.info().best_number.into();
-        let number_of_blocks_to_revert = current_best_number - snap.best_number;
+        let number_of_blocks_to_revert = current_best_number - snap;
 
         let (reverted, _) = self.backend.revert(
             number_of_blocks_to_revert.try_into().expect("to not surpass u32 bounds"),
             true,
         )?;
 
-        self.snapshots.retain(|_, snap_to_remove| snap_to_remove.best_number < snap.best_number);
+        self.snapshots.retain(|_, snap_to_remove| *snap_to_remove < snap);
 
         Ok(Some(RevertInfo { reverted: reverted.into(), info: self.client.info() }))
     }
