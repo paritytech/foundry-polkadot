@@ -44,28 +44,34 @@ use revm::{
     state::Bytecode,
 };
 pub trait PvmCheatcodeInspectorStrategyBuilder {
-    fn new_pvm(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self;
+    fn new_pvm(
+        dual_compiled_contracts: DualCompiledContracts,
+        runtime_mode: crate::ReviveRuntimeMode,
+    ) -> Self;
 }
 impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
     // Creates a new PVM strategy
-    fn new_pvm(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self {
+    fn new_pvm(
+        dual_compiled_contracts: DualCompiledContracts,
+        runtime_mode: crate::ReviveRuntimeMode,
+    ) -> Self {
         Self {
             runner: &PvmCheatcodeInspectorStrategyRunner,
             context: Box::new(PvmCheatcodeInspectorStrategyContext::new(
                 dual_compiled_contracts,
-                resolc_startup,
+                runtime_mode,
             )),
         }
     }
 }
 
-/// Controls the automatic migration to PVM mode during test execution.
+/// Controls the automatic migration to pallet-revive during test execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PvmStartupMigration {
     /// Defer database migration to a later execution point.
     /// This is the initial state - waiting for the test contract to be deployed.
     Defer,
-    /// Allow database migration to PVM.
+    /// Allow database migration to pallet-revive (EVM or PVM mode).
     /// Set by `base_contract_deployed()` when the test contract is deployed.
     #[default]
     Allow,
@@ -93,23 +99,25 @@ impl PvmStartupMigration {
 /// PVM-specific strategy context.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyContext {
-    /// Whether we're using PVM mode
+    /// Whether we're currently using pallet-revive (migrated from REVM)
     pub using_pvm: bool,
-    /// Controls automatic migration to PVM mode
+    /// Controls automatic migration to pallet-revive
     pub pvm_startup_migration: PvmStartupMigration,
     pub dual_compiled_contracts: DualCompiledContracts,
+    /// Runtime backend mode when using pallet-revive (PVM or EVM)
+    pub runtime_mode: crate::ReviveRuntimeMode,
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
-    pub fn new(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self {
-        Self {
-            using_pvm: false, // Start in EVM mode by default
-            pvm_startup_migration: if resolc_startup {
-                PvmStartupMigration::Defer // Will be set to Allow when test contract deploys
-            } else {
-                PvmStartupMigration::Done // Disabled - never migrate
-            },
+    pub fn new(
+        dual_compiled_contracts: DualCompiledContracts,
+        runtime_mode: crate::ReviveRuntimeMode,
+    ) -> Self {
+            Self {
+            using_pvm: false, // Start in REVM mode by default
+            pvm_startup_migration: PvmStartupMigration::Defer, // Will be set to Allow when test contract deploys
             dual_compiled_contracts,
+            runtime_mode,
         }
     }
 }
@@ -223,7 +231,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 if *enabled {
-                    select_pvm(ctx, ccx.ecx);
+                    select_revive(ctx, ccx.ecx);
                 } else {
                     select_evm(ctx, ccx.ecx);
                 }
@@ -366,10 +374,10 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         let ctx = get_context_ref_mut(ctx);
 
         if ctx.pvm_startup_migration.is_allowed() && !ctx.using_pvm {
-            tracing::info!("startup PVM migration initiated");
-            select_pvm(ctx, ecx);
+            tracing::info!("startup pallet-revive migration initiated");
+            select_revive(ctx, ecx);
             ctx.pvm_startup_migration.done();
-            tracing::info!("startup PVM migration completed");
+            tracing::info!("startup pallet-revive migration completed");
         }
     }
 
@@ -416,13 +424,13 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     }
 }
 
-fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
+fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
     if ctx.using_pvm {
-        tracing::info!("already in PVM");
+        tracing::info!("already using pallet-revive");
         return;
     }
 
-    tracing::info!("switching to PVM");
+    tracing::info!("switching to pallet-revive ({} mode)",  ctx.runtime_mode);
     ctx.using_pvm = true;
 
     let block_number = data.block.number;
@@ -482,29 +490,49 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
 
                     let account_h160 = H160::from_slice(address.as_slice());
 
-                    // Skip if contract already exists in PVM
+                    // Skip if contract already exists in pallet-revive
                     if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
-                        if let Some(pvm_bytecode) = ctx.dual_compiled_contracts
-                            .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
-                            .and_then(|(_, contract)| {
-                                contract.resolc_bytecode.as_bytes()
-                            })
-                        {
+                        // Determine which bytecode to upload based on runtime mode
+                        let bytecode_to_upload = match ctx.runtime_mode {
+                            crate::ReviveRuntimeMode::Pvm => {
+                                // PVM mode: try to find PVM bytecode from dual_compiled_contracts
+                                ctx.dual_compiled_contracts
+                                    .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
+                                    .and_then(|(_, contract)| {
+                                        contract.resolc_bytecode.as_bytes().map(|b| b.to_vec())
+                                    })
+                            }
+                            crate::ReviveRuntimeMode::Evm => {
+                                // EVM mode: use the EVM bytecode directly
+                                Some(bytecode.original_byte_slice().to_vec())
+                            }
+                        };
+
+                        if let Some(code_bytes) = bytecode_to_upload {
                             let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
-                            let code_hash = Pallet::<Runtime>::bare_upload_code(
+                            let upload_result = Pallet::<Runtime>::bare_upload_code(
                                 origin,
-                                pvm_bytecode.to_vec(),
+                                code_bytes.clone(),
                                 BalanceOf::<Runtime>::MAX,
-                            )
-                            .ok()
-                            .map(|upload_result| upload_result.code_hash)
-                            .expect("Failed to upload PVM bytecode");
+                            );
 
-                            let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
-                                .expect("Failed to create contract info");
-
-                            AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
-
+                            match upload_result {
+                                Ok(result) => {
+                                    let code_hash = result.code_hash;
+                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                        .expect("Failed to create contract info");
+                                    AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
+                                }
+                                Err(err) => {
+                                    tracing::warn!(
+                                        address = ?address,
+                                        runtime_mode = ?ctx.runtime_mode,
+                                        bytecode_len = code_bytes.len(),
+                                        error = ?err,
+                                        "Failed to upload bytecode to pallet-revive, skipping migration"
+                                    );
+                                }
+                            }
                         } else {
                             tracing::info!(
                                 address = ?address,
@@ -520,11 +548,11 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
     if !ctx.using_pvm {
-        tracing::info!("already in EVM");
+        tracing::info!("already using REVM");
         return;
     }
 
-    tracing::info!("switching to EVM");
+    tracing::info!("switching from pallet-revive back to REVM");
     ctx.using_pvm = false;
 
     execute_with_externalities(|externalities| {
@@ -577,6 +605,8 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     });
 }
 
+impl PvmCheatcodeInspectorStrategyRunner {}
+
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
     /// Try handling the `CREATE` within PVM.
     ///
@@ -620,15 +650,26 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         let init_code = input.init_code();
-        tracing::info!("running create in PVM");
 
-        let find_contract = ctx
-            .dual_compiled_contracts
-            .find_bytecode(&init_code.0)
-            .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
-
-        let constructor_args = find_contract.constructor_args();
-        let contract = find_contract.contract();
+        // Determine which bytecode to use based on runtime mode
+        let (code_bytes, constructor_args) = match ctx.runtime_mode {
+            crate::ReviveRuntimeMode::Pvm => {
+                // PVM mode: use resolc (PVM) bytecode
+                tracing::info!("running create in PVM mode with PVM bytecode");
+                let find_contract = ctx
+                    .dual_compiled_contracts
+                    .find_bytecode(&init_code.0)
+                    .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
+                let constructor_args = find_contract.constructor_args();
+                let contract = find_contract.contract();
+                (contract.resolc_bytecode.as_bytes().unwrap().to_vec(), constructor_args.to_vec())
+            }
+            crate::ReviveRuntimeMode::Evm => {
+                // EVM mode: use EVM bytecode directly
+                tracing::info!("running create in EVM mode with EVM bytecode");
+                (init_code.0.to_vec(), vec![])
+            }
+        };
 
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
@@ -637,6 +678,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 1u128 << 99,
             );
         let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
+
+        // Store code_bytes for use in output
+        let deployed_bytecode = code_bytes.clone();
 
         let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
@@ -652,8 +696,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     )
                     .expect("gas limit is valid");
                     let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
-                    let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
-                    let data = constructor_args.to_vec();
+                    let code = Code::Upload(code_bytes);
+                    let data = constructor_args;
                     let salt = match input.scheme() {
                         Some(CreateScheme::Create2 { salt }) => Some(
                             salt.as_limbs()
@@ -705,7 +749,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     CreateOutcome {
                         result: InterpreterResult {
                             result: InstructionResult::Return,
-                            output: contract.resolc_bytecode.as_bytes().unwrap().clone(),
+                            output: deployed_bytecode.into(),
                             gas,
                         },
                         address: Some(Address::from_slice(result.addr.as_bytes())),
@@ -759,13 +803,13 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .unwrap_or_default()
         {
             tracing::info!(
-                "running call in EVM, instead of PVM (Test Contract) {:#?}",
+                "running call in EVM, instead of pallet-revive (Test Contract) {:#?}",
                 call.bytecode_address
             );
             return None;
         }
 
-        tracing::info!("running call in PVM {:#?}", call);
+        tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
 
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(

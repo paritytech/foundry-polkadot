@@ -331,3 +331,60 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 
 "#]]);
 });
+
+// Test --polkadot flag: EVM execution on pallet-revive backend
+forgetest!(polkadot_evm_backend, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Counter.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+
+contract Counter {
+    uint256 public number;
+
+    constructor(uint256 _initial) {
+        number = _initial;
+    }
+
+    function increment() public {
+        number = number + 1;
+    }
+
+    function getNumber() public view returns (uint256) {
+        return number;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "CounterTest.t.sol",
+        r#"
+import "./test.sol";
+import {Counter} from "./Counter.sol";
+
+contract CounterTest is DSTest {
+    function test_PolkadotEVMBackend() public {
+        // This test runs EVM bytecode on pallet-revive EVM backend
+        Counter counter = new Counter(42);
+        assertEq(counter.getNumber(), 42);
+
+        counter.increment();
+        assertEq(counter.getNumber(), 43);
+
+        counter.increment();
+        assertEq(counter.getNumber(), 44);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Test with --polkadot flag (EVM backend on pallet-revive)
+    cmd.args(["test", "--polkadot", "-vvv"]).assert_success();
+});
+
