@@ -26,6 +26,8 @@ pub enum BackendError {
     MissingTotalIssuance,
     #[error("Could not find chain id in the state")]
     MissingChainId,
+    #[error("Could not find timestmap in the state")]
+    MissingTimestamp,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
@@ -38,6 +40,8 @@ pub enum BackendError {
     DecodeSystemAccountInfo(codec::Error),
     #[error("Unable to decode revive code info {0}")]
     DecodeCodeInfo(codec::Error),
+    #[error("Unable to decode timestamp: {0}")]
+    DecodeTimestamp(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
