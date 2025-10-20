@@ -95,10 +95,6 @@ impl ApiServer {
         let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
         let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
         let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
-        let backend = BackendWithOverlay::new(
-            substrate_service.backend.clone(),
-            substrate_service.storage_overrides.clone(),
-        );
         let eth_rpc_client = create_revive_rpc_client(
             api.clone(),
             rpc_client.clone(),
@@ -112,7 +108,10 @@ impl ApiServer {
             block_provider,
             req_receiver,
             logging_manager,
-            backend,
+            backend: BackendWithOverlay::new(
+                substrate_service.backend.clone(),
+                substrate_service.storage_overrides.clone(),
+            ),
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
@@ -496,32 +495,6 @@ impl ApiServer {
         Ok(code.into())
     }
 
-    async fn get_block_transaction_count_by_number(
-        &self,
-        block_number: BlockNumberOrTag,
-    ) -> Result<Option<U256>> {
-        let Some(block) = self.get_block_by_number(block_number, false).await? else {
-            return Ok(None);
-        };
-        Ok(self.eth_rpc_client.receipts_count_per_block(&block.hash).await.map(U256::from))
-    }
-
-    async fn get_block_by_number(
-        &self,
-        block_number: BlockNumberOrTag,
-        hydrated_transactions: bool,
-    ) -> Result<Option<Block>> {
-        let Some(block) = self
-            .eth_rpc_client
-            .block_by_number_or_tag(&ReviveBlockNumberOrTag::from(block_number).inner())
-            .await?
-        else {
-            return Ok(None);
-        };
-        let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
-        Ok(Some(block))
-    }
-
     async fn get_block_by_hash(
         &self,
         block_hash: B256,
@@ -644,6 +617,22 @@ impl ApiServer {
         self.send_raw_transaction(Bytes(payload)).await
     }
 
+    async fn get_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+        hydrated_transactions: bool,
+    ) -> Result<Option<Block>> {
+        let Some(block) = self
+            .eth_rpc_client
+            .block_by_number_or_tag(&ReviveBlockNumberOrTag::from(block_number).inner())
+            .await?
+        else {
+            return Ok(None);
+        };
+        let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
+        Ok(Some(block))
+    }
+
     pub(crate) async fn snapshot(&mut self) -> Result<U256> {
         node_info!("evm_snapshot");
         Ok(self.snapshot_manager.snapshot())
@@ -719,6 +708,16 @@ impl ApiServer {
     async fn get_block_transaction_count_by_hash(&self, block_hash: B256) -> Result<Option<U256>> {
         let block_hash = H256::from_slice(block_hash.as_slice());
         Ok(self.eth_rpc_client.receipts_count_per_block(&block_hash).await.map(U256::from))
+    }
+
+    async fn get_block_transaction_count_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<Option<U256>> {
+        let Some(block) = self.get_block_by_number(block_number, false).await? else {
+            return Ok(None);
+        };
+        Ok(self.eth_rpc_client.receipts_count_per_block(&block.hash).await.map(U256::from))
     }
 
     async fn get_transaction_by_block_hash_and_index(
