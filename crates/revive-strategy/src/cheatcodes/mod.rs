@@ -114,9 +114,10 @@ impl PvmCheatcodeInspectorStrategyContext {
         runtime_mode: crate::ReviveRuntimeMode,
     ) -> Self {
         Self {
-            using_pvm: false,                                  // Start in REVM mode by default
-            pvm_startup_migration: PvmStartupMigration::Defer, /* Will be set to Allow when test
-                                                                * contract deploys */
+            // Start in REVM mode by default
+            using_pvm: false,
+            // Will be set to Allow when test contract deploys
+            pvm_startup_migration: PvmStartupMigration::Defer,
             dual_compiled_contracts,
             runtime_mode,
         }
