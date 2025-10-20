@@ -30,8 +30,6 @@ pub enum BackendError {
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
     DecodeChainId(codec::Error),
-    #[error("Unable to decode timestamp {0}")]
-    DecodeTimestamp(codec::Error),
     #[error("Unable to decode balance {0}")]
     DecodeBalance(codec::Error),
     #[error("Unable to decode revive account info {0}")]
