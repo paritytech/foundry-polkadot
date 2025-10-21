@@ -1,19 +1,9 @@
-// Just a copy of cheatcodes Prank.t.sol adapted to work with pvm backend.
-// The adaptions are only to switch back and forth between evm and pvm.
-forgetest!(mock_call, |prj, cmd| {
-    prj.insert_ds_test();
-    prj.insert_vm();
-    prj.insert_console();
-    prj.add_source(
-        "MockCall.t.sol",
-        r#"
-// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
 
-import "./test.sol";
-import "./Vm.sol";
-import {console} from "./console.sol";
+import "ds-test/test.sol";
+import "cheats/Vm.sol";
+import "../../default/logs/console.sol";
 
 contract MockFunctionContract {
     uint256 public a;
@@ -84,28 +74,3 @@ contract MockFunctionTest is DSTest {
         assertEq(my_contract.a(), 123 + 789);
     }
 }
-
-"#,
-    )
-    .unwrap();
-
-    let res = cmd.args(["test", "--resolc", "--resolc-startup"]).assert_success();
-
-    res.stderr_eq(str![""]).stdout_eq(str![[r#"
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-Ran 3 tests for src/MockCall.t.sol:MockFunctionTest
-[PASS] test_mock_function_all_args() ([GAS])
-[PASS] test_mock_function_concrete_args() ([GAS])
-[PASS] test_mockx_function() ([GAS])
-Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
-
-"#]]);
-});
