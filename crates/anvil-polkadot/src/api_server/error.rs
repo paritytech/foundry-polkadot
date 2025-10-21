@@ -28,6 +28,8 @@ pub enum Error {
     InternalError(String),
     #[error("Keypair error: {0}")]
     KeypairError(String),
+    #[error("No signer available")]
+    NoSignerAvailable,
 }
 
 impl From<subxt::Error> for Error {

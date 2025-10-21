@@ -3,6 +3,7 @@ use crate::{
     logging::LoggingManager,
     substrate_node::{impersonation::ImpersonationManager, service::Service},
 };
+use alloy_signer_local::PrivateKeySigner;
 use anvil_core::eth::EthRequest;
 use anvil_rpc::response::ResponseResult;
 use futures::channel::{mpsc, oneshot};
@@ -29,7 +30,18 @@ pub fn spawn(
     let service = substrate_service.clone();
     let mut impersonation_manager = ImpersonationManager::default();
     impersonation_manager.set_auto_impersonate_account(config.enable_auto_impersonate);
-    let signers = config.signer_accounts.clone();
+    let mut signers = vec![config.signer_accounts.clone()];
+    if let Some(genesis) = &config.genesis {
+        let genesis_signers = genesis
+            .alloc
+            .values()
+            .filter_map(|acc| acc.private_key)
+            .flat_map(|k| PrivateKeySigner::from_bytes(&k))
+            .collect::<Vec<_>>();
+        if !genesis_signers.is_empty() {
+            signers.push(genesis_signers)
+        }
+    }
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
         let api_server =
             ApiServer::new(service, receiver, logging_manager, impersonation_manager, signers)
