@@ -73,7 +73,7 @@ contract CounterTest is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -121,7 +121,7 @@ contract SetNonce is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -165,7 +165,7 @@ contract Roll is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -209,7 +209,7 @@ contract Warp is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -254,7 +254,7 @@ function test_Balance() public {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
