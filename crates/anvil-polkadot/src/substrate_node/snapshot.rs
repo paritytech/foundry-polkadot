@@ -39,9 +39,6 @@ impl SnapshotManager {
 
     /// Revert the chain to the block number represented by the snapshot `id`.
     pub fn revert(&mut self, snapshot_id: U256) -> Result<Option<RevertInfo>> {
-        // Remove the snapshot when reverting. We do not want to keep it around
-        // since reverting to an existing snapshot could mean going back to future,
-        // which is not supported.
         let maybe_snapshot = self.snapshots.remove(&snapshot_id);
         let Some(snap) = maybe_snapshot else {
             return Ok(None);
@@ -50,10 +47,8 @@ impl SnapshotManager {
         let current_best_number: u64 = self.client.info().best_number.into();
         let number_of_blocks_to_revert = current_best_number - snap;
 
-        let (reverted, _) = self.backend.revert(
-            number_of_blocks_to_revert.try_into().expect("to not surpass u32 bounds"),
-            true,
-        )?;
+        let (reverted, _) =
+            self.backend.revert(number_of_blocks_to_revert.try_into().unwrap_or(u32::MAX), true)?;
 
         self.snapshots.retain(|_, snap_to_remove| *snap_to_remove < snap);
 
@@ -62,9 +57,8 @@ impl SnapshotManager {
 
     /// Revert from best block to a parent represented by current block height minus depth.
     pub fn rollback(&self, depth: Option<u64>) -> Result<RevertInfo> {
-        let (reverted, _) = self
-            .backend
-            .revert(depth.unwrap_or(1).try_into().expect("to not surpass u32 bounds"), true)?;
+        let (reverted, _) =
+            self.backend.revert(depth.unwrap_or(1).try_into().unwrap_or(u32::MAX), true)?;
         Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
     }
 }

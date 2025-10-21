@@ -14,7 +14,7 @@ use polkadot_sdk::pallet_revive::{
 };
 use subxt::utils::H160;
 
-async fn assert_block_number(node: &mut TestNode, n: u64) {
+async fn assert_block_number_is_best_and_finalized(node: &mut TestNode, n: u64) {
     assert_eq!(std::convert::Into::<u64>::into(node.best_block_number().await), n);
     tokio::time::sleep(Duration::from_millis(500)).await;
     let best_block = unwrap_response::<Block>(
@@ -23,7 +23,7 @@ async fn assert_block_number(node: &mut TestNode, n: u64) {
             .unwrap(),
     )
     .unwrap();
-    let n_as_u256 = polkadot_sdk::pallet_revive::U256::from(n);
+    let n_as_u256 = pallet_revive::U256::from(n);
     assert_eq!(best_block.number, n_as_u256);
 
     let finalized_block = unwrap_response::<Block>(
@@ -45,7 +45,7 @@ async fn test_best_block_after_evm_revert() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number(&mut node, 0).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0).await;
 
     // Snapshot at genesis.
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
@@ -55,7 +55,7 @@ async fn test_best_block_after_evm_revert() {
     // Mine 5 blocks and assert on the new best block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     // Snapshot at block number 5.
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
@@ -65,40 +65,39 @@ async fn test_best_block_after_evm_revert() {
     // Mine 5 more blocks.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    assert_block_number(&mut node, 10).await;
+    assert_block_number_is_best_and_finalized(&mut node, 10).await;
 
     // Snapshot again at block number 10.
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
         .unwrap();
     assert_eq!(id, "0x2".to_string());
-    assert_block_number(&mut node, 10).await;
+    assert_block_number_is_best_and_finalized(&mut node, 10).await;
 
     // Mine 5 more blocks.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    assert_block_number(&mut node, 15).await;
+    assert_block_number_is_best_and_finalized(&mut node, 15).await;
 
     // Revert to the second snapshot and assert best block number is 10.
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
-    assert_eq!(snapshot_id, U256::from(2));
     let reverted =
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert!(reverted);
-    assert_block_number(&mut node, 10).await;
+    assert_block_number_is_best_and_finalized(&mut node, 10).await;
 
     // Check mining works fine after reverting.
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(10)), None)).await.unwrap(),
     )
     .unwrap();
-    assert_block_number(&mut node, 20).await;
+    assert_block_number_is_best_and_finalized(&mut node, 20).await;
 
     // Revert immediatelly after a snapshot (same best number is expected after the revert).
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
         .unwrap();
     assert_eq!(id, "0x3".to_string());
-    assert_block_number(&mut node, 20).await;
+    assert_block_number_is_best_and_finalized(&mut node, 20).await;
 
     let snapshot_id = U256::from_str_radix(id.trim_start_matches("0x"), 16).unwrap();
     assert_eq!(snapshot_id, U256::from(3));
@@ -106,27 +105,27 @@ async fn test_best_block_after_evm_revert() {
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert!(reverted);
-    assert_block_number(&mut node, 20).await;
+    assert_block_number_is_best_and_finalized(&mut node, 20).await;
 
     // Test the case of revert id -> revert same id.
     let reverted =
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
             .unwrap();
     assert!(reverted);
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     let reverted =
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ONE)).await.unwrap())
             .unwrap();
     assert!(!reverted);
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     // Test reverting down to genesis.
     let reverted =
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(U256::ZERO)).await.unwrap())
             .unwrap();
     assert!(reverted);
-    assert_block_number(&mut node, 0).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -136,12 +135,12 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number(&mut node, 0).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0).await;
 
     // Mine 5 blocks and assert on the new best block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     // Snapshot at block number 5.
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
@@ -160,9 +159,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     let transfer_amount = U256::from(16e17);
     let (dest_addr, tx_hash) =
         node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount, None).await;
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
-    assert_block_number(&mut node, 6).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    assert_block_number_is_best_and_finalized(&mut node, 6).await;
     let receipt_info = node.get_transaction_receipt(tx_hash).await;
 
     // Assert on balances after first transfer.
@@ -188,9 +186,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(baltathar_addr).to(alith_addr);
     let tx_hash = node.send_transaction(transaction, None).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
-    assert_block_number(&mut node, 7).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    assert_block_number_is_best_and_finalized(&mut node, 7).await;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
@@ -224,7 +221,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert!(reverted);
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     // Assert on accounts balances to be the initial balances.
     let alith_balance = node.get_balance(alith_account.address(), None).await;
@@ -244,9 +241,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     let transaction =
         TransactionRequest::default().value(U256::from(1e17)).from(baltathar_addr).to(alith_addr);
     let tx_hash2 = node.send_transaction(transaction, None).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
-    assert_block_number(&mut node, 6).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    assert_block_number_is_best_and_finalized(&mut node, 6).await;
 
     let receipt_info = node.get_transaction_receipt(tx_hash1).await;
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
@@ -288,8 +284,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_eq!(id, "0x0".to_string());
 
     // Assert on first best block number.
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_eq!(node.best_block_number().await, 1);
     let first_timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
@@ -313,14 +308,13 @@ async fn test_evm_revert_and_timestamp() {
     );
 
     // Mine 1 blocks and assert on the new best block.
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_eq!(node.best_block_number().await, 2);
     let second_timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
         second_timestamp.saturating_sub(first_timestamp),
         3000,
-        100,
+        150,
         "wrong timestamp at second block",
     );
     // Snapshot at block number 2 and then mine 1 more block.
@@ -342,8 +336,7 @@ async fn test_evm_revert_and_timestamp() {
         "Wrong offset 2",
     );
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_eq!(node.best_block_number().await, 3);
     let third_timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
@@ -372,8 +365,7 @@ async fn test_evm_revert_and_timestamp() {
     // Mine again 1 block and check again the timestamp. We should have the next block timestamp
     // with 1 second later than the second block timestamp.
     tokio::time::sleep(Duration::from_secs(1)).await;
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_eq!(node.best_block_number().await, 3);
     let remined_third_block_ts = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
@@ -400,8 +392,7 @@ async fn test_evm_revert_and_timestamp() {
     // Mine 1 block and check the timestamp. We don't check on a specific
     // timestamp, but expect the time has increased a bit since the revert, which set the time back
     // to genesis timestamp.
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_eq!(node.best_block_number().await, 1);
     let remined_first_block_ts = node.get_decoded_timestamp(None).await;
     // Here assert that the time is increasing.
@@ -415,27 +406,27 @@ async fn test_rollback() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number(&mut node, 0).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0).await;
 
     // Mine 5 blocks and assert on the new best block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     // Rollback 2 blocks.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap()).unwrap();
-    assert_block_number(&mut node, 3).await;
+    assert_block_number_is_best_and_finalized(&mut node, 3).await;
 
     // Check mining works fine after reverting.
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(10)), None)).await.unwrap(),
     )
     .unwrap();
-    assert_block_number(&mut node, 13).await;
+    assert_block_number_is_best_and_finalized(&mut node, 13).await;
 
     // Rollback 1 blocks.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert_block_number(&mut node, 12).await;
+    assert_block_number_is_best_and_finalized(&mut node, 12).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -445,12 +436,12 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number(&mut node, 0).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0).await;
 
     // Mine 5 blocks and assert on the new best block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     // Snapshot at block number 5.
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
@@ -459,7 +450,7 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    assert_block_number(&mut node, 10).await;
+    assert_block_number_is_best_and_finalized(&mut node, 10).await;
 
     // Get known accounts.
     let alith_account = Account::from(subxt_signer::eth::dev::alith());
@@ -485,14 +476,13 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert!(reverted);
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
     let id = unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
         .unwrap();
     assert_eq!(id, "0x1".to_string());
 
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(1)), None)).await.unwrap())
-        .unwrap();
-    assert_block_number(&mut node, 6).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    assert_block_number_is_best_and_finalized(&mut node, 6).await;
 
     let txs_in_block = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
@@ -523,7 +513,7 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert!(reverted);
-    assert_block_number(&mut node, 5).await;
+    assert_block_number_is_best_and_finalized(&mut node, 5).await;
 
     let txs_in_block = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(

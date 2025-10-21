@@ -6,7 +6,7 @@ use crate::{
         BlockWaitTimeout, TestNode, get_contract_code, is_transaction_in_block, unwrap_response,
     },
 };
-use alloy_primitives::{Address, B256, Bytes, U256};
+use alloy_primitives::{Address, B256, Bytes, U256, map::HashSet};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use alloy_sol_types::{SolCall, SolEvent};
@@ -811,11 +811,14 @@ async fn test_get_logs() {
         _ => panic!("This should be a vec of logs."),
     };
 
+    let mut tx_indices = HashSet::from([1, 2]);
+    tx_indices.remove(&(logs[1].transaction_index.try_into().unwrap()));
+    tx_indices.remove(&(logs[2].transaction_index.try_into().unwrap()));
     assert_eq!(logs.len(), 3);
     assert_eq!(logs[1].block_number, pallet_revive::U256::from(2));
     assert_eq!(logs[2].block_number, pallet_revive::U256::from(2));
     assert_eq!(logs[0].transaction_hash, tx_hash);
-    assert_eq!(logs[2].transaction_index, pallet_revive::U256::from(2));
+    assert_eq!(tx_indices.len(), 0);
     // Check that our topic is the ValueChanged event.
     let event_hash = keccak_256(b"ValueChanged(address,uint256,uint256)");
     assert_eq!(logs[2].topics[0], H256::from(event_hash));

@@ -149,6 +149,7 @@ impl ApiServer {
             EthRequest::SetAutomine(enabled) => self.set_auto_mine(enabled).to_rpc_result(),
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
             EthRequest::EvmMineDetailed(mine) => self.evm_mine_detailed(mine).await.to_rpc_result(),
+
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
@@ -161,6 +162,7 @@ impl ApiServer {
             }
             EthRequest::EvmIncreaseTime(time) => self.increase_time(time).to_rpc_result(),
             EthRequest::EvmSetTime(timestamp) => self.set_time(timestamp).to_rpc_result(),
+
             // -- Impersonation --
             EthRequest::ImpersonateAccount(addr) => {
                 self.impersonate_account(H160::from_slice(addr.0.as_ref())).to_rpc_result()
@@ -170,6 +172,10 @@ impl ApiServer {
             }
             EthRequest::AutoImpersonateAccount(enable) => {
                 self.auto_impersonate_account(enable).to_rpc_result()
+            }
+            EthRequest::EthSendUnsignedTransaction(request) => {
+                node_info!("eth_sendUnsignedTransaction");
+                self.send_transaction(*request.clone(), true).await.to_rpc_result()
             }
 
             //------- Eth RPCs---------
@@ -209,6 +215,7 @@ impl ApiServer {
                 .await
                 .map(|val| AlloyU256::from(val).inner())
                 .to_rpc_result(),
+
             // --- Snapshot ---
             EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
@@ -275,10 +282,6 @@ impl ApiServer {
             EthRequest::EthGetLogs(filter) => {
                 node_info!("eth_getLogs");
                 self.get_logs(filter).await.to_rpc_result()
-            }
-            EthRequest::EthSendUnsignedTransaction(request) => {
-                node_info!("eth_sendUnsignedTransaction");
-                self.send_transaction(*request.clone(), true).await.to_rpc_result()
             }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };

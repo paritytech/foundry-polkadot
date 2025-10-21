@@ -161,8 +161,13 @@ async fn test_send_unsigned_tx() {
     let alith_account = Account::from(subxt_signer::eth::dev::alith());
     let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
     let transfer_amount = U256::from(16e17);
-    let dest_addr =
-        eth_transfer_to_unitialized_random_account(&mut node, alith_addr, transfer_amount).await;
+    let (dest_addr, _) = node
+        .eth_transfer_to_unitialized_random_account(
+            alith_addr,
+            transfer_amount,
+            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
+        )
+        .await;
     let dest_h160 = H160::from_slice(dest_addr.as_slice());
 
     // Impersonate destination

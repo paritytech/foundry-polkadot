@@ -261,9 +261,11 @@ impl TestNode {
 
         let transaction =
             TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
-        let is_automine = block_wait_timeout.is_some();
         let tx_hash = self.send_transaction(transaction, block_wait_timeout).await.unwrap();
 
+        let is_automine =
+            unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
+                .unwrap();
         if is_automine {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             let receipt_info = self.get_transaction_receipt(tx_hash).await;
