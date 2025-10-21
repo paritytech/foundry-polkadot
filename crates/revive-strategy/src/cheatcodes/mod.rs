@@ -295,6 +295,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 set_basefee(newBasefee, ccx.ecx);
 
                 Ok(Default::default())
+            }
             t if using_pvm && is::<loadCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
