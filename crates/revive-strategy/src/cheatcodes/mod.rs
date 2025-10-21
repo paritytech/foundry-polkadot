@@ -168,8 +168,8 @@ fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
 }
 
 fn set_basefee(new_basefee: U256, ecx: Ecx<'_, '_, '_>) {
-    // Set basefee in EVM context.
-    ecx.block.basefee = new_basefee.try_into().expect("Basefee exceeds u64");
+    let as_u64 = new_basefee.try_into().unwrap_or(u64::MAX);
+    ecx.block.basefee = as_u64;
 }
 
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
@@ -445,6 +445,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return None;
         }
 
+        let basefee_u64 = ecx.block.basefee;
+
+        // tx cap is ecx.tx.gas_price (max_fee_per_gas) or u128::MAX if it's not set
+        let mut tx_cap_u128 = ecx.tx.gas_price;
+        if ecx.tx.gas_priority_fee.is_none()  && tx_cap_u128 == 0{
+            tx_cap_u128 = u128::MAX;
+        }
+
+        let tx_cap_u64 = tx_cap_u128.min(u128::from(u64::MAX)) as u64;
+        let clamped_basefee_u64 = basefee_u64.min(tx_cap_u64);
+        let block_basefee = sp_core::U256::from(clamped_basefee_u64);
+
         if let Some(CreateScheme::Create) = input.scheme() {
             let caller = input.caller();
             let nonce = ecx
@@ -482,7 +494,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
+                block_basefee,
                 Weight::MAX,
                 1u128 << 99,
             );
@@ -601,6 +613,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return None;
         }
 
+        let basefee_u64 = ecx.block.basefee;
+
+        // tx cap is ecx.tx.gas_price (max_fee_per_gas) or u128::MAX if it's not set
+        let mut tx_cap_u128 = ecx.tx.gas_price;
+        if ecx.tx.gas_priority_fee.is_none()  && tx_cap_u128 == 0{
+            tx_cap_u128 = u128::MAX;
+        }
+
+        let tx_cap_u64 = tx_cap_u128.min(u128::from(u64::MAX)) as u64;
+        let clamped_basefee_u64 = basefee_u64.min(tx_cap_u64);
+        let block_basefee = sp_core::U256::from(clamped_basefee_u64);
+
         if ecx
             .journaled_state
             .database
@@ -619,7 +643,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
+                block_basefee,
                 Weight::MAX,
                 1u128 << 99,
             );

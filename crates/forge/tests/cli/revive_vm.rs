@@ -366,18 +366,64 @@ contract Fee is DSTest {
 Compiler run successful!
 [COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
-Compiler run successful with warnings:
-Warning: Warning: Your code or one of its dependencies uses the 'extcodesize' instruction, which is
-usually needed in the following cases:
-  1. To detect whether an address belongs to a smart contract.
-  2. To detect whether the deploy code execution has finished.
-Polkadot comes with native account abstraction support (so smart contracts are just accounts
-coverned by code), and you should avoid differentiating between contracts and non-contract
-addresses.
-[FILE]
+Compiler run successful!
 
 Ran 1 test for src/Fee.t.sol:Fee
 [PASS] test_Fee() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+forgetest!(fee_revive_clamping, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+    prj.add_source(
+        "FeeClamp.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {console} from "./console.sol";
+
+contract FeeClamp is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    function test_FeeClamp() public {
+        vm.pvm(true);
+        vm.fee(100 gwei);
+        uint256 original = block.basefee;
+        assertEq(original, 100 gwei);
+
+        vm.fee(200 gwei);
+        uint256 raised = block.basefee;
+        assertEq(raised, 200 gwei);
+
+        uint256 effective = min(block.basefee, 150 gwei);
+        assertEq(effective, 150 gwei);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
+    res.stderr_eq(str![""]).stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/FeeClamp.t.sol:FeeClamp
+[PASS] test_FeeClamp() ([GAS])
 Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
