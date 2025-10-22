@@ -75,14 +75,15 @@ forgetest!(can_emit_extra_output_for_resolc, |prj, cmd| {
     prj.clear();
     init_prj(&prj);
 
-    cmd.args(["build", "--resolc", "--extra-output", "metadata"]).assert_success().stdout_eq(str![
-        [r#"
+    cmd.args(["build", "--resolc", "--extra-output", "metadata"])
+        .assert_success()
+        .stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
-"#]
-    ]);
+"#]])
+        .stderr_eq("");
 
     let artifact_path = prj.artifacts().join(CONTRACT_ARTIFACT_JSON);
     let artifact: ConfigurableContractArtifact =
