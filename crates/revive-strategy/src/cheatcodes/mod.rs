@@ -695,10 +695,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         if let Some(CreateScheme::Create) = input.scheme() {
-            let caller = ecx.tx.caller;
+            let caller = input.caller();
             let nonce = ecx
                 .journaled_state
-                .load_account(ecx.tx.caller)
+                .load_account(input.caller())
                 .expect("to load caller account")
                 .info
                 .nonce;
@@ -740,14 +740,24 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
+                    // TODO: temporary hack
+                    let caller =
+                        if Pallet::<Runtime>::code(&H160::from_slice(input.caller().as_slice()))
+                            .is_empty()
+                        {
+                            input.caller()
+                        } else {
+                            ecx.tx.caller
+                        };
+
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                        &H160::from_slice(caller.as_slice()),
                     ));
-                    
+
                     // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
                     // that here too to replicate the same address generation.
                     System::inc_account_nonce(&AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                        &H160::from_slice(caller.as_slice()),
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
@@ -884,10 +894,20 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
+                    // TODO: temporary hack
+                    let caller =
+                        if Pallet::<Runtime>::code(&H160::from_slice(call.caller.as_slice()))
+                            .is_empty()
+                        {
+                            call.caller
+                        } else {
+                            ecx.tx.caller
+                        };
+
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                        &H160::from_slice(caller.as_slice()),
                     ));
-               
+
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
 
