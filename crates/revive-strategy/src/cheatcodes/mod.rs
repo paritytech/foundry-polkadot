@@ -24,8 +24,8 @@ use polkadot_sdk::{
     frame_support::traits::{Currency, fungible::Mutate},
     pallet_balances,
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, Code, Config,
-        ContractInfo, Pallet, ExecConfig
+        self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ContractInfo,
+        ExecConfig, Pallet,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -668,7 +668,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         });
 
         let mut gas = Gas::new(input.gas_limit());
-        
+
         let result = match &res.result {
             Ok(result) => {
                 let _ = gas.record_cost(res.gas_required.ref_time());
