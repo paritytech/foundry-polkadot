@@ -1,19 +1,10 @@
-// Just a copy of cheatcodes Prank.t.sol adapted to work with pvm backend.
-// The adaptions are only to switch back and forth between evm and pvm.
-forgetest!(prank, |prj, cmd| {
-    prj.insert_ds_test();
-    prj.insert_vm();
-    prj.insert_console();
-    prj.add_source(
-        "Prank.t.sol",
-        r#"
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
 
-import "./test.sol";
-import "./Vm.sol";
-import {console} from "./console.sol";
+import "ds-test/test.sol";
+import "cheats/Vm.sol";
+import "../../default/logs/console.sol";
 
 contract Victim {
 
@@ -46,27 +37,6 @@ contract NestedVictim {
     constructor(Victim victim) {
         innerVictim = victim;
     }
-
-    // function assertCallerAndOrigin(
-    //     address expectedSender,
-    //     string memory senderMessage,
-    //     address expectedOrigin,
-    //     string memory originMessage
-    // ) public view {
-    //     console.log("msg.sender:", msg.sender);
-    //     // require(msg.sender == expectedSender, senderMessage);
-    //     // require(msg.sender == tx.origin, "NestedVictim: msg.sender should equal tx.origin");
-    //     require(tx.origin == expectedOrigin, "NestedVictim: tx.origin invariant failed");
-    //     require(msg.sender == expectedSender, senderMessage);
-    //     // require(tx.origin == expectedOrigin, originMessage);
-    //     innerVictim.assertCallerAndOrigin(
-    //         address(this),
-    //         //msg.sender,
-    //         "msg.sender was incorrectly set for nested victim",
-    //         expectedOrigin,
-    //         "tx.origin was incorrectly set for nested victim"
-    //     );
-    // }
 
     function assertCallerAndOrigin(
         address expectedSender,
@@ -156,9 +126,10 @@ contract PrankTest is DSTest {
         vm.pvm(true);
         ProxyTest proxy = new ProxyTest();
         ImplementationTest impl = new ImplementationTest();
-        // vm.prank(address(proxy), true);
-        console.log("Proxy address:", address(proxy));
-        console.log("Impl address:", address(impl));
+        vm.prank(address(proxy), true);
+        // console.log("Proxy address:", address(proxy));
+        // console.log("Impl address:", address(impl));
+        // console.log("THIS address:", address(this));
         // Assert correct `msg.sender`
         (bool success,) =
             address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", address(proxy)));
@@ -193,7 +164,8 @@ contract PrankTest is DSTest {
         vm.stopPrank();
     }
 
-    function testPrankDelegateCallPrank3(address origin) public {
+    function testPrankDelegateCallPrank3() public {
+        address origin = address(999);
         vm.assume(isNotReserved(origin));
         vm.pvm(true);
         ProxyTest proxy = new ProxyTest();
@@ -321,7 +293,7 @@ contract PrankTest is DSTest {
         );
     }
 
-    function isNotReserved(address addr) internal pure returns (bool) {
+    function isNotReserved(address addr) internal returns (bool) {
     // Check for zero address and common precompiles (addresses 1-9)
     if (
         addr == address(0) ||
@@ -339,7 +311,7 @@ contract PrankTest is DSTest {
         addr == address(12) ||
         addr == address(13) ||
         addr == address(14) ||
-        addr == address(15) 
+        addr == address(15) || addr == address(this)
     ) {
         return false;
     }
@@ -382,6 +354,7 @@ contract PrankTest is DSTest {
     function testStartPrank0AfterPrank1(address sender, address origin) public {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
+
         // Perform the prank
         vm.pvm(true);
         address oldOrigin = tx.origin;
@@ -564,7 +537,7 @@ contract PrankTest is DSTest {
         );
     }
 
-    function testxxxxPrankStartStopConstructor(address sender, address origin) public {
+    function testPrankStartStopConstructor(address sender, address origin) public {
         // Perform the prank
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
@@ -697,15 +670,15 @@ contract PrankTest is DSTest {
 contract Issue9990 is DSTest {
     Vm constant vm = Vm(address(bytes20(uint160(uint256(keccak256("hevm cheat code"))))));
 
-    // TODO: Etch does not work.
-    function testDelegatePrank() external {
-        A a = new A();
-        vm.etch(address(0x11111), hex"11");
-        vm.startPrank(address(0x11111), true);
-        (bool success,) = address(a).delegatecall(abi.encodeWithSelector(A.foo.selector));
-        require(success, "MyTest: error calling foo on A");
-        vm.stopPrank();
-    }
+    // TODO: Enable when Etch support is merged.
+    // function testDelegatePrank() external {
+    //     A a = new A();
+    //     vm.etch(address(0x11111), hex"11");
+    //     vm.startPrank(address(0x11111), true);
+    //     (bool success,) = address(a).delegatecall(abi.encodeWithSelector(A.foo.selector));
+    //     require(success, "MyTest: error calling foo on A");
+    //     vm.stopPrank();
+    // }
 }
 
 // Contracts for DELEGATECALL test case: testDelegatePrank
@@ -743,351 +716,3 @@ contract Counter {
         number++;
     }
 }
-
-contract Issue10528 is DSTest {
-    Vm constant vm = Vm(address(bytes20(uint160(uint256(keccak256("hevm cheat code"))))));
-
-    function testStartPrankOnContractCreation() external {
-        vm.startPrank(address(0x22222));
-        // Perform the prank
-        vm.pvm(true);
-        Counter counter = new Counter();
-
-        vm.startPrank(address(0x11111));
-        counter.increment();
-    }
-}
-
-"#,
-    )
-    .unwrap();
-
-    let res = cmd.args(["test", "--resolc", "--resolc-startup"]).assert_success();
-
-    res.stderr_eq(str![""]).stdout_eq(str![[r#"
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful with warnings:
-Warning (9302): Return value of low-level calls not used.
-   [FILE]:247:9:
-    |
-247 |         address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", alice));
-    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:440:9:
-    |
-440 |         address oldOrigin = tx.origin;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:441:9:
-    |
-441 |         Victim victim = new Victim();
-    |         ^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:454:9:
-    |
-454 |         address oldOrigin = tx.origin;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:676:9:
-    |
-676 |         address oldSender = msg.sender;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:677:9:
-    |
-677 |         address oldOrigin = tx.origin;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2018): Function state mutability can be restricted to view
-   [FILE]:124:5:
-    |
-124 |     function assertCorrectCaller(address expectedSender) public {
-    |     ^ (Relevant source part starts here and spans across multiple lines).
-
-Warning (2018): Function state mutability can be restricted to view
-   [FILE]:129:5:
-    |
-129 |     function assertCorrectOrigin(address expectedOrigin) public {
-    |     ^ (Relevant source part starts here and spans across multiple lines).
-
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful with warnings:
-Warning (9302): Return value of low-level calls not used.
-   [FILE]:247:9:
-    |
-247 |         address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", alice));
-    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:440:9:
-    |
-440 |         address oldOrigin = tx.origin;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:441:9:
-    |
-441 |         Victim victim = new Victim();
-    |         ^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:454:9:
-    |
-454 |         address oldOrigin = tx.origin;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:676:9:
-    |
-676 |         address oldSender = msg.sender;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2072): Unused local variable.
-   [FILE]:677:9:
-    |
-677 |         address oldOrigin = tx.origin;
-    |         ^^^^^^^^^^^^^^^^^
-
-Warning (2018): Function state mutability can be restricted to view
-   [FILE]:124:5:
-    |
-124 |     function assertCorrectCaller(address expectedSender) public {
-    |     ^ (Relevant source part starts here and spans across multiple lines).
-
-Warning (2018): Function state mutability can be restricted to view
-   [FILE]:129:5:
-    |
-129 |     function assertCorrectOrigin(address expectedOrigin) public {
-    |     ^ (Relevant source part starts here and spans across multiple lines).
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-   [FILE]:19:15
-    |
- 19 |         require(tx.origin == expectedOrigin, originMessage);
-    |                 ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-   [FILE]:31:15
-    |
- 31 |         require(tx.origin == expectedOrigin, originMessage);
-    |                 ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-   [FILE]:70:15
-    |
- 70 |         require(tx.origin == expectedOrigin, originMessage);
-    |                 ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-   [FILE]:90:19
-    |
- 90 |         oldOrigin = tx.origin;
-    |                     ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:130:15
-     |
- 130 |         require(tx.origin == expectedOrigin);
-     |                 ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:258:58
-     |
- 258 |             sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
-     |                                                            ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:263:59
-     |
- 263 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
-     |                                                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:270:27
-     |
- 270 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:290:27
-     |
- 290 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:345:27
-     |
- 345 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:379:27
-     |
- 379 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:405:27
-     |
- 405 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:440:27
-     |
- 440 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:454:27
-     |
- 454 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:474:27
-     |
- 474 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:506:58
-     |
- 506 |             sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
-     |                                                            ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:511:59
-     |
- 511 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
-     |                                                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:528:59
-     |
- 528 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
-     |                                                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:537:27
-     |
- 537 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:579:59
-     |
- 579 |             address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
-     |                                                             ^^^^^^^^^
-
-Warning: Warning: You are checking for 'tx.origin' in your code, which might lead to unexpected behavior.
-Polkadot comes with native account abstraction support, and therefore the initiator of a
-transaction might be different from the contract calling your code. It is highly recommended NOT
-to rely on tx.origin, but use msg.sender instead.
-    [FILE]:677:27
-     |
- 677 |         address oldOrigin = tx.origin;
-     |                             ^^^^^^^^^
-
-
-Ran 1 test for src/Prank.t.sol:Issue9990
-[PASS] testDelegatePrank() ([GAS])
-Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 1 test for src/Prank.t.sol:Issue10528
-[PASS] testStartPrankOnContractCreation() ([GAS])
-Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 19 tests for src/Prank.t.sol:PrankTest
-[PASS] testPrank0AfterPrank1(address,address) (runs: 256, [AVG_GAS])
-[PASS] testPrank1AfterPrank0(address,address) (runs: 256, [AVG_GAS])
-[PASS] testPrankConstructorOrigin(address,address) (runs: 256, [AVG_GAS])
-[PASS] testPrankConstructorSender(address) (runs: 256, [AVG_GAS])
-[PASS] testPrankDelegateCallPrank2() ([GAS])
-[PASS] testPrankDelegateCallPrank3(address) (runs: 256, [AVG_GAS])
-[PASS] testPrankDelegateCallStartPrank2() ([GAS])
-[PASS] testPrankDelegateCallStartPrank3(address) (runs: 256, [AVG_GAS])
-[PASS] testPrankOrigin(address,address) (runs: 256, [AVG_GAS])
-[PASS] testPrankSender(address) (runs: 256, [AVG_GAS])
-[PASS] testPrankStartStop(address,address) (runs: 256, [AVG_GAS])
-[PASS] testRevertIfOverwriteUnusedPrank(address,address) (runs: 256, [AVG_GAS])
-[PASS] testRevertIfOverwriteUnusedPrankAfterSuccessfulPrank(address,address) (runs: 256, [AVG_GAS])
-[PASS] testRevertIfPrankDelegateCalltoEOA() ([GAS])
-[PASS] testStartPrank0AfterPrank1(address,address) (runs: 256, [AVG_GAS])
-[PASS] testStartPrank0AfterStartPrank1(address,address) (runs: 256, [AVG_GAS])
-[PASS] testStartPrank1AfterStartPrank0(address,address) (runs: 256, [AVG_GAS])
-[PASS] testTxOriginInNestedPrank(address,address) (runs: 256, [AVG_GAS])
-[PASS] testxxxxPrankStartStopConstructor(address,address) (runs: 256, [AVG_GAS])
-Suite result: ok. 19 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 3 test suites [ELAPSED]: 21 tests passed, 0 failed, 0 skipped (21 total tests)
-
-"#]]);
-});

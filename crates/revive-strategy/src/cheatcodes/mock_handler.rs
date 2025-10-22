@@ -74,12 +74,12 @@ impl MockHandler<Runtime> for MockHandlerImpl {
     fn mock_call(
         &self,
         callee: H160,
-        call_data: Vec<u8>,
+        call_data: &[u8],
         value_transferred: polkadot_sdk::pallet_revive::U256,
     ) -> Option<pallet_revive::ExecReturnValue> {
         let mut mock_inner = self.inner.lock().ok()?;
         let ctx = MockCallDataContext {
-            calldata: call_data.clone().into(),
+            calldata: call_data.to_vec().into(),
             value: Some(U256::from_limbs(value_transferred.0)),
         };
 
@@ -132,7 +132,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
     fn mock_delegated_caller(
         &self,
         dest: H160,
-        input_data: Vec<u8>,
+        input_data: &[u8],
     ) -> Option<DelegateInfo<Runtime>> {
         let mock_inner = self.inner.lock().ok()?;
 
@@ -140,7 +140,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         if let Some(mocked_function) =
             mock_inner.mocked_functions.get(&Address::from_slice(dest.as_bytes()))
         {
-            let input_data = Bytes::from(input_data);
+            let input_data = Bytes::from(input_data.to_vec());
             if let Some(target) = mocked_function
                 .get(&input_data)
                 .or_else(|| input_data.get(..4).and_then(|selector| mocked_function.get(selector)))

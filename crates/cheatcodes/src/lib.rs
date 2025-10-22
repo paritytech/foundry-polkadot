@@ -3,7 +3,7 @@
 //! Foundry cheatcodes implementations.
 
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![allow(elided_lifetimes_in_paths)] // Cheats context uses 3 lifetimes
 
 #[macro_use]
@@ -27,6 +27,8 @@ pub use inspector::{
     BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor,
 };
 pub use spec::{CheatcodeDef, Vm};
+
+pub use evm::journaled_account;
 
 #[macro_use]
 mod error;

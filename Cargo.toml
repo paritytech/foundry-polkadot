@@ -64,6 +64,7 @@ result_large_err = "allow"
 redundant_imports = "warn"
 redundant-lifetimes = "warn"
 rust-2018-idioms = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(substrate_runtime)'] }
 unused-must-use = "warn"
 # unreachable-pub = "warn"
 
@@ -265,7 +266,7 @@ alloy-sol-types = "1.2.1"
 
 alloy-chains = "0.2"
 alloy-rlp = "0.3"
-alloy-trie = "0.9"
+alloy-trie = "0.9.1"
 
 ## op-alloy
 op-alloy-consensus = "0.17.2"

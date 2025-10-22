@@ -1,19 +1,10 @@
-// Just a copy of cheatcodes Prank.t.sol adapted to work with pvm backend.
-// The adaptions are only to switch back and forth between evm and pvm.
-forgetest!(mock_call, |prj, cmd| {
-    prj.insert_ds_test();
-    prj.insert_vm();
-    prj.insert_console();
-    prj.add_source(
-        "MockCall.t.sol",
-        r#"
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
 
-import "./test.sol";
-import "./Vm.sol";
-import {console} from "./console.sol";
+import "ds-test/test.sol";
+import "cheats/Vm.sol";
+import "../../default/logs/console.sol";
 
 contract Mock {
     uint256 state = 0;
@@ -381,7 +372,7 @@ contract MockCallRevertTest is DSTest {
         assertEq(data, customError);
     }
 
-    function testMockCallEmptyAccount() public {
+    function testMockCallEmptyAccountRevert() public {
         vm.pvm(true);
 
         Mock mock = Mock(address(100));
@@ -396,49 +387,3 @@ contract MockCallRevertTest is DSTest {
     }
 }
 
-
-"#,
-    )
-    .unwrap();
-
-    let res = cmd.args(["test", "--resolc", "--resolc-startup"]).assert_success();
-
-    res.stderr_eq(str![""]).stdout_eq(str![[r#"
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-Ran 11 tests for src/MockCall.t.sol:MockCallRevertTest
-[PASS] testClearMockRevertedCalls() ([GAS])
-[PASS] testMockCallEmptyAccount() ([GAS])
-[PASS] testMockCallResetsMockCallRevert() ([GAS])
-[PASS] testMockCallRevertPartialMatch() ([GAS])
-[PASS] testMockCallRevertResetsMockCall() ([GAS])
-[PASS] testMockCallRevertWithCall() ([GAS])
-[PASS] testMockCallRevertWithValue() ([GAS])
-[PASS] testMockCalldataRevert() ([GAS])
-[PASS] testMockGettersRevert() ([GAS])
-[PASS] testMockNestedRevert() ([GAS])
-[PASS] testMockRevertWithCustomError() ([GAS])
-Suite result: ok. 11 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 10 tests for src/MockCall.t.sol:MockCallTest
-[PASS] testClearMockedCalls() ([GAS])
-[PASS] testMockCallEmptyAccount() ([GAS])
-[PASS] testMockCallMultiplePartialMatch() ([GAS])
-[PASS] testMockCallWithValue() ([GAS])
-[PASS] testMockCallWithValueCalldataPrecedence() ([GAS])
-[PASS] testMockCalldata() ([GAS])
-[PASS] testMockGetters() ([GAS])
-[PASS] testMockNested() ([GAS])
-[PASS] testMockNestedDelegate() ([GAS])
-[PASS] testMockSelector() ([GAS])
-Suite result: ok. 10 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 2 test suites [ELAPSED]: 21 tests passed, 0 failed, 0 skipped (21 total tests)
-
-"#]]);
-});
