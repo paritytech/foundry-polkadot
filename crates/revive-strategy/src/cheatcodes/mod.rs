@@ -495,20 +495,16 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                     // Skip if contract already exists in pallet-revive
                     if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
                         // Determine which bytecode to upload based on runtime mode
-                        let bytecode_to_upload = match ctx.runtime_mode {
-                            crate::ReviveRuntimeMode::Pvm => {
-                                // PVM mode: try to find PVM bytecode from dual_compiled_contracts
-                                ctx.dual_compiled_contracts
+                        let bytecode_to_upload = ctx.dual_compiled_contracts
                                     .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
                                     .and_then(|(_, contract)| {
-                                        contract.resolc_bytecode.as_bytes().map(|b| b.to_vec())
-                                    })
-                            }
-                            crate::ReviveRuntimeMode::Evm => {
-                                // EVM mode: use the EVM bytecode directly
-                                Some(bytecode.original_byte_slice().to_vec())
-                            }
-                        };
+                                        match ctx.runtime_mode {
+                                            crate::ReviveRuntimeMode::Pvm => contract.resolc_bytecode.as_bytes().map(|b| b.to_vec()),
+                                            crate::ReviveRuntimeMode::Evm => None,
+                                            // TODO: We do not have method to upload the EVM bytecode to pallet-revive
+                                            //contract.evm_bytecode.as_bytes().map(|b| b.to_vec())
+                                        }
+                                    });
 
                         if let Some(code_bytes) = bytecode_to_upload {
                             let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
@@ -581,18 +577,31 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                     && let Some(info) = AccountInfo::<Runtime>::load_contract(&account_evm)
                 {
                     let hash = hex::encode(info.code_hash);
-                    if let Some((code_hash, bytecode)) = ctx
-                        .dual_compiled_contracts
-                        .find_by_resolc_bytecode_hash(hash)
-                        .and_then(|(_, contract)| {
-                            contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
-                                (
-                                    contract.evm_bytecode_hash,
-                                    Bytecode::new_raw(evm_bytecode.clone()),
-                                )
-                            })
-                        })
-                    {
+
+                    if let Some((code_hash, bytecode)) = match ctx.runtime_mode {
+                        crate::ReviveRuntimeMode::Pvm => ctx
+                            .dual_compiled_contracts
+                            .find_by_resolc_bytecode_hash(hash)
+                            .and_then(|(_, contract)| {
+                                contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                                    (
+                                        contract.evm_bytecode_hash,
+                                        Bytecode::new_raw(evm_bytecode.clone()),
+                                    )
+                                })
+                            }),
+                        crate::ReviveRuntimeMode::Evm => ctx
+                            .dual_compiled_contracts
+                            .find_by_evm_bytecode_hash(hash)
+                            .and_then(|(_, contract)| {
+                                contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                                    (
+                                        contract.evm_bytecode_hash,
+                                        Bytecode::new_raw(evm_bytecode.clone()),
+                                    )
+                                })
+                            }),
+                    } {
                         account.info.code_hash = code_hash;
                         account.info.code = Some(bytecode);
                     } else {
