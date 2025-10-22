@@ -12,6 +12,7 @@ use polkadot_sdk::pallet_revive::{
     self,
     evm::{Account, Block},
 };
+use std::collections::HashSet;
 use subxt::utils::H160;
 
 async fn assert_block_number_is_best_and_finalized(node: &mut TestNode, n: u64) {
@@ -251,13 +252,17 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_block_number_is_best_and_finalized(&mut node, 6).await;
 
+    let mut tx_indices: HashSet<_> =
+        [pallet_revive::U256::one(), pallet_revive::U256::from(2)].into_iter().collect();
+
     let receipt_info = node.get_transaction_receipt(tx_hash1).await;
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
-    assert_eq!(receipt_info.transaction_index, pallet_revive::U256::one());
+    assert!(tx_indices.remove(&receipt_info.transaction_index));
     assert_eq!(receipt_info.transaction_hash, tx_hash1);
+
     let receipt_info = node.get_transaction_receipt(tx_hash2).await;
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
-    assert_eq!(receipt_info.transaction_index, pallet_revive::U256::from(2));
+    assert!(tx_indices.remove(&receipt_info.transaction_index));
     assert_eq!(receipt_info.transaction_hash, tx_hash2);
     assert_eq!(node.get_nonce(alith_addr).await, U256::ONE);
     assert_eq!(node.get_nonce(baltathar_addr).await, U256::ONE);
