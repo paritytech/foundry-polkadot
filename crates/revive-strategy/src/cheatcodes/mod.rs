@@ -4,12 +4,12 @@ use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, DealRecord, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
+    CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         dealCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall,
-        warpCall,
+        storeCall, warpCall,
     },
-    journaled_account,
+    journaled_account, precompile_error,
 };
 use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
@@ -298,6 +298,26 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     .map(|b| B256::from_slice(&b))
                     .unwrap_or(B256::ZERO);
                 Ok(result.abi_encode())
+            }
+            t if using_pvm && is::<storeCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                let &storeCall { target, slot, value } = cheatcode.as_any().downcast_ref().unwrap();
+                if ccx.is_precompile(&target) {
+                    return Err(precompile_error(&target));
+                }
+
+                let target_address_h160 = H160::from_slice(target.as_slice());
+                let _ = execute_with_externalities(|externalities| {
+                    externalities.execute_with(|| {
+                        Pallet::<Runtime>::set_storage(
+                            target_address_h160,
+                            slot.into(),
+                            Some(value.to_vec()),
+                        )
+                    })
+                })
+                .map_err(|_| <&str as Into<Error>>::into("Could not set storage"))?;
+                Ok(Default::default())
             }
             // Not custom, just invoke the default behavior
             _ => cheatcode.dyn_apply(ccx, executor),
