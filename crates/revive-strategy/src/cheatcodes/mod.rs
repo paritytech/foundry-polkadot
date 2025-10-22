@@ -695,10 +695,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         if let Some(CreateScheme::Create) = input.scheme() {
-            let caller = input.caller();
+            let caller = ecx.tx.caller;
             let nonce = ecx
                 .journaled_state
-                .load_account(input.caller())
+                .load_account(ecx.tx.caller)
                 .expect("to load caller account")
                 .info
                 .nonce;
@@ -736,18 +736,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 1u128 << 99,
             );
         let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
-        let is_recording = state.recorded_account_diffs_stack.is_some();
-        let mut tracer = Tracer::new(is_recording);
+        let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(input.caller().as_slice()),
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
+                    
                     // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
                     // that here too to replicate the same address generation.
                     System::inc_account_nonce(&AccountId::to_fallback_account_id(
-                        &H160::from_slice(input.caller().as_slice()),
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
@@ -880,17 +880,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 1u128 << 99,
             );
         let gas_limit = sp_core::U256::from(call.gas_limit).min(max_gas);
-        let is_recording = state.recorded_account_diffs_stack.is_some();
-        let mut tracer = Tracer::new(is_recording);
+        let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(call.caller.as_slice()),
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
-                    System::inc_account_nonce(&AccountId::to_fallback_account_id(
-                        &H160::from_slice(call.caller.as_slice()),
-                    ));
+               
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
 
