@@ -1,7 +1,9 @@
 use crate::{
     AnvilNodeConfig,
     logging::LoggingManager,
-    substrate_node::{impersonation::ImpersonationManager, service::Service},
+    substrate_node::{
+        impersonation::ImpersonationManager, service::Service, snapshot::SnapshotManager,
+    },
 };
 use alloy_signer_local::PrivateKeySigner;
 use anvil_core::eth::EthRequest;
@@ -21,9 +23,10 @@ pub struct ApiRequest {
 }
 
 pub fn spawn(
+    config: &AnvilNodeConfig,
     substrate_service: &Service,
     logging_manager: LoggingManager,
-    config: &AnvilNodeConfig,
+    snapshot_manager: SnapshotManager,
 ) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
 
@@ -43,10 +46,16 @@ pub fn spawn(
         }
     }
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
-        let api_server =
-            ApiServer::new(service, receiver, logging_manager, impersonation_manager, signers)
-                .await
-                .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));
+        let api_server = ApiServer::new(
+            service,
+            receiver,
+            logging_manager,
+            snapshot_manager,
+            impersonation_manager,
+            signers,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));
         api_server.run().await;
     });
 
