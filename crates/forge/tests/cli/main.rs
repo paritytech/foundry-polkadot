@@ -27,7 +27,6 @@ mod revive_cmd;
 mod revive_compiler;
 mod revive_config;
 mod revive_create;
-mod revive_etch;
 mod revive_inspect;
 mod revive_vm;
 mod rvm;

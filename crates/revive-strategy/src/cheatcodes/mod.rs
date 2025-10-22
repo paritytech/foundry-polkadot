@@ -331,7 +331,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let &etchCall { ref target, ref newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
                 etch_call(target, newRuntimeBytecode, ccx.ecx)?;
-                cheatcode.dyn_apply(ccx, executor)
+                Ok(Default::default())
             }
             t if using_pvm && is::<loadCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);

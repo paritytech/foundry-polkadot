@@ -1,19 +1,8 @@
-// Just a copy of cheatcodes Prank.t.sol adapted to work with pvm backend.
-// The adaptions are only to switch back and forth between evm and pvm.
-forgetest!(mock_call, |prj, cmd| {
-    prj.insert_ds_test();
-    prj.insert_vm();
-    prj.insert_console();
-    prj.add_source(
-        "MockCall.t.sol",
-        r#"
-// SPDX-License-Identifier: MIT OR Apache-2.0
-pragma solidity ^0.8.18;
 
+import "ds-test/test.sol";
+import "cheats/Vm.sol";
+import "../../default/logs/console.sol";
 
-import "./test.sol";
-import "./Vm.sol";
-import {console} from "./console.sol";
 
 contract Adder {
     function add(uint256 a, uint256 b) public pure returns (uint256) {
@@ -92,26 +81,4 @@ contract EtchTest is DSTest {
         assertEq(nested_call_result2, 3);
     }
 }
-"#,
-    )
-    .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "--resolc-startup"]).assert_success();
-
-    res.stderr_eq(str![""]).stdout_eq(str![[r#"
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-Ran 2 tests for src/MockCall.t.sol:EtchTest
-[PASS] testEtchAnyContract() ([GAS])
-[PASS] testEtchExistingContract() ([GAS])
-Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
-
-"#]]);
-});
