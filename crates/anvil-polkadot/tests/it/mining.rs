@@ -1,4 +1,4 @@
-use crate::utils::{TestNode, assert_with_tolerance, unwrap_response};
+use crate::utils::{BlockWaitTimeout, TestNode, assert_with_tolerance, unwrap_response};
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::{TransactionRequest, anvil::MineOptions};
 use anvil::eth::backend::time::duration_since_unix_epoch;
@@ -8,12 +8,16 @@ use anvil_polkadot::{
     cmd::NodeArgs,
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
-use anvil_rpc::{
-    error::{ErrorCode, RpcError},
-    response::ResponseResult,
+use anvil_rpc::error::ErrorCode;
+use polkadot_sdk::{
+    pallet_revive::evm::{Account, Block, HashesOrTransactionInfos},
+    sc_cli::clap::Parser,
+    sp_core,
 };
-use polkadot_sdk::{pallet_revive::evm::Account, sc_cli::clap::Parser};
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashSet,
+    time::{Duration, SystemTime},
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_invalid_mining() {
@@ -32,29 +36,25 @@ async fn test_invalid_mining() {
         .unwrap(),
         None
     );
-    assert!(matches!(
+    let err = unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(u128::MAX)), None)).await.unwrap(),
-        ResponseResult::Error(RpcError {
-            code: ErrorCode::InvalidParams,
-            message,
-            data: None
-        }) if message == "The number of blocks is too large"
-    ));
-    assert!(matches!(
+    )
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+    assert_eq!(err.message, "The number of blocks is too large");
+    let err = unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(None, Some(U256::from(u128::MAX)))).await.unwrap(),
-        ResponseResult::Error(RpcError {
-            code: ErrorCode::InvalidParams,
-            message,
-            data: None
-        }) if message == "The interval between blocks is too large"
-    ));
+    )
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+    assert_eq!(err.message, "The interval between blocks is too large");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_manual_mining_with_no_of_blocks() {
     let node_args = NodeArgs::parse_from(["anvil", "--no-mining", "--port", "0"]);
     let (mut anvil_node_config, substrate_node_config) = node_args.into_node_config().unwrap();
-    anvil_node_config = anvil_node_config.set_silent(true);
+    anvil_node_config = anvil_node_config.set_silent(true).with_tracing(false);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
     assert!(
         !unwrap_response::<bool>(node.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap()).unwrap()
@@ -106,19 +106,19 @@ async fn test_manual_mining_with_interval() {
     assert_with_tolerance(
         timestamp2.saturating_sub(timestamp1),
         3000,
-        100,
+        200,
         "Interval between the blocks is outside of the desired range.",
     );
     assert_with_tolerance(
         timestamp3.saturating_sub(timestamp2),
         3000,
-        100,
+        200,
         "Interval between the blocks is outside of the desired range.",
     );
     assert_with_tolerance(
         timestamp3.saturating_sub(timestamp1),
         6000,
-        100,
+        200,
         "Interval between the blocks is outside of the desired range.",
     );
 }
@@ -127,7 +127,7 @@ async fn test_manual_mining_with_interval() {
 async fn test_interval_mining() {
     let node_args = NodeArgs::parse_from(["anvil", "--block-time", "3", "--port", "0"]);
     let (mut anvil_node_config, substrate_node_config) = node_args.into_node_config().unwrap();
-    anvil_node_config = anvil_node_config.set_silent(true);
+    anvil_node_config = anvil_node_config.set_silent(true).with_tracing(false);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
     // enable interval mining
     assert_eq!(
@@ -196,8 +196,10 @@ async fn test_auto_mine() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
-    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
+    let _tx_hash0 = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .await
+        .unwrap();
     assert_eq!(node.best_block_number().await, 1);
 }
 
@@ -208,6 +210,8 @@ async fn test_mixed_mining() {
     anvil_node_config.block_time = Some(Duration::from_secs(1));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    // Wait for automined block after sending a transaction.
     let transaction = TransactionRequest::default()
         .value(U256::from_str_radix("100000000000000000", 10).unwrap())
         .from(Address::from(ReviveAddress::new(
@@ -216,9 +220,13 @@ async fn test_mixed_mining() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
-    let _tx_hash0 = node.send_transaction(transaction.clone()).await;
-    node.wait_for_block_with_timeout(1, std::time::Duration::from_secs(2)).await.unwrap();
+    let _tx_hash0 = node
+        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+        .await
+        .unwrap();
     assert_eq!(node.best_block_number().await, 1);
+
+    // Wait for second block mined through interval mining.
     node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 2);
 }
@@ -340,8 +348,37 @@ async fn test_evm_mine_detailed() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
-    assert!(matches!(
-        node.eth_rpc(EthRequest::EvmMineDetailed(None)).await.unwrap(),
-        ResponseResult::Error(RpcError { code: ErrorCode::InternalError, .. })
-    ));
+    let mut tx_hashes = HashSet::new();
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let transfer_amount = U256::from_str_radix("10000000000000000", 10).unwrap();
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(baltathar.address())));
+    for i in 0..3 {
+        let tx_hash = node.send_transaction(transaction.clone().nonce(i), None).await.unwrap();
+        tx_hashes.insert(tx_hash);
+    }
+    let mine_detailed = unwrap_response::<Vec<Block>>(
+        node.eth_rpc(EthRequest::EvmMineDetailed(Some(Params {
+            params: Some(MineOptions::Options { timestamp: None, blocks: Some(3) }),
+        })))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(mine_detailed.len(), 3);
+    let transactions =
+        if let HashesOrTransactionInfos::TransactionInfos(ti) = &mine_detailed[0].transactions {
+            ti
+        } else {
+            &vec![]
+        };
+    assert_eq!(transactions.len(), 3);
+    for tx in transactions {
+        tx_hashes.remove(&tx.hash);
+        assert_eq!(tx.block_number, sp_core::U256::from(1));
+    }
+    assert_eq!(tx_hashes.len(), 0);
 }

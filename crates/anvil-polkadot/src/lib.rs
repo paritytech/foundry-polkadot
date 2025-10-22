@@ -6,7 +6,7 @@ use crate::{
     api_server::ApiHandle,
     config::AnvilNodeConfig,
     logging::{LoggingManager, NodeLogLayer},
-    substrate_node::service::Service,
+    substrate_node::{genesis::GenesisConfig, service::Service, snapshot::SnapshotManager},
 };
 use clap::{CommandFactory, Parser};
 use eyre::Result;
@@ -83,9 +83,11 @@ pub fn run_command(args: Anvil) -> Result<()> {
         }
         return Ok(());
     }
-    let substrate_client = opts::SubstrateCli {};
 
     let (anvil_config, substrate_config) = args.node.into_node_config()?;
+
+    let substrate_client =
+        opts::SubstrateCli { genesis_config: GenesisConfig::from(&anvil_config) };
 
     let tokio_runtime = build_runtime()?;
 
@@ -97,6 +99,7 @@ pub fn run_command(args: Anvil) -> Result<()> {
     } else {
         LoggingManager::default()
     };
+
     let runner: sc_cli::Runner<opts::SubstrateCli> =
         sc_cli::Runner::new(config, tokio_runtime, signals)?;
 
@@ -115,10 +118,12 @@ pub async fn spawn(
     let (substrate_service, task_manager) =
         substrate_node::service::new(&anvil_config, substrate_config)
             .map_err(sc_cli::Error::Service)?;
+    let snapshot_manager =
+        SnapshotManager::new(substrate_service.client.clone(), substrate_service.backend.clone());
 
     // Spawn the other tasks.
     let api_handle =
-        spawn_anvil_tasks(anvil_config, &substrate_service, &task_manager, logging_manager)
+        spawn_anvil_tasks(anvil_config, &substrate_service, logging_manager, snapshot_manager)
             .await
             .map_err(|err| sc_cli::Error::Application(err.into()))?;
 
@@ -128,11 +133,11 @@ pub async fn spawn(
 pub async fn spawn_anvil_tasks(
     anvil_config: AnvilNodeConfig,
     service: &Service,
-    task_manager: &TaskManager,
     logging_manager: LoggingManager,
+    snapshot_manager: SnapshotManager,
 ) -> Result<ApiHandle> {
     // Spawn the api server.
-    let api_handle = api_server::spawn(service, logging_manager);
+    let api_handle = api_server::spawn(&anvil_config, service, logging_manager, snapshot_manager);
 
     // Spawn the network servers.
     for addr in &anvil_config.host {
@@ -144,18 +149,15 @@ pub async fn spawn_anvil_tasks(
         // Spawn the server future on a new task.
         let srv =
             server::serve_on(tcp_listener, anvil_config.server_config.clone(), api_handle.clone());
-        let spawn_handle = &service.spawn_handle;
-        spawn_handle.spawn(
-            "anvil",
-            "anvil-tcp",
-            async move { srv.await.expect("TCP server failure") },
-        );
+        service
+            .spawn_handle
+            .spawn("anvil", "anvil-tcp", async move { srv.await.expect("TCP server failure") });
     }
 
     // If configured, spawn the IPC server.
     anvil_config
         .get_ipc_path()
-        .map(|path| try_spawn_ipc(task_manager, path, api_handle.clone()))
+        .map(|path| try_spawn_ipc(&service.spawn_handle, path, api_handle.clone()))
         .transpose()?;
 
     anvil_config.print()?;
@@ -163,7 +165,7 @@ pub async fn spawn_anvil_tasks(
     Ok(api_handle)
 }
 
-fn init_tracing(silent: bool) -> LoggingManager {
+pub fn init_tracing(silent: bool) -> LoggingManager {
     use tracing_subscriber::prelude::*;
 
     let manager = LoggingManager::default();

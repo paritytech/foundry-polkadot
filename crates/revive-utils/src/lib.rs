@@ -1,3 +1,5 @@
+use std::u64;
+
 use alloy_primitives::{Address, B256, Bytes, Log, U256 as RU256};
 use foundry_evm_core::{Ecx, InspectorExt};
 use foundry_evm_traces::{
@@ -176,7 +178,7 @@ impl InspectorExt for TraceCollector {
         ) -> u64 {
             let inputs = &mut CallInputs {
                 input: revm::interpreter::CallInput::Bytes(call.input.0.clone().into()),
-                gas_limit: call.gas.as_u64(),
+                gas_limit: call.gas.try_into().unwrap_or(u64::MAX),
                 scheme: revm::interpreter::CallScheme::Call,
                 caller: call.from.0.into(),
                 value: revm::interpreter::CallValue::Transfer(RU256::from_be_bytes(
