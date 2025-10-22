@@ -741,9 +741,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
-                    // TODO: Find a way how to do it correctly
-                    // Use pallet-revive origin to bypass EIP-3607.
-                    let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
+                    let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+                        &H160::from_slice(input.caller().as_slice()),
+                    ));
+                    // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
+                    // that here too to replicate the same address generation.
+                    System::inc_account_nonce(&AccountId::to_fallback_account_id(
+                        &H160::from_slice(input.caller().as_slice()),
+                    ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
                     let (gas_limit, storage_deposit_limit) =
@@ -751,6 +756,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         gas_limit,
                     )
                     .expect("gas limit is valid");
+
                     let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
                     let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
                     let data = constructor_args.to_vec();
@@ -880,6 +886,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+                        &H160::from_slice(call.caller.as_slice()),
+                    ));
+                    System::inc_account_nonce(&AccountId::to_fallback_account_id(
                         &H160::from_slice(call.caller.as_slice()),
                     ));
                     let evm_value =
