@@ -26,7 +26,7 @@ use crate::{
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U256, U64};
-use alloy_rpc_types::{anvil::MineOptions, Filter, TransactionRequest};
+use alloy_rpc_types::{anvil::MineOptions, txpool::TxpoolStatus, Filter, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
@@ -288,6 +288,10 @@ impl ApiServer {
                 self.get_logs(filter).await.to_rpc_result()
             }
             //------- Transaction Pool ---------
+            EthRequest::TxPoolStatus(_) => {
+                node_info!("txpool_status");
+                self.txpool_status().await.to_rpc_result()
+            }
             EthRequest::DropAllTransactions() => {
                 node_info!("anvil_dropAllTransactions");
                 self.anvil_drop_all_transactions().await.to_rpc_result()
@@ -1043,6 +1047,12 @@ impl ApiServer {
         self.backend.inject_total_issuance(latest_block, total_issuance);
 
         Ok(())
+    }
+
+    /// Returns transaction pool status
+    async fn txpool_status(&self) -> Result<TxpoolStatus> {
+        let pool_status = self.tx_pool.status();
+        Ok(TxpoolStatus { pending: pool_status.ready as u64, queued: pool_status.future as u64 })
     }
 
     /// Drop all transactions from pool
