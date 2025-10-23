@@ -11,3 +11,9 @@ sol!(
     DoubleStorage,
     "test-data/DoubleStorage.json"
 );
+
+sol!(
+    #[derive(Debug)]
+    Multicall,
+    "test-data/Multicall.json"
+);

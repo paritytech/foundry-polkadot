@@ -1,8 +1,15 @@
 use std::time::Duration;
 
-use crate::utils::{EXISTENTIAL_DEPOSIT, TestNode, assert_with_tolerance, unwrap_response};
+use crate::{
+    abi::Multicall,
+    utils::{
+        EXISTENTIAL_DEPOSIT, TestNode, assert_with_tolerance, get_contract_code, unwrap_response,
+    },
+};
 use alloy_primitives::{Address, U256};
-use alloy_rpc_types::TransactionRequest;
+use alloy_rpc_types::{TransactionInput, TransactionRequest};
+use alloy_serde::WithOtherFields;
+use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::{AlloyU256, ReviveAddress},
@@ -275,8 +282,6 @@ async fn test_balances_and_txs_index_after_evm_revert() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// TODO: add a test where we call a contract that queries the timestamp
-// at a certain block before and after a revert, while mining blocks
 async fn test_evm_revert_and_timestamp() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     // Generate the current timestamp and pass it to anvil config.
@@ -538,4 +543,144 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
     )
     .unwrap();
     assert_eq!(txs_in_block, U256::ZERO);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_timestmap_in_contract_after_revert() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    // Generate the current timestamp and pass it to anvil config.
+    let genesis_timestamp = anvil_node_config.get_genesis_timestamp();
+    let anvil_node_config = anvil_node_config.with_genesis_timestamp(Some(genesis_timestamp));
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    // Deploy multicall contract
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let contract_code = get_contract_code("Multicall");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    assert_eq!(node.best_block_number().await, 1);
+    let first_timestamp = node.get_decoded_timestamp(None).await;
+    assert_with_tolerance(
+        first_timestamp.saturating_div(1000),
+        genesis_timestamp,
+        0,
+        "wrong timestamp at first block",
+    );
+
+    // Make a snapshot
+    let id = U256::from_str_radix(
+        unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
+            .unwrap()
+            .trim_start_matches("0x"),
+        16,
+    )
+    .unwrap();
+    assert_eq!(id, U256::ZERO);
+
+    // Get contract address.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
+    let contract_address = receipt.contract_address.unwrap();
+
+    // Get contract timestamp after first block and expect it to be the genesis timestamp
+    // mostly.
+    let get_timestamp =
+        <Multicall::getCurrentBlockTimestampCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(get_timestamp.into()));
+    let timestamp: U256 = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(timestamp, U256::from(genesis_timestamp));
+
+    let second_timestamp = first_timestamp.saturating_add(3000);
+    assert_with_tolerance(
+        unwrap_response::<u64>(
+            node.eth_rpc(EthRequest::EvmSetTime(U256::from(second_timestamp.saturating_div(1000))))
+                .await
+                .unwrap(),
+        )
+        .unwrap(),
+        3,
+        1,
+        "Wrong offset 1",
+    );
+
+    // After setting the time, still expect to get the block 1 timestamp with the contract call.
+    let get_timestamp =
+        <Multicall::getCurrentBlockTimestampCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(get_timestamp.into()));
+    let timestamp: U256 = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(timestamp, U256::from(genesis_timestamp));
+
+    // Mine 1 block again and expect on the set timestamp.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    assert_eq!(node.best_block_number().await, 2);
+    let second_timestamp = node.get_decoded_timestamp(None).await;
+    assert_with_tolerance(
+        second_timestamp.saturating_sub(first_timestamp),
+        3000,
+        150,
+        "wrong timestamp at second block",
+    );
+
+    // The contract call should return with same block 2 timestamp.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let get_timestamp =
+        <Multicall::getCurrentBlockTimestampCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(get_timestamp.into()));
+    let timestamp: U256 = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_with_tolerance(
+        U256::from(second_timestamp.saturating_div(1000)),
+        timestamp,
+        U256::ZERO,
+        "wrong timestamp after mining second block",
+    );
+
+    // Now check we got back to timestamp after the first block when reverting.
+    let reverted =
+        unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(id)).await.unwrap()).unwrap();
+    assert!(reverted);
+    assert_block_number_is_best_and_finalized(&mut node, 1).await;
+    let get_timestamp =
+        <Multicall::getCurrentBlockTimestampCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(get_timestamp.into()));
+    let timestamp: U256 = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_with_tolerance(
+        U256::from(first_timestamp.saturating_div(1000)),
+        timestamp,
+        U256::ZERO,
+        "wrong timestamp after reverting to first block",
+    );
 }

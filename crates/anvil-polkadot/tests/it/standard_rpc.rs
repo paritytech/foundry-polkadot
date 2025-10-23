@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use crate::{
-    abi::SimpleStorage::{self},
+    abi::{
+        Multicall::{self as Multicall},
+        SimpleStorage::{self as SimpleStorage},
+    },
     utils::{
         BlockWaitTimeout, TestNode, get_contract_code, is_transaction_in_block, unwrap_response,
     },
@@ -654,7 +657,9 @@ async fn test_get_storage() {
     assert_eq!(stored_value, 0);
 
     // Set a new value for the slot 0.
-    let set_value_data = SimpleStorage::setValueCall::new((U256::from(511),)).abi_encode();
+    let set_value_data =
+        <SimpleStorage::setValueCall as alloy_sol_types::SolCall>::new((U256::from(511),))
+            .abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
@@ -786,7 +791,9 @@ async fn test_get_logs() {
     let contract_address = receipt.contract_address.unwrap();
 
     for i in 0..2 {
-        let set_value_data = SimpleStorage::setValueCall::new((U256::from(511 + i),)).abi_encode();
+        let set_value_data =
+            <SimpleStorage::setValueCall as alloy_sol_types::SolCall>::new((U256::from(511 + i),))
+                .abi_encode();
         let call_tx = TransactionRequest::default()
             .from(Address::from(alith_address))
             .to(Address::from(ReviveAddress::new(contract_address)))
@@ -852,7 +859,9 @@ async fn test_call() {
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
-    let set_value_data = SimpleStorage::setValueCall::new((U256::from(511),)).abi_encode();
+    let set_value_data =
+        <SimpleStorage::setValueCall as alloy_sol_types::SolCall>::new((U256::from(511),))
+            .abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
@@ -867,7 +876,8 @@ async fn test_call() {
         .unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
 
-    let get_value_data = SimpleStorage::getValueCall::new(()).abi_encode();
+    let get_value_data =
+        <SimpleStorage::getValueCall as alloy_sol_types::SolCall>::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
@@ -926,4 +936,64 @@ async fn test_coinbase() {
             .unwrap(),
         new_coinbase
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_coinbase_in_contract() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Deploy multicall contract
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let contract_code = get_contract_code("Multicall");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    // Get contract address.
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
+    let contract_address = receipt.contract_address.unwrap();
+
+    // Make a get coinbase contract call.
+    let get_coinbase =
+        <Multicall::getCurrentBlockCoinbaseCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(get_coinbase.into()));
+
+    let res: Bytes = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let genesis_coinbase = Address::from_slice(&[0; 20]);
+    // Not sure why the contract call returns 32 bytes instead of 20.
+    assert_eq!(Address::from_slice(&res.as_ref()[12..]), genesis_coinbase);
+
+    let new_coinbase = Address::from_slice(&[0xEE; 20]);
+    node.eth_rpc(EthRequest::SetCoinbase(new_coinbase)).await.unwrap();
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        new_coinbase
+    );
+
+    let get_coinbase =
+        <Multicall::getCurrentBlockCoinbaseCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(get_coinbase.into()));
+    let res: Bytes = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    // Not sure why the contract returns 32 bytes instead of 20.
+    assert_eq!(Address::from_slice(&res.as_ref()[12..]), new_coinbase);
 }
