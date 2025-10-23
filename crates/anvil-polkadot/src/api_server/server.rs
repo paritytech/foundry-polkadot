@@ -160,9 +160,7 @@ impl ApiServer {
             EthRequest::EthCoinbase(()) => {
                 node_info!("eth_coinbase");
                 let latest_block = self.latest_block();
-                self.backend
-                    .read_coinbase(latest_block)
-                    .map_err(Error::Backend).to_rpc_result()
+                self.backend.read_coinbase(latest_block).map_err(Error::Backend).to_rpc_result()
             }
 
             //------- TimeMachine---------
