@@ -146,7 +146,6 @@ impl Tracing for StorageTracer {
             kind,
             account: to,
             accessor: from,
-            // TODO: call.input is different from evm
             data: Bytes::from(input.to_vec()),
             deployed_bytecode_hash: None,
             value,
