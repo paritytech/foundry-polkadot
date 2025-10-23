@@ -18,15 +18,16 @@ use frame_system::limits::BlockWeights;
 use pallet_revive::{AccountId32Mapper, evm::runtime::EthExtra};
 use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
-    parachains_common::{AccountId, BlockNumber, Hash as CommonHash, Header, Nonce, Signature},
+    parachains_common::{
+        AccountId, AssetHubPolkadotAuraId as AuraId, BlockNumber, Hash as CommonHash, Header,
+        Nonce, Signature,
+    },
     polkadot_sdk_frame::{
         deps::sp_genesis_builder,
         runtime::{apis, prelude::*},
         traits::FindAuthor,
     },
-    sp_consensus_aura::{
-        self, SlotDuration, ed25519::AuthorityId as AuraId, runtime_decl_for_aura_api::AuraApiV1,
-    },
+    sp_consensus_aura::{self, SlotDuration, runtime_decl_for_aura_api::AuraApiV1},
     *,
 };
 

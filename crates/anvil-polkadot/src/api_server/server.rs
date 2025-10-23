@@ -155,9 +155,14 @@ impl ApiServer {
                 node_info!("anvil_setCoinbase");
                 let latest_block = self.latest_block();
                 self.backend.inject_coinbase(latest_block, address);
-                // TODO: this returns `null`, check whether corresponding rpc in anvil does the
-                // same
                 Ok(()).to_rpc_result()
+            }
+            EthRequest::EthCoinbase(()) => {
+                node_info!("eth_coinbase");
+                let latest_block = self.latest_block();
+                self.backend
+                    .read_coinbase(latest_block)
+                    .map_err(Error::Backend).to_rpc_result()
             }
 
             //------- TimeMachine---------

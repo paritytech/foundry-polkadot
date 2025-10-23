@@ -26,6 +26,8 @@ pub enum BackendError {
     MissingTotalIssuance,
     #[error("Could not find chain id in the state")]
     MissingChainId,
+    #[error("Could not find coinbase in the state")]
+    MissingCoinbase,
     #[error("Could not find timestamp in the state")]
     MissingTimestamp,
     #[error("Unable to decode total issuance {0}")]
@@ -42,6 +44,8 @@ pub enum BackendError {
     DecodeCodeInfo(codec::Error),
     #[error("Unable to decode timestamp: {0}")]
     DecodeTimestamp(codec::Error),
+    #[error("Unable to decode coinbase: {0}")]
+    DecodeCoinbase(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -75,12 +79,16 @@ impl BackendWithOverlay {
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeChainId)
     }
 
-    // pub fn read_coinbase(&self, hash: Hash) -> Result<[u8; 32]> {
-    //     let key = well_known_keys::COINBASE;
-    //
-    //     let value = self.read_top_state(hash,
-    // key.to_vec())?.ok_or(BackendError::MissingChainId)?;     <[u8; 32]>::decode(&mut
-    // &value[..]).map_err(BackendError::DecodeChainId) }
+    pub fn read_coinbase(&self, hash: Hash) -> Result<Address> {
+        let key = well_known_keys::AURA_AUTHORITIES;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingCoinbase)?;
+        let authorities =
+            <Vec<[u8; 32]>>::decode(&mut &value[..]).map_err(BackendError::DecodeCoinbase)?;
+        let authority = authorities.first().ok_or(BackendError::MissingCoinbase)?;
+        Ok(Address::from_slice(&authority[..20]))
+    }
 
     pub fn read_total_issuance(&self, hash: Hash) -> Result<Balance> {
         let key = well_known_keys::TOTAL_ISSUANCE;

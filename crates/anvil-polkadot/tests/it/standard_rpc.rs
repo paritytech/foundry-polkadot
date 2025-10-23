@@ -881,3 +881,49 @@ async fn test_call() {
     let value = SimpleStorage::getValueCall::abi_decode_returns(&res.0).unwrap();
     assert_eq!(U256::from(511), value);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_coinbase() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    let genesis_coinbase_addr = Address::from_slice(&[0; 20]);
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        genesis_coinbase_addr,
+    );
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(3)), None)).await.unwrap())
+        .unwrap();
+    assert_eq!(
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthBlockNumber(())).await.unwrap())
+            .unwrap(),
+        U256::from(3)
+    );
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        genesis_coinbase_addr
+    );
+
+    let new_coinbase = Address::from_slice(&[0xEE; 20]);
+    node.eth_rpc(EthRequest::SetCoinbase(new_coinbase)).await.unwrap();
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        new_coinbase
+    );
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    assert_eq!(
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthBlockNumber(())).await.unwrap())
+            .unwrap(),
+        U256::from(4)
+    );
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        new_coinbase
+    );
+}
