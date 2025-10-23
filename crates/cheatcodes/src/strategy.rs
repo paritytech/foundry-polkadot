@@ -261,6 +261,8 @@ pub trait CheatcodeInspectorStrategyExt {
     ) -> Option<revm::interpreter::CallOutcome> {
         None
     }
+    // Remove duplicate acceses in storage_recorder
+    fn revive_remove_duplicate_account_access(&self, _state: &mut crate::Cheatcodes) {}
 }
 
 // Legacy type aliases for backward compatibility

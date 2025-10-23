@@ -26,6 +26,7 @@ members = [
     "crates/script-sequence/",
     "crates/macros/",
     "crates/test-utils/",
+    "crates/revive-utils",
     "crates/revive-env",
     "crates/revive-strategy",
     "crates/lint/",
@@ -213,6 +214,7 @@ foundry-wallets = { path = "crates/wallets" }
 foundry-linking = { path = "crates/linking" }
 revive-env = { path = "crates/revive-env" }
 revive-strategy = { path = "crates/revive-strategy" }
+revive-utils = { path = "crates/revive-utils" }
 
 # solc & compilation utilities
 foundry-block-explorers = { version = "0.20.0", default-features = false }
