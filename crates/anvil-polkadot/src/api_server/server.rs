@@ -11,7 +11,6 @@ use crate::{
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
-        chain_spec::keypairs_from_private_keys,
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
@@ -30,7 +29,6 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions};
 use alloy_serde::WithOtherFields;
-use alloy_signer_local::PrivateKeySigner;
 use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
@@ -77,21 +75,20 @@ use tokio::try_join;
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
 
 pub struct DevSigner {
-    addresses: Vec<H160>,
     keypairs: HashMap<H160, Keypair>,
 }
 
 impl DevSigner {
-    pub fn new(private_keys: Vec<PrivateKeySigner>) -> Result<Self> {
-        let keypairs = keypairs_from_private_keys(&private_keys).map_err(Error::KeypairError)?;
+    pub fn new(private_keys: Vec<Keypair>) -> Result<Self> {
         let addresses: Vec<_> =
-            keypairs.iter().map(|kp| Account::from(kp.clone()).address()).collect();
-        let keypairs: HashMap<H160, Keypair> = addresses.iter().copied().zip(keypairs).collect();
-        Ok(Self { addresses, keypairs })
+            private_keys.iter().map(|kp| Account::from(kp.clone()).address()).collect();
+        let keypairs: HashMap<H160, Keypair> =
+            addresses.iter().copied().zip(private_keys).collect();
+        Ok(Self { keypairs })
     }
 
     fn accounts(&self) -> Vec<H160> {
-        self.addresses.clone()
+        self.keypairs.keys().copied().collect()
     }
 
     fn sign_transaction(
@@ -117,10 +114,6 @@ impl DevSigner {
             typed_data.eip712_signing_hash().map_err(|e| Error::InternalError(e.to_string()))?;
         Ok(keypair.sign_prehashed(hash.as_ref()).0)
     }
-
-    fn is_signer_for(&self, addr: H160) -> bool {
-        self.accounts().contains(&addr)
-    }
 }
 
 pub struct ApiServer {
@@ -130,7 +123,7 @@ pub struct ApiServer {
     logging_manager: LoggingManager,
     client: Arc<Client>,
     mining_engine: Arc<MiningEngine>,
-    wallet: Vec<DevSigner>,
+    wallet: DevSigner,
     block_provider: SubxtBlockInfoProvider,
     snapshot_manager: SnapshotManager,
     impersonation_manager: ImpersonationManager,
@@ -143,7 +136,7 @@ impl ApiServer {
         logging_manager: LoggingManager,
         snapshot_manager: SnapshotManager,
         impersonation_manager: ImpersonationManager,
-        signers: Vec<Vec<PrivateKeySigner>>,
+        signers: Vec<Keypair>,
     ) -> Result<Self> {
         let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
         let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
@@ -157,8 +150,6 @@ impl ApiServer {
             substrate_service.spawn_handle.clone(),
         )
         .await?;
-        let wallet: Vec<DevSigner> =
-            signers.into_iter().map(DevSigner::new).collect::<Result<Vec<_>>>()?;
         Ok(Self {
             block_provider,
             req_receiver,
@@ -172,7 +163,7 @@ impl ApiServer {
             eth_rpc_client,
             snapshot_manager,
             impersonation_manager,
-            wallet,
+            wallet: DevSigner::new(signers)?,
         })
     }
 
@@ -657,12 +648,12 @@ impl ApiServer {
 
         let latest_block = self.latest_block();
         let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block.as_ref())));
-        let clone = self.accounts()?.clone();
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {
             Some(
-                clone
+                *self
+                    .accounts()?
                     .iter()
                     .find(|account| **account == from)
                     .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?,
@@ -690,10 +681,7 @@ impl ApiServer {
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
 
         let payload = match account {
-            Some(addr) => {
-                let signer = self.get_signer(*addr).ok_or(Error::NoSignerAvailable)?;
-                signer.sign_transaction(*addr, tx)?.signed_payload()
-            }
+            Some(addr) => self.wallet.sign_transaction(addr, tx)?.signed_payload(),
             None => {
                 let mut fake_signature = [0; 65];
                 fake_signature[12..32].copy_from_slice(from.as_bytes());
@@ -851,9 +839,7 @@ impl ApiServer {
         let mut unique = HashSet::new();
         let mut accounts: Vec<H160> = Vec::new();
 
-        for signer in &self.wallet {
-            accounts.extend(signer.accounts().into_iter().filter(|addr| unique.insert(*addr)));
-        }
+        accounts.extend(self.wallet.accounts().into_iter().filter(|addr| unique.insert(*addr)));
         accounts.extend(
             self.impersonation_manager
                 .impersonated_accounts
@@ -1031,10 +1017,8 @@ impl ApiServer {
     // ----- Wallet RPCs
     async fn sign(&self, address: Address, content: impl AsRef<[u8]>) -> Result<String> {
         node_info!("eth_sign");
-        let addr = ReviveAddress::from(address).inner();
-        let signer = self.get_signer(addr).ok_or(Error::NoSignerAvailable)?;
         let signature = alloy_primitives::hex::encode(
-            signer.sign(ReviveAddress::from(address).inner(), content.as_ref())?,
+            self.wallet.sign(ReviveAddress::from(address).inner(), content.as_ref())?,
         );
         Ok(format!("0x{signature}"))
     }
@@ -1060,15 +1044,13 @@ impl ApiServer {
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
         let from =
             generic_transaction.from.ok_or(Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
-        let signer = self.get_signer(from).ok_or(Error::NoSignerAvailable)?;
-        signer.sign_transaction(from, unsigned_transaction)
+        self.wallet.sign_transaction(from, unsigned_transaction)
     }
 
     async fn sign_typed_data_v4(&self, address: Address, data: TypedData) -> Result<String> {
         node_info!("eth_signTypedData_v4");
         let addr = ReviveAddress::from(address).inner();
-        let signer = self.get_signer(addr).ok_or(Error::NoSignerAvailable)?;
-        let signature = alloy_primitives::hex::encode(signer.sign_typed_data(addr, &data)?);
+        let signature = alloy_primitives::hex::encode(self.wallet.sign_typed_data(addr, &data)?);
         Ok(format!("0x{signature}"))
     }
 
@@ -1104,10 +1086,6 @@ impl ApiServer {
         })
     }
     // ----- Helpers
-    fn get_signer(&self, address: H160) -> Option<&DevSigner> {
-        self.wallet.iter().find(|signer| signer.is_signer_for(address))
-    }
-
     async fn update_block_provider_on_revert(&self, info: &Info<OpaqueBlock>) -> Result<()> {
         let new_best_block = self.block_provider.block_by_number(info.best_number).await?;
         let new_finalized_block =

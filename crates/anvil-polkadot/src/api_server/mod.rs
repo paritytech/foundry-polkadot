@@ -5,11 +5,11 @@ use crate::{
         impersonation::ImpersonationManager, service::Service, snapshot::SnapshotManager,
     },
 };
-use alloy_signer_local::PrivateKeySigner;
 use anvil_core::eth::EthRequest;
 use anvil_rpc::response::ResponseResult;
 use futures::channel::{mpsc, oneshot};
 use server::ApiServer;
+use subxt_signer::eth::Keypair;
 
 pub mod error;
 pub mod revive_conversions;
@@ -33,16 +33,16 @@ pub fn spawn(
     let service = substrate_service.clone();
     let mut impersonation_manager = ImpersonationManager::default();
     impersonation_manager.set_auto_impersonate_account(config.enable_auto_impersonate);
-    let mut signers = vec![config.signer_accounts.clone()];
+    let mut signers = config.signer_accounts.clone();
     if let Some(genesis) = &config.genesis {
         let genesis_signers = genesis
             .alloc
             .values()
             .filter_map(|acc| acc.private_key)
-            .flat_map(|k| PrivateKeySigner::from_bytes(&k))
+            .flat_map(|k| Keypair::from_secret_key(*k))
             .collect::<Vec<_>>();
         if !genesis_signers.is_empty() {
-            signers.push(genesis_signers)
+            signers.extend(genesis_signers);
         }
     }
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {

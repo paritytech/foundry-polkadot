@@ -1,4 +1,7 @@
-use crate::substrate_node::genesis::GenesisConfig;
+use crate::{
+    api_server::revive_conversions::SubstrateU256, substrate_node::genesis::GenesisConfig,
+};
+use alloy_primitives::U256;
 use alloy_signer_local::PrivateKeySigner;
 use polkadot_sdk::{
     frame_support,
@@ -12,9 +15,7 @@ use polkadot_sdk::{
     sp_runtime::{AccountId32, BuildStorage},
 };
 use std::collections::BTreeMap;
-use substrate_runtime::{
-    BalancesConfig, RuntimeGenesisConfig, WASM_BINARY, genesis_config_presets::ENDOWMENT,
-};
+use substrate_runtime::{BalancesConfig, RuntimeGenesisConfig, WASM_BINARY};
 use subxt_signer::eth::Keypair;
 
 /// This is a wrapper around the general Substrate ChainSpec type that allows manual changes to the
@@ -116,18 +117,20 @@ fn props() -> Properties {
 
 pub fn development_chain_spec(
     genesis_config: GenesisConfig,
-    signers: &[PrivateKeySigner],
+    signers: &[Keypair],
+    genesis_balance: U256,
 ) -> Result<DevelopmentChainSpec, String> {
-    let mut balance_map: BTreeMap<AccountId32, u128> = keypairs_from_private_keys(signers)?
+    let genesis_balance = SubstrateU256::from(genesis_balance).inner().as_u128();
+    let mut balance_map: BTreeMap<AccountId32, u128> = signers
         .into_iter()
-        .map(|keypair| (Account::from(keypair).substrate_account(), ENDOWMENT))
+        .map(|keypair| (Account::from(keypair.clone()).substrate_account(), genesis_balance))
         .collect();
     if let Some(alloc) = &genesis_config.alloc {
         balance_map.extend(alloc.iter().map(|(eth_addr, gen_account)| {
             let mut substrate_account = AccountId32::new([0xEE; 32]);
             <AccountId32 as AsMut<[u8; 32]>>::as_mut(&mut substrate_account)[..20]
                 .copy_from_slice(eth_addr.as_slice());
-            let balance = gen_account.balance.try_into().unwrap_or(ENDOWMENT);
+            let balance = gen_account.balance.try_into().unwrap_or(genesis_balance);
             (substrate_account, balance)
         }));
     }
@@ -147,13 +150,14 @@ pub fn development_chain_spec(
     Ok(DevelopmentChainSpec { inner, genesis_config })
 }
 
-pub fn keypairs_from_private_keys(accounts: &[PrivateKeySigner]) -> Result<Vec<Keypair>, String> {
+pub fn keypairs_from_private_keys(
+    accounts: &[PrivateKeySigner],
+) -> Result<Vec<Keypair>, subxt_signer::eth::Error> {
     accounts
         .iter()
         .map(|signer| {
             let key =
-                subxt_signer::eth::Keypair::from_secret_key(signer.credential().to_bytes().into())
-                    .map_err(|e| e.to_string())?;
+                subxt_signer::eth::Keypair::from_secret_key(signer.credential().to_bytes().into())?;
             Ok(key)
         })
         .collect()

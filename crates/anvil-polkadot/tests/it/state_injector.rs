@@ -190,8 +190,8 @@ async fn test_set_balance() {
 
     assert_eq!(
         node.get_balance(alith, None).await,
-        // 1000 dollars
-        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+        // Default balance - existential deposit
+        U256::from_str_radix("99999900000000000000000000", 10).unwrap()
     );
 
     // Test decreasing the balance to 5 dollars.
@@ -255,8 +255,8 @@ async fn test_set_balance() {
 
     assert_eq!(
         node.get_balance(baltathar, None).await,
-        // 1000 dollars
-        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+        // Default balance - existential deposit
+        U256::from_str_radix("99999900000000000000000000", 10).unwrap()
     );
 
     let new_balance = U256::from_str_radix("200000000000000000000", 10).unwrap();

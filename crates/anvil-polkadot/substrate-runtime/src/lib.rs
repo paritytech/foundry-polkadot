@@ -38,56 +38,12 @@ pub mod currency {
 /// Provides getters for genesis configuration presets.
 pub mod genesis_config_presets {
     use super::*;
-    use crate::{
-        Balance, BalancesConfig, RuntimeGenesisConfig, SudoConfig, currency::DOLLARS,
-        sp_keyring::Sr25519Keyring,
-    };
 
     use alloc::{vec, vec::Vec};
-    use serde_json::Value;
-
-    pub const ENDOWMENT: Balance = 1_001 * DOLLARS;
-
-    fn well_known_accounts() -> Vec<AccountId> {
-        Sr25519Keyring::well_known()
-            .map(|k| k.to_account_id())
-            .chain([
-                // subxt_signer::eth::dev::alith()
-                array_bytes::hex_n_into_unchecked(
-                    "f24ff3a9cf04c71dbc94d0b566f7a27b94566caceeeeeeeeeeeeeeeeeeeeeeee",
-                ),
-                // subxt_signer::eth::dev::baltathar()
-                array_bytes::hex_n_into_unchecked(
-                    "3cd0a705a2dc65e5b1e1205896baa2be8a07c6e0eeeeeeeeeeeeeeeeeeeeeeee",
-                ),
-            ])
-            .collect::<Vec<_>>()
-    }
-
-    /// Returns a development genesis config preset.
-    pub fn development_config_genesis() -> Value {
-        frame_support::build_struct_json_patch!(RuntimeGenesisConfig {
-            balances: BalancesConfig {
-                balances: well_known_accounts()
-                    .into_iter()
-                    .map(|id| (id, ENDOWMENT))
-                    .collect::<Vec<_>>(),
-            },
-            sudo: SudoConfig { key: Some(Sr25519Keyring::Alice.to_account_id()) },
-        })
-    }
 
     /// Get the set of the available genesis config presets.
-    pub fn get_preset(id: &PresetId) -> Option<Vec<u8>> {
-        let patch = match id.as_ref() {
-            sp_genesis_builder::DEV_RUNTIME_PRESET => development_config_genesis(),
-            _ => return None,
-        };
-        Some(
-            serde_json::to_string(&patch)
-                .expect("serialization to json is expected to work. qed.")
-                .into_bytes(),
-        )
+    pub fn get_preset(_id: &PresetId) -> Option<Vec<u8>> {
+        return None;
     }
 
     /// List of supported presets.
