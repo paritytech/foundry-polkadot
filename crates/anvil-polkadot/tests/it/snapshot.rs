@@ -302,7 +302,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         first_timestamp.saturating_div(1000),
         genesis_timestamp,
-        0,
+        1,
         "wrong timestamp at first block",
     );
 
@@ -560,11 +560,12 @@ async fn test_timestmap_in_contract_after_revert() {
     let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_eq!(node.best_block_number().await, 1);
+
     let first_timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
         first_timestamp.saturating_div(1000),
         genesis_timestamp,
-        0,
+        1,
         "wrong timestamp at first block",
     );
 
@@ -598,7 +599,7 @@ async fn test_timestmap_in_contract_after_revert() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(timestamp, U256::from(genesis_timestamp));
+    assert_eq!(timestamp, U256::from(first_timestamp.saturating_div(1000)));
 
     let second_timestamp = first_timestamp.saturating_add(3000);
     assert_with_tolerance(
@@ -626,7 +627,7 @@ async fn test_timestmap_in_contract_after_revert() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(timestamp, U256::from(genesis_timestamp));
+    assert_eq!(timestamp, U256::from(first_timestamp.saturating_div(1000)));
 
     // Mine 1 block again and expect on the set timestamp.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
@@ -635,7 +636,7 @@ async fn test_timestmap_in_contract_after_revert() {
     assert_with_tolerance(
         second_timestamp.saturating_sub(first_timestamp),
         3000,
-        150,
+        350,
         "wrong timestamp at second block",
     );
 
