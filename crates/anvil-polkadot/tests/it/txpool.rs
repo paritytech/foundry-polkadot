@@ -72,7 +72,7 @@ async fn test_drop_transaction() {
         .to(recipient_addr)
         .value(U256::from(1000))
         .nonce(0);
-    let tx1_hash = node.send_transaction(tx1, None).await.unwrap();
+    node.send_transaction(tx1, None).await.unwrap();
 
     let tx2 = TransactionRequest::default()
         .from(alith_addr)
