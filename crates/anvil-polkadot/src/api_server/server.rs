@@ -1077,54 +1077,23 @@ impl ApiServer {
 
     /// Drop a specific transaction from the pool by its ETH hash
     async fn anvil_drop_transaction(&self, eth_hash: B256) -> Result<()> {
-        let ready_txs = self.tx_pool.ready();
-        let future_txs = self.tx_pool.futures();
-
         // Search in ready transactions
-        for tx in ready_txs {
-            let encoded = tx.data().encode();
-            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
-                MAX_EXTRINSIC_DEPTH,
-                &mut &encoded[..],
-            ) {
-                if let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-                    function:
-                        RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-                    ..
-                } = ext.0
-                {
-                    let tx_eth_hash = keccak_256(&payload);
-                    if B256::from_slice(&tx_eth_hash) == eth_hash {
-                        let mut invalid_txs = IndexMap::new();
-                        invalid_txs.insert(*tx.hash(), None);
-                        self.tx_pool.report_invalid(None, invalid_txs).await;
-                        return Ok(());
-                    }
-                }
+        for tx in self.tx_pool.ready() {
+            if transaction_matches_eth_hash(tx.data(), eth_hash) {
+                let mut invalid_txs = IndexMap::new();
+                invalid_txs.insert(*tx.hash(), None);
+                self.tx_pool.report_invalid(None, invalid_txs).await;
+                return Ok(());
             }
         }
 
         // Search in future transactions
-        for tx in future_txs {
-            let encoded = tx.data().encode();
-            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
-                MAX_EXTRINSIC_DEPTH,
-                &mut &encoded[..],
-            ) {
-                if let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-                    function:
-                        RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-                    ..
-                } = ext.0
-                {
-                    let tx_eth_hash = keccak_256(&payload);
-                    if B256::from_slice(&tx_eth_hash) == eth_hash {
-                        let mut invalid_txs = IndexMap::new();
-                        invalid_txs.insert(*tx.hash(), None);
-                        self.tx_pool.report_invalid(None, invalid_txs).await;
-                        return Ok(());
-                    }
-                }
+        for tx in self.tx_pool.futures() {
+            if transaction_matches_eth_hash(tx.data(), eth_hash) {
+                let mut invalid_txs = IndexMap::new();
+                invalid_txs.insert(*tx.hash(), None);
+                self.tx_pool.report_invalid(None, invalid_txs).await;
+                return Ok(());
             }
         }
 
@@ -1134,6 +1103,28 @@ impl ApiServer {
             eth_hash
         )))
     }
+}
+
+/// Helper function to check if transaction matches ETH hash
+fn transaction_matches_eth_hash(
+    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
+    target_eth_hash: B256,
+) -> bool {
+    let encoded = tx_data.encode();
+    if let Ok(ext) =
+        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
+    {
+        if let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
+            function:
+                RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
+            ..
+        } = ext.0
+        {
+            let tx_eth_hash = keccak_256(&payload);
+            return B256::from_slice(&tx_eth_hash) == target_eth_hash;
+        }
+    }
+    false
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
