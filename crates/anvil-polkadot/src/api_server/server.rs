@@ -1,9 +1,11 @@
+use super::revive_conversions::{ReviveBytes, ReviveFilter};
 use crate::{
     api_server::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            AlloyU256, ReviveAddress, ReviveBlockId, SubstrateU256, convert_to_generic_transaction,
+            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, SubstrateU256,
+            convert_to_generic_transaction,
         },
     },
     logging::LoggingManager,
@@ -13,58 +15,71 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
-            BackendWithOverlay, Client, Service,
+            BackendError, BackendWithOverlay, Client, Service,
             storage::{
                 AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
         },
+        snapshot::{RevertInfo, SnapshotManager},
     },
 };
-use alloy_eips::BlockId;
+use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
-use alloy_rpc_types::{anvil::MineOptions, request::TransactionRequest};
+use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use codec::{Decode, Encode};
 use futures::{StreamExt, channel::mpsc};
+use pallet_revive_eth_rpc::{
+    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
+    client::{Client as EthRpcClient, ClientError, SubscriptionType},
+    subxt_client::{self, SrcChainConfig},
+};
 use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
-        evm::{Account, Block, Bytes, ReceiptInfo, TransactionSigned},
-    },
-    pallet_revive_eth_rpc::{
-        EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
-        client::{Client as EthRpcClient, ClientError, SubscriptionType},
-        subxt_client::{self, SrcChainConfig},
+        evm::{
+            Account, Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
+            TransactionSigned,
+        },
     },
     parachains_common::{AccountId, Hash, Nonce},
+    polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::HeaderBackend,
+    sc_service::SpawnTaskHandle,
     sp_api::{Metadata, ProvideRuntimeApi},
-    sp_core::{self, H160, H256, Hasher, keccak_256},
+    sp_arithmetic::Permill,
+    sp_blockchain::Info,
+    sp_core::{self, Hasher, keccak_256},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use substrate_runtime::Balance;
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
-    client::RuntimeVersion as SubxtRuntimeVersion, ext::subxt_rpcs::LegacyRpcMethods,
+    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
+    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
 };
+
+pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
 
 pub struct Wallet {
     accounts: Vec<Account>,
 }
 
 pub struct ApiServer {
+    eth_rpc_client: EthRpcClient,
     req_receiver: mpsc::Receiver<ApiRequest>,
     backend: BackendWithOverlay,
     logging_manager: LoggingManager,
     client: Arc<Client>,
     mining_engine: Arc<MiningEngine>,
-    eth_rpc_client: EthRpcClient,
+    block_provider: SubxtBlockInfoProvider,
     wallet: Wallet,
+    snapshot_manager: SnapshotManager,
     impersonation_manager: ImpersonationManager,
 }
 
@@ -73,11 +88,24 @@ impl ApiServer {
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
+        snapshot_manager: SnapshotManager,
         impersonation_manager: ImpersonationManager,
     ) -> Result<Self> {
-        let eth_rpc_client = create_revive_rpc_client(&substrate_service).await?;
+        let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
+        let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
+        let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
+        let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
+        let eth_rpc_client = create_revive_rpc_client(
+            api.clone(),
+            rpc_client.clone(),
+            rpc,
+            block_provider.clone(),
+            substrate_service.spawn_handle.clone(),
+        )
+        .await?;
 
         Ok(Self {
+            block_provider,
             req_receiver,
             logging_manager,
             backend: BackendWithOverlay::new(
@@ -87,6 +115,7 @@ impl ApiServer {
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
+            snapshot_manager,
             impersonation_manager,
             wallet: Wallet {
                 accounts: vec![
@@ -118,8 +147,10 @@ impl ApiServer {
             EthRequest::GetIntervalMining(_) => self.get_interval_mining().to_rpc_result(),
             EthRequest::GetAutoMine(_) => self.get_auto_mine().to_rpc_result(),
             EthRequest::SetAutomine(enabled) => self.set_auto_mine(enabled).to_rpc_result(),
-            //------- TimeMachine---------
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
+            EthRequest::EvmMineDetailed(mine) => self.evm_mine_detailed(mine).await.to_rpc_result(),
+
+            //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
             }
@@ -131,6 +162,21 @@ impl ApiServer {
             }
             EthRequest::EvmIncreaseTime(time) => self.increase_time(time).to_rpc_result(),
             EthRequest::EvmSetTime(timestamp) => self.set_time(timestamp).to_rpc_result(),
+
+            // -- Impersonation --
+            EthRequest::ImpersonateAccount(addr) => {
+                self.impersonate_account(H160::from_slice(addr.0.as_ref())).to_rpc_result()
+            }
+            EthRequest::StopImpersonatingAccount(addr) => {
+                self.stop_impersonating_account(&H160::from_slice(addr.0.as_ref())).to_rpc_result()
+            }
+            EthRequest::AutoImpersonateAccount(enable) => {
+                self.auto_impersonate_account(enable).to_rpc_result()
+            }
+            EthRequest::EthSendUnsignedTransaction(request) => {
+                node_info!("eth_sendUnsignedTransaction");
+                self.send_transaction(*request.clone(), true).await.to_rpc_result()
+            }
 
             //------- Eth RPCs---------
             EthRequest::EthChainId(_) => self.eth_chain_id().to_rpc_result(),
@@ -157,13 +203,23 @@ impl ApiServer {
             }
             EthRequest::EthCall(call, block, _, _) => self.call(call, block).await.to_rpc_result(),
             EthRequest::EthSendTransaction(request) => {
-                self.send_transaction(*request.clone()).await.to_rpc_result()
+                self.send_transaction(*request.clone(), false).await.to_rpc_result()
+            }
+            EthRequest::EthGasPrice(()) => self.gas_price().await.to_rpc_result(),
+            EthRequest::EthGetBlockByNumber(num, hydrated) => {
+                node_info!("eth_getBlockByNumber");
+                self.get_block_by_number(num, hydrated).await.to_rpc_result()
             }
             EthRequest::EthGetTransactionCount(addr, block) => self
                 .get_transaction_count(ReviveAddress::from(addr).inner(), block)
                 .await
                 .map(|val| AlloyU256::from(val).inner())
                 .to_rpc_result(),
+
+            // --- Snapshot ---
+            EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
+            EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
+            EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
 
             // ------- State injector ---------
             EthRequest::SetBalance(address, value) => {
@@ -175,16 +231,57 @@ impl ApiServer {
                 self.set_storage_at(address, key, value).to_rpc_result()
             }
             EthRequest::SetChainId(chain_id) => self.set_chain_id(chain_id).to_rpc_result(),
-
-            // -- Impersonation --
-            EthRequest::ImpersonateAccount(addr) => {
-                self.impersonate_account(H160::from_slice(addr.0.as_ref())).to_rpc_result()
+            EthRequest::EthBlockNumber(()) => {
+                node_info!("eth_blockNumber");
+                Ok(U256::from(self.client.info().best_number)).to_rpc_result()
             }
-            EthRequest::StopImpersonatingAccount(addr) => {
-                self.stop_impersonating_account(&H160::from_slice(addr.0.as_ref())).to_rpc_result()
+            EthRequest::EthGetTransactionCountByHash(hash) => {
+                node_info!("eth_getBlockTransactionCountByHash");
+                self.get_block_transaction_count_by_hash(hash).await.to_rpc_result()
             }
-            EthRequest::AutoImpersonateAccount(enable) => {
-                self.auto_impersonate_account(enable).to_rpc_result()
+            EthRequest::EthGetTransactionCountByNumber(num) => {
+                node_info!("eth_getBlockTransactionCountByNumber");
+                self.get_block_transaction_count_by_number(num).await.to_rpc_result()
+            }
+            EthRequest::EthGetTransactionByBlockHashAndIndex(hash, index) => {
+                node_info!("eth_getTransactionByBlockHashAndIndex");
+                self.get_transaction_by_block_hash_and_index(hash, index.into())
+                    .await
+                    .to_rpc_result()
+            }
+            EthRequest::EthGetTransactionByBlockNumberAndIndex(num, index) => {
+                node_info!("eth_getTransactionByBlockNumberAndIndex");
+                self.get_transaction_by_block_number_and_index(num, index.into())
+                    .await
+                    .to_rpc_result()
+            }
+            EthRequest::EthGetTransactionByHash(hash) => {
+                node_info!("eth_getTransactionByHash");
+                self.get_transaction_by_hash(hash).await.to_rpc_result()
+            }
+            EthRequest::Web3ClientVersion(()) => {
+                node_info!("web3_clientVersion");
+                Ok(CLIENT_VERSION.to_string()).to_rpc_result()
+            }
+            EthRequest::EthFeeHistory(count, newest, reward_percentiles) => {
+                node_info!("eth_feeHistory");
+                self.fee_history(count, newest, Some(reward_percentiles)).await.to_rpc_result()
+            }
+            EthRequest::EthMaxPriorityFeePerGas(_) => {
+                node_info!("eth_maxPriorityFeePerGas");
+                self.max_priority_fee_per_gas().await.to_rpc_result()
+            }
+            EthRequest::EthSendRawTransaction(tx) => {
+                node_info!("eth_sendRawTransaction");
+                self.send_raw_transaction(ReviveBytes::from(tx).inner()).await.to_rpc_result()
+            }
+            EthRequest::EthAccounts(_) => {
+                node_info!("eth_accounts");
+                self.accounts().to_rpc_result()
+            }
+            EthRequest::EthGetLogs(filter) => {
+                node_info!("eth_getLogs");
+                self.get_logs(filter).await.to_rpc_result()
             }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
@@ -256,6 +353,25 @@ impl ApiServer {
         Ok("0x0".to_string())
     }
 
+    async fn evm_mine_detailed(
+        &self,
+        mine: Option<MineParams<Option<MineOptions>>>,
+    ) -> Result<Vec<Block>> {
+        node_info!("evm_mine_detailed");
+        let mined_blocks = self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+        let mut blocks = Vec::with_capacity(mined_blocks as usize);
+        let last_block = self.client.info().best_number as u64;
+        let starting = last_block - mined_blocks + 1;
+        for block_number in starting..=last_block {
+            if let Some(block) =
+                self.get_block_by_number(BlockNumberOrTag::Number(block_number), true).await?
+            {
+                blocks.push(block);
+            }
+        }
+        Ok(blocks)
+    }
+
     // TimeMachine RPCs
     fn set_block_timestamp_interval(&self, time: u64) -> Result<()> {
         node_info!("anvil_setBlockTimestampInterval");
@@ -296,6 +412,29 @@ impl ApiServer {
         }
         let time = timestamp.to::<u64>();
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
+    }
+
+    // Impersonation RPC
+    fn impersonate_account(&mut self, addr: H160) -> Result<()> {
+        node_info!("anvil_impersonateAccount");
+        self.impersonation_manager.impersonate(addr);
+        Ok(())
+    }
+
+    fn auto_impersonate_account(&mut self, enable: bool) -> Result<()> {
+        node_info!("anvil_autoImpersonateAccount");
+        self.impersonation_manager.set_auto_impersonate_account(enable);
+        Ok(())
+    }
+
+    fn stop_impersonating_account(&mut self, addr: &H160) -> Result<()> {
+        node_info!("anvil_stopImpersonatingAccount");
+        self.impersonation_manager.stop_impersonating(addr);
+        Ok(())
+    }
+
+    fn chain_id(&self, at: Hash) -> u64 {
+        self.backend.read_chain_id(at).expect("Chain ID is populated on genesis")
     }
 
     // Eth RPCs
@@ -438,6 +577,7 @@ impl ApiServer {
     async fn send_transaction(
         &self,
         transaction_req: WithOtherFields<TransactionRequest>,
+        unsigned_tx: bool,
     ) -> Result<H256> {
         node_info!("eth_sendTransaction");
         let mut transaction = convert_to_generic_transaction(transaction_req.clone().into_inner());
@@ -468,7 +608,7 @@ impl ApiServer {
             .try_into_unsigned()
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
 
-        let payload = if self.impersonation_manager.is_impersonated(from) {
+        let payload = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             let mut fake_signature = [0; 65];
             fake_signature[12..32].copy_from_slice(from.as_bytes());
             tx.with_signature(fake_signature).signed_payload()
@@ -483,6 +623,167 @@ impl ApiServer {
         };
 
         self.send_raw_transaction(Bytes(payload)).await
+    }
+
+    async fn get_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+        hydrated_transactions: bool,
+    ) -> Result<Option<Block>> {
+        let Some(block) = self
+            .eth_rpc_client
+            .block_by_number_or_tag(&ReviveBlockNumberOrTag::from(block_number).inner())
+            .await?
+        else {
+            return Ok(None);
+        };
+        let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
+        Ok(Some(block))
+    }
+
+    pub(crate) async fn snapshot(&mut self) -> Result<U256> {
+        node_info!("evm_snapshot");
+        Ok(self.snapshot_manager.snapshot())
+    }
+
+    pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
+        node_info!("evm_revert");
+        let res = self
+            .snapshot_manager
+            .revert(id)
+            .map_err(|err| Error::Backend(BackendError::Client(err)))?;
+        let Some(res) = res else { return Ok(false) };
+
+        self.on_revert_update(res).await?;
+
+        Ok(true)
+    }
+
+    pub(crate) async fn rollback(&mut self, depth: Option<u64>) -> Result<()> {
+        node_info!("anvil_rollback");
+        let res = self
+            .snapshot_manager
+            .rollback(depth)
+            .map_err(|err| Error::Backend(BackendError::Client(err)))?;
+
+        self.on_revert_update(res).await?;
+
+        Ok(())
+    }
+
+    async fn get_block_transaction_count_by_hash(&self, block_hash: B256) -> Result<Option<U256>> {
+        let block_hash = H256::from_slice(block_hash.as_slice());
+        Ok(self.eth_rpc_client.receipts_count_per_block(&block_hash).await.map(U256::from))
+    }
+
+    async fn get_block_transaction_count_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<Option<U256>> {
+        let Some(block) = self.get_block_by_number(block_number, false).await? else {
+            return Ok(None);
+        };
+        Ok(self.eth_rpc_client.receipts_count_per_block(&block.hash).await.map(U256::from))
+    }
+
+    async fn get_transaction_by_block_hash_and_index(
+        &self,
+        block_hash: B256,
+        transaction_index: U256,
+    ) -> Result<Option<TransactionInfo>> {
+        let Some(receipt) = self
+            .eth_rpc_client
+            .receipt_by_hash_and_index(
+                &H256::from_slice(block_hash.as_ref()),
+                transaction_index.try_into().map_err(|_| EthRpcError::ConversionError)?,
+            )
+            .await
+        else {
+            return Ok(None);
+        };
+
+        let Some(signed_tx) =
+            self.eth_rpc_client.signed_tx_by_hash(&receipt.transaction_hash).await
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(TransactionInfo::new(&receipt, signed_tx)))
+    }
+
+    async fn get_transaction_by_block_number_and_index(
+        &self,
+        block: BlockNumberOrTag,
+        transaction_index: U256,
+    ) -> Result<Option<TransactionInfo>> {
+        let Some(block) = self
+            .eth_rpc_client
+            .block_by_number_or_tag(&ReviveBlockNumberOrTag::from(block).inner())
+            .await?
+        else {
+            return Ok(None);
+        };
+        self.get_transaction_by_block_hash_and_index(
+            B256::from_slice(block.hash().as_ref()),
+            transaction_index,
+        )
+        .await
+    }
+
+    async fn get_transaction_by_hash(
+        &self,
+        transaction_hash: B256,
+    ) -> Result<Option<TransactionInfo>> {
+        let tx_hash = H256::from_slice(transaction_hash.as_ref());
+        let receipt = self.eth_rpc_client.receipt(&tx_hash).await;
+        let signed_tx = self.eth_rpc_client.signed_tx_by_hash(&tx_hash).await;
+        if let (Some(receipt), Some(signed_tx)) = (receipt, signed_tx) {
+            return Ok(Some(TransactionInfo::new(&receipt, signed_tx)));
+        }
+
+        Ok(None)
+    }
+
+    async fn fee_history(
+        &self,
+        block_count: U256,
+        newest_block: BlockNumberOrTag,
+        reward_percentiles: Option<Vec<f64>>,
+    ) -> Result<FeeHistoryResult> {
+        let block_count: u32 = block_count.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        let result = self
+            .eth_rpc_client
+            .fee_history(
+                block_count,
+                ReviveBlockNumberOrTag::from(newest_block).inner(),
+                reward_percentiles,
+            )
+            .await?;
+        Ok(result)
+    }
+
+    async fn max_priority_fee_per_gas(&self) -> Result<sp_core::U256> {
+        let gas_price = self.gas_price().await?;
+        Ok(Permill::from_percent(20).mul_ceil(gas_price))
+    }
+
+    pub fn accounts(&self) -> Result<Vec<H160>> {
+        // Spoiler this method will be modified extensively after implementing
+        // the wallet related RPCs.
+        node_info!("eth_accounts");
+        let mut unique = HashSet::new();
+        for acc in &self.wallet.accounts {
+            unique.insert(acc.address());
+        }
+        for acc in &self.impersonation_manager.impersonated_accounts {
+            unique.insert(*acc);
+        }
+        Ok(unique.into_iter().collect())
+    }
+
+    async fn get_logs(&self, filter: Filter) -> Result<FilterResults> {
+        let logs = self.eth_rpc_client.logs(Some(ReviveFilter::from(filter).into_inner())).await?;
+        Ok(FilterResults::Logs(logs))
     }
 
     // State injector RPCs
@@ -644,35 +945,49 @@ impl ApiServer {
         Ok(())
     }
 
-    // ---- Impersonation RPCs
-    fn impersonate_account(&mut self, addr: H160) -> Result<()> {
-        node_info!("anvil_impersonateAccount");
-        self.impersonation_manager.impersonate(addr);
-        Ok(())
-    }
-
-    fn auto_impersonate_account(&mut self, enable: bool) -> Result<()> {
-        node_info!("anvil_autoImpersonateAccount");
-        self.impersonation_manager.set_auto_impersonate_account(enable);
-        Ok(())
-    }
-
-    fn stop_impersonating_account(&mut self, addr: &H160) -> Result<()> {
-        node_info!("anvil_stopImpersonatingAccount");
-        self.impersonation_manager.stop_impersonating(addr);
-        Ok(())
-    }
-
     // ----- Helpers
+    async fn update_block_provider_on_revert(&self, info: &Info<OpaqueBlock>) -> Result<()> {
+        let new_best_block = self.block_provider.block_by_number(info.best_number).await?;
+        let new_finalized_block =
+            self.block_provider.block_by_number(info.finalized_number).await?;
+
+        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
+        }
+
+        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
+            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
+        }
+
+        Ok(())
+    }
+
+    async fn update_time_on_revert(&self, best_hash: Hash) -> Result<()> {
+        let timestamp = self.backend.read_timestamp(best_hash)?;
+        self.mining_engine.set_time(Duration::from_millis(timestamp));
+        Ok(())
+    }
+
+    async fn on_revert_update(&self, revert_info: RevertInfo) -> Result<()> {
+        if revert_info.reverted > 0 {
+            self.update_block_provider_on_revert(&revert_info.info).await?;
+        }
+
+        let hash = self
+            .get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Number(
+                revert_info.info.best_number.into(),
+            ))))
+            .await?;
+        self.update_time_on_revert(hash).await?;
+
+        Ok(())
+    }
+
     async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
         self.eth_rpc_client
             .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
             .await
             .map_err(Error::from)
-    }
-
-    fn chain_id(&self, at: Hash) -> u64 {
-        self.backend.read_chain_id(at).expect("Chain ID is populated on genesis")
     }
 
     fn get_account_id(&self, block: Hash, address: Address) -> Result<AccountId> {
@@ -741,9 +1056,10 @@ fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> Contra
     }
 }
 
-async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcClient> {
-    let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
-
+async fn create_online_client(
+    substrate_service: &Service,
+    rpc_client: RpcClient,
+) -> Result<OnlineClient<SrcChainConfig>> {
     let genesis_block_number = substrate_service.genesis_block_number.try_into().map_err(|_| {
         Error::InternalError(format!(
             "Genesis block number {} is too large for u32 (max: {})",
@@ -776,9 +1092,11 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
     else {
         return Err(Error::InternalError("Unable to fetch metadata versions".to_string()));
     };
+
     let Some(latest_metadata_version) = supported_metadata_versions.into_iter().max() else {
         return Err(Error::InternalError("No stable metadata versions supported".to_string()));
     };
+
     let opaque_metadata = substrate_service
         .client
         .runtime_api()
@@ -794,16 +1112,24 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
     let subxt_metadata = SubxtMetadata::decode(&mut (*opaque_metadata).as_slice())
         .map_err(|_| Error::InternalError("Unable to decode metadata".to_string()))?;
 
-    let api = OnlineClient::<SrcChainConfig>::from_rpc_client_with(
+    OnlineClient::<SrcChainConfig>::from_rpc_client_with(
         genesis_hash,
         subxt_runtime_version,
         subxt_metadata,
-        rpc_client.clone(),
-    )?;
-    let rpc = LegacyRpcMethods::<SrcChainConfig>::new(rpc_client.clone());
+        rpc_client,
+    )
+    .map_err(|err| {
+        Error::InternalError(format!("Failed to initialize the subxt online client: {err}"))
+    })
+}
 
-    let block_provider = SubxtBlockInfoProvider::new(api.clone(), rpc.clone()).await?;
-
+async fn create_revive_rpc_client(
+    api: OnlineClient<SrcChainConfig>,
+    rpc_client: RpcClient,
+    rpc: LegacyRpcMethods<SrcChainConfig>,
+    block_provider: SubxtBlockInfoProvider,
+    task_spawn_handle: SpawnTaskHandle,
+) -> Result<EthRpcClient> {
     let (pool, keep_latest_n_blocks) = {
         // see sqlite in-memory issue: https://github.com/launchbadge/sqlx/issues/2510
         let pool = SqlitePoolOptions::new()
@@ -849,7 +1175,7 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
         .await
         .map_err(Error::from)?;
     let eth_rpc_client_clone = eth_rpc_client.clone();
-    substrate_service.spawn_handle.spawn("block-subscription", "None", async move {
+    task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;
         let best_future =
             eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::BestBlocks);
@@ -857,8 +1183,9 @@ async fn create_revive_rpc_client(substrate_service: &Service) -> Result<EthRpcC
             eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::FinalizedBlocks);
         let res = tokio::try_join!(best_future, finalized_future).map(|_| ());
         if let Err(err) = res {
-            panic!("Block subscription task failed: {err:?}",)
+            panic!("Block subscription task failed: {err:?}")
         }
     });
+
     Ok(eth_rpc_client)
 }

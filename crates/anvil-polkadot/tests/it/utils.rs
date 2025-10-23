@@ -4,7 +4,10 @@ use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::{self, ApiHandle, revive_conversions::ReviveAddress},
+    api_server::{
+        self, ApiHandle,
+        revive_conversions::{AlloyU256, ReviveAddress},
+    },
     config::{AnvilNodeConfig, SubstrateNodeConfig},
     init_tracing,
     logging::LoggingManager,
@@ -15,12 +18,15 @@ use anvil_polkadot::{
         service::{Service, storage::well_known_keys},
     },
 };
-use anvil_rpc::{error::RpcError, response::ResponseResult};
+use anvil_rpc::{
+    error::{ErrorCode, RpcError},
+    response::ResponseResult,
+};
 use codec::Decode;
 use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
 use polkadot_sdk::{
-    pallet_revive::evm::{Block, ReceiptInfo},
+    pallet_revive::evm::{Block, HashesOrTransactionInfos, ReceiptInfo},
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
@@ -37,8 +43,8 @@ const NATIVE_TO_ETH_RATIO: u128 = 1000000;
 pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
 
 pub struct BlockWaitTimeout {
-    block_number: u32,
-    timeout: Duration,
+    pub block_number: u32,
+    pub timeout: Duration,
 }
 
 impl BlockWaitTimeout {
@@ -117,13 +123,41 @@ impl TestNode {
         transaction: TransactionRequest,
         timeout: Option<BlockWaitTimeout>,
     ) -> Result<H256, RpcError> {
-        let tx_hash = unwrap_response::<H256>(
-            self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
-                transaction,
-            ))))
-            .await
-            .unwrap(),
-        )?;
+        self.send_transaction_inner(transaction, timeout, false).await
+    }
+
+    /// Execute an impersonated ethereum transaction.
+    pub async fn send_unsigned_transaction(
+        &mut self,
+        transaction: TransactionRequest,
+        timeout: Option<BlockWaitTimeout>,
+    ) -> Result<H256, RpcError> {
+        self.send_transaction_inner(transaction, timeout, true).await
+    }
+
+    async fn send_transaction_inner(
+        &mut self,
+        transaction: TransactionRequest,
+        timeout: Option<BlockWaitTimeout>,
+        unsigned: bool,
+    ) -> Result<H256, RpcError> {
+        let tx_hash = if unsigned {
+            unwrap_response::<H256>(
+                self.eth_rpc(EthRequest::EthSendUnsignedTransaction(Box::new(
+                    WithOtherFields::new(transaction),
+                )))
+                .await
+                .unwrap(),
+            )?
+        } else {
+            unwrap_response::<H256>(
+                self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
+                    transaction,
+                ))))
+                .await
+                .unwrap(),
+            )?
+        };
 
         if let Some(BlockWaitTimeout { block_number, timeout }) = timeout {
             self.wait_for_block_with_timeout(block_number, timeout).await.unwrap();
@@ -164,6 +198,9 @@ impl TestNode {
         n: u32,
         timeout: std::time::Duration,
     ) -> eyre::Result<()> {
+        if n <= self.best_block_number().await {
+            return Ok(());
+        }
         tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
             .await
             .map_err(|e| e.into())
@@ -202,6 +239,59 @@ impl TestNode {
         .unwrap()
     }
 
+    // Initialize with some balance a random account and return its address.
+    //
+    // Returns the initialized random account address and transaction hash.
+    // When a block wait time is provided, it is assumed that automine was
+    // previously enabled on the node.
+    pub async fn eth_transfer_to_unitialized_random_account(
+        &mut self,
+        from: Address,
+        transfer_amount: U256,
+        block_wait_timeout: Option<BlockWaitTimeout>,
+    ) -> (Address, H256) {
+        let dest_addr = Address::random();
+        let dest_h160 = H160::from_slice(dest_addr.as_slice());
+        let from_h160 = H160::from_slice(from.as_slice());
+
+        // Create a random account with some balance.
+        let from_initial_balance = self.get_balance(from_h160, None).await;
+        let dest_initial_balance = self.get_balance(dest_h160, None).await;
+        assert_eq!(dest_initial_balance, U256::ZERO);
+
+        let transaction =
+            TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
+        let tx_hash = self.send_transaction(transaction, block_wait_timeout).await.unwrap();
+
+        let is_automine =
+            unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
+                .unwrap();
+        if is_automine {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let receipt_info = self.get_transaction_receipt(tx_hash).await;
+
+            // Assert on balances after first transfer.
+            let from_balance = self.get_balance(from_h160, None).await;
+            let dest_balance = self.get_balance(dest_h160, None).await;
+            assert_eq!(
+                from_balance,
+                from_initial_balance
+                    - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used)
+                        .inner()
+                    - transfer_amount
+                    - U256::from(EXISTENTIAL_DEPOSIT),
+                "signer's balance should have changed"
+            );
+            assert_eq!(
+                dest_balance,
+                dest_initial_balance + transfer_amount,
+                "dest's balance should have changed"
+            );
+        }
+
+        (dest_addr, tx_hash)
+    }
+
     pub async fn deploy_contract(
         &mut self,
         code: &[u8],
@@ -216,6 +306,20 @@ impl TestNode {
             timeout: std::time::Duration::from_millis(1000),
         });
         self.send_transaction(deploy_contract_tx, block_wait).await.unwrap()
+    }
+
+    pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {
+        let result = self
+            .eth_rpc(EthRequest::EthGetStorageAt(
+                Address::from(ReviveAddress::new(contract_address)),
+                storage_key,
+                None,
+            ))
+            .await
+            .unwrap();
+        let hex_string = unwrap_response::<String>(result).unwrap();
+        let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
+        U256::from_str_radix(hex_value, 16).unwrap()
     }
 
     async fn wait_for_block_with_number(&self, n: u32) {
@@ -267,6 +371,13 @@ impl TestNode {
     }
 }
 
+pub fn is_transaction_in_block(transactions: &HashesOrTransactionInfos, transaction: H256) -> bool {
+    if let HashesOrTransactionInfos::Hashes(transactions) = transactions {
+        return transactions.contains(&transaction);
+    }
+    false
+}
+
 pub fn assert_with_tolerance<T>(actual: T, expected: T, tolerance: T, message: &str)
 where
     T: PartialOrd + std::ops::Sub<Output = T> + Debug + Copy,
@@ -285,11 +396,12 @@ where
     T: serde::de::DeserializeOwned,
 {
     match response {
-        ResponseResult::Success(value) => Ok(serde_json::from_value(value).unwrap()),
+        ResponseResult::Success(value) => serde_json::from_value(value.clone())
+            .or_else(|_| serde_json::from_str(&serde_json::to_string(&value)?))
+            .map_err(|_| RpcError::new(ErrorCode::ParseError)),
         ResponseResult::Error(err) => Err(err),
     }
 }
-
 pub struct ContractCode {
     pub init: Vec<u8>,
     pub runtime: Option<Vec<u8>>,
