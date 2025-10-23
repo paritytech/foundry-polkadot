@@ -294,7 +294,10 @@ impl ApiServer {
                 node_info!("eth_accounts");
                 self.accounts().to_rpc_result()
             }
-            EthRequest::EthGetLogs(filter) => self.get_logs(filter).await.to_rpc_result(),
+            EthRequest::EthGetLogs(filter) => {
+                node_info!("eth_getLogs");
+                self.get_logs(filter).await.to_rpc_result()
+            }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 

@@ -322,10 +322,10 @@ impl pallet_transaction_payment::Config for Runtime {
 parameter_types! {
     pub CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(30);
     pub storage ChainId: u64 = 420_420_420;
-    pub storage Author: [u8; 32] = [0xEE;32];
 }
 
-impl FindAuthor<AccountId> for Author {
+pub struct BlockAuthor;
+impl FindAuthor<AccountId> for BlockAuthor {
     fn find_author<'a, I>(_digests: I) -> Option<AccountId>
     where
         I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
@@ -342,7 +342,7 @@ impl pallet_revive::Config for Runtime {
     type ChainId = ChainId;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type Currency = Balances;
-    type FindAuthor = Author;
+    type FindAuthor = BlockAuthor;
     type NativeToEthRatio = ConstU32<1_000_000>;
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
@@ -473,8 +473,9 @@ pallet_revive::impl_runtime_apis_plus_revive!(
         fn slot_duration() -> SlotDuration {
             // This is not relevant when considering a manual-seal
             // driven node. The slot duration is used by Aura to determine
-            // the authority, but anvil-polkadot will provide same slot and
-            // not use this API to determine the correct slot.
+            // the authority, but anvil-polkadot will provide a single slot
+            // always, not taking into consideration computing based on this
+            // runtime API.
             SlotDuration::from_millis(6000)
         }
 
