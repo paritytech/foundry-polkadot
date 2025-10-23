@@ -10,6 +10,7 @@ use polkadot_sdk::{
     sp_runtime::BuildStorage,
 };
 use substrate_runtime::WASM_BINARY;
+
 /// This is a wrapper around the general Substrate ChainSpec type that allows manual changes to the
 /// genesis block.
 #[derive(Clone)]

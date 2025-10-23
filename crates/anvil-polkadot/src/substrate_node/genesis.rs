@@ -63,13 +63,14 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
     }
 }
 
-/// Converts H160 address to AccountId32 by padding with 0xee bytes
-/// This replicates the logic from AccountId32Mapper::to_account_id
+/// Converts H160 Eth address to AccountId32 by padding with 0xEE bytes
+/// This should only be used for genesis as it replicates the logic from
+/// AccountId32Mapper::to_account_id. Once the node is up and running, use the
+/// endpoints exposed through pallet-revive for this purpose.
 fn revive_address_to_account_id(h160: H160) -> AccountId {
     let h160_bytes = h160.as_fixed_bytes();
-    let mut account_id_bytes = [0u8; 32];
+    let mut account_id_bytes = [0xEE; 32];
     account_id_bytes[..20].copy_from_slice(h160_bytes);
-    account_id_bytes[20..].fill(0xee);
     AccountId::from(account_id_bytes)
 }
 
