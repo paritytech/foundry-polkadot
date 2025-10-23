@@ -641,9 +641,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 trace::<Runtime, _, _>(|| {
-                    // TODO: Find a way how to do it correctly
-                    // Use pallet-revive origin to bypass EIP-3607.
-                    let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
+                    let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+                        &H160::from_slice(input.caller().as_slice()),
+                    ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
                     let (gas_limit, storage_deposit_limit) =
