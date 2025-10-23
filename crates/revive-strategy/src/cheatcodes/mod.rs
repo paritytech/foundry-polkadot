@@ -667,6 +667,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         collect_deposit_from_hold: None,
                         effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
                         mock_handler: Some(Box::new(mock_handler.clone())),
+                        is_dry_run: false,
                     };
                     let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
                     let data = constructor_args.to_vec();
@@ -807,6 +808,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         collect_deposit_from_hold: None,
                         effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
                         mock_handler: Some(Box::new(mock_handler.clone())),
+                        is_dry_run: false,
                     };
                     Pallet::<Runtime>::bare_call(
                         origin,

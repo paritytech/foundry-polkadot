@@ -147,9 +147,17 @@ async fn test_mock_calldata() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_mock_nested() {
+async fn test_mock_nested_simple() {
     let runner = TEST_DATA_REVIVE.runner_revive();
-    let filter = Filter::new("testMockNested", "MockCall", ".*/revive/.*");
+    let filter = Filter::new("testMockNestedSimple", "MockCall", ".*/revive/.*");
+
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mock_nested_pay_doesnt_transfer() {
+    let runner = TEST_DATA_REVIVE.runner_revive();
+    let filter = Filter::new("testMockNestedPayDoesntTransfer", "MockCall", ".*/revive/.*");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }

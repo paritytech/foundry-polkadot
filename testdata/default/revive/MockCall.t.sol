@@ -17,6 +17,10 @@ contract Mock {
         return 2;
     }
 
+    function numberBPayable() public payable returns (uint256) {
+        return 2;
+    }
+
     function add(uint256 a, uint256 b) public pure returns (uint256) {
         return a + b;
     }
@@ -41,6 +45,10 @@ contract NestedMock {
 
     function sum() public view returns (uint256) {
         return inner.numberA() + inner.numberB();
+    }
+
+    function sumPay() public returns (uint256) {
+        return inner.numberA() + inner.numberBPayable{value:10}();
     }
 }
 
@@ -76,7 +84,7 @@ contract MockCallTest is DSTest {
         assertEq(target.numberB(), 10);
     }
 
-    function testMockNested() public {
+    function testMockNestedSimple() public {
         vm.pvm(true);
 
         Mock inner = new Mock();
@@ -89,6 +97,20 @@ contract MockCallTest is DSTest {
 
         // post-mock
         assertEq(target.sum(), 10);
+    }
+
+    function testMockNestedPayDoesntTransfer() public {
+        vm.pvm(true);
+
+        Mock inner = new Mock();
+        NestedMock target = new NestedMock(inner);
+
+        vm.mockCall(address(inner), abi.encodeWithSelector(inner.numberBPayable.selector), abi.encode(9));
+        // Check balance of inner before and after call to ensure no ETH was transferred
+        uint256 balance_before = address(inner).balance;
+        assertEq(target.sumPay(), 10);
+        uint256 balance_after = address(inner).balance;
+        assertEq(balance_before, balance_after);
     }
 
     // Ref: https://github.com/foundry-rs/foundry/issues/8066
