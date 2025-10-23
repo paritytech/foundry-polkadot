@@ -317,7 +317,6 @@ impl ApiServer {
             EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
             EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
-            // ------- Wallet -------
             EthRequest::EthAccounts(_) => {
                 node_info!("eth_accounts");
                 self.accounts().to_rpc_result()
