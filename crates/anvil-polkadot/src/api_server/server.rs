@@ -1,12 +1,12 @@
 use super::revive_conversions::{ReviveBytes, ReviveFilter};
 use crate::{
     api_server::{
-        ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, SubstrateU256,
-            convert_to_generic_transaction,
+            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId,
+            ReviveBlockNumberOrTag, SubstrateU256,
         },
+        ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
@@ -15,56 +15,58 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
-            BackendError, BackendWithOverlay, Client, Service,
             storage::{
                 AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
+            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
         },
         snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
-use alloy_primitives::{Address, B256, U64, U256};
-use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions};
+use alloy_primitives::{Address, B256, U256, U64};
+use alloy_rpc_types::{anvil::MineOptions, Filter, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
-use codec::{Decode, Encode};
-use futures::{StreamExt, channel::mpsc};
+use codec::{Decode, DecodeLimit, Encode};
+use futures::{channel::mpsc, StreamExt};
+use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
-    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
+    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
 };
 use polkadot_sdk::{
     pallet_revive::{
-        ReviveApi,
         evm::{
             Account, Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
             TransactionSigned,
         },
+        ReviveApi,
     },
     parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::HeaderBackend,
-    sc_service::SpawnTaskHandle,
+    sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
     sp_api::{Metadata, ProvideRuntimeApi},
     sp_arithmetic::Permill,
     sp_blockchain::Info,
-    sp_core::{self, Hasher, keccak_256},
+    sp_core::{self, keccak_256, Hasher},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
-use substrate_runtime::Balance;
+use substrate_runtime::{Balance, RuntimeCall, UncheckedExtrinsic};
 use subxt::{
-    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
-    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
-    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    backend::rpc::RpcClient, client::RuntimeVersion as SubxtRuntimeVersion,
+    config::substrate::H256, ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    Metadata as SubxtMetadata, OnlineClient,
 };
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
+const MAX_EXTRINSIC_DEPTH: u32 = 256;
 
 pub struct Wallet {
     accounts: Vec<Account>,
@@ -81,6 +83,7 @@ pub struct ApiServer {
     wallet: Wallet,
     snapshot_manager: SnapshotManager,
     impersonation_manager: ImpersonationManager,
+    tx_pool: Arc<TransactionPoolHandle>,
 }
 
 impl ApiServer {
@@ -117,6 +120,7 @@ impl ApiServer {
             eth_rpc_client,
             snapshot_manager,
             impersonation_manager,
+            tx_pool: substrate_service.tx_pool.clone(),
             wallet: Wallet {
                 accounts: vec![
                     Account::from(subxt_signer::eth::dev::baltathar()),
@@ -282,6 +286,15 @@ impl ApiServer {
             EthRequest::EthGetLogs(filter) => {
                 node_info!("eth_getLogs");
                 self.get_logs(filter).await.to_rpc_result()
+            }
+            //------- Transaction Pool ---------
+            EthRequest::DropAllTransactions() => {
+                node_info!("anvil_dropAllTransactions");
+                self.anvil_drop_all_transactions().await.to_rpc_result()
+            }
+            EthRequest::DropTransaction(eth_hash) => {
+                node_info!("anvil_dropTransaction");
+                self.anvil_drop_transaction(eth_hash).await.to_rpc_result()
             }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
@@ -1030,6 +1043,86 @@ impl ApiServer {
         self.backend.inject_total_issuance(latest_block, total_issuance);
 
         Ok(())
+    }
+
+    /// Drop all transactions from pool
+    async fn anvil_drop_all_transactions(&self) -> Result<()> {
+        let ready_txs = self.tx_pool.ready();
+        let future_txs = self.tx_pool.futures();
+
+        let mut invalid_txs = IndexMap::new();
+
+        for tx in ready_txs {
+            invalid_txs.insert(*tx.hash(), None);
+        }
+
+        for tx in future_txs {
+            invalid_txs.insert(*tx.hash(), None);
+        }
+
+        self.tx_pool.report_invalid(None, invalid_txs).await;
+
+        Ok(())
+    }
+
+    /// Drop a specific transaction from the pool by its ETH hash
+    async fn anvil_drop_transaction(&self, eth_hash: B256) -> Result<()> {
+        let ready_txs = self.tx_pool.ready();
+        let future_txs = self.tx_pool.futures();
+
+        // Search in ready transactions
+        for tx in ready_txs {
+            let encoded = tx.data().encode();
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &encoded[..],
+            ) {
+                if let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
+                    function:
+                        RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0
+                {
+                    let tx_eth_hash = keccak_256(&payload);
+                    if B256::from_slice(&tx_eth_hash) == eth_hash {
+                        let mut invalid_txs = IndexMap::new();
+                        invalid_txs.insert(*tx.hash(), None);
+                        self.tx_pool.report_invalid(None, invalid_txs).await;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // Search in future transactions
+        for tx in future_txs {
+            let encoded = tx.data().encode();
+            if let Ok(ext) = UncheckedExtrinsic::decode_all_with_depth_limit(
+                MAX_EXTRINSIC_DEPTH,
+                &mut &encoded[..],
+            ) {
+                if let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
+                    function:
+                        RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
+                    ..
+                } = ext.0
+                {
+                    let tx_eth_hash = keccak_256(&payload);
+                    if B256::from_slice(&tx_eth_hash) == eth_hash {
+                        let mut invalid_txs = IndexMap::new();
+                        invalid_txs.insert(*tx.hash(), None);
+                        self.tx_pool.report_invalid(None, invalid_txs).await;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // Transaction not found
+        Err(Error::InvalidParams(format!(
+            "Transaction with ETH hash {:?} not found in pool",
+            eth_hash
+        )))
     }
 }
 
