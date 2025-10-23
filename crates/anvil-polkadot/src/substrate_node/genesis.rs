@@ -1,21 +1,30 @@
 //! Genesis settings
 
-use crate::{config::AnvilNodeConfig, substrate_node::service::storage::well_known_keys};
+use crate::{
+    api_server::revive_conversions::{ReviveAddress, SubstrateU256},
+    config::AnvilNodeConfig,
+    substrate_node::service::storage::well_known_keys,
+};
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
+    pallet_revive::genesis::ContractData,
+    parachains_common::AccountId,
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
     sp_blockchain,
-    sp_core::storage::Storage,
+    sp_core::{H160, storage::Storage},
     sp_runtime::{
         BuildStorage,
         traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
     },
 };
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
+use substrate_runtime::Balance;
 
 /// Genesis settings
 #[derive(Clone, Debug, Default)]
@@ -54,6 +63,28 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
     }
 }
 
+/// Converts H160 address to AccountId32 by padding with 0xee bytes
+/// This replicates the logic from AccountId32Mapper::to_account_id
+fn revive_address_to_account_id(h160: H160) -> AccountId {
+    let h160_bytes = h160.as_fixed_bytes();
+    let mut account_id_bytes = [0u8; 32];
+    account_id_bytes[..20].copy_from_slice(h160_bytes);
+    account_id_bytes[20..].fill(0xee);
+    AccountId::from(account_id_bytes)
+}
+
+// Used to provide genesis accounts to pallet-revive
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviveGenesisAccount {
+    pub address: H160,
+    #[serde(default)]
+    pub balance: U256,
+    #[serde(default)]
+    pub nonce: u64,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub contract_data: Option<ContractData>,
+}
+
 impl GenesisConfig {
     pub fn as_storage_key_value(&self) -> Vec<(Vec<u8>, Vec<u8>)> {
         let storage = vec![
@@ -63,6 +94,79 @@ impl GenesisConfig {
         ];
         // TODO: add other fields
         storage
+    }
+
+    pub fn runtime_genesis_config_patch(&self) -> Value {
+        let accounts_with_balances: Vec<(AccountId, Balance)> = self
+            .alloc
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .map(|(address, account)| {
+                let revive_address = ReviveAddress::from(*address);
+                let account_id = revive_address_to_account_id(revive_address.inner());
+                // Manual balance conversion following polkadot-sdk logic
+                let balance = {
+                    let balance_u256 = SubstrateU256::from(account.balance).inner();
+                    let ed = substrate_runtime::ExistentialDeposit::get();
+
+                    // Try to convert U256 to u128, following the same logic as BalanceWithDust
+                    if let Ok(balance_u128) = balance_u256.try_into() {
+                        // Add existential deposit to the balance
+                        ed.saturating_add(balance_u128)
+                    } else {
+                        // If U256 is too large for u128, use u128::MAX as fallback
+                        u128::MAX
+                    }
+                };
+                (account_id, balance)
+            })
+            .collect();
+        // Relies on ReviveGenesisAccount type from pallet-revive
+        let revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
+            .alloc
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .map(|(address, account)| {
+                let genesis_address: H160 = ReviveAddress::from(*address).inner();
+                let genesis_balance: U256 = account.balance;
+                let genesis_nonce: u64 = account.nonce.unwrap_or_default();
+                let contract_data: Option<ContractData> = if account.code.is_some() {
+                    Some(ContractData {
+                        code: account.code.clone().map(|code| code.to_vec()).unwrap_or_default(),
+                        storage: account
+                            .storage
+                            .clone()
+                            .map(|storage| {
+                                storage
+                                    .into_iter()
+                                    .map(|(k, v)| (k.0.into(), v.0.into()))
+                                    .collect::<BTreeMap<_, _>>()
+                            })
+                            .unwrap_or_default(),
+                    })
+                } else {
+                    None
+                };
+
+                ReviveGenesisAccount {
+                    address: genesis_address,
+                    balance: genesis_balance,
+                    nonce: genesis_nonce,
+                    contract_data,
+                }
+            })
+            .collect();
+
+        json!({
+            "balances": {
+                "balances": accounts_with_balances,
+            },
+            "revive": {
+                "accounts": revive_genesis_accounts,
+            },
+        })
     }
 }
 
