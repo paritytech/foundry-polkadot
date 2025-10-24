@@ -187,6 +187,19 @@ jobs:
         with:
           target: ${{ matrix.target }}, wasm32-unknown-unknown
           components: rust-src
+      - name: Install clang (Ubuntu)
+        if: contains(matrix.runner_label, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev
+  
+      - name: Install clang (macOS)
+        if: contains(matrix.runner_label, 'macos')
+        run: |
+          brew install llvm
+          brew link llvm
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
       - name: Install Resolc
         run: |
           cargo install rvm-rs
@@ -223,20 +236,6 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install clang (Ubuntu)
-        if: contains(matrix.runner_label, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
-  
-      - name: Install clang (macOS)
-        if: contains(matrix.runner_label, 'macos')
-        run: |
-          brew install llvm
-          brew link llvm
-          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
 
       - name: Test
         env:
