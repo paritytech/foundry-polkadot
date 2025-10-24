@@ -3,8 +3,8 @@ use foundry_cheatcodes::Ecx;
 use polkadot_sdk::pallet_revive::{
     Pallet, U256, Weight,
     evm::{
-        CallTrace, CallTracer, CallTracerConfig, PrestateTrace, PrestateTraceInfo, PrestateTracer,
-        PrestateTracerConfig,
+        CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
+        PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
     },
     tracing::{Tracing, trace as trace_revive},
 };
@@ -22,10 +22,11 @@ pub struct Tracer {
 
 impl Tracer {
     pub fn new(is_recording: bool) -> Self {
-        let call_tracer = CallTracer::new(
-            CallTracerConfig { with_logs: true, only_top_call: false },
-            Pallet::<Runtime>::evm_gas_from_weight as fn(Weight) -> U256,
-        );
+        let call_tracer =
+            match Pallet::<revive_env::Runtime>::evm_tracer(TracerType::CallTracer(None)) {
+                ReviveTracer::CallTracer(tracer) => tracer,
+                _ => unreachable!("Expected CallTracer variant"),
+            };
 
         let prestate_tracer: PrestateTracer<revive_env::Runtime> =
             PrestateTracer::new(PrestateTracerConfig {

@@ -139,7 +139,7 @@ fn gen_rpc_module(
         let chain =
             polkadot_sdk::sc_rpc::chain::new_full(client.clone(), task_executor.clone()).into_rpc();
         let (state, child_state) =
-            polkadot_sdk::sc_rpc::state::new_full(client.clone(), task_executor.clone());
+            polkadot_sdk::sc_rpc::state::new_full(client.clone(), task_executor.clone(), None);
         let state = state.into_rpc();
         let child_state = child_state.into_rpc();
 
