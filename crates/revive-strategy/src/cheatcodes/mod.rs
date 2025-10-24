@@ -22,6 +22,7 @@ use std::{
 
 use polkadot_sdk::{
     frame_support::traits::{Currency, fungible::Mutate},
+    frame_support::dispatch::DispatchClass,
     frame_system,
     pallet_balances,
     pallet_revive::{
@@ -30,8 +31,7 @@ use polkadot_sdk::{
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
-    sp_runtime::traits::SaturatedConversion,
-    sp_weights::Weight,
+    sp_runtime::traits::SaturatedConversion
 };
 
 use crate::{execute_with_externalities, trace, tracing::apply_prestate_trace};
@@ -654,7 +654,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         // 1) Weight cap
         let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
-        let normal = block_weights.per_class.normal;
+        let normal = block_weights.get(DispatchClass::Normal);
         let max_weight_cap = normal
             .max_extrinsic
             .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
@@ -672,7 +672,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         // 3) Gas limit
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                block_basefee,
+                Default::default(),
                 max_weight_cap,
                 storage_deposit_cap,
             );
@@ -809,7 +809,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         // 1) Weight cap
         let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
-        let normal = block_weights.per_class.normal;
+        let normal = block_weights.get(DispatchClass::Normal);
         let max_weight_cap = normal
             .max_extrinsic
             .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
@@ -827,7 +827,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         // 3) Gas limit
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                block_basefee,
+                Default::default(),
                 max_weight_cap,
                 storage_deposit_cap,
             );
