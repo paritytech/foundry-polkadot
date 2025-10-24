@@ -191,7 +191,7 @@ jobs:
         if: contains(matrix.runner_label, 'parity-large-new')
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
+          sudo apt-get install -y clang libclang-dev unzip
   
       - name: Install clang (macOS)
         if: contains(matrix.runner_label, 'macos')
