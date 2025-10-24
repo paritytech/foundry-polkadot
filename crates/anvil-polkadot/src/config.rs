@@ -455,7 +455,7 @@ Genesis Number
 
         for wallet in &self.genesis_accounts {
             available_accounts.push(format!("{:?}", Account::from(wallet.clone()).address()));
-            private_keys.push(format!("0x{}", hex::encode(wallet.secret_key())));
+            private_keys.push(hex::encode_prefixed(wallet.secret_key()));
         }
 
         if let Some(ref rng_gen) = self.account_generator {
@@ -599,7 +599,7 @@ impl AnvilNodeConfig {
             .unwrap_or(CHAIN_ID)
     }
 
-    /// Sets the chain id and updates all wallets
+    /// Sets the chain id
     pub fn set_chain_id(&mut self, chain_id: Option<impl Into<u64>>) {
         self.chain_id = chain_id.map(Into::into);
     }

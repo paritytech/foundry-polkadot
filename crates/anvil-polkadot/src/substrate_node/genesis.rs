@@ -2,7 +2,7 @@
 
 use crate::{config::AnvilNodeConfig, substrate_node::service::storage::well_known_keys};
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
@@ -16,6 +16,7 @@ use polkadot_sdk::{
     },
 };
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
+use subxt_signer::eth::Keypair;
 
 /// Genesis settings
 #[derive(Clone, Debug, Default)]
@@ -32,6 +33,10 @@ pub struct GenesisConfig {
     pub base_fee_per_gas: u64,
     /// The genesis header gas limit.
     pub gas_limit: Option<u128>,
+    /// Genesis accounts
+    pub genesis_accounts: Vec<Keypair>,
+    /// Genesis balance
+    pub genesis_balance: U256,
 }
 
 impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
@@ -50,6 +55,8 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 .expect("Genesis block number overflow"),
             base_fee_per_gas: anvil_config.get_base_fee(),
             gas_limit: anvil_config.gas_limit,
+            genesis_accounts: anvil_config.genesis_accounts.clone(),
+            genesis_balance: anvil_config.genesis_balance,
         }
     }
 }

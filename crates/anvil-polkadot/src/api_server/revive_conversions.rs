@@ -180,7 +180,7 @@ impl ReviveBytes {
     }
 }
 
-pub fn convert_to_generic_transaction(
+pub(crate) fn convert_to_generic_transaction(
     transaction_request: TransactionRequest,
 ) -> GenericTransaction {
     GenericTransaction {

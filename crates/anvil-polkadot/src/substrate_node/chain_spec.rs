@@ -1,7 +1,6 @@
 use crate::{
     api_server::revive_conversions::SubstrateU256, substrate_node::genesis::GenesisConfig,
 };
-use alloy_primitives::U256;
 use alloy_signer_local::PrivateKeySigner;
 use polkadot_sdk::{
     frame_support,
@@ -117,12 +116,11 @@ fn props() -> Properties {
 
 pub fn development_chain_spec(
     genesis_config: GenesisConfig,
-    signers: &[Keypair],
-    genesis_balance: U256,
 ) -> Result<DevelopmentChainSpec, String> {
-    let genesis_balance = SubstrateU256::from(genesis_balance).inner().as_u128();
-    let mut balance_map: BTreeMap<AccountId32, u128> = signers
-        .into_iter()
+    let genesis_balance = SubstrateU256::from(genesis_config.genesis_balance).inner().as_u128();
+    let mut balance_map: BTreeMap<AccountId32, u128> = genesis_config
+        .genesis_accounts
+        .iter()
         .map(|keypair| (Account::from(keypair.clone()).substrate_account(), genesis_balance))
         .collect();
     if let Some(alloc) = &genesis_config.alloc {

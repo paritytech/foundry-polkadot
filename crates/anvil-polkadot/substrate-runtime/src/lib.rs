@@ -35,23 +35,6 @@ pub mod currency {
     pub const DOLLARS: Balance = 100 * CENTS;
 }
 
-/// Provides getters for genesis configuration presets.
-pub mod genesis_config_presets {
-    use super::*;
-
-    use alloc::{vec, vec::Vec};
-
-    /// Get the set of the available genesis config presets.
-    pub fn get_preset(_id: &PresetId) -> Option<Vec<u8>> {
-        return None;
-    }
-
-    /// List of supported presets.
-    pub fn preset_names() -> Vec<PresetId> {
-        vec![PresetId::from(sp_genesis_builder::DEV_RUNTIME_PRESET)]
-    }
-}
-
 /// The runtime version.
 #[runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
@@ -384,11 +367,11 @@ pallet_revive::impl_runtime_apis_plus_revive!(
         }
 
         fn get_preset(id: &Option<PresetId>) -> Option<Vec<u8>> {
-            get_preset::<RuntimeGenesisConfig>(id, self::genesis_config_presets::get_preset)
+            get_preset::<RuntimeGenesisConfig>(id, |_| None)
         }
 
         fn preset_names() -> Vec<PresetId> {
-            self::genesis_config_presets::preset_names()
+            vec![]
         }
     }
 );

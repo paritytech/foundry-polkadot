@@ -1,12 +1,12 @@
-use super::revive_conversions::{ReviveBytes, ReviveFilter};
 use crate::{
     api_server::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, SubstrateU256,
-            convert_to_generic_transaction,
+            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
+            ReviveFilter, SubstrateU256, convert_to_generic_transaction,
         },
+        signer::DevSigner,
     },
     logging::LoggingManager,
     macros::node_info,
@@ -43,8 +43,8 @@ use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
         evm::{
-            Account, Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
-            TransactionSigned, TransactionUnsigned,
+            Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
+            TransactionSigned,
         },
     },
     parachains_common::{AccountId, Hash, Nonce},
@@ -58,11 +58,7 @@ use polkadot_sdk::{
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use substrate_runtime::Balance;
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
@@ -73,48 +69,6 @@ use subxt_signer::eth::Keypair;
 use tokio::try_join;
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
-
-pub struct DevSigner {
-    keypairs: HashMap<H160, Keypair>,
-}
-
-impl DevSigner {
-    pub fn new(private_keys: Vec<Keypair>) -> Result<Self> {
-        let addresses: Vec<_> =
-            private_keys.iter().map(|kp| Account::from(kp.clone()).address()).collect();
-        let keypairs: HashMap<H160, Keypair> =
-            addresses.iter().copied().zip(private_keys).collect();
-        Ok(Self { keypairs })
-    }
-
-    fn accounts(&self) -> Vec<H160> {
-        self.keypairs.keys().copied().collect()
-    }
-
-    fn sign_transaction(
-        &self,
-        address: H160,
-        transaction: TransactionUnsigned,
-    ) -> Result<TransactionSigned> {
-        let keypair = self.keypairs.get(&address).ok_or(Error::NoSignerAvailable)?;
-        let account = Account::from(keypair.clone());
-        Ok(account.sign_transaction(transaction))
-    }
-
-    fn sign(&self, address: H160, message: &[u8]) -> Result<[u8; 65]> {
-        let keypair = self.keypairs.get(&address).ok_or(Error::NoSignerAvailable)?;
-        Ok(keypair.sign(message).0)
-    }
-
-    fn sign_typed_data(&self, address: H160, typed_data: &TypedData) -> Result<[u8; 65]> {
-        let keypair = self.keypairs.get(&address).ok_or(Error::NoSignerAvailable)?;
-
-        // Compute the EIP-712 signing hash
-        let hash =
-            typed_data.eip712_signing_hash().map_err(|e| Error::InternalError(e.to_string()))?;
-        Ok(keypair.sign_prehashed(hash.as_ref()).0)
-    }
-}
 
 pub struct ApiServer {
     eth_rpc_client: EthRpcClient,
@@ -680,7 +634,10 @@ impl ApiServer {
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
 
         let payload = match account {
-            Some(addr) => self.wallet.sign_transaction(addr, tx)?.signed_payload(),
+            Some(addr) => self
+                .wallet
+                .sign_transaction(Address::from(ReviveAddress::new(addr)), tx)?
+                .signed_payload(),
             None => {
                 let mut fake_signature = [0; 65];
                 fake_signature[12..32].copy_from_slice(from.as_bytes());
@@ -835,17 +792,10 @@ impl ApiServer {
 
     pub fn accounts(&self) -> Result<Vec<H160>> {
         node_info!("eth_accounts");
-        let mut unique = HashSet::new();
-        let mut accounts: Vec<H160> = Vec::new();
+        let mut accounts = HashSet::new();
 
-        accounts.extend(self.wallet.accounts().into_iter().filter(|addr| unique.insert(*addr)));
-        accounts.extend(
-            self.impersonation_manager
-                .impersonated_accounts
-                .clone()
-                .into_iter()
-                .filter(|addr| unique.insert(*addr)),
-        );
+        accounts.extend(self.wallet.accounts());
+        accounts.extend(self.impersonation_manager.impersonated_accounts.clone());
         Ok(accounts.into_iter().collect())
     }
 
@@ -1016,10 +966,7 @@ impl ApiServer {
     // ----- Wallet RPCs
     async fn sign(&self, address: Address, content: impl AsRef<[u8]>) -> Result<String> {
         node_info!("eth_sign");
-        let signature = alloy_primitives::hex::encode(
-            self.wallet.sign(ReviveAddress::from(address).inner(), content.as_ref())?,
-        );
-        Ok(format!("0x{signature}"))
+        Ok(alloy_primitives::hex::encode_prefixed(self.wallet.sign(address, content.as_ref())?))
     }
 
     fn sign_typed_data(&self, _address: Address, _data: serde_json::Value) -> Result<String> {
@@ -1036,21 +983,17 @@ impl ApiServer {
         &self,
         tx: WithOtherFields<TransactionRequest>,
     ) -> Result<TransactionSigned> {
+        let from = tx.inner().from.ok_or(Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
         let generic_transaction = convert_to_generic_transaction(tx.into_inner());
         let unsigned_transaction = generic_transaction
-            .clone()
             .try_into_unsigned()
             .map_err(|_| Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
-        let from =
-            generic_transaction.from.ok_or(Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
         self.wallet.sign_transaction(from, unsigned_transaction)
     }
 
     async fn sign_typed_data_v4(&self, address: Address, data: TypedData) -> Result<String> {
         node_info!("eth_signTypedData_v4");
-        let addr = ReviveAddress::from(address).inner();
-        let signature = alloy_primitives::hex::encode(self.wallet.sign_typed_data(addr, &data)?);
-        Ok(format!("0x{signature}"))
+        Ok(alloy_primitives::hex::encode_prefixed(self.wallet.sign_typed_data(address, &data)?))
     }
 
     async fn get_account(

@@ -14,6 +14,7 @@ use subxt_signer::eth::Keypair;
 pub mod error;
 pub mod revive_conversions;
 mod server;
+mod signer;
 
 pub type ApiHandle = mpsc::Sender<ApiRequest>;
 
