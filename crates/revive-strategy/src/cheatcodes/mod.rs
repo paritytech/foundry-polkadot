@@ -677,7 +677,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         evm_value,
                         Weight::MAX,
                         // TODO: fixing.
-                        BalanceOf::<Runtime>::max_value(),
+                        BalanceOf::<Runtime>::MAX,
                         code,
                         data,
                         salt,
@@ -785,7 +785,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         evm_value,
                         Weight::MAX,
                         // TODO: fixing.
-                        BalanceOf::<Runtime>::max_value(),
+                        BalanceOf::<Runtime>::MAX,
                         call.input.bytes(ecx).to_vec(),
                         ExecConfig::new_substrate_tx(),
                     )
