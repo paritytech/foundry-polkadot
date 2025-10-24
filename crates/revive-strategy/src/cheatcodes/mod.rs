@@ -21,8 +21,10 @@ use std::{
 };
 
 use polkadot_sdk::{
-    frame_support::dispatch::DispatchClass,
-    frame_support::traits::{Currency, fungible::Mutate},
+    frame_support::{
+        dispatch::DispatchClass,
+        traits::{Currency, fungible::Mutate},
+    },
     frame_system, pallet_balances,
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
