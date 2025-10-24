@@ -1,5 +1,3 @@
-use std::u64;
-
 use alloy_primitives::{Address, B256, Bytes, Log, U256 as RU256};
 use foundry_evm_core::{Ecx, InspectorExt};
 use foundry_evm_traces::{
