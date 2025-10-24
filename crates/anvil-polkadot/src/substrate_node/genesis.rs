@@ -1,8 +1,7 @@
 //! Genesis settings
 
 use crate::{
-    api_server::revive_conversions::{ReviveAddress, SubstrateU256},
-    config::AnvilNodeConfig,
+    api_server::revive_conversions::ReviveAddress, config::AnvilNodeConfig,
     substrate_node::service::storage::well_known_keys,
 };
 use alloy_genesis::GenesisAccount;
@@ -10,7 +9,6 @@ use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
     pallet_revive::genesis::ContractData,
-    parachains_common::AccountId,
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
@@ -24,7 +22,6 @@ use polkadot_sdk::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
-use substrate_runtime::Balance;
 
 /// Genesis settings
 #[derive(Clone, Debug, Default)]
@@ -63,17 +60,6 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
     }
 }
 
-/// Converts H160 Eth address to AccountId32 by padding with 0xEE bytes
-/// This should only be used for genesis as it replicates the logic from
-/// AccountId32Mapper::to_account_id. Once the node is up and running, use the
-/// endpoints exposed through pallet-revive for this purpose.
-fn revive_address_to_account_id(h160: H160) -> AccountId {
-    let h160_bytes = h160.as_fixed_bytes();
-    let mut account_id_bytes = [0xEE; 32];
-    account_id_bytes[..20].copy_from_slice(h160_bytes);
-    AccountId::from(account_id_bytes)
-}
-
 // Used to provide genesis accounts to pallet-revive
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReviveGenesisAccount {
@@ -98,31 +84,6 @@ impl GenesisConfig {
     }
 
     pub fn runtime_genesis_config_patch(&self) -> Value {
-        let accounts_with_balances: Vec<(AccountId, Balance)> = self
-            .alloc
-            .clone()
-            .unwrap_or_default()
-            .iter()
-            .map(|(address, account)| {
-                let revive_address = ReviveAddress::from(*address);
-                let account_id = revive_address_to_account_id(revive_address.inner());
-                // Manual balance conversion following polkadot-sdk logic
-                let balance = {
-                    let balance_u256 = SubstrateU256::from(account.balance).inner();
-                    let ed = substrate_runtime::ExistentialDeposit::get();
-
-                    // Try to convert U256 to u128, following the same logic as BalanceWithDust
-                    if let Ok(balance_u128) = balance_u256.try_into() {
-                        // Add existential deposit to the balance
-                        ed.saturating_add(balance_u128)
-                    } else {
-                        // If U256 is too large for u128, use u128::MAX as fallback
-                        u128::MAX
-                    }
-                };
-                (account_id, balance)
-            })
-            .collect();
         // Relies on ReviveGenesisAccount type from pallet-revive
         let revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
             .alloc
@@ -161,9 +122,6 @@ impl GenesisConfig {
             .collect();
 
         json!({
-            "balances": {
-                "balances": accounts_with_balances,
-            },
             "revive": {
                 "accounts": revive_genesis_accounts,
             },
