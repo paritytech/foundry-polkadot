@@ -22,6 +22,7 @@ use std::{
 
 use polkadot_sdk::{
     frame_support::traits::{Currency, fungible::Mutate},
+    frame_system,
     pallet_balances,
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
@@ -29,6 +30,7 @@ use polkadot_sdk::{
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
+    sp_runtime::traits::SaturatedConversion,
     sp_weights::Weight,
 };
 
@@ -650,11 +652,29 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let constructor_args = find_contract.constructor_args();
         let contract = find_contract.contract();
 
+        // 1) Weight cap
+        let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
+        let normal = block_weights.per_class.normal;
+        let max_weight_cap = normal
+            .max_extrinsic
+            .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
+            .saturating_sub(normal.base_extrinsic);
+
+        // 2) Storage deposit cap
+        let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
+        let caller_acc = AccountId::to_fallback_account_id(&H160::from_slice(input.caller().as_slice()));
+        let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
+        let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
+        let evm_value_native: BalanceOf<Runtime> = evm_value.min(u128::MAX.into()).as_u128().saturated_into();
+        let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
+        let storage_deposit_cap: u128 = available.saturated_into();
+
+        // 3) Gas limit
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
-                Weight::MAX,
-                1u128 << 99,
+                block_basefee,
+                max_weight_cap,
+                storage_deposit_cap,
             );
         let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
 
@@ -787,11 +807,29 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         tracing::info!("running call in PVM {:#?}", call);
 
+        // 1) Weight cap
+        let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
+        let normal = block_weights.per_class.normal;
+        let max_weight_cap = normal
+            .max_extrinsic
+            .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
+            .saturating_sub(normal.base_extrinsic);
+
+        // 2) Storage deposit cap
+        let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
+        let caller_acc = AccountId::to_fallback_account_id(&H160::from_slice(call.caller.as_slice()));
+        let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
+        let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
+        let evm_value_native: BalanceOf<Runtime> = evm_value.min(u128::MAX.into()).as_u128().saturated_into();
+        let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
+        let storage_deposit_cap: u128 = available.saturated_into();
+
+        // 3) Gas limit
         let max_gas =
             <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
-                Weight::MAX,
-                1u128 << 99,
+                block_basefee,
+                max_weight_cap,
+                storage_deposit_cap,
             );
         let gas_limit = sp_core::U256::from(call.gas_limit).min(max_gas);
 
