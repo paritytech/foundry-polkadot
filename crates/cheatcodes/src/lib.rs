@@ -22,7 +22,7 @@ use spec::Status;
 
 pub use Vm::ForgeContext;
 pub use config::CheatsConfig;
-pub use error::{Error, ErrorKind, Result};
+pub use error::{Error, ErrorKind, Result, precompile_error};
 pub use inspector::{
     BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor,
 };
@@ -181,7 +181,7 @@ impl std::ops::DerefMut for CheatsCtxt<'_, '_, '_, '_> {
 
 impl CheatsCtxt<'_, '_, '_, '_> {
     #[inline]
-    pub(crate) fn is_precompile(&self, address: &Address) -> bool {
+    pub fn is_precompile(&self, address: &Address) -> bool {
         self.ecx.journaled_state.inner.precompiles.contains(address)
     }
 }
