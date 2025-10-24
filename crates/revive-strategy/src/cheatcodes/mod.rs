@@ -946,6 +946,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             );
             return None;
         }
+        
+        tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
 
         let mock_handler = MockHandlerImpl::new(
             &ecx,
@@ -955,7 +957,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             state,
         );
 
-        tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
         let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
