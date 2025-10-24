@@ -182,6 +182,11 @@ jobs:
           python-version: 3.11
       - name: Install Vyper
         run: pip --version && pip install vyper==0.4.3
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}, wasm32-unknown-unknown
+          components: rust-src
       - name: Install Resolc
         run: |
           cargo install rvm-rs
@@ -232,12 +237,6 @@ jobs:
           brew link llvm
           echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          target: wasm32-unknown-unknown
-          components: rust-src
 
       - name: Test
         env:
