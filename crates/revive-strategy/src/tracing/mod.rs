@@ -1,15 +1,12 @@
 use alloy_primitives::{Address, Bytes, U256 as RU256};
 use foundry_cheatcodes::Ecx;
-use polkadot_sdk::{
-    frame_support::weights::Weight,
-    pallet_revive::{
-        Config, Pallet, U256,
-        evm::{
-            CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
-            PrestateTracerConfig,
-        },
-        tracing::trace as trace_revive,
+use polkadot_sdk::pallet_revive::{
+    Config, Pallet, U256,
+    evm::{
+        CallTrace, PrestateTrace, PrestateTraceInfo, PrestateTracer, PrestateTracerConfig, Tracer,
+        TracerType,
     },
+    tracing::trace as trace_revive,
 };
 use revm::{context::JournalTr, state::Bytecode};
 
@@ -17,11 +14,11 @@ use revm::{context::JournalTr, state::Bytecode};
 // This is a temporary solution to the fact that custom Tracer is not implementable for the time
 // being.
 pub fn trace<T: Config, R, F: FnOnce() -> R>(f: F) -> (R, Option<CallTrace<U256>>, PrestateTrace) {
-    let mut call_tracer = CallTracer::new(
-        Default::default(),
-        Pallet::<revive_env::Runtime>::evm_gas_from_weight as fn(Weight) -> U256,
-    );
-
+    let mut call_tracer =
+        match Pallet::<revive_env::Runtime>::evm_tracer(TracerType::CallTracer(None)) {
+            Tracer::CallTracer(tracer) => tracer,
+            _ => unreachable!("Expected CallTracer variant"),
+        };
     let mut prestate_tracer: PrestateTracer<revive_env::Runtime> =
         PrestateTracer::new(PrestateTracerConfig {
             diff_mode: true,
