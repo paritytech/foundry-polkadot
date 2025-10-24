@@ -11,7 +11,6 @@ use std::marker::PhantomData;
 
 /// Consensus data provider for Aura.
 pub struct SameSlotConsensusDataProvider<B, P> {
-    // slot duration
     _phantom: PhantomData<(B, P)>,
 }
 
