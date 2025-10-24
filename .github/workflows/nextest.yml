@@ -191,7 +191,7 @@ jobs:
         if: contains(matrix.runner_label, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
+          sudo apt-get install -y clang libclang-dev build-essential
   
       - name: Install clang (macOS)
         if: contains(matrix.runner_label, 'macos')
