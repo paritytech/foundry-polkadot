@@ -17,7 +17,7 @@ use crate::execute_with_externalities;
 pub struct Tracer {
     pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
     pub prestate_tracer: PrestateTracer<Runtime>,
-    pub storage_acceses: Option<StorageTracer>,
+    pub storage_accesses: Option<StorageTracer>,
 }
 
 impl Tracer {
@@ -36,7 +36,7 @@ impl Tracer {
 
         let storage_tracer = if is_recording { Some(Default::default()) } else { None };
 
-        Self { call_tracer, prestate_tracer, storage_acceses: storage_tracer }
+        Self { call_tracer, prestate_tracer, storage_accesses: storage_tracer }
     }
 
     pub fn trace<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
@@ -59,7 +59,7 @@ impl Tracer {
 
     /// Collects recorded accesess
     pub fn get_recorded_acceses(&mut self) -> Vec<AccountAccess> {
-        self.storage_acceses.take().unwrap_or_default().get_records()
+        self.storage_accesses.take().unwrap_or_default().get_records()
     }
 
     /// Applies `PrestateTrace` diffs to the revm state
@@ -119,7 +119,7 @@ impl Tracing for Tracer {
     fn watch_address(&mut self, addr: &polkadot_sdk::sp_core::H160) {
         self.prestate_tracer.watch_address(addr);
         self.call_tracer.watch_address(addr);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.watch_address(addr);
         }
     }
@@ -152,7 +152,7 @@ impl Tracing for Tracer {
             input,
             gas,
         );
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.enter_child_span(
                 from,
                 to,
@@ -172,7 +172,7 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.instantiate_code(code, salt);
         self.call_tracer.instantiate_code(code, salt);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.instantiate_code(code, salt);
         }
     }
@@ -180,7 +180,7 @@ impl Tracing for Tracer {
     fn balance_read(&mut self, addr: &polkadot_sdk::sp_core::H160, value: U256) {
         self.prestate_tracer.balance_read(addr, value);
         self.call_tracer.balance_read(addr, value);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.balance_read(addr, value);
         }
     }
@@ -188,7 +188,7 @@ impl Tracing for Tracer {
     fn storage_read(&mut self, key: &polkadot_sdk::pallet_revive::Key, value: Option<&[u8]>) {
         self.prestate_tracer.storage_read(key, value);
         self.call_tracer.storage_read(key, value);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.storage_read(key, value);
         }
     }
@@ -201,7 +201,7 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.storage_write(key, old_value.clone(), new_value);
         self.call_tracer.storage_write(key, old_value.clone(), new_value);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.storage_write(key, old_value, new_value);
         }
     }
@@ -214,7 +214,7 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.log_event(event, topics, data);
         self.call_tracer.log_event(event, topics, data);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.log_event(event, topics, data);
         }
     }
@@ -226,7 +226,7 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.exit_child_span(output, gas_left);
         self.call_tracer.exit_child_span(output, gas_left);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.exit_child_span(output, gas_left);
         }
     }
@@ -238,7 +238,7 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);
-        if let Some(storage_tracer) = &mut self.storage_acceses {
+        if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.exit_child_span_with_error(error, gas_left);
         }
     }
