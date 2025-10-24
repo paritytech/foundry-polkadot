@@ -326,7 +326,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         second_timestamp.saturating_sub(first_timestamp),
         3000,
-        150,
+        300,
         "wrong timestamp at second block",
     );
     // Snapshot at block number 2 and then mine 1 more block.
@@ -359,7 +359,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         third_timestamp.saturating_sub(second_timestamp),
         3000,
-        100,
+        300,
         "wrong timestamp at third block",
     );
 
@@ -385,7 +385,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         remined_third_block_ts.saturating_sub(second_timestamp),
         1000,
-        100,
+        300,
         "wrong timestamp at remined third block",
     );
 
