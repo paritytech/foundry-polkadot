@@ -50,7 +50,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu
-            runner: ubuntu-latest
+            runner: parity-large-new
           - os: macos
             runner: macos-latest
           - os: windows
