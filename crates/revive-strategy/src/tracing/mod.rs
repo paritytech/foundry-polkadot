@@ -57,7 +57,7 @@ impl Tracer {
         })
     }
 
-    /// Collects recorded accessess
+    /// Collects recorded accesses
     pub fn get_recorded_accesses(&mut self) -> Vec<AccountAccess> {
         self.storage_accesses.take().unwrap_or_default().get_records()
     }
