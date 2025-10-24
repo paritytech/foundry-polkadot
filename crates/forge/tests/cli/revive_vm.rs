@@ -1120,7 +1120,7 @@ forgetest!(record_accesses, |prj, cmd| {
       proxy = address(new Proxy(existing));
     }
 
-    function testCreateAcceses() public {
+    function testCreateaccesses() public {
       vm.startStateDiffRecording();
       C target = new C{value: 1 ether}(100);
       Vm.AccountAccess[] memory records = vm.stopAndReturnStateDiff();
@@ -1143,7 +1143,7 @@ forgetest!(record_accesses, |prj, cmd| {
       assertEq(records[0].storageAccesses[1].reverted, false);    
     }
 
-    function testCallAcceses() public {
+    function testCallaccesses() public {
       vm.startStateDiffRecording();
       (bool success,) = address(existing).call(abi.encodeWithSelector(C.setter.selector, 55));
       if (!success) {
@@ -1168,7 +1168,7 @@ forgetest!(record_accesses, |prj, cmd| {
       assertEq(records[0].storageAccesses[1].newValue, bytes32(uint(55)), "newValue");
       assertEq(records[0].storageAccesses[1].reverted, false);    
     }
-    function testCallProxyAcceses() public {
+    function testCallProxyaccesses() public {
       vm.startStateDiffRecording();
       (bool success,) = address(proxy).call(abi.encodeWithSelector(Proxy.proxyCall.selector, 55));
       if (!success) {
@@ -1209,7 +1209,7 @@ Compiler run successful!
 Compiler run successful!
 
 Ran 3 tests for src/Test.t.sol:StateDiffTest
-[PASS] testCallAcceses() ([GAS])
+[PASS] testCallaccesses() ([GAS])
 Traces:
   [2675638] StateDiffTest::setUp()
     ├─ [1291513] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
@@ -1218,7 +1218,7 @@ Traces:
     │   └─ ← [Return] 6405 bytes of code
     └─ ← [Stop]
 
-  [1320342] StateDiffTest::testCallAcceses()
+  [1320342] StateDiffTest::testCallaccesses()
     ├─ [0] VM::startStateDiffRecording()
     │   └─ ← [Return]
     ├─ [1291500] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setter(55)
@@ -1227,7 +1227,7 @@ Traces:
     │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 1)]
     └─ ← [Stop]
 
-[PASS] testCallProxyAcceses() ([GAS])
+[PASS] testCallProxyaccesses() ([GAS])
 Traces:
   [2675638] StateDiffTest::setUp()
     ├─ [1291513] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
@@ -1236,7 +1236,7 @@ Traces:
     │   └─ ← [Return] 6405 bytes of code
     └─ ← [Stop]
 
-  [1338955] StateDiffTest::testCallProxyAcceses()
+  [1338955] StateDiffTest::testCallProxyaccesses()
     ├─ [0] VM::startStateDiffRecording()
     │   └─ ← [Return]
     ├─ [1301600] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::proxyCall(55)
@@ -1247,7 +1247,7 @@ Traces:
     │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 0, 0xac1b14ff0000000000000000000000000000000000000000000000000000000000000037, false, [(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000000, false, 0x0000000000000000000000007d8cb8f412b3ee9ac79558791333f41d2b1ccdac, 0x0000000000000000000000007d8cb8f412b3ee9ac79558791333f41d2b1ccdac, false)], 1), ((0, 31337 [3.133e4]), 0, 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 2)]
     └─ ← [Stop]
 
-[PASS] testCreateAcceses() ([GAS])
+[PASS] testCreateaccesses() ([GAS])
 Traces:
   [2675638] StateDiffTest::setUp()
     ├─ [1291513] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
@@ -1256,7 +1256,7 @@ Traces:
     │   └─ ← [Return] 6405 bytes of code
     └─ ← [Stop]
 
-  [1345790] StateDiffTest::testCreateAcceses()
+  [1345790] StateDiffTest::testCreateaccesses()
     ├─ [0] VM::startStateDiffRecording()
     │   └─ ← [Return]
     ├─ [1291511] → new <unknown>@0x2e234DAe75C793f67A35089C9d99245E1C58470b

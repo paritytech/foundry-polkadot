@@ -257,7 +257,7 @@ pub trait CheatcodeInspectorStrategyExt {
     ) -> Option<revm::interpreter::CallOutcome> {
         None
     }
-    // Remove duplicate acceses in storage_recorder
+    // Remove duplicate accesses in storage_recorder
     fn revive_remove_duplicate_account_access(&self, _state: &mut crate::Cheatcodes) {}
 }
 

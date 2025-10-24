@@ -809,7 +809,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 res.storage_deposit.charge_or_zero(),
             );
         if res.result.as_ref().is_ok_and(|r| !r.result.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_acceses());
+            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
         }
         post_exec(state, ecx, executor, &mut tracer, false);
         match res.result {
@@ -934,7 +934,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             );
 
         if res.result.as_ref().is_ok_and(|r| !r.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_acceses());
+            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
         }
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
 
