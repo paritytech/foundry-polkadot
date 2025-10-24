@@ -21,17 +21,16 @@ use std::{
 };
 
 use polkadot_sdk::{
-    frame_support::traits::{Currency, fungible::Mutate},
     frame_support::dispatch::DispatchClass,
-    frame_system,
-    pallet_balances,
+    frame_support::traits::{Currency, fungible::Mutate},
+    frame_system, pallet_balances,
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
         ContractInfo, DepositLimit, Pallet, evm::GasEncoder,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
-    sp_runtime::traits::SaturatedConversion
+    sp_runtime::traits::SaturatedConversion,
 };
 
 use crate::{execute_with_externalities, trace, tracing::apply_prestate_trace};
@@ -662,10 +661,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         // 2) Storage deposit cap
         let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
-        let caller_acc = AccountId::to_fallback_account_id(&H160::from_slice(input.caller().as_slice()));
+        let caller_acc =
+            AccountId::to_fallback_account_id(&H160::from_slice(input.caller().as_slice()));
         let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
         let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
-        let evm_value_native: BalanceOf<Runtime> = evm_value.min(u128::MAX.into()).as_u128().saturated_into();
+        let evm_value_native: BalanceOf<Runtime> =
+            evm_value.min(u128::MAX.into()).as_u128().saturated_into();
         let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
         let storage_deposit_cap: u128 = available.saturated_into();
 
@@ -817,10 +818,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         // 2) Storage deposit cap
         let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
-        let caller_acc = AccountId::to_fallback_account_id(&H160::from_slice(call.caller.as_slice()));
+        let caller_acc =
+            AccountId::to_fallback_account_id(&H160::from_slice(call.caller.as_slice()));
         let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
         let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
-        let evm_value_native: BalanceOf<Runtime> = evm_value.min(u128::MAX.into()).as_u128().saturated_into();
+        let evm_value_native: BalanceOf<Runtime> =
+            evm_value.min(u128::MAX.into()).as_u128().saturated_into();
         let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
         let storage_deposit_cap: u128 = available.saturated_into();
 
