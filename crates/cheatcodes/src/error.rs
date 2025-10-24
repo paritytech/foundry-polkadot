@@ -74,7 +74,7 @@ macro_rules! ensure_not_precompile {
 }
 
 #[cold]
-pub(crate) fn precompile_error(address: &Address) -> Error {
+pub fn precompile_error(address: &Address) -> Error {
     fmt_err!("cannot use precompile {address} as an argument")
 }
 
