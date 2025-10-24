@@ -75,17 +75,16 @@ jobs:
           key: eth-rpc-${{ matrix.runner }}-${{ env.ETH_RPC_VERSION }}
 
       # Install dependencies for building
-      - name: Install protobuf-compiler
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Install clang on ubuntu
         if: matrix.os == 'ubuntu'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang libclang-dev unzip
 
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           
       # macOS-specific setup
       - name: Install libusb 1.0.27 (macOS)
