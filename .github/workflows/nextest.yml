@@ -188,10 +188,10 @@ jobs:
           target: ${{ matrix.target }}, wasm32-unknown-unknown
           components: rust-src
       - name: Install clang (Ubuntu)
-        if: contains(matrix.runner_label, 'ubuntu')
+        if: contains(matrix.runner_label, 'parity-large-new')
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libclang-dev build-essential
+          sudo apt-get install -y clang libclang-dev
   
       - name: Install clang (macOS)
         if: contains(matrix.runner_label, 'macos')
