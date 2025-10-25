@@ -11,7 +11,7 @@ use polkadot_sdk::{
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
     sp_blockchain,
-    sp_core::{ByteArray, H160, H256},
+    sp_core::{H160, H256},
     sp_io::hashing::blake2_256,
     sp_state_machine::{StorageKey, StorageValue},
 };
@@ -245,7 +245,7 @@ impl StorageOverrides {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(
             well_known_keys::AURA_AUTHORITIES.to_vec(),
-            Some(vec![aura_authority.as_slice()].encode()),
+            Some(vec![aura_authority].encode()),
         );
 
         self.add(latest_block, changeset);

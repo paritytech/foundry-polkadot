@@ -157,7 +157,7 @@ impl ApiServer {
                 let account_id = self
                     .client
                     .runtime_api()
-                    .account_id(latest_block, ReviveAddress::from(address).inner())
+                    .account_id(latest_block, H160::from_slice(address.as_slice()))
                     .map_err(|err| Error::InvalidParams(format!("{err}")));
                 account_id
                     .map(|inner| self.backend.inject_aura_authority(latest_block, inner))
@@ -172,12 +172,11 @@ impl ApiServer {
                     .and_then(|inner| {
                         self.client.runtime_api().address(latest_block, inner).map_err(|err| {
                             Error::InternalError(format!(
-                                "Revive error: couldn't get eth address from account id: {err}"
+                                "Revive error: couldn't get ethereum address from account id: {err}"
                             ))
                         })
                     })
                     .map(|inner| Address::from(inner.to_fixed_bytes()))
-                    .map_err(|err| Error::InternalError(format!("{err}")))
                     .to_rpc_result()
             }
 
