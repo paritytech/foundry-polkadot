@@ -154,13 +154,31 @@ impl ApiServer {
             EthRequest::SetCoinbase(address) => {
                 node_info!("anvil_setCoinbase");
                 let latest_block = self.latest_block();
-                self.backend.inject_coinbase(latest_block, address);
-                Ok(()).to_rpc_result()
+                let account_id = self
+                    .client
+                    .runtime_api()
+                    .account_id(latest_block, ReviveAddress::from(address).inner())
+                    .map_err(|err| Error::InvalidParams(format!("{err}")));
+                account_id
+                    .map(|inner| self.backend.inject_aura_authority(latest_block, inner))
+                    .to_rpc_result()
             }
             EthRequest::EthCoinbase(()) => {
                 node_info!("eth_coinbase");
                 let latest_block = self.latest_block();
-                self.backend.read_coinbase(latest_block).map_err(Error::Backend).to_rpc_result()
+                let authority =
+                    self.backend.read_aura_authority(latest_block).map_err(Error::Backend);
+                authority
+                    .and_then(|inner| {
+                        self.client.runtime_api().address(latest_block, inner).map_err(|err| {
+                            Error::InternalError(format!(
+                                "Revive error: couldn't get eth address from account id: {err}"
+                            ))
+                        })
+                    })
+                    .map(|inner| Address::from(inner.to_fixed_bytes()))
+                    .map_err(|err| Error::InternalError(format!("{err}")))
+                    .to_rpc_result()
             }
 
             //------- TimeMachine---------
