@@ -50,7 +50,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu
-            runner: ubuntu-latest
+            runner: parity-large-new
           - os: macos
             runner: macos-latest
           - os: windows
@@ -75,17 +75,16 @@ jobs:
           key: eth-rpc-${{ matrix.runner }}-${{ env.ETH_RPC_VERSION }}
 
       # Install dependencies for building
-      - name: Install protobuf-compiler
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Install clang on ubuntu
         if: matrix.os == 'ubuntu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
+          sudo apt-get install -y clang libclang-dev unzip build-essential
 
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           
       # macOS-specific setup
       - name: Install libusb 1.0.27 (macOS)
@@ -141,7 +140,7 @@ jobs:
   test:
     name: test ${{ matrix.name }}
     runs-on: ${{ matrix.runner_label }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     needs: [matrices, cache-binaries]
     strategy:
       fail-fast: false
@@ -167,6 +166,12 @@ jobs:
           key: eth-rpc-${{ matrix.runner_label }}-${{ env.ETH_RPC_VERSION }}
           fail-on-cache-miss: ${{ !contains(matrix.runner_label, 'windows') }}
 
+      - name: Install dependencies for building (Ubuntu)
+        if: contains(matrix.runner_label, 'parity-large-new')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev unzip build-essential
+
       - name: Setup Node.js
         if: contains(matrix.name, 'external')
         uses: actions/setup-node@v4
@@ -183,6 +188,19 @@ jobs:
           python-version: 3.11
       - name: Install Vyper
         run: pip --version && pip install vyper==0.4.3
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}, wasm32-unknown-unknown
+          components: rust-src
+  
+      - name: Install clang (macOS)
+        if: contains(matrix.runner_label, 'macos')
+        run: |
+          brew install llvm
+          brew link llvm
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
       - name: Install Resolc
         run: |
           cargo install rvm-rs
@@ -219,26 +237,6 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install clang (Ubuntu)
-        if: contains(matrix.runner_label, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
-  
-      - name: Install clang (macOS)
-        if: contains(matrix.runner_label, 'macos')
-        run: |
-          brew install llvm
-          brew link llvm
-          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          target: wasm32-unknown-unknown
-          components: rust-src
 
       - name: Test
         env:
