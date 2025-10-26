@@ -254,7 +254,7 @@ alloy-hardforks = { version = "0.2.12", default-features = false }
 alloy-op-hardforks = { version = "0.2.12", default-features = false }
 
 ## alloy-core
-alloy-dyn-abi = "1.2.1"
+alloy-dyn-abi = "1.4.1"
 alloy-json-abi = "1.2.1"
 alloy-primitives = { version = "1.2.1", features = [
     "getrandom",
