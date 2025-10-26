@@ -126,8 +126,7 @@ async fn multicall_get_timestamp(
     from: Address,
     contract_address: Address,
 ) -> U256 {
-    let get_timestamp =
-        <Multicall::getCurrentBlockTimestampCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let get_timestamp = Multicall::getCurrentBlockTimestampCall::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(from)
         .to(contract_address)

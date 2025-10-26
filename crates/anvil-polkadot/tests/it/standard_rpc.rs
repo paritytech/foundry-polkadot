@@ -658,9 +658,7 @@ async fn test_get_storage() {
     assert_eq!(stored_value, 0);
 
     // Set a new value for the slot 0.
-    let set_value_data =
-        <SimpleStorage::setValueCall as alloy_sol_types::SolCall>::new((U256::from(511),))
-            .abi_encode();
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(511),)).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
@@ -792,9 +790,7 @@ async fn test_get_logs() {
     let contract_address = receipt.contract_address.unwrap();
 
     for i in 0..2 {
-        let set_value_data =
-            <SimpleStorage::setValueCall as alloy_sol_types::SolCall>::new((U256::from(511 + i),))
-                .abi_encode();
+        let set_value_data = SimpleStorage::setValueCall::new((U256::from(511 + i),)).abi_encode();
         let call_tx = TransactionRequest::default()
             .from(Address::from(alith_address))
             .to(Address::from(ReviveAddress::new(contract_address)))
@@ -915,8 +911,7 @@ async fn test_coinbase() {
     let contract_address = receipt.contract_address.unwrap();
 
     // Make a get coinbase contract call.
-    let get_coinbase =
-        <Multicall::getCurrentBlockCoinbaseCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
