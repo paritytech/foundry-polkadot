@@ -9,6 +9,7 @@ use crate::{
         BlockWaitTimeout, TestNode, get_contract_code, is_transaction_in_block, unwrap_response,
     },
 };
+use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256, Bytes, U256, map::HashSet};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
@@ -894,53 +895,10 @@ async fn test_call() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_coinbase() {
-    let anvil_node_config = AnvilNodeConfig::test_config();
-    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-
-    let genesis_coinbase_addr = Address::from_slice(&[0; 20]);
-    assert_eq!(
-        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
-            .unwrap(),
-        genesis_coinbase_addr,
-    );
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(3)), None)).await.unwrap())
-        .unwrap();
-    assert_eq!(
-        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthBlockNumber(())).await.unwrap())
-            .unwrap(),
-        U256::from(3)
-    );
-    assert_eq!(
-        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
-            .unwrap(),
-        genesis_coinbase_addr
-    );
-
-    let new_coinbase = Address::from_slice(&[0xEE; 20]);
-    node.eth_rpc(EthRequest::SetCoinbase(new_coinbase)).await.unwrap();
-    assert_eq!(
-        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
-            .unwrap(),
-        new_coinbase
-    );
-
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    assert_eq!(
-        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthBlockNumber(())).await.unwrap())
-            .unwrap(),
-        U256::from(4)
-    );
-    assert_eq!(
-        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
-            .unwrap(),
-        new_coinbase
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_coinbase_in_contract() {
-    let anvil_node_config = AnvilNodeConfig::test_config();
+    let genesis_coinbase = Address::random();
+    let mut anvil_node_config = AnvilNodeConfig::test_config();
+    anvil_node_config = anvil_node_config
+        .with_genesis(Some(Genesis { coinbase: genesis_coinbase, ..Default::default() }));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
@@ -970,11 +928,15 @@ async fn test_coinbase_in_contract() {
             .unwrap(),
     )
     .unwrap();
-    let genesis_coinbase = Address::from_slice(&[0; 20]);
-    // Not sure why the contract call returns 32 bytes instead of 20.
-    assert_eq!(Address::from_slice(&res.as_ref()[12..]), genesis_coinbase);
+    let coinbase = Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap();
+    assert_eq!(coinbase, genesis_coinbase);
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        genesis_coinbase,
+    );
 
-    let new_coinbase = Address::from_slice(&[0xEE; 20]);
+    let new_coinbase = Address::from_slice(&[0xAA; 20]);
     node.eth_rpc(EthRequest::SetCoinbase(new_coinbase)).await.unwrap();
     assert_eq!(
         unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
@@ -994,6 +956,38 @@ async fn test_coinbase_in_contract() {
             .unwrap(),
     )
     .unwrap();
-    // Not sure why the contract returns 32 bytes instead of 20.
-    assert_eq!(Address::from_slice(&res.as_ref()[12..]), new_coinbase);
+    let coinbase = Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap();
+    assert_eq!(coinbase, new_coinbase);
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        new_coinbase,
+    );
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(3)), None)).await.unwrap())
+        .unwrap();
+    assert_eq!(
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthBlockNumber(())).await.unwrap())
+            .unwrap(),
+        U256::from(4)
+    );
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        new_coinbase
+    );
+    let get_coinbase =
+        <Multicall::getCurrentBlockCoinbaseCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(get_coinbase.into()));
+    let res: Bytes = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let coinbase = Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap();
+    assert_eq!(coinbase, new_coinbase);
 }
