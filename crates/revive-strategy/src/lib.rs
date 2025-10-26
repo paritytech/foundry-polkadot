@@ -21,7 +21,7 @@ mod cheatcodes;
 mod executor;
 mod tracing;
 
-pub use tracing::trace;
+pub use cheatcodes::PvmStartupMigration;
 
 /// Create Revive strategy for [ExecutorStrategy].
 pub trait ReviveExecutorStrategyBuilder {
