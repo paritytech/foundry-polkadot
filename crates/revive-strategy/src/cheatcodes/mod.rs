@@ -224,12 +224,12 @@ impl PvmCheatcodeInspectorStrategyRunner {
                 for r in &record.storage_accesses {
                     if !r.isWrite {
                         state.accesses.record_read(
-                            Address::from(record.account.0.clone()),
+                            Address::from(record.account.0),
                             alloy_primitives::U256::from_be_slice(r.slot.clone().as_slice()),
                         );
                     } else {
                         state.accesses.record_write(
-                            Address::from(record.account.0.clone()),
+                            Address::from(record.account.0),
                             alloy_primitives::U256::from_be_slice(r.slot.clone().as_slice()),
                         );
                     }
@@ -989,7 +989,7 @@ fn post_exec(
         if let Some(records) = &mut state.recorded_logs {
             records.extend(logs.iter().map(|log| foundry_cheatcodes::Vm::Log {
                 data: log.data.data.clone(),
-                emitter: log.address.clone(),
+                emitter: log.address,
                 topics: log.topics().to_owned(),
             }));
         };
@@ -1007,7 +1007,7 @@ fn collect_logs(accumulator: &mut Vec<Log>, trace: &CallTrace) {
         let log = log.clone();
         Log::new_unchecked(
             Address::from(log.address.0),
-            log.topics.iter().map(|x| U256::from_be_slice(&x.as_bytes()).into()).collect(),
+            log.topics.iter().map(|x| U256::from_be_slice(x.as_bytes()).into()).collect(),
             Bytes::from(log.data.0),
         )
     }));
