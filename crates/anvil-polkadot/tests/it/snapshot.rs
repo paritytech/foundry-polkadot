@@ -307,7 +307,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     let receipt_info2 = receipt_info2.unwrap();
     let receipt_info = node.get_transaction_receipt(tx_hash1).await;
     let mut tx_indices =
-        HashSet::from([pallet_revive::U256::from(0), pallet_revive::U256::from(1)]);
+        HashSet::from([pallet_revive::U256::from(1), pallet_revive::U256::from(2)]);
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
     assert!(tx_indices.remove(&receipt_info.transaction_index));
     assert_eq!(receipt_info.transaction_hash, tx_hash1);
