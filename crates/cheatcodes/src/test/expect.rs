@@ -776,7 +776,7 @@ fn expect_emit(
     Ok(Default::default())
 }
 
-pub(crate) fn handle_expect_emit(
+pub fn handle_expect_emit(
     state: &mut Cheatcodes,
     log: &alloy_primitives::Log,
     interpreter: &mut Interpreter,

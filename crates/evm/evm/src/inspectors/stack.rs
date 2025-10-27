@@ -1,6 +1,6 @@
 use super::{
     Cheatcodes, CheatsConfig, ChiselState, CustomPrintTracer, Fuzzer, LineCoverageCollector,
-    LogCollector, RevertDiagnostic, ScriptExecutionInspector, TracingInspector,
+    LogCollector, RevertDiagnostic, ScriptExecutionInspector,
 };
 use alloy_evm::{Evm, eth::EthEvmContext};
 use alloy_primitives::{
@@ -9,12 +9,13 @@ use alloy_primitives::{
 };
 use foundry_cheatcodes::{CheatcodesExecutor, Wallets};
 use foundry_evm_core::{
-    ContextExt, Env, InspectorExt,
+    ContextExt, Ecx, Env, InspectorExt,
     backend::{DatabaseExt, JournaledState},
     evm::new_evm_with_inspector,
 };
 use foundry_evm_coverage::HitMaps;
 use foundry_evm_traces::{SparsedTraceArena, TraceMode};
+use revive_utils::TraceCollector;
 use revm::{
     Inspector,
     context::{
@@ -308,7 +309,7 @@ pub struct InspectorStackInner {
     pub printer: Option<CustomPrintTracer>,
     pub revert_diag: Option<RevertDiagnostic>,
     pub script_execution_inspector: Option<ScriptExecutionInspector>,
-    pub tracer: Option<TracingInspector>,
+    pub tracer: Option<TraceCollector>,
 
     // InspectorExt and other internal data.
     pub enable_isolation: bool,
@@ -335,7 +336,7 @@ impl CheatcodesExecutor for InspectorStackInner {
         Box::new(InspectorStackRefMut { cheatcodes: Some(cheats), inner: self })
     }
 
-    fn tracing_inspector(&mut self) -> Option<&mut Option<TracingInspector>> {
+    fn tracing_inspector(&mut self) -> Option<&mut Option<TraceCollector>> {
         Some(&mut self.tracer)
     }
 }
@@ -1092,6 +1093,20 @@ impl InspectorExt for InspectorStackRefMut<'_> {
     fn create2_deployer(&self) -> Address {
         self.inner.create2_deployer
     }
+    fn trace_revive(
+        &mut self,
+        ecx: Ecx<'_, '_, '_>,
+        call_traces: Box<dyn std::any::Any>, /* TODO(merge): should be moved elsewhere,
+                                              * represents `Vec<Call>` */
+        record_top_call: bool,
+    ) {
+        call_inspectors!([&mut self.tracer], |inspector| InspectorExt::trace_revive(
+            inspector,
+            ecx,
+            call_traces,
+            record_top_call
+        ));
+    }
 }
 
 impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStack {
@@ -1182,6 +1197,16 @@ impl InspectorExt for InspectorStack {
 
     fn create2_deployer(&self) -> Address {
         self.create2_deployer
+    }
+
+    fn trace_revive(
+        &mut self,
+        ecx: Ecx<'_, '_, '_>,
+        call_traces: Box<dyn std::any::Any>, /* TODO(merge): should be moved elsewhere,
+                                              * represents `Vec<Call>` */
+        record_top_call: bool,
+    ) {
+        self.as_mut().trace_revive(ecx, call_traces, record_top_call);
     }
 }
 
