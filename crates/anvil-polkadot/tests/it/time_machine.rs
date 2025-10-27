@@ -29,11 +29,9 @@ async fn test_evm_set_time_in_the_past() {
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
-    let first_hash = node.block_hash_by_number(1).await.unwrap();
-    let first_timestamp = node.get_decoded_timestamp(Some(first_hash)).await;
 
     // Set the timestamp in the past
-    let new_timestamp = first_timestamp.saturating_div(1000).saturating_sub(1);
+    let new_timestamp = 10000u64;
     assert_eq!(
         unwrap_response::<u64>(
             node.eth_rpc(EthRequest::EvmSetTime(U256::from(new_timestamp))).await.unwrap()
@@ -42,13 +40,28 @@ async fn test_evm_set_time_in_the_past() {
         0
     );
 
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
-    // This is a placeholder as it is not currently possible to set the timeline
-    // for a value in the past, however this shall change when we have the state
-    // injector.
     let second_hash = node.block_hash_by_number(2).await.unwrap();
     let second_timestamp = node.get_decoded_timestamp(Some(second_hash)).await;
-    assert_eq!(second_timestamp.saturating_sub(first_timestamp), 1);
+
+    assert_eq!(
+        unwrap_response::<u64>(
+            node.eth_rpc(EthRequest::EvmSetTime(U256::from(1000))).await.unwrap()
+        )
+        .unwrap(),
+        0
+    );
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+    let third_hash = node.block_hash_by_number(3).await.unwrap();
+    let third_timestamp = node.get_decoded_timestamp(Some(third_hash)).await;
+    assert_with_tolerance(second_timestamp, 10001000, 200, "Failed to produce block in time.");
+    assert_with_tolerance(
+        second_timestamp.saturating_sub(third_timestamp),
+        9001000,
+        200,
+        "Difference between blocks is too high.",
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
