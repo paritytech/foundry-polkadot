@@ -52,7 +52,7 @@ fn execute_with_externalities<R, F: FnOnce(&mut sp_io::TestExternalities) -> R>(
             *opt_ext = Some(
                 ExtBuilder::default()
                     .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
-                    .build()
+                    .build(),
             );
         }
         f(opt_ext.as_mut().expect("TEST_EXTERNALITIES just initialized"))
