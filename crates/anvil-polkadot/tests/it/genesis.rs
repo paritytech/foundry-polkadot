@@ -1,9 +1,11 @@
-use crate::utils::{
-    TestNode, assert_with_tolerance, get_contract_code, to_hex_string, unwrap_response,
+use crate::{
+    abi::SimpleStorage,
+    utils::{TestNode, assert_with_tolerance, get_contract_code, to_hex_string, unwrap_response},
 };
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::{Address, B256, Bytes, U256};
-use alloy_rpc_types::BlockId;
+use alloy_rpc_types::{BlockId, TransactionInput, TransactionRequest};
+use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
 use std::collections::BTreeMap;
@@ -185,6 +187,7 @@ async fn test_genesis_alloc() {
         runtime_bytecode.len(),
         "Genesis contract code length should match"
     );
+    assert_eq!(contract_code_result, runtime_bytecode, "Genesis contract code should match");
 
     // Test contract storage
     let result = node
@@ -199,4 +202,18 @@ async fn test_genesis_alloc() {
     let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
     let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
     assert_eq!(stored_value, 511, "Storage slot 0 of genesis contract should contain value 511");
+
+    // Test contract functionality by calling getValue()
+    let tx = TransactionRequest::default()
+        .from(Address::from(test_eoa_bytes_1))
+        .to(Address::from(test_contract_bytes))
+        .input(TransactionInput::both(SimpleStorage::getValueCall.abi_encode().into()));
+
+    let value = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthCall(tx.into(), None, None, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    let value = SimpleStorage::getValueCall::abi_decode_returns(&value.0).unwrap();
+    assert_eq!(value, U256::from(511), "Contract getValue() should return 511");
 }

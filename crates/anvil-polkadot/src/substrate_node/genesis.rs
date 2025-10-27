@@ -60,7 +60,7 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
     }
 }
 
-// Used to provide genesis accounts to pallet-revive
+/// Used to provide genesis accounts to pallet-revive
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReviveGenesisAccount {
     pub address: H160,
