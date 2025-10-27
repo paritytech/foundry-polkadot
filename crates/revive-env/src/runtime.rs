@@ -73,7 +73,6 @@ parameter_types! {
 #[derive_impl(pallet_revive::config_preludes::TestDefaultConfig)]
 impl pallet_revive::Config for Runtime {
     type Time = Timestamp;
-    type Balance = Balance;
     type Currency = Balances;
     type DepositPerByte = DepositPerByte;
     type DepositPerItem = DepositPerItem;

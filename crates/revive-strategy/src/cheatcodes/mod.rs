@@ -24,8 +24,8 @@ use polkadot_sdk::{
     frame_support::traits::{Currency, fungible::Mutate},
     pallet_balances,
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ContractInfo,
-        ExecConfig, Pallet,
+        self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, BumpNonce, Code, Config,
+        ContractInfo, DepositLimit, Pallet, evm::GasEncoder,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -650,6 +650,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let constructor_args = find_contract.constructor_args();
         let contract = find_contract.contract();
 
+        let max_gas =
+            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
+                Default::default(),
+                Weight::MAX,
+                1u128 << 99,
+            );
+        let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
+
         let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 trace::<Runtime, _, _>(|| {
@@ -658,6 +666,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
+                    let (gas_limit, storage_deposit_limit) =
+                    <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::decode(
+                        gas_limit,
+                    )
+                    .expect("gas limit is valid");
+                    let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
                     let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
                     let data = constructor_args.to_vec();
                     let salt = match input.scheme() {
@@ -671,27 +685,32 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         ),
                         _ => None,
                     };
+                    let bump_nonce = BumpNonce::Yes;
 
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
-                        Weight::MAX,
-                        // TODO: fixing.
-                        BalanceOf::<Runtime>::MAX,
+                        gas_limit,
+                        storage_deposit_limit,
                         code,
                         data,
                         salt,
-                        ExecConfig::new_substrate_tx(),
+                        bump_nonce,
                     )
                 })
             })
         });
 
         let mut gas = Gas::new(input.gas_limit());
-
+        let gas_used =
+            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
+                gas_limit,
+                res.gas_required,
+                res.storage_deposit.charge_or_zero(),
+            );
         let result = match &res.result {
             Ok(result) => {
-                let _ = gas.record_cost(res.gas_required.ref_time());
+                let _ = gas.record_cost(gas_used.as_u64());
 
                 let outcome = if result.result.did_revert() {
                     CreateOutcome {
@@ -768,6 +787,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         tracing::info!("running call in PVM {:#?}", call);
 
+        let max_gas =
+            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
+                Default::default(),
+                Weight::MAX,
+                1u128 << 99,
+            );
+        let gas_limit = sp_core::U256::from(call.gas_limit).min(max_gas);
+
         let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 trace::<Runtime, _, _>(|| {
@@ -777,27 +804,36 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
 
+                    let (gas_limit, storage_deposit_limit) =
+                    <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::decode(
+                        gas_limit,
+                    )
+                    .expect("gas limit is valid");
+                    let storage_deposit_limit = DepositLimit::Balance(storage_deposit_limit);
                     let target = H160::from_slice(call.target_address.as_slice());
 
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target,
                         evm_value,
-                        Weight::MAX,
-                        // TODO: fixing.
-                        BalanceOf::<Runtime>::MAX,
+                        gas_limit,
+                        storage_deposit_limit,
                         call.input.bytes(ecx).to_vec(),
-                        ExecConfig::new_substrate_tx(),
                     )
                 })
             })
         });
 
         let mut gas = Gas::new(call.gas_limit);
+        let gas_used =
+            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
+                gas_limit,
+                res.gas_required,
+                res.storage_deposit.charge_or_zero(),
+            );
         let result = match res.result {
             Ok(result) => {
-                let _ = gas.record_cost(res.gas_required.ref_time());
-
+                let _ = gas.record_cost(gas_used.as_u64());
                 let outcome = if result.did_revert() {
                     tracing::error!("Contract call reverted");
                     CallOutcome {
