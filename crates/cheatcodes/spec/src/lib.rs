@@ -15,7 +15,7 @@ pub use function::{Function, Mutability, Visibility};
 mod items;
 pub use items::{Enum, EnumVariant, Error, Event, Struct, StructField};
 
-pub mod vm;
+mod vm;
 pub use vm::Vm;
 
 // The `cheatcodes.json` schema.

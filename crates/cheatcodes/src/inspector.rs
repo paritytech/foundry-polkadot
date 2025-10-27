@@ -37,12 +37,11 @@ use foundry_evm_core::{
     constants::{CHEATCODE_ADDRESS, HARDHAT_CONSOLE_ADDRESS, MAGIC_ASSUME},
     evm::{FoundryEvm, new_evm_with_existing_context},
 };
-use foundry_evm_traces::TracingInspectorConfig;
+use foundry_evm_traces::{TracingInspector, TracingInspectorConfig};
 use foundry_wallets::multi_wallet::MultiWallet;
 use itertools::Itertools;
 use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
 use rand::Rng;
-use revive_utils::TraceCollector;
 use revm::{
     Inspector, Journal,
     bytecode::opcode as op,
@@ -109,18 +108,8 @@ pub trait CheatcodesExecutor {
     }
 
     /// Returns a mutable reference to the tracing inspector if it is available.
-    fn tracing_inspector(&mut self) -> Option<&mut Option<TraceCollector>> {
+    fn tracing_inspector(&mut self) -> Option<&mut Option<TracingInspector>> {
         None
-    }
-
-    fn trace_revive(
-        &mut self,
-        ccx_state: &mut Cheatcodes,
-        ecx: Ecx,
-        call_traces: Box<dyn std::any::Any>,
-    ) {
-        let mut inspector = self.get_inspector(ccx_state);
-        inspector.trace_revive(ecx, call_traces, false);
     }
 }
 
@@ -935,8 +924,6 @@ impl Cheatcodes {
                 self.expected_creates.swap_remove(index);
             }
         }
-
-        self.strategy.runner.revive_remove_duplicate_account_access(self);
     }
 
     pub fn call_with_executor(
@@ -1607,8 +1594,6 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
                 }
             }
         }
-
-        self.strategy.runner.revive_remove_duplicate_account_access(self);
 
         // At the end of the call,
         // we need to check if we've found all the emits.

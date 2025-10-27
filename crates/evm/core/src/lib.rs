@@ -36,8 +36,6 @@ pub mod precompiles;
 pub mod state_snapshot;
 pub mod utils;
 
-pub type Ecx<'a, 'b, 'c> = &'a mut EthEvmContext<&'b mut (dyn DatabaseExt + 'c)>;
-
 /// An extension trait that allows us to add additional hooks to Inspector for later use in
 /// handlers.
 #[auto_impl(&mut, Box)]
@@ -67,14 +65,6 @@ pub trait InspectorExt: for<'a> Inspector<EthEvmContext<&'a mut dyn DatabaseExt>
     /// Returns the CREATE2 deployer address.
     fn create2_deployer(&self) -> Address {
         DEFAULT_CREATE2_DEPLOYER
-    }
-
-    fn trace_revive(
-        &mut self,
-        _context: Ecx<'_, '_, '_>,
-        _call_traces: Box<dyn std::any::Any>,
-        _record_top_call: bool,
-    ) {
     }
 }
 
