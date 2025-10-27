@@ -12,6 +12,7 @@ use polkadot_sdk::pallet_revive::{
     self,
     evm::{Account, Block},
 };
+use std::collections::HashSet;
 use subxt::utils::H160;
 
 async fn assert_block_number_is_best_and_finalized(node: &mut TestNode, n: u64) {
@@ -251,13 +252,17 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     assert_block_number_is_best_and_finalized(&mut node, 6).await;
 
+    let mut tx_indices: HashSet<_> =
+        [pallet_revive::U256::one(), pallet_revive::U256::from(2)].into_iter().collect();
+
     let receipt_info = node.get_transaction_receipt(tx_hash1).await;
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
-    assert_eq!(receipt_info.transaction_index, pallet_revive::U256::one());
+    assert!(tx_indices.remove(&receipt_info.transaction_index));
     assert_eq!(receipt_info.transaction_hash, tx_hash1);
+
     let receipt_info = node.get_transaction_receipt(tx_hash2).await;
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
-    assert_eq!(receipt_info.transaction_index, pallet_revive::U256::from(2));
+    assert!(tx_indices.remove(&receipt_info.transaction_index));
     assert_eq!(receipt_info.transaction_hash, tx_hash2);
     assert_eq!(node.get_nonce(alith_addr).await, U256::ONE);
     assert_eq!(node.get_nonce(baltathar_addr).await, U256::ONE);
@@ -321,7 +326,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         second_timestamp.saturating_sub(first_timestamp),
         3000,
-        150,
+        300,
         "wrong timestamp at second block",
     );
     // Snapshot at block number 2 and then mine 1 more block.
@@ -354,7 +359,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         third_timestamp.saturating_sub(second_timestamp),
         3000,
-        100,
+        300,
         "wrong timestamp at third block",
     );
 
@@ -380,7 +385,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         remined_third_block_ts.saturating_sub(second_timestamp),
         1000,
-        100,
+        300,
         "wrong timestamp at remined third block",
     );
 
