@@ -798,9 +798,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             }
         };
 
-        // Store code_bytes for use in output
-        let deployed_bytecode = code_bytes.clone();
-
         let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
@@ -810,7 +807,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
-                    let code = Code::Upload(code_bytes);
+                    let code = Code::Upload(code_bytes.clone());
                     let data = constructor_args;
                     let salt = match input.scheme() {
                         Some(CreateScheme::Create2 { salt }) => Some(
@@ -861,7 +858,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     CreateOutcome {
                         result: InterpreterResult {
                             result: InstructionResult::Return,
-                            output: deployed_bytecode.into(),
+                            output: code_bytes.into(),
                             gas,
                         },
                         address: Some(Address::from_slice(result.addr.as_bytes())),

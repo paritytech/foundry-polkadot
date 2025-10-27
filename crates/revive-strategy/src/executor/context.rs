@@ -6,7 +6,7 @@ use foundry_evm::executors::ExecutorStrategyContext;
 use crate::ReviveRuntimeMode;
 
 /// Defines the context for [crate::ReviveExecutorStrategyRunner].
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ReviveExecutorStrategyContext {
     /// Runtime backend mode (PVM or EVM on Polkadot)
     pub(crate) runtime_mode: ReviveRuntimeMode,
@@ -14,16 +14,6 @@ pub struct ReviveExecutorStrategyContext {
     pub(crate) dual_compiled_contracts: DualCompiledContracts,
     /// Compilation output.
     pub(crate) compilation_output: Option<ProjectCompileOutput>,
-}
-
-impl Default for ReviveExecutorStrategyContext {
-    fn default() -> Self {
-        Self {
-            runtime_mode: ReviveRuntimeMode::Pvm,
-            dual_compiled_contracts: Default::default(),
-            compilation_output: None,
-        }
-    }
 }
 
 impl ReviveExecutorStrategyContext {
