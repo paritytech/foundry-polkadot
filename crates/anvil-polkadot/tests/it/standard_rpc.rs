@@ -856,9 +856,7 @@ async fn test_call() {
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
-    let set_value_data =
-        <SimpleStorage::setValueCall as alloy_sol_types::SolCall>::new((U256::from(511),))
-            .abi_encode();
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(511),)).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
@@ -873,8 +871,7 @@ async fn test_call() {
         .unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
 
-    let get_value_data =
-        <SimpleStorage::getValueCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let get_value_data = SimpleStorage::getValueCall::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
@@ -939,8 +936,7 @@ async fn test_coinbase() {
         new_coinbase
     );
 
-    let get_coinbase =
-        <Multicall::getCurrentBlockCoinbaseCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
@@ -971,8 +967,7 @@ async fn test_coinbase() {
             .unwrap(),
         new_coinbase
     );
-    let get_coinbase =
-        <Multicall::getCurrentBlockCoinbaseCall as alloy_sol_types::SolCall>::new(()).abi_encode();
+    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(contract_address)))
