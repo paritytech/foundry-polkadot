@@ -16,7 +16,7 @@ contract FeeTest is DSTest {
         vm.fee(fee);
         assertEq(block.basefee, fee, "fee failed");
     }
-    
+
     function test_SetFeeOnce() public {
         vm.pvm(true);
         uint256 before = block.basefee;
@@ -44,7 +44,7 @@ contract FeePersistenceTest is DSTest {
         vm.pvm(true);
         vm.fee(30 gwei);
         assertEq(block.basefee, 30 gwei);
-        
+
         // simulate another call
         helper();
     }
