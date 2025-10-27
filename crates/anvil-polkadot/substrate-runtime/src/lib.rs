@@ -14,19 +14,26 @@ use frame_support::weights::{
     constants::{BlockExecutionWeight, ExtrinsicBaseWeight, WEIGHT_REF_TIME_PER_SECOND},
 };
 use frame_system::limits::BlockWeights;
-use pallet_revive::{AccountId32Mapper, evm::runtime::EthExtra};
-use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
+use pallet_revive::{
+    AccountId32Mapper,
+    evm::{
+        fees::{BlockRatioFee, Info as FeeInfo},
+        runtime::EthExtra,
+    },
+};
+use pallet_transaction_payment::{ConstFeeMultiplier, FeeDetails, Multiplier, RuntimeDispatchInfo};
 use polkadot_sdk::{
     parachains_common::{AccountId, BlockNumber, Hash as CommonHash, Header, Nonce, Signature},
     polkadot_sdk_frame::{
         deps::sp_genesis_builder,
         runtime::{apis, prelude::*},
     },
+    sp_runtime::traits::Block as BlockT,
     *,
 };
 
 pub use polkadot_sdk::parachains_common::Balance;
-use sp_weights::{ConstantMultiplier, IdentityFee};
+use sp_weights::ConstantMultiplier;
 
 pub mod currency {
     use super::Balance;
@@ -140,6 +147,8 @@ type TxExtension = (
     // Ensures that the sender has enough funds to pay for the transaction
     // and deducts the fee from the sender's account.
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    // Needs to be done after all extensions that rely on a signed origin.
+    pallet_revive::evm::tx_extension::SetOrigin<Runtime>,
     // Reclaim the unused weight from the block using post dispatch information.
     // It must be last in the pipeline in order to catch the refund in previous transaction
     // extensions
@@ -164,6 +173,7 @@ impl EthExtra for EthExtraImpl {
             frame_system::CheckNonce::<Runtime>::from(nonce),
             frame_system::CheckWeight::<Runtime>::new(),
             pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+            pallet_revive::evm::tx_extension::SetOrigin::<Runtime>::new_from_eth_transaction(),
             frame_system::WeightReclaim::<Runtime>::new(),
         )
     }
@@ -289,14 +299,16 @@ impl pallet_timestamp::Config for Runtime {}
 
 parameter_types! {
     pub const TransactionByteFee: Balance = 10 * MILLICENTS;
+    pub FeeMultiplier: Multiplier = Multiplier::one();
 }
 
 // Implements the types required for the transaction payment pallet.
 #[derive_impl(pallet_transaction_payment::config_preludes::TestDefaultConfig)]
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
-    type WeightToFee = IdentityFee<Balance>;
+    type WeightToFee = BlockRatioFee<1, 1, Self>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
+    type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
 }
 
 parameter_types! {
@@ -310,14 +322,17 @@ impl pallet_revive::Config for Runtime {
     type ChainId = ChainId;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type Currency = Balances;
+    type Balance = Balance;
     type NativeToEthRatio = ConstU32<1_000_000>;
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;
+    type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
 }
 
-pallet_revive::impl_runtime_apis_plus_revive!(
+pallet_revive::impl_runtime_apis_plus_revive_traits!(
     Runtime,
+    Revive,
     Executive,
     EthExtraImpl,
 
@@ -326,7 +341,7 @@ pallet_revive::impl_runtime_apis_plus_revive!(
             VERSION
         }
 
-        fn execute_block(block: Block) {
+        fn execute_block(block: <Block as BlockT>::LazyBlock) {
             Executive::execute_block(block)
         }
 
@@ -363,7 +378,7 @@ pallet_revive::impl_runtime_apis_plus_revive!(
         }
 
         fn check_inherents(
-            block: Block,
+            block: <Block as BlockT>::LazyBlock,
             data: InherentData,
         ) -> CheckInherentsResult {
             data.check_extrinsics(&block)

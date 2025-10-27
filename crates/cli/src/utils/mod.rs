@@ -145,13 +145,9 @@ pub fn get_executor_strategy(config: &Config) -> ExecutorStrategy {
             ExecutorStrategy::new_evm()
         }
         // --resolc - Run PolkaVM backend on pallet-revive (PVM)
-        (true, false) => {
-            info!("using revive strategy with PVM backend");
-            ExecutorStrategy::new_revive(ReviveRuntimeMode::Pvm)
-        }
         // --resolc --polkadot - Run PolkaVM backend on pallet-revive (PVM)
-        (true, true) => {
-            info!("using revive strategy with PVM backend (polkadot mode)");
+        (true, false) | (true, true) => {
+            info!("using revive strategy with PVM backend");
             ExecutorStrategy::new_revive(ReviveRuntimeMode::Pvm)
         }
         // --polkadot (without resolc) - Run EVM backend on pallet-revive

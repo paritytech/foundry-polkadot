@@ -24,7 +24,6 @@ mod executor;
 mod tracing;
 
 pub use cheatcodes::PvmStartupMigration;
-pub use tracing::trace;
 
 /// Runtime backend mode for pallet-revive
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -1,0 +1,28 @@
+[package]
+name = "revive-utils"
+description = "Foundry revive helpers"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+exclude.workspace = true
+
+[dependencies]
+foundry-evm-core.workspace = true
+foundry-evm-traces.workspace = true
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", features = [
+    "experimental",
+    "runtime",
+    "polkadot-runtime-common",
+    "pallet-revive",
+    "pallet-balances",
+    "pallet-timestamp"
+]}
+revive-env.workspace = true
+
+alloy-primitives.workspace = true
+revm.workspace = true
