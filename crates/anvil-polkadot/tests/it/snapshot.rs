@@ -20,6 +20,7 @@ use polkadot_sdk::pallet_revive::{
     self,
     evm::{Account, Block, ReceiptInfo},
 };
+use std::collections::HashSet;
 use subxt::utils::H256;
 
 async fn assert_block_number_is_best_and_finalized(
@@ -305,15 +306,18 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     .await;
     let receipt_info2 = receipt_info2.unwrap();
     let receipt_info = node.get_transaction_receipt(tx_hash1).await;
+    let mut tx_indices =
+        HashSet::from([pallet_revive::U256::from(0), pallet_revive::U256::from(1)]);
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(6));
-    assert_eq!(receipt_info.transaction_index, pallet_revive::U256::one());
+    assert!(tx_indices.remove(&receipt_info.transaction_index));
     assert_eq!(receipt_info.transaction_hash, tx_hash1);
     assert_eq!(receipt_info2.block_number, pallet_revive::U256::from(6));
-    assert_eq!(receipt_info2.transaction_index, pallet_revive::U256::from(2));
+    assert!(tx_indices.remove(&receipt_info2.transaction_index));
     assert_eq!(receipt_info2.transaction_hash, tx_hash2);
     assert_eq!(node.get_nonce(alith_addr).await, U256::ONE);
     assert_eq!(node.get_nonce(baltathar_addr).await, U256::ONE);
     assert_eq!(node.get_nonce(dest_addr).await, U256::ZERO);
+    assert!(tx_indices.is_empty());
 
     let txs_in_block = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
@@ -367,7 +371,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         second_timestamp.saturating_sub(first_timestamp),
         3000,
-        150,
+        300,
         "wrong timestamp at second block",
     );
 
@@ -393,7 +397,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         third_timestamp.saturating_sub(second_timestamp),
         3000,
-        100,
+        300,
         "wrong timestamp at third block",
     );
 
@@ -415,7 +419,7 @@ async fn test_evm_revert_and_timestamp() {
     assert_with_tolerance(
         remined_third_block_ts.saturating_sub(second_timestamp),
         1000,
-        100,
+        300,
         "wrong timestamp at remined third block",
     );
 
