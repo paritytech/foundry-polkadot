@@ -21,6 +21,7 @@ path = "bin/main.rs"
 # foundry internal
 codec = { version = "3.7.5", default-features = true, package = "parity-scale-codec" }
 substrate-runtime = { path = "substrate-runtime" }
+pallet-revive-eth-rpc = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state" }
 secp256k1 = { version = "0.28.0", default-features = false }
 libsecp256k1 = { version = "0.7.0", default-features = false }
 sp-runtime-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state", default-features = false }
@@ -138,7 +139,7 @@ clap_complete_fig = "4"
 subxt = "0.43.0"
 subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
-jsonrpsee = "0.24.9"
+jsonrpsee = "0.24.10"
 sqlx = "0.8.6"
 
 [dev-dependencies]
