@@ -11,7 +11,6 @@ use foundry_cheatcodes::{
     },
     journaled_account, precompile_error,
 };
-use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 use std::{
@@ -25,6 +24,7 @@ use polkadot_sdk::{
     frame_support::{
         dispatch::DispatchClass,
         traits::{Currency, fungible::Mutate},
+        weights::Weight,
     },
     frame_system, pallet_balances,
     pallet_revive::{
@@ -755,10 +755,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
 
         let constructor_args = find_contract.constructor_args();
-        let contract = find_contract.contract().clone();
-        let mut tracer = Tracer::new(true);
-        let res = execute_with_externalities(|externalities| {
         let contract = find_contract.contract();
+        let resolc_bytecode = contract.resolc_bytecode.as_bytes().unwrap().to_vec();
 
         // 1) Weight cap
         let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
@@ -767,6 +765,36 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .max_extrinsic
             .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
             .saturating_sub(normal.base_extrinsic);
+
+        // Convert user's gas limit to weight using 1:1 mapping for ref_time
+        let user_gas_limit = input.gas_limit();
+        
+        if user_gas_limit == 0 {
+            tracing::warn!("Zero gas limit provided for contract creation");
+            return Some(CreateOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::OutOfGas,
+                    output: Bytes::new(),
+                    gas: Gas::new(0),
+                },
+                address: None,
+            });
+        }
+        
+        let user_weight = Weight::from_parts(user_gas_limit, u64::MAX);
+        
+        let weight_limit = Weight::new(
+            user_weight.ref_time().min(max_weight_cap.ref_time()),
+            user_weight.proof_size().min(max_weight_cap.proof_size()),
+        );
+        
+        if user_gas_limit > max_weight_cap.ref_time() {
+            tracing::info!(
+                "User gas limit {} capped to system maximum {}",
+                user_gas_limit,
+                max_weight_cap.ref_time()
+            );
+        }
 
         // 2) Storage deposit cap
         // NOTE: Substrate storage access must use an Externalities scope.
@@ -786,16 +814,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             })
         });
 
-        // 3) Gas limit
-        let max_gas =
-            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
-                max_weight_cap,
-                storage_deposit_cap,
-            );
-        let gas_limit = sp_core::U256::from(input.gas_limit()).min(max_gas);
-
-        let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
+        let mut tracer = Tracer::new(true);
+        let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
@@ -803,7 +823,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
-                    let code = Code::Upload(contract.resolc_bytecode.as_bytes().unwrap().to_vec());
+                    let code = Code::Upload(resolc_bytecode.clone());
                     let data = constructor_args.to_vec();
                     let salt = match input.scheme() {
                         Some(CreateScheme::Create2 { salt }) => Some(
@@ -820,9 +840,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
-                        Weight::MAX,
-                        // TODO: fixing.
-                        BalanceOf::<Runtime>::MAX,
+                        weight_limit,
+                        storage_deposit_cap.saturated_into(),
                         code,
                         data,
                         salt,
@@ -854,7 +873,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     CreateOutcome {
                         result: InterpreterResult {
                             result: InstructionResult::Return,
-                            output: contract.resolc_bytecode.as_bytes().unwrap().to_owned(),
+                            output: resolc_bytecode.into(),
                             gas,
                         },
                         address: Some(Address::from_slice(result.addr.as_bytes())),
@@ -911,8 +930,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         tracing::info!("running call in PVM {:#?}", call);
-        let mut tracer = Tracer::new(true);
-        let res = execute_with_externalities(|externalities| {
 
         // 1) Weight cap
         let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
@@ -921,6 +938,36 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .max_extrinsic
             .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
             .saturating_sub(normal.base_extrinsic);
+
+        // Convert user's gas limit to weight using 1:1 mapping for ref_time
+        let user_gas_limit = call.gas_limit;
+        
+        if user_gas_limit == 0 {
+            tracing::warn!("Zero gas limit provided for contract call");
+            return Some(CallOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::OutOfGas,
+                    output: Bytes::new(),
+                    gas: Gas::new(0),
+                },
+                memory_offset: call.return_memory_offset.clone(),
+            });
+        }
+        
+        let user_weight = Weight::from_parts(user_gas_limit, u64::MAX);
+        
+        let weight_limit = Weight::new(
+            user_weight.ref_time().min(max_weight_cap.ref_time()),
+            user_weight.proof_size().min(max_weight_cap.proof_size()),
+        );
+        
+        if user_gas_limit > max_weight_cap.ref_time() {
+            tracing::info!(
+                "User gas limit {} capped to system maximum {}",
+                user_gas_limit,
+                max_weight_cap.ref_time()
+            );
+        }
 
         // 2) Storage deposit cap
         // NOTE: Substrate storage access must use an Externalities scope.
@@ -941,16 +988,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             })
         });
 
-        // 3) Gas limit
-        let max_gas =
-            <<Runtime as Config>::EthGasEncoder as GasEncoder<BalanceOf<Runtime>>>::encode(
-                Default::default(),
-                max_weight_cap,
-                storage_deposit_cap,
-            );
-        let gas_limit = sp_core::U256::from(call.gas_limit).min(max_gas);
-
-        let (res, _call_trace, prestate_trace) = execute_with_externalities(|externalities| {
+        let mut tracer = Tracer::new(true);
+        let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
@@ -966,9 +1005,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         origin,
                         target,
                         evm_value,
-                        Weight::MAX,
-                        // TODO: fixing.
-                        BalanceOf::<Runtime>::MAX,
+                        weight_limit,
+                        storage_deposit_cap.saturated_into(),
                         call.input.bytes(ecx).to_vec(),
                         ExecConfig::new_substrate_tx(),
                     )

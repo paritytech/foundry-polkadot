@@ -19,10 +19,6 @@ This format ensures clarity and ease of navigation, with the color scheme provid
 
 ## Known Issues
 
-## PVM gas cap alignment
-
-PVM calls are capped by Substrate runtime limits and account constraints. The per‑call cap is derived from the Normal dispatch class single‑extrinsic weight (minus `base_extrinsic`) and the caller’s refundable storage deposit availability (`free_balance − existential_deposit − value_sent`). These bounds are converted to an EVM‑style gas cap via the runtime EthGasEncoder and further clamped by the transaction’s `gas_limit`. Gas reports continue to display the actual measured gas used.
-
 ## Forge Commands
 
 ### Working Commands
