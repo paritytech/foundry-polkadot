@@ -22,6 +22,7 @@ foundry-evm-core.workspace = true
 foundry-evm-coverage.workspace = true
 foundry-evm-fuzz.workspace = true
 foundry-evm-traces.workspace = true
+revive-utils.workspace = true
 
 alloy-dyn-abi = { workspace = true, features = ["arbitrary", "eip712"] }
 alloy-evm.workspace = true
@@ -55,3 +56,4 @@ indicatif.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 uuid.workspace = true
+
