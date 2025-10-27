@@ -239,9 +239,9 @@ pub fn enable_paint() {
 ///   <https://github.com/awslabs/aws-sdk-rust/discussions/1257>
 pub fn install_crypto_provider() {
     // https://github.com/snapview/tokio-tungstenite/issues/353
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Failed to install default rustls crypto provider");
+    // Only one provider can be installed globally per process. Multiple tests running in parallel
+    // will fail if this is not ignored.
+    let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
 /// Useful extensions to [`std::process::Command`].

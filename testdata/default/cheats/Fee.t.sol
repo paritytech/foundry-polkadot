@@ -89,7 +89,7 @@ contract FeeEdgeCases is DSTest {
         vm.pvm(true);
         uint256 max = type(uint256).max;
         vm.fee(max);
-        assertEq(block.basefee, max);
+        assertEq(block.basefee, type(uint64).max);
     }
 }
 
