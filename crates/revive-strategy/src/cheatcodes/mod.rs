@@ -783,7 +783,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let user_weight = Weight::from_parts(user_gas_limit, u64::MAX);
 
-        let weight_limit = Weight::new(
+        let weight_limit = Weight::from_parts(
             user_weight.ref_time().min(max_weight_cap.ref_time()),
             user_weight.proof_size().min(max_weight_cap.proof_size()),
         );
@@ -955,7 +955,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let user_weight = Weight::from_parts(user_gas_limit, u64::MAX);
 
-        let weight_limit = Weight::new(
+        let weight_limit = Weight::from_parts(
             user_weight.ref_time().min(max_weight_cap.ref_time()),
             user_weight.proof_size().min(max_weight_cap.proof_size()),
         );
