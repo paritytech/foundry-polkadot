@@ -6,8 +6,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, feeCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall,
-        storeCall, warpCall, 
+        dealCall, feeCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall,
+        setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -730,7 +730,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         // tx cap is ecx.tx.gas_price (max_fee_per_gas) or u128::MAX if it's not set
         let mut tx_cap_u128 = ecx.tx.gas_price;
-        if ecx.tx.gas_priority_fee.is_none()  && tx_cap_u128 == 0{
+        if ecx.tx.gas_priority_fee.is_none() && tx_cap_u128 == 0 {
             tx_cap_u128 = u128::MAX;
         }
 
@@ -882,7 +882,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         // tx cap is ecx.tx.gas_price (max_fee_per_gas) or u128::MAX if it's not set
         let mut tx_cap_u128 = ecx.tx.gas_price;
-        if ecx.tx.gas_priority_fee.is_none()  && tx_cap_u128 == 0{
+        if ecx.tx.gas_priority_fee.is_none() && tx_cap_u128 == 0 {
             tx_cap_u128 = u128::MAX;
         }
 
