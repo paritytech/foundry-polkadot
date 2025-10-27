@@ -804,7 +804,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         code,
                         data,
                         salt,
-                        ExecConfig::new_substrate_tx().with_base_fee(block_basefee),
+                        {
+                            let mut config = ExecConfig::new_substrate_tx();
+                            config.effective_gas_price = Some(block_basefee);
+                            config
+                        },
                     )
                 })
             })
@@ -922,7 +926,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         // TODO: fixing.
                         BalanceOf::<Runtime>::MAX,
                         call.input.bytes(ecx).to_vec(),
-                        ExecConfig::new_substrate_tx().with_base_fee(block_basefee),
+                        {
+                            let mut config = ExecConfig::new_substrate_tx();
+                            config.effective_gas_price = Some(block_basefee);
+                            config
+                        },
                     )
                 })
             })
