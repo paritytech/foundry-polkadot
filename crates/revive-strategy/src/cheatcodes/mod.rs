@@ -24,7 +24,6 @@ use polkadot_sdk::{
     frame_support::{
         dispatch::DispatchClass,
         traits::{Currency, fungible::Mutate},
-        weights::Weight,
     },
     frame_system, pallet_balances,
     pallet_revive::{
@@ -411,6 +410,16 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 }
 
                 let target_address_h160 = H160::from_slice(target.as_slice());
+                let has_pvm_contract = execute_with_externalities(|externalities| {
+                    externalities.execute_with(|| {
+                        AccountInfo::<Runtime>::load_contract(&target_address_h160).is_some()
+                    })
+                });
+                if !has_pvm_contract {
+                    tracing::info!(target = ?target, "no PVM contract; delegating vm.store to EVM");
+                    return cheatcode.dyn_apply(ccx, executor);
+                }
+
                 let _ = execute_with_externalities(|externalities| {
                     externalities.execute_with(|| {
                         Pallet::<Runtime>::set_storage(
@@ -747,12 +756,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         let init_code = input.init_code();
+        let Some(find_contract) = ctx.dual_compiled_contracts.find_bytecode(&init_code.0) else {
+            tracing::info!("no resolc match for init code; creating in EVM");
+            return None;
+        };
         tracing::info!("running create in PVM");
-
-        let find_contract = ctx
-            .dual_compiled_contracts
-            .find_bytecode(&init_code.0)
-            .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
 
         let constructor_args = find_contract.constructor_args();
         let contract = find_contract.contract();
@@ -761,40 +769,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         // 1) Weight cap
         let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
         let normal = block_weights.get(DispatchClass::Normal);
-        let max_weight_cap = normal
-            .max_extrinsic
-            .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
-            .saturating_sub(normal.base_extrinsic);
-
-        // Convert user's gas limit to weight using 1:1 mapping for ref_time
-        let user_gas_limit = input.gas_limit();
-
-        if user_gas_limit == 0 {
-            tracing::warn!("Zero gas limit provided for contract creation");
-            return Some(CreateOutcome {
-                result: InterpreterResult {
-                    result: InstructionResult::OutOfGas,
-                    output: Bytes::new(),
-                    gas: Gas::new(0),
-                },
-                address: None,
-            });
-        }
-
-        let user_weight = Weight::from_parts(user_gas_limit, u64::MAX);
-
-        let weight_limit = Weight::from_parts(
-            user_weight.ref_time().min(max_weight_cap.ref_time()),
-            user_weight.proof_size().min(max_weight_cap.proof_size()),
-        );
-
-        if user_gas_limit > max_weight_cap.ref_time() {
-            tracing::info!(
-                "User gas limit {} capped to system maximum {}",
-                user_gas_limit,
-                max_weight_cap.ref_time()
-            );
-        }
+        let max_weight_cap =
+            normal.max_extrinsic.unwrap_or(normal.max_total.unwrap_or(block_weights.max_block));
 
         // 2) Storage deposit cap
         // NOTE: Substrate storage access must use an Externalities scope.
@@ -839,7 +815,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
-                        weight_limit,
+                        max_weight_cap,
                         storage_deposit_cap.saturated_into(),
                         code,
                         data,
@@ -933,40 +909,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         // 1) Weight cap
         let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
         let normal = block_weights.get(DispatchClass::Normal);
-        let max_weight_cap = normal
-            .max_extrinsic
-            .unwrap_or(normal.max_total.unwrap_or(block_weights.max_block))
-            .saturating_sub(normal.base_extrinsic);
-
-        // Convert user's gas limit to weight using 1:1 mapping for ref_time
-        let user_gas_limit = call.gas_limit;
-
-        if user_gas_limit == 0 {
-            tracing::warn!("Zero gas limit provided for contract call");
-            return Some(CallOutcome {
-                result: InterpreterResult {
-                    result: InstructionResult::OutOfGas,
-                    output: Bytes::new(),
-                    gas: Gas::new(0),
-                },
-                memory_offset: call.return_memory_offset.clone(),
-            });
-        }
-
-        let user_weight = Weight::from_parts(user_gas_limit, u64::MAX);
-
-        let weight_limit = Weight::from_parts(
-            user_weight.ref_time().min(max_weight_cap.ref_time()),
-            user_weight.proof_size().min(max_weight_cap.proof_size()),
-        );
-
-        if user_gas_limit > max_weight_cap.ref_time() {
-            tracing::info!(
-                "User gas limit {} capped to system maximum {}",
-                user_gas_limit,
-                max_weight_cap.ref_time()
-            );
-        }
+        let max_weight_cap =
+            normal.max_extrinsic.unwrap_or(normal.max_total.unwrap_or(block_weights.max_block));
 
         // 2) Storage deposit cap
         // NOTE: Substrate storage access must use an Externalities scope.
@@ -985,6 +929,20 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             })
         });
 
+        let target_address_h160 = H160::from_slice(call.target_address.as_slice());
+        let has_pvm_contract = execute_with_externalities(|externalities| {
+            externalities.execute_with(|| {
+                AccountInfo::<Runtime>::load_contract(&target_address_h160).is_some()
+            })
+        });
+        if !has_pvm_contract {
+            tracing::info!(
+                target = ?call.target_address,
+                "no PVM contract at target; calling in EVM"
+            );
+            return None;
+        }
+
         let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
@@ -996,13 +954,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
 
-                    let target = H160::from_slice(call.target_address.as_slice());
-
                     Pallet::<Runtime>::bare_call(
                         origin,
-                        target,
+                        target_address_h160,
                         evm_value,
-                        weight_limit,
+                        max_weight_cap,
                         storage_deposit_cap.saturated_into(),
                         call.input.bytes(ecx).to_vec(),
                         ExecConfig::new_substrate_tx(),
