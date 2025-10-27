@@ -15,7 +15,7 @@ use std::marker::PhantomData;
 /// only its configured address, residing at index 0 in the AURA authorities set. When
 /// forking from an assethub chain, we expect an assethub runtime based on AURA,
 /// which will pick the author based on the slot given through the digest, which will
-/// also result in picking the AURA authority from index 0. 
+/// also result in picking the AURA authority from index 0.
 pub struct SameSlotConsensusDataProvider<B, P> {
     _phantom: PhantomData<(B, P)>,
 }
