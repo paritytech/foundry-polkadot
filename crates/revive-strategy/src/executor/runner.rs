@@ -63,7 +63,9 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         let balance_native =
             BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
 
-        EvmExecutorStrategyRunner.set_balance(executor, address, amount)?;
+        // Set EVM balance with clamped PVM balance
+        let amount_clamped = U256::from(amount_pvm.min(u128::MAX.into()).as_u128());
+        EvmExecutorStrategyRunner.set_balance(executor, address, amount_clamped)?;
 
         let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
 

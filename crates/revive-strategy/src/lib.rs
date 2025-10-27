@@ -41,34 +41,49 @@ impl ReviveExecutorStrategyBuilder for ExecutorStrategy {
 
 // TODO: rewrite this to something proper rather than a thread local variable
 std::thread_local! {
-    pub static TEST_EXTERNALITIES: std::cell::RefCell<sp_io::TestExternalities> = std::cell::RefCell::new(ExtBuilder::default()
-    .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
-    .build());
+    pub static TEST_EXTERNALITIES: std::cell::RefCell<Option<sp_io::TestExternalities>> = const { std::cell::RefCell::new(None) };
 
-    pub static CHECKPOINT : std::cell::RefCell<InMemoryBackend<sp_core::Blake2Hasher> > = panic!("not set");
+    pub static CHECKPOINT : std::cell::RefCell<Option<InMemoryBackend<sp_core::Blake2Hasher>>> = const { std::cell::RefCell::new(None) };
 }
 
 fn execute_with_externalities<R, F: FnOnce(&mut sp_io::TestExternalities) -> R>(f: F) -> R {
-    TEST_EXTERNALITIES.with_borrow_mut(f)
+    TEST_EXTERNALITIES.with_borrow_mut(|opt_ext| {
+        // Initialize if not present
+        if opt_ext.is_none() {
+            *opt_ext = Some(
+                ExtBuilder::default()
+                    .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
+                    .build()
+            );
+        }
+        f(opt_ext.as_mut().expect("TEST_EXTERNALITIES just initialized"))
+    })
 }
 
 pub fn with_externalities<R, F: FnOnce() -> R>(mut backend: Backend, f: F) -> R {
     let mut test_externalities = ExtBuilder::default().build();
     std::mem::swap(&mut test_externalities.backend, &mut backend.0);
-    TEST_EXTERNALITIES.set(test_externalities);
+    TEST_EXTERNALITIES.with_borrow_mut(|opt| *opt = Some(test_externalities));
     f()
 }
 
 fn save_checkpoint() {
-    TEST_EXTERNALITIES.with_borrow_mut(|f| CHECKPOINT.set(f.as_backend()))
+    TEST_EXTERNALITIES.with_borrow_mut(|opt_ext| {
+        if let Some(ext) = opt_ext.as_mut() {
+            CHECKPOINT.with_borrow_mut(|opt_cp| *opt_cp = Some(ext.as_backend()));
+        }
+    })
 }
 
 fn return_to_checkpoint() {
     let mut test_externalities = ExtBuilder::default().build();
-    let mut backend = CHECKPOINT.take();
-    std::mem::swap(&mut test_externalities.backend, &mut backend);
-
-    TEST_EXTERNALITIES.set(test_externalities)
+    CHECKPOINT.with_borrow_mut(|opt_cp| {
+        if let Some(backend) = opt_cp.take() {
+            let mut backend_copy = backend;
+            std::mem::swap(&mut test_externalities.backend, &mut backend_copy);
+        }
+    });
+    TEST_EXTERNALITIES.with_borrow_mut(|opt| *opt = Some(test_externalities));
 }
 
 #[derive(Clone)]
@@ -77,6 +92,18 @@ pub struct Backend(InMemoryBackend<sp_core::Blake2Hasher>);
 impl Backend {
     /// Get the backend of test_externalities
     pub fn get() -> Self {
-        TEST_EXTERNALITIES.with_borrow_mut(|f| Self(f.as_backend()))
+        TEST_EXTERNALITIES.with_borrow_mut(|opt_ext| {
+            if let Some(ext) = opt_ext.as_mut() {
+                Self(ext.as_backend())
+            } else {
+                // Initialize if not present
+                let mut ext = ExtBuilder::default()
+                    .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
+                    .build();
+                let backend = ext.as_backend();
+                *opt_ext = Some(ext);
+                Self(backend)
+            }
+        })
     }
 }

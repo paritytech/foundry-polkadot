@@ -156,8 +156,11 @@ fn set_nonce(address: Address, nonce: u64, ecx: Ecx<'_, '_, '_>) {
 fn set_balance(address: Address, amount: U256, ecx: Ecx<'_, '_, '_>) -> U256 {
     let account = ecx.journaled_state.load_account(address).expect("account loaded").data;
     account.mark_touch();
-    account.info.balance = amount;
+    
     let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+    let amount_clamped = U256::from(amount_pvm.min(u128::MAX.into()).as_u128());
+    account.info.balance = amount_clamped;
+    
     let balance_native =
         BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
 
@@ -467,7 +470,7 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                     AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
 
                 // Convert EVM balance to PVM balance with precision handling
-                // TODO: needs to be replaced with `set_evm_balance`` once new pallet-revive is used
+                // TODO: refactor wtih `set_evm_balance`` once new version of pallet-revive is ready
                 let amount_pvm =
                     sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
                 let balance_native =
@@ -475,10 +478,13 @@ fn select_pvm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
                 let amount_evm = U256::from_limbs(balance.0);
 
+                // Sync EVM balance with PVM balance after round-trip conversion due to BalanceWithDust imprecisions
                 if amount != amount_evm {
-                    let _ = sh_err!(
-                        "Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect."
+                    tracing::debug!(
+                        "Adjusting EVM balance from {} to {} due to BalanceWithDust precision (diff: {} wei)",
+                        amount, amount_evm, amount.abs_diff(amount_evm)
                     );
+                    acc.data.info.balance = amount_evm;
                 }
 
                 let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
@@ -662,15 +668,22 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .saturating_sub(normal.base_extrinsic);
 
         // 2) Storage deposit cap
-        let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
-        let caller_acc =
-            AccountId::to_fallback_account_id(&H160::from_slice(input.caller().as_slice()));
-        let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
-        let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
-        let evm_value_native: BalanceOf<Runtime> =
-            evm_value.min(u128::MAX.into()).as_u128().saturated_into();
-        let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
-        let storage_deposit_cap: u128 = available.saturated_into();
+        // NOTE: Substrate storage access must use an Externalities scope.
+        let storage_deposit_cap: u128 = execute_with_externalities(|externalities| {
+            externalities.execute_with(|| {
+                let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
+                let caller_acc = AccountId::to_fallback_account_id(
+                    &H160::from_slice(input.caller().as_slice()),
+                );
+                let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
+                let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
+                let evm_value_native: BalanceOf<Runtime> =
+                    evm_value.min(u128::MAX.into()).as_u128().saturated_into();
+                let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
+                let cap: u128 = available.saturated_into();
+                cap
+            })
+        });
 
         // 3) Gas limit
         let max_gas =
@@ -819,15 +832,23 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .saturating_sub(normal.base_extrinsic);
 
         // 2) Storage deposit cap
-        let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
-        let caller_acc =
-            AccountId::to_fallback_account_id(&H160::from_slice(call.caller.as_slice()));
-        let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
-        let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
-        let evm_value_native: BalanceOf<Runtime> =
-            evm_value.min(u128::MAX.into()).as_u128().saturated_into();
-        let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
-        let storage_deposit_cap: u128 = available.saturated_into();
+        // NOTE: Substrate storage access must use an Externalities scope.
+        let storage_deposit_cap: u128 = execute_with_externalities(|externalities| {
+            externalities.execute_with(|| {
+                let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
+                let caller_acc = AccountId::to_fallback_account_id(
+                    &H160::from_slice(call.caller.as_slice()),
+                );
+                let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
+                let evm_value =
+                    sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
+                let evm_value_native: BalanceOf<Runtime> =
+                    evm_value.min(u128::MAX.into()).as_u128().saturated_into();
+                let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
+                let cap: u128 = available.saturated_into();
+                cap
+            })
+        });
 
         // 3) Gas limit
         let max_gas =
