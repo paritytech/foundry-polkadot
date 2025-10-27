@@ -1,12 +1,12 @@
 use super::revive_conversions::{ReviveBytes, ReviveFilter};
 use crate::{
     api_server::{
+        ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId,
-            ReviveBlockNumberOrTag, SubstrateU256,
+            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, SubstrateU256,
+            convert_to_generic_transaction,
         },
-        ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
@@ -15,36 +15,36 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
+            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
             storage::{
                 AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
-            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
         },
         snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
-use alloy_primitives::{Address, B256, U256, U64};
-use alloy_rpc_types::{anvil::MineOptions, txpool::TxpoolStatus, Filter, TransactionRequest};
+use alloy_primitives::{Address, B256, U64, U256};
+use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions, txpool::TxpoolStatus};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use codec::{Decode, DecodeLimit, Encode};
-use futures::{channel::mpsc, StreamExt};
+use futures::{StreamExt, channel::mpsc};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
+    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
-    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
 };
 use polkadot_sdk::{
     pallet_revive::{
+        ReviveApi,
         evm::{
             Account, Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
             TransactionSigned,
         },
-        ReviveApi,
     },
     parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
@@ -53,16 +53,16 @@ use polkadot_sdk::{
     sp_api::{Metadata, ProvideRuntimeApi},
     sp_arithmetic::Permill,
     sp_blockchain::Info,
-    sp_core::{self, keccak_256, Hasher},
+    sp_core::{self, Hasher, keccak_256},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use substrate_runtime::{Balance, RuntimeCall, UncheckedExtrinsic};
 use subxt::{
-    backend::rpc::RpcClient, client::RuntimeVersion as SubxtRuntimeVersion,
-    config::substrate::H256, ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
-    Metadata as SubxtMetadata, OnlineClient,
+    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
+    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
+    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
 };
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));

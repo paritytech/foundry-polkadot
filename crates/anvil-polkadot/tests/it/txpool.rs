@@ -1,6 +1,6 @@
-use crate::utils::{unwrap_response, TestNode};
+use crate::utils::{TestNode, unwrap_response};
 use alloy_primitives::{Address, B256, U256};
-use alloy_rpc_types::{txpool::TxpoolStatus, TransactionRequest};
+use alloy_rpc_types::{TransactionRequest, txpool::TxpoolStatus};
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::ReviveAddress,
@@ -36,6 +36,18 @@ async fn test_txpool_status() {
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
     assert_eq!(status.pending, 3);
     assert_eq!(status.queued, 0);
+
+    let tx_future = TransactionRequest::default()
+        .from(alith_addr)
+        .to(recipient_addr)
+        .value(U256::from(5000))
+        .nonce(5);
+    node.send_transaction(tx_future, None).await.unwrap();
+
+    let status: TxpoolStatus =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
+    assert_eq!(status.pending, 3);
+    assert_eq!(status.queued, 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -59,9 +71,17 @@ async fn test_drop_transaction() {
         .nonce(1);
     let tx2_hash = node.send_transaction(tx2, None).await.unwrap();
 
+    let tx_future = TransactionRequest::default()
+        .from(alith_addr)
+        .to(recipient_addr)
+        .value(U256::from(5000))
+        .nonce(5);
+    let tx_future_hash = node.send_transaction(tx_future, None).await.unwrap();
+
     let status: TxpoolStatus =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
     assert_eq!(status.pending, 2);
+    assert_eq!(status.queued, 1);
 
     let tx2_hash_b256 = B256::from_slice(tx2_hash.0.as_ref());
     let dropped_hash = unwrap_response::<Option<B256>>(
@@ -73,6 +93,19 @@ async fn test_drop_transaction() {
     let status: TxpoolStatus =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
     assert_eq!(status.pending, 1);
+    assert_eq!(status.queued, 1);
+
+    let tx_future_hash_b256 = B256::from_slice(tx_future_hash.0.as_ref());
+    let dropped_hash = unwrap_response::<Option<B256>>(
+        node.eth_rpc(EthRequest::DropTransaction(tx_future_hash_b256)).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(dropped_hash, Some(tx_future_hash_b256));
+
+    let status: TxpoolStatus =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
+    assert_eq!(status.pending, 1);
+    assert_eq!(status.queued, 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -94,9 +127,17 @@ async fn test_drop_all_transactions() {
         node.send_transaction(tx, None).await.unwrap();
     }
 
+    let tx_future = TransactionRequest::default()
+        .from(alith_addr)
+        .to(recipient_addr)
+        .value(U256::from(5000))
+        .nonce(5);
+    node.send_transaction(tx_future, None).await.unwrap();
+
     let status: TxpoolStatus =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
     assert_eq!(status.pending, 3);
+    assert_eq!(status.queued, 1);
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::DropAllTransactions()).await.unwrap()).unwrap();
 
