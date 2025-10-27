@@ -1,6 +1,6 @@
 use crate::utils::{TestNode, unwrap_response};
 use alloy_dyn_abi::TypedData;
-use alloy_primitives::{Address, Bytes, U64};
+use alloy_primitives::{Address, Bytes, Signature, U64};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::EthRequest;
@@ -168,21 +168,23 @@ async fn can_sign_typed_data() {
       }
     });
 
+    let signing_address: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap();
     let typed_data: TypedData = serde_json::from_value(json).unwrap();
-    let signature = unwrap_response::<String>(
-        node.eth_rpc(EthRequest::EthSignTypedDataV4(
-            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap(),
-            typed_data,
-        ))
-        .await
-        .unwrap(),
+    let signature_hex = unwrap_response::<String>(
+        node.eth_rpc(EthRequest::EthSignTypedDataV4(signing_address, typed_data.clone()))
+            .await
+            .unwrap(),
     )
     .unwrap();
     // Should we set v to 27/28 as in anvil?
     assert_eq!(
-        signature,
+        signature_hex,
         "0x6ea8bb309a3401225701f3565e32519f94a0ea91a5910ce9229fe488e773584c0390416a2190d9560219dab757ecca2029e63fa9d1c2aebf676cc25b9f03126a00"
     );
+    let signature: Signature = signature_hex.parse().unwrap();
+    let signed_hash = typed_data.eip712_signing_hash().unwrap();
+    let recovered_address = signature.recover_address_from_prehash(&signed_hash).unwrap();
+    assert_eq!(recovered_address, signing_address);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -355,21 +357,23 @@ async fn can_sign_typed_data_os() {
     }
         );
 
+    let signing_address: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap();
     let typed_data: TypedData = serde_json::from_value(json).unwrap();
-    let signature = unwrap_response::<String>(
-        node.eth_rpc(EthRequest::EthSignTypedDataV4(
-            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap(),
-            typed_data,
-        ))
-        .await
-        .unwrap(),
+    let signature_hex = unwrap_response::<String>(
+        node.eth_rpc(EthRequest::EthSignTypedDataV4(signing_address, typed_data.clone()))
+            .await
+            .unwrap(),
     )
     .unwrap();
     // Should we set v to 27/28 as in anvil?
     assert_eq!(
-        signature,
+        signature_hex,
         "0xedb0fa55ac67e3ca52b6bd6ee3576b193731adc2aff42151f67826932fa9f6191261ebdecc2c650204ff7625752b033293fb67ef5cfca78e16de359200040b7600"
     );
+    let signature: Signature = signature_hex.parse().unwrap();
+    let signed_hash = typed_data.eip712_signing_hash().unwrap();
+    let recovered_address = signature.recover_address_from_prehash(&signed_hash).unwrap();
+    assert_eq!(recovered_address, signing_address);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -542,19 +546,21 @@ async fn can_sign_typed_seaport_data() {
     }
             );
 
+    let signing_address: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap();
     let typed_data: TypedData = serde_json::from_value(json).unwrap();
-    let signature = unwrap_response::<String>(
-        node.eth_rpc(EthRequest::EthSignTypedDataV4(
-            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap(),
-            typed_data,
-        ))
-        .await
-        .unwrap(),
+    let signature_hex = unwrap_response::<String>(
+        node.eth_rpc(EthRequest::EthSignTypedDataV4(signing_address, typed_data.clone()))
+            .await
+            .unwrap(),
     )
     .unwrap();
     // Should we set v to 27/28 as in anvil?
     assert_eq!(
-        signature,
+        signature_hex,
         "0xed9afe7f377155ee3a42b25b696d79b55d441aeac7790b97a51b54ad0569b9665ea30bf8e8df12d6ee801c4dcb85ecfb8b23a6f7ae166d5af9acac9befb9054501"
     );
+    let signature: Signature = signature_hex.parse().unwrap();
+    let signed_hash = typed_data.eip712_signing_hash().unwrap();
+    let recovered_address = signature.recover_address_from_prehash(&signed_hash).unwrap();
+    assert_eq!(recovered_address, signing_address);
 }
