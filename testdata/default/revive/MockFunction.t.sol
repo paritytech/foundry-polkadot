@@ -1,6 +1,5 @@
 pragma solidity ^0.8.18;
 
-
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
 import "../../default/logs/console.sol";
