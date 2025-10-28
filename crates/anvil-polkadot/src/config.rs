@@ -491,12 +491,12 @@ Genesis Number
             mixed_mining: false,
             enable_tracing: false,
             silent: true,
+            genesis_balance: Unit::ETHER.wei().saturating_mul(U256::from(10000u64)),
             ..Default::default()
         };
-        let mut dev_accounts =
+        let dev_accounts =
             vec![subxt_signer::eth::dev::alith(), subxt_signer::eth::dev::baltathar()];
         anvil_node_config.genesis_accounts.extend(dev_accounts.clone());
-        dev_accounts.push(subxt_signer::eth::dev::charleth());
         anvil_node_config.signer_accounts.extend(dev_accounts);
         anvil_node_config
     }

@@ -20,6 +20,10 @@ impl DevSigner {
         Ok(Self { keypairs })
     }
 
+    fn recovery_id_mapper(id: u8) -> u8 {
+        id + 27
+    }
+
     pub(crate) fn accounts(&self) -> Vec<H160> {
         self.keypairs.keys().copied().collect()
     }
@@ -42,7 +46,9 @@ impl DevSigner {
             .keypairs
             .get(&ReviveAddress::from(address).inner())
             .ok_or(Error::NoSignerAvailable)?;
-        Ok(keypair.sign(message).0)
+        let mut signature = keypair.sign(message).0;
+        signature[64] = Self::recovery_id_mapper(signature[64]);
+        Ok(signature)
     }
 
     pub(crate) fn sign_typed_data(
@@ -58,6 +64,8 @@ impl DevSigner {
         // Compute the EIP-712 signing hash
         let hash =
             typed_data.eip712_signing_hash().map_err(|e| Error::InternalError(e.to_string()))?;
-        Ok(keypair.sign_prehashed(hash.as_ref()).0)
+        let mut signature = keypair.sign_prehashed(hash.as_ref()).0;
+        signature[64] = Self::recovery_id_mapper(signature[64]);
+        Ok(signature)
     }
 }

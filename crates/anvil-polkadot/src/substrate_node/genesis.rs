@@ -8,7 +8,7 @@ use alloy_genesis::GenesisAccount;
 use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
-    pallet_revive::genesis::ContractData,
+    pallet_revive::{evm::Account, genesis::ContractData},
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
@@ -92,7 +92,7 @@ impl GenesisConfig {
 
     pub fn runtime_genesis_config_patch(&self) -> Value {
         // Relies on ReviveGenesisAccount type from pallet-revive
-        let revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
+        let mut revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
             .alloc
             .clone()
             .unwrap_or_default()
@@ -127,7 +127,17 @@ impl GenesisConfig {
                 }
             })
             .collect();
-
+        revive_genesis_accounts.extend(
+            self.genesis_accounts
+                .iter()
+                .map(|key| ReviveGenesisAccount {
+                    address: Account::from(key.clone()).address(),
+                    balance: self.genesis_balance,
+                    nonce: 0,
+                    contract_data: None,
+                })
+                .collect::<Vec<_>>(),
+        );
         json!({
             "revive": {
                 "accounts": revive_genesis_accounts,
