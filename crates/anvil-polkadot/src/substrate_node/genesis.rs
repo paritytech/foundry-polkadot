@@ -1,20 +1,26 @@
 //! Genesis settings
 
-use crate::{config::AnvilNodeConfig, substrate_node::service::storage::well_known_keys};
+use crate::{
+    api_server::revive_conversions::ReviveAddress, config::AnvilNodeConfig,
+    substrate_node::service::storage::well_known_keys,
+};
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
+    pallet_revive::genesis::ContractData,
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
     sp_blockchain,
-    sp_core::storage::Storage,
+    sp_core::{H160, storage::Storage},
     sp_runtime::{
         BuildStorage,
         traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
     },
 };
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 /// Genesis settings
@@ -54,6 +60,18 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
     }
 }
 
+/// Used to provide genesis accounts to pallet-revive
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviveGenesisAccount {
+    pub address: H160,
+    #[serde(default)]
+    pub balance: U256,
+    #[serde(default)]
+    pub nonce: u64,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub contract_data: Option<ContractData>,
+}
+
 impl GenesisConfig {
     pub fn as_storage_key_value(&self) -> Vec<(Vec<u8>, Vec<u8>)> {
         let storage = vec![
@@ -63,6 +81,51 @@ impl GenesisConfig {
         ];
         // TODO: add other fields
         storage
+    }
+
+    pub fn runtime_genesis_config_patch(&self) -> Value {
+        // Relies on ReviveGenesisAccount type from pallet-revive
+        let revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
+            .alloc
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .map(|(address, account)| {
+                let genesis_address: H160 = ReviveAddress::from(*address).inner();
+                let genesis_balance: U256 = account.balance;
+                let genesis_nonce: u64 = account.nonce.unwrap_or_default();
+                let contract_data: Option<ContractData> = if account.code.is_some() {
+                    Some(ContractData {
+                        code: account.code.clone().map(|code| code.to_vec()).unwrap_or_default(),
+                        storage: account
+                            .storage
+                            .clone()
+                            .map(|storage| {
+                                storage
+                                    .into_iter()
+                                    .map(|(k, v)| (k.0.into(), v.0.into()))
+                                    .collect::<BTreeMap<_, _>>()
+                            })
+                            .unwrap_or_default(),
+                    })
+                } else {
+                    None
+                };
+
+                ReviveGenesisAccount {
+                    address: genesis_address,
+                    balance: genesis_balance,
+                    nonce: genesis_nonce,
+                    contract_data,
+                }
+            })
+            .collect();
+
+        json!({
+            "revive": {
+                "accounts": revive_genesis_accounts,
+            },
+        })
     }
 }
 

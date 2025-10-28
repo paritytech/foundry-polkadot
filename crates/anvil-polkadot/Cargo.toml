@@ -126,6 +126,7 @@ itertools.workspace = true
 rand_08.workspace = true
 eyre.workspace = true
 lru = "0.16.0"
+indexmap = "2.0"
 
 # cli
 clap = { version = "4", features = [
