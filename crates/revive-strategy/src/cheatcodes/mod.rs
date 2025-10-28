@@ -824,7 +824,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
                     // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
                     // that here too to replicate the same address generation.
-                    System::inc_account_nonce(&AccountId::to_fallback_account_id(
+                    System::inc_account_nonce(AccountId::to_fallback_account_id(
                         &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
 

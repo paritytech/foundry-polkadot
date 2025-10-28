@@ -1,11 +1,11 @@
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, VecDeque},
-    sync::{Arc, Mutex},
+    rc::Rc,
 };
 
 use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, ruint::aliases::U256};
 use foundry_cheatcodes::{Ecx, MockCallDataContext, MockCallReturnData};
-use foundry_common::sh_err;
 use polkadot_sdk::{
     frame_system,
     pallet_revive::{
@@ -24,7 +24,7 @@ use revm::{context::JournalTr, interpreter::InstructionResult};
 // synchronize whatever mocks got consumed back into the Cheatcodes state after the call.
 #[derive(Clone)]
 pub(crate) struct MockHandlerImpl {
-    inner: Arc<Mutex<MockHandlerInner<Runtime>>>,
+    inner: Rc<RefCell<MockHandlerInner<Runtime>>>,
     pub prank_enabled: bool,
 }
 
@@ -39,18 +39,15 @@ impl MockHandlerImpl {
     ) -> Self {
         let (inject_env, prank_enabled) =
             MockHandlerInner::new(ecx, caller, target_address, callee, state);
-        Self { inner: Arc::new(Mutex::new(inject_env)), prank_enabled }
+        Self { inner: Rc::new(RefCell::new(inject_env)), prank_enabled }
     }
 
     /// Updates the given Cheatcodes state with the current mock state.
     /// This is used to synchronize the mock state after a call has been executed in Revive
     pub(crate) fn update_state_mocks(&self, state: &mut foundry_cheatcodes::Cheatcodes) {
-        if let Ok(mock_inner) = self.inner.lock() {
-            state.mocked_calls = mock_inner.mocked_calls.clone();
-            state.mocked_functions = mock_inner.mocked_functions.clone();
-        } else {
-            let _ = sh_err!("Could not update state mocks");
-        }
+        let mock_inner = self.inner.borrow();
+        state.mocked_calls = mock_inner.mocked_calls.clone();
+        state.mocked_functions = mock_inner.mocked_functions.clone();
     }
 
     pub(crate) fn fund_pranked_accounts(&self, account: Address) {
@@ -77,7 +74,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         call_data: &[u8],
         value_transferred: polkadot_sdk::pallet_revive::U256,
     ) -> Option<pallet_revive::ExecReturnValue> {
-        let mut mock_inner = self.inner.lock().ok()?;
+        let mut mock_inner = self.inner.borrow_mut();
         let ctx = MockCallDataContext {
             calldata: call_data.to_vec().into(),
             value: Some(U256::from_limbs(value_transferred.0)),
@@ -120,7 +117,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
     }
 
     fn mock_caller(&self, frames_len: usize) -> Option<OriginFor<Runtime>> {
-        let mock_inner = self.inner.lock().ok()?;
+        let mock_inner = self.inner.borrow();
 
         if (frames_len == 0 || !mock_inner.first_call_only) && mock_inner.delegated_caller.is_none()
         {
@@ -134,7 +131,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         dest: H160,
         input_data: &[u8],
     ) -> Option<DelegateInfo<Runtime>> {
-        let mock_inner = self.inner.lock().ok()?;
+        let mock_inner = self.inner.borrow();
 
         // Mocked functions are implemented by making use of the hooks for delegated calls.
         if let Some(mocked_function) =
@@ -202,7 +199,7 @@ impl MockHandlerInner<Runtime> {
             )))
         });
 
-        let mut state_inject = MockHandlerInner::<Runtime> {
+        let mut state_inject = Self {
             caller: pranked_caller,
             delegated_caller,
             first_call_only: true,
