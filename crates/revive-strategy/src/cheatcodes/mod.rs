@@ -218,16 +218,15 @@ fn etch_call(target: &Address, new_runtime_code: &Bytes, ecx: Ecx<'_, '_, '_>) -
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
             let code = new_runtime_code.to_vec();
-            let contract_blob = if code.starts_with(&[b'P', b'V', b'M', b'\0']) {
-                let contract_blob = Pallet::<Runtime>::try_upload_pvm_code(
+            let contract_blob = if code.starts_with(b"PVM\0") {
+                Pallet::<Runtime>::try_upload_pvm_code(
                     origin_account.clone(),
                     code,
-                    BalanceOf::<Runtime>::max_value(),
+                    BalanceOf::<Runtime>::MAX,
                     &ExecConfig::new_substrate_tx(),
                 )
                 .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
-                .0;
-                contract_blob
+                .0
             } else {
                 let mut contract_blob =
                     ContractBlob::from_evm_runtime_code(code, origin_account.clone())
@@ -446,7 +445,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 Ok(Default::default())
             }
             t if using_pvm && is::<etchCall>(t) => {
-                let &etchCall { ref target, ref newRuntimeBytecode } =
+                let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
                 etch_call(target, newRuntimeBytecode, ccx.ecx)?;
                 Ok(Default::default())
