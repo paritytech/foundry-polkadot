@@ -946,7 +946,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             );
             return None;
         }
-        
+
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
 
         let mock_handler = MockHandlerImpl::new(
