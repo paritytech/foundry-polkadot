@@ -19,7 +19,7 @@ use foundry_test_utils::{
     fd_lock, init_tracing,
     rpc::{next_http_archive_rpc_url, next_rpc_endpoint},
 };
-use revive_strategy::ReviveExecutorStrategyBuilder;
+use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 use revm::primitives::hardfork::SpecId;
 use std::{
     env, fmt,
@@ -326,7 +326,7 @@ impl ForgeTestData {
     }
 
     /// Builds a runner with revive strategy for polkadot/substrate testing
-    pub fn runner_revive(&self) -> MultiContractRunner {
+    pub fn runner_revive(&self, runtime_mode: ReviveRuntimeMode) -> MultiContractRunner {
         let mut config = (*self.config).clone();
         config.rpc_endpoints = rpc_endpoints();
         config.allow_paths.push(manifest_root().to_path_buf());
@@ -345,7 +345,7 @@ impl ForgeTestData {
         let root = self.project.root();
         builder.config = config.clone();
 
-        let mut strategy = ExecutorStrategy::new_revive(true);
+        let mut strategy = ExecutorStrategy::new_revive(runtime_mode);
 
         strategy
             .runner
