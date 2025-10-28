@@ -26,7 +26,11 @@ use crate::{
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
-use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions, txpool::TxpoolStatus};
+use alloy_rpc_types::{
+    Filter, TransactionRequest,
+    anvil::{Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
+    txpool::TxpoolStatus,
+};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
@@ -38,6 +42,7 @@ use pallet_revive_eth_rpc::{
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
 };
+use parking_lot::RwLock;
 use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
@@ -50,7 +55,7 @@ use polkadot_sdk::{
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::HeaderBackend,
     sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
-    sp_api::{Metadata, ProvideRuntimeApi},
+    sp_api::ProvideRuntimeApi,
     sp_arithmetic::Permill,
     sp_blockchain::Info,
     sp_core::{self, Hasher, keccak_256},
@@ -84,6 +89,7 @@ pub struct ApiServer {
     snapshot_manager: SnapshotManager,
     impersonation_manager: ImpersonationManager,
     tx_pool: Arc<TransactionPoolHandle>,
+    instance_id: Arc<RwLock<B256>>,
 }
 
 impl ApiServer {
@@ -128,6 +134,7 @@ impl ApiServer {
                     Account::from(subxt_signer::eth::dev::charleth()),
                 ],
             },
+            instance_id: Arc::new(RwLock::new(B256::random())),
         })
     }
 
@@ -224,6 +231,10 @@ impl ApiServer {
             EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
             EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
+
+            // --- Configuration ---
+            EthRequest::NodeInfo(_) => self.anvil_node_info().await.to_rpc_result(),
+            EthRequest::AnvilMetadata(_) => self.anvil_metadata().await.to_rpc_result(),
 
             // ------- State injector ---------
             EthRequest::SetBalance(address, value) => {
@@ -686,6 +697,66 @@ impl ApiServer {
         self.on_revert_update(res).await?;
 
         Ok(())
+    }
+
+    async fn anvil_node_info(&self) -> Result<NodeInfo> {
+        node_info!("anvil_nodeInfo");
+
+        let best_hash = self.latest_block();
+        let Some(current_block) =
+            self.get_block_by_hash(B256::from_slice(best_hash.as_ref()), false).await?
+        else {
+            return Err(Error::InternalError("Latest block not found".to_string()));
+        };
+        let current_block_number: u64 =
+            current_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        let current_block_timestamp: u64 =
+            current_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
+
+        Ok(NodeInfo {
+            current_block_number,
+            current_block_timestamp,
+            current_block_hash: B256::from_slice(best_hash.as_ref()),
+            // TODO: extend enum for Polkadot?
+            hard_fork: Default::default(),
+            // TODO: double check if this is correct
+            transaction_order: Default::default(),
+            environment: NodeEnvironment {
+                // TODO: implement base fee
+                base_fee: 0,
+                chain_id: self.chain_id(best_hash),
+                // TODO: implement gas limit
+                gas_limit: u64::MAX,
+                gas_price: self.gas_price().await?,
+            },
+            // Forking is not supported yet in anvil-polkadot
+            fork_config: Default::default(),
+        })
+    }
+
+    async fn anvil_metadata(&self) -> Result<AnvilMetadata> {
+        node_info!("anvil_metadata");
+
+        let best_hash = self.latest_block();
+        let Some(latest_block) =
+            self.get_block_by_hash(B256::from_slice(best_hash.as_ref()), false).await?
+        else {
+            return Err(Error::InternalError("Latest block not found".to_string()));
+        };
+        let latest_block_number: u64 =
+            latest_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
+
+        Ok(AnvilMetadata {
+            client_version: CLIENT_VERSION.to_string(),
+            chain_id: self.chain_id(best_hash),
+            latest_block_hash: B256::from_slice(best_hash.as_ref()),
+            latest_block_number,
+            instance_id: *self.instance_id.read(),
+            // Forking is not supported yet in anvil-polkadot
+            forked_network: None,
+            // TODO: Implement active snapshots
+            snapshots: Default::default(),
+        })
     }
 
     async fn get_block_transaction_count_by_hash(&self, block_hash: B256) -> Result<Option<U256>> {
