@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
-
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
 import "../../default/logs/console.sol";
 
 contract Victim {
-
     function assertCallerAndOrigin(
         address expectedSender,
         string memory senderMessage,
@@ -101,12 +99,10 @@ contract ImplementationTest {
 
     function assertCorrectCaller(address expectedSender) public {
         require(msg.sender == expectedSender);
-
     }
 
     function assertCorrectOrigin(address expectedOrigin) public {
         require(tx.origin == expectedOrigin);
-
     }
 
     function setNum(uint256 _num) public {
@@ -133,7 +129,7 @@ contract PrankTest is DSTest {
         // Assert correct `msg.sender`
         (bool success,) =
             address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", address(proxy)));
-        
+
         require(success, "prank2: delegate call failed assertCorrectCaller");
 
         // Assert storage updates
@@ -294,28 +290,16 @@ contract PrankTest is DSTest {
     }
 
     function isNotReserved(address addr) internal returns (bool) {
-    // Check for zero address and common precompiles (addresses 1-9)
-    if (
-        addr == address(0) ||
-        addr == address(1) ||
-        addr == address(2) ||
-        addr == address(3) ||
-        addr == address(4) ||
-        addr == address(5) ||
-        addr == address(6) ||
-        addr == address(7) ||
-        addr == address(8) ||
-        addr == address(9) ||
-        addr == address(10) ||
-        addr == address(11) ||
-        addr == address(12) ||
-        addr == address(13) ||
-        addr == address(14) ||
-        addr == address(15) || addr == address(this)
-    ) {
-        return false;
-    }
-    return true;
+        // Check for zero address and common precompiles (addresses 1-9)
+        if (
+            addr == address(0) || addr == address(1) || addr == address(2) || addr == address(3) || addr == address(4)
+                || addr == address(5) || addr == address(6) || addr == address(7) || addr == address(8)
+                || addr == address(9) || addr == address(10) || addr == address(11) || addr == address(12)
+                || addr == address(13) || addr == address(14) || addr == address(15) || addr == address(this)
+        ) {
+            return false;
+        }
+        return true;
     }
 
     function testPrank0AfterPrank1(address sender, address origin) public {
@@ -332,7 +316,7 @@ contract PrankTest is DSTest {
             sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
         );
 
-        console.log("After first prank - msg.sender:",  address(this));
+        console.log("After first prank - msg.sender:", address(this));
         // Ensure we cleaned up correctly
         victim.assertCallerAndOrigin(
             address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
@@ -349,7 +333,6 @@ contract PrankTest is DSTest {
             address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
         );
     }
-
 
     function testStartPrank0AfterPrank1(address sender, address origin) public {
         vm.assume(isNotReserved(sender));

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
-
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
 import "../../default/logs/console.sol";
@@ -48,7 +47,7 @@ contract NestedMock {
     }
 
     function sumPay() public returns (uint256) {
-        return inner.numberA() + inner.numberBPayable{value:10}();
+        return inner.numberA() + inner.numberBPayable{value: 10}();
     }
 }
 
@@ -421,4 +420,3 @@ contract MockCallRevertTest is DSTest {
         }
     }
 }
-
