@@ -35,9 +35,8 @@ semver.workspace = true
 
 codec = { version = "3.7.5", default-features = false, package = "parity-scale-codec" }
 scale-info = { version = "2.11.6", default-features = false }
-hex = "0.4"
 
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alexggh/inject_state", features = [
+polkadot-sdk = {git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", features = [
     "experimental",
     "runtime",
     "polkadot-runtime-common",
