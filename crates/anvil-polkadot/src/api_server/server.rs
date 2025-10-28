@@ -28,7 +28,7 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U256, U64};
 use alloy_rpc_types::{
     anvil::MineOptions,
-    txpool::{TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
+    txpool::{TxpoolContent, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
     Filter, TransactionRequest,
 };
 use alloy_serde::WithOtherFields;
@@ -299,6 +299,10 @@ impl ApiServer {
             EthRequest::TxPoolInspect(_) => {
                 node_info!("txpool_inspect");
                 self.txpool_inspect().await.to_rpc_result()
+            }
+            EthRequest::TxPoolContent(_) => {
+                node_info!("txpool_content");
+                self.txpool_content().await.to_rpc_result()
             }
             EthRequest::DropAllTransactions() => {
                 node_info!("anvil_dropAllTransactions");
@@ -1086,6 +1090,28 @@ impl ApiServer {
         Ok(inspect)
     }
 
+    async fn txpool_content(&self) -> Result<TxpoolContent<TransactionInfo>> {
+        let mut content = TxpoolContent::default();
+
+        // Process ready (pending) transactions
+        for tx in self.tx_pool.ready() {
+            if let Some((sender, nonce, tx_info)) = extract_tx_info(tx.data()) {
+                let entry = content.pending.entry(sender).or_default();
+                entry.insert(nonce.to_string(), tx_info);
+            }
+        }
+
+        // Process future (queued) transactions
+        for tx in self.tx_pool.futures() {
+            if let Some((sender, nonce, tx_info)) = extract_tx_info(tx.data()) {
+                let entry = content.queued.entry(sender).or_default();
+                entry.insert(nonce.to_string(), tx_info);
+            }
+        }
+
+        Ok(content)
+    }
+
     /// Drop all transactions from pool
     async fn anvil_drop_all_transactions(&self) -> Result<()> {
         let ready_txs = self.tx_pool.ready();
@@ -1237,6 +1263,53 @@ fn extract_tx_summary(
             gas_price: gas_price_u128,
         },
     ))
+}
+
+/// Helper function to extract full transaction info from extrinsic
+fn extract_tx_info(
+    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
+) -> Option<(Address, u64, TransactionInfo)> {
+    // Decode extrinsic
+    let encoded = tx_data.encode();
+    let ext =
+        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
+            .ok()?;
+
+    // Extract eth_transact payload
+    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
+        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
+        ..
+    } = ext.0
+    else {
+        return None;
+    };
+
+    // Decode ETH transaction
+    let signed_tx = TransactionSigned::decode(&payload).ok()?;
+
+    // Calculate ETH transaction hash
+    let eth_hash = keccak_256(&payload);
+    let eth_hash_h256 = H256::from_slice(&eth_hash);
+
+    // Recover sender address
+    let from = signed_tx.recover_eth_address().ok()?;
+    let sender = Address::from_slice(from.as_bytes());
+
+    // Extract nonce
+    let (nonce, _, _, _, _) = extract_tx_fields(&signed_tx);
+    let nonce_u64 = nonce.as_u64();
+
+    // Create TransactionInfo with default block values (not in block yet)
+    let tx_info = TransactionInfo {
+        hash: eth_hash_h256,
+        block_hash: H256::default(),
+        block_number: polkadot_sdk::sp_core::U256::zero(),
+        transaction_index: polkadot_sdk::sp_core::U256::zero(),
+        from,
+        transaction_signed: signed_tx,
+    };
+
+    Some((sender, nonce_u64, tx_info))
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
