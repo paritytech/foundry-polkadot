@@ -1,12 +1,12 @@
 use super::revive_conversions::{ReviveBytes, ReviveFilter};
 use crate::{
     api_server::{
-        ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, SubstrateU256,
-            convert_to_generic_transaction,
+            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId,
+            ReviveBlockNumberOrTag, SubstrateU256,
         },
+        ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
@@ -15,36 +15,40 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
-            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
             storage::{
                 AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
+            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
         },
         snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_eips::{BlockId, BlockNumberOrTag};
-use alloy_primitives::{Address, B256, U64, U256};
-use alloy_rpc_types::{Filter, TransactionRequest, anvil::MineOptions, txpool::TxpoolStatus};
+use alloy_primitives::{Address, B256, U256, U64};
+use alloy_rpc_types::{
+    anvil::MineOptions,
+    txpool::{TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
+    Filter, TransactionRequest,
+};
 use alloy_serde::WithOtherFields;
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use codec::{Decode, DecodeLimit, Encode};
-use futures::{StreamExt, channel::mpsc};
+use futures::{channel::mpsc, StreamExt};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
-    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
+    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
 };
 use polkadot_sdk::{
     pallet_revive::{
-        ReviveApi,
         evm::{
             Account, Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
             TransactionSigned,
         },
+        ReviveApi,
     },
     parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
@@ -53,16 +57,16 @@ use polkadot_sdk::{
     sp_api::{Metadata, ProvideRuntimeApi},
     sp_arithmetic::Permill,
     sp_blockchain::Info,
-    sp_core::{self, Hasher, keccak_256},
+    sp_core::{self, keccak_256, Hasher},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use substrate_runtime::{Balance, RuntimeCall, UncheckedExtrinsic};
 use subxt::{
-    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
-    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
-    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    backend::rpc::RpcClient, client::RuntimeVersion as SubxtRuntimeVersion,
+    config::substrate::H256, ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    Metadata as SubxtMetadata, OnlineClient,
 };
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
@@ -291,6 +295,10 @@ impl ApiServer {
             EthRequest::TxPoolStatus(_) => {
                 node_info!("txpool_status");
                 self.txpool_status().await.to_rpc_result()
+            }
+            EthRequest::TxPoolInspect(_) => {
+                node_info!("txpool_inspect");
+                self.txpool_inspect().await.to_rpc_result()
             }
             EthRequest::DropAllTransactions() => {
                 node_info!("anvil_dropAllTransactions");
@@ -1055,6 +1063,29 @@ impl ApiServer {
         Ok(TxpoolStatus { pending: pool_status.ready as u64, queued: pool_status.future as u64 })
     }
 
+    /// Returns a summary of all transactions in the pool
+    async fn txpool_inspect(&self) -> Result<TxpoolInspect> {
+        let mut inspect = TxpoolInspect::default();
+
+        // Process ready (pending) transactions
+        for tx in self.tx_pool.ready() {
+            if let Some((sender, nonce, summary)) = extract_tx_summary(tx.data()) {
+                let entry = inspect.pending.entry(sender).or_default();
+                entry.insert(nonce.to_string(), summary);
+            }
+        }
+
+        // Process future (queued) transactions
+        for tx in self.tx_pool.futures() {
+            if let Some((sender, nonce, summary)) = extract_tx_summary(tx.data()) {
+                let entry = inspect.queued.entry(sender).or_default();
+                entry.insert(nonce.to_string(), summary);
+            }
+        }
+
+        Ok(inspect)
+    }
+
     /// Drop all transactions from pool
     async fn anvil_drop_all_transactions(&self) -> Result<()> {
         let ready_txs = self.tx_pool.ready();
@@ -1124,6 +1155,88 @@ fn transaction_matches_eth_hash(
 
     let tx_eth_hash = keccak_256(&payload);
     B256::from_slice(&tx_eth_hash) == target_eth_hash
+}
+
+/// Helper function to extract fields from different ETH transaction types
+fn extract_tx_fields(
+    signed_tx: &TransactionSigned,
+) -> (
+    polkadot_sdk::sp_core::U256,
+    Option<polkadot_sdk::sp_core::H160>,
+    polkadot_sdk::sp_core::U256,
+    polkadot_sdk::sp_core::U256,
+    polkadot_sdk::sp_core::U256,
+) {
+    match signed_tx {
+        TransactionSigned::TransactionLegacySigned(tx) => {
+            let t = &tx.transaction_legacy_unsigned;
+            (t.nonce, t.to, t.value, t.gas, t.gas_price)
+        }
+        TransactionSigned::Transaction2930Signed(tx) => {
+            let t = &tx.transaction_2930_unsigned;
+            (t.nonce, t.to, t.value, t.gas, t.gas_price)
+        }
+        TransactionSigned::Transaction1559Signed(tx) => {
+            let t = &tx.transaction_1559_unsigned;
+            (t.nonce, t.to, t.value, t.gas, t.max_fee_per_gas)
+        }
+        TransactionSigned::Transaction4844Signed(tx) => {
+            let t = &tx.transaction_4844_unsigned;
+            (t.nonce, Some(t.to), t.value, t.gas, t.max_fee_per_gas)
+        }
+        TransactionSigned::Transaction7702Signed(tx) => {
+            let t = &tx.transaction_7702_unsigned;
+            (t.nonce, Some(t.to), t.value, t.gas, t.max_fee_per_gas)
+        }
+    }
+}
+
+/// Helper function to extract transaction summary from extrinsic
+fn extract_tx_summary(
+    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
+) -> Option<(Address, u64, TxpoolInspectSummary)> {
+    // Decode extrinsic
+    let encoded = tx_data.encode();
+    let ext =
+        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
+            .ok()?;
+
+    // Extract eth_transact payload
+    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
+        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
+        ..
+    } = ext.0
+    else {
+        return None;
+    };
+
+    // Decode ETH transaction
+    let signed_tx = TransactionSigned::decode(&payload).ok()?;
+
+    // Recover sender address
+    let from = signed_tx.recover_eth_address().ok()?;
+    let sender = Address::from_slice(from.as_bytes());
+
+    // Extract fields from transaction
+    let (nonce, to, value, gas, gas_price) = extract_tx_fields(&signed_tx);
+
+    // Convert types
+    let to_addr = to.map(|addr| Address::from_slice(addr.as_bytes()));
+    let value_u256 = U256::from_limbs(value.0);
+    let gas_u64 = gas.as_u64();
+    let gas_price_u128 = gas_price.as_u128();
+    let nonce_u64 = nonce.as_u64();
+
+    Some((
+        sender,
+        nonce_u64,
+        TxpoolInspectSummary {
+            to: to_addr,
+            value: value_u256,
+            gas: gas_u64,
+            gas_price: gas_price_u128,
+        },
+    ))
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
