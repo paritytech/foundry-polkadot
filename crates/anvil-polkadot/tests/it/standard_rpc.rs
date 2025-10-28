@@ -1,15 +1,12 @@
 use std::time::Duration;
 
 use crate::{
-    abi::{
-        Multicall::{self as Multicall},
-        SimpleStorage::{self as SimpleStorage},
-    },
+    abi::SimpleStorage::{self as SimpleStorage},
     utils::{
-        BlockWaitTimeout, TestNode, get_contract_code, is_transaction_in_block, unwrap_response,
+        BlockWaitTimeout, TestNode, get_contract_code, is_transaction_in_block,
+        multicall_get_coinbase, unwrap_response,
     },
 };
-use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256, Bytes, U256, map::HashSet};
 use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
@@ -888,47 +885,33 @@ async fn test_call() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_coinbase() {
-    let genesis_coinbase = Address::random();
-    let mut anvil_node_config = AnvilNodeConfig::test_config();
-    anvil_node_config = anvil_node_config
-        .with_genesis(Some(Genesis { coinbase: genesis_coinbase, ..Default::default() }));
+    let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     // Deploy multicall contract
-    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Account::from(subxt_signer::eth::dev::alith()).address();
     let contract_code = get_contract_code("Multicall");
-    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
+    let tx_hash = node.deploy_contract(&contract_code.init, alith_addr, Some(1)).await;
     tokio::time::sleep(Duration::from_millis(400)).await;
 
     // Get contract address.
     let receipt = node.get_transaction_receipt(tx_hash).await;
     assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
-    let contract_address = receipt.contract_address.unwrap();
+    let contract_address = Address::from(receipt.contract_address.unwrap().to_fixed_bytes());
+    let alith_addr = Address::from(alith_addr.to_fixed_bytes());
 
     // Make a get coinbase contract call.
-    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
-    let call_tx = TransactionRequest::default()
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .to(Address::from(ReviveAddress::new(contract_address)))
-        .input(TransactionInput::both(get_coinbase.into()));
-
-    let res: Bytes = unwrap_response(
-        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    let coinbase = Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap();
-    assert_eq!(coinbase, genesis_coinbase);
+    let coinbase = multicall_get_coinbase(&mut node, alith_addr, contract_address).await;
+    assert_eq!(coinbase, Address::ZERO);
     assert_eq!(
         unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
             .unwrap(),
-        genesis_coinbase,
+        Address::ZERO,
     );
 
-    let new_coinbase = Address::from_slice(&[0xAA; 20]);
+    let new_coinbase = Address::random();
     node.eth_rpc(EthRequest::SetCoinbase(new_coinbase)).await.unwrap();
     assert_eq!(
         unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
@@ -936,18 +919,7 @@ async fn test_coinbase() {
         new_coinbase
     );
 
-    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
-    let call_tx = TransactionRequest::default()
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .to(Address::from(ReviveAddress::new(contract_address)))
-        .input(TransactionInput::both(get_coinbase.into()));
-    let res: Bytes = unwrap_response(
-        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    let coinbase = Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap();
+    let coinbase = multicall_get_coinbase(&mut node, alith_addr, contract_address).await;
     assert_eq!(coinbase, new_coinbase);
     assert_eq!(
         unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
@@ -967,17 +939,6 @@ async fn test_coinbase() {
             .unwrap(),
         new_coinbase
     );
-    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
-    let call_tx = TransactionRequest::default()
-        .from(Address::from(ReviveAddress::new(alith.address())))
-        .to(Address::from(ReviveAddress::new(contract_address)))
-        .input(TransactionInput::both(get_coinbase.into()));
-    let res: Bytes = unwrap_response(
-        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    let coinbase = Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap();
+    let coinbase = multicall_get_coinbase(&mut node, alith_addr, contract_address).await;
     assert_eq!(coinbase, new_coinbase);
 }
