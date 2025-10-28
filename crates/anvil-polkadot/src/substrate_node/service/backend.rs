@@ -223,7 +223,6 @@ impl StorageOverrides {
         self.add(latest_block, changeset);
     }
 
-    #[allow(unused)]
     fn set_timestamp(&mut self, latest_block: Hash, timestamp: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(timestamp.encode()));

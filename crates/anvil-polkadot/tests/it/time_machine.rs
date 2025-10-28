@@ -52,15 +52,36 @@ async fn test_evm_set_time_in_the_past() {
         .unwrap(),
         0
     );
+
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+
+    let current_offset = unwrap_response::<i64>(
+        node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(0))).await.unwrap(),
+    )
+    .unwrap();
+    assert_with_tolerance(
+        unwrap_response::<i64>(
+            node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(1))).await.unwrap(),
+        )
+        .unwrap(),
+        current_offset + 1,
+        200,
+        "message",
+    );
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+
     let third_hash = node.block_hash_by_number(3).await.unwrap();
     let third_timestamp = node.get_decoded_timestamp(Some(third_hash)).await;
     assert_with_tolerance(second_timestamp, 10001000, 200, "Failed to produce block in time.");
+    assert_with_tolerance(third_timestamp, 1000000, 200, "Difference between blocks is too large.");
+
+    let fourth_hash = node.block_hash_by_number(4).await.unwrap();
+    let fourth_timestamp = node.get_decoded_timestamp(Some(fourth_hash)).await;
     assert_with_tolerance(
-        second_timestamp.saturating_sub(third_timestamp),
-        9001000,
+        fourth_timestamp.saturating_sub(third_timestamp),
+        1000,
         200,
-        "Difference between blocks is too high.",
+        "Difference between blocks timestamp is too large.",
     );
 }
 
@@ -122,6 +143,30 @@ async fn test_evm_increase_time() {
     let second_timestamp = node.get_decoded_timestamp(Some(second_hash)).await;
     assert_with_tolerance(
         second_timestamp.saturating_sub(first_timestamp).saturating_div(1000),
+        3600,
+        1,
+        "Wrong timestamp",
+    );
+    assert_with_tolerance(
+        unwrap_response::<i64>(
+            node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(3600))).await.unwrap(),
+        )
+        .unwrap(),
+        7200,
+        1,
+        "Wrong offset when increasing the timestamp.",
+    );
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+    let third_hash = node.block_hash_by_number(3).await.unwrap();
+    let third_timestamp = node.get_decoded_timestamp(Some(third_hash)).await;
+    assert_with_tolerance(
+        third_timestamp.saturating_sub(first_timestamp).saturating_div(1000),
+        7200,
+        1,
+        "Wrong timestamp",
+    );
+    assert_with_tolerance(
+        third_timestamp.saturating_sub(second_timestamp).saturating_div(1000),
         3600,
         1,
         "Wrong timestamp",
