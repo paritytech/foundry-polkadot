@@ -1,20 +1,15 @@
-use crate::{
-    api_server::revive_conversions::SubstrateU256, substrate_node::genesis::GenesisConfig,
-};
+use crate::substrate_node::genesis::GenesisConfig;
 use alloy_signer_local::PrivateKeySigner;
 use polkadot_sdk::{
-    frame_support,
-    pallet_revive::evm::Account,
     sc_chain_spec::{ChainSpec, GetExtension},
     sc_executor::HostFunctions,
     sc_network::config::MultiaddrWithPeerId,
     sc_service::{ChainType, GenericChainSpec, Properties},
     sc_telemetry::TelemetryEndpoints,
     sp_core::storage::Storage,
-    sp_runtime::{AccountId32, BuildStorage},
+    sp_runtime::BuildStorage,
 };
-use std::collections::BTreeMap;
-use substrate_runtime::{BalancesConfig, RuntimeGenesisConfig, WASM_BINARY};
+use substrate_runtime::WASM_BINARY;
 use subxt_signer::eth::Keypair;
 
 /// This is a wrapper around the general Substrate ChainSpec type that allows manual changes to the
@@ -117,22 +112,6 @@ fn props() -> Properties {
 pub fn development_chain_spec(
     genesis_config: GenesisConfig,
 ) -> Result<DevelopmentChainSpec, String> {
-    let genesis_balance = SubstrateU256::from(genesis_config.genesis_balance).inner().as_u128();
-    let mut balance_map: BTreeMap<AccountId32, u128> = genesis_config
-        .genesis_accounts
-        .iter()
-        .map(|keypair| (Account::from(keypair.clone()).substrate_account(), genesis_balance))
-        .collect();
-    if let Some(alloc) = &genesis_config.alloc {
-        balance_map.extend(alloc.iter().map(|(eth_addr, gen_account)| {
-            let mut substrate_account = AccountId32::new([0xEE; 32]);
-            <AccountId32 as AsMut<[u8; 32]>>::as_mut(&mut substrate_account)[..20]
-                .copy_from_slice(eth_addr.as_slice());
-            let balance = gen_account.balance.try_into().unwrap_or(genesis_balance);
-            (substrate_account, balance)
-        }));
-    }
-    let balances: Vec<(AccountId32, u128)> = balance_map.into_iter().collect();
     let inner = GenericChainSpec::builder(
         WASM_BINARY.expect("Development wasm not available"),
         Default::default(),
@@ -140,9 +119,7 @@ pub fn development_chain_spec(
     .with_name("Development")
     .with_id("dev")
     .with_chain_type(ChainType::Development)
-    .with_genesis_config_patch(frame_support::build_struct_json_patch!(RuntimeGenesisConfig {
-        balances: BalancesConfig { balances }
-    }))
+    .with_genesis_config_patch(genesis_config.runtime_genesis_config_patch())
     .with_properties(props())
     .build();
     Ok(DevelopmentChainSpec { inner, genesis_config })
