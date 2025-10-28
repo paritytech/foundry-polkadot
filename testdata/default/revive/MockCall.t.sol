@@ -99,6 +99,19 @@ contract MockCallTest is DSTest {
         assertEq(target.sum(), 10);
     }
 
+    function testMockNestedEmptyAccount() public {
+        vm.pvm(true);
+
+        Mock inner = Mock(address(100));
+        NestedMock target = new NestedMock(inner);
+
+        vm.mockCall(address(inner), abi.encodeWithSelector(inner.numberB.selector), abi.encode(9));
+        vm.mockCall(address(inner), abi.encodeWithSelector(inner.numberA.selector), abi.encode(1));
+
+        // post-mock
+        assertEq(target.sum(), 10);
+    }
+
     function testMockNestedPayDoesntTransfer() public {
         vm.pvm(true);
 

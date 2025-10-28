@@ -155,6 +155,14 @@ async fn test_mock_nested_simple() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_mock_nested_empty_account() {
+    let runner = TEST_DATA_REVIVE.runner_revive();
+    let filter = Filter::new("testMockNestedEmptyAccount", "MockCall", ".*/revive/.*");
+
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_mock_nested_pay_doesnt_transfer() {
     let runner = TEST_DATA_REVIVE.runner_revive();
     let filter = Filter::new("testMockNestedPayDoesntTransfer", "MockCall", ".*/revive/.*");
