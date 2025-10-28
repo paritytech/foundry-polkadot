@@ -1,14 +1,18 @@
 use crate::{
     abi::SimpleStorage,
-    utils::{TestNode, assert_with_tolerance, get_contract_code, to_hex_string, unwrap_response},
+    utils::{
+        TestNode, assert_with_tolerance, get_contract_code, multicall_get_coinbase, to_hex_string,
+        unwrap_response,
+    },
 };
-use alloy_genesis::GenesisAccount;
+use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{BlockId, TransactionInput, TransactionRequest};
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
-use std::collections::BTreeMap;
+use polkadot_sdk::pallet_revive::{self, evm::Account};
+use std::{collections::BTreeMap, time::Duration};
 use subxt::utils::H160;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -113,7 +117,7 @@ async fn test_genesis_alloc() {
         },
     );
 
-    let genesis = alloy_genesis::Genesis { alloc, ..Default::default() };
+    let genesis = Genesis { alloc, ..Default::default() };
 
     // Create anvil node config with custom genesis
     let anvil_node_config = AnvilNodeConfig::test_config().with_genesis(Some(genesis));
@@ -216,4 +220,36 @@ async fn test_genesis_alloc() {
 
     let value = SimpleStorage::getValueCall::abi_decode_returns(&value.0).unwrap();
     assert_eq!(value, U256::from(511), "Contract getValue() should return 511");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_coinbase_genesis() {
+    let genesis_coinbase = Address::random();
+    let mut anvil_node_config = AnvilNodeConfig::test_config();
+    anvil_node_config = anvil_node_config
+        .with_genesis(Some(Genesis { coinbase: genesis_coinbase, ..Default::default() }));
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Deploy multicall contract
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let contract_code = get_contract_code("Multicall");
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    // Get contract address.
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
+    let contract_address = Address::from(receipt.contract_address.unwrap().to_fixed_bytes());
+
+    // Make a get coinbase contract call.
+    let alith_addr = Address::from(alith.address().to_fixed_bytes());
+    let coinbase = multicall_get_coinbase(&mut node, alith_addr, contract_address).await;
+    assert_eq!(coinbase, genesis_coinbase);
+    assert_eq!(
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap(),
+        genesis_coinbase,
+    );
 }
