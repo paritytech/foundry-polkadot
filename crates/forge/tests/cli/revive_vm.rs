@@ -73,7 +73,7 @@ contract CounterTest is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -121,7 +121,7 @@ contract SetNonce is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -165,7 +165,7 @@ contract Roll is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -209,7 +209,7 @@ contract Warp is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -254,7 +254,7 @@ function test_Balance() public {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -313,7 +313,7 @@ function testFuzz_Load(uint256 x) public {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "--resolc-startup", "-vvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -329,6 +329,55 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
 Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 
 "#]]);
+});
+
+// Test --polkadot flag: EVM execution on pallet-revive backend
+forgetest!(polkadot_evm_backend, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Counter.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Counter {
+    uint256 public number;
+    constructor(uint256 _initial) {
+        number = _initial;
+    }
+    function increment() public {
+        number = number + 1;
+    }
+    function getNumber() public view returns (uint256) {
+        return number;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "CounterTest.t.sol",
+        r#"
+import "./test.sol";
+import {Counter} from "./Counter.sol";
+contract CounterTest is DSTest {
+    function test_PolkadotEVMBackend() public {
+        // This test runs EVM bytecode on pallet-revive EVM backend
+        Counter counter = new Counter(42);
+        assertEq(counter.getNumber(), 42);
+        counter.increment();
+        assertEq(counter.getNumber(), 43);
+        counter.increment();
+        assertEq(counter.getNumber(), 44);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Test with --polkadot flag (EVM backend on pallet-revive)
+    cmd.args(["test", "--polkadot", "-vvv"]).assert_success();
 });
 
 forgetest!(trace_counter_test, |prj, cmd| {
@@ -404,7 +453,7 @@ function test_expectRevert() public {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--resolc-startup", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
     res.stderr_eq("").stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -586,7 +635,7 @@ contract RecordTest is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--resolc-startup", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
     res.stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -903,7 +952,7 @@ contract Emitterv2 {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--resolc-startup", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
     res.stderr_eq("").stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -1199,7 +1248,7 @@ forgetest!(record_accesses, |prj, cmd| {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--resolc-startup", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
     res.stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]

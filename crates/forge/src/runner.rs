@@ -449,7 +449,7 @@ impl<'a> ContractRunner<'a> {
                 f()
             }
         };
-        let backend = if self.config.resolc.resolc_compile {
+        let backend = if self.config.resolc.resolc_compile || self.config.resolc.polkadot {
             Some(revive_strategy::Backend::get())
         } else {
             None
