@@ -73,7 +73,7 @@ contract CounterTest is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -121,7 +121,7 @@ contract SetNonce is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -165,7 +165,7 @@ contract Roll is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -209,7 +209,7 @@ contract Warp is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -254,7 +254,7 @@ function test_Balance() public {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--resolc-startup"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -304,9 +304,8 @@ contract Load is DSTest {
 Vm constant vm = Vm(HEVM_ADDRESS);
 
 function testFuzz_Load(uint256 x) public {
-    vm.pvm(true);
-    Counter counter = new Counter(x);
-    bytes32 res = vm.load(address(counter), bytes32(uint256(0)));
+    address counter = address(new Counter(x));
+    bytes32 res = vm.load(counter, bytes32(uint256(0)));
     assertEq(uint256(res), x);
 }
 }
@@ -314,7 +313,7 @@ function testFuzz_Load(uint256 x) public {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -328,6 +327,996 @@ Ran 1 test for src/Load.t.sol:Load
 Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test --polkadot flag: EVM execution on pallet-revive backend
+forgetest!(polkadot_evm_backend, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Counter.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Counter {
+    uint256 public number;
+    constructor(uint256 _initial) {
+        number = _initial;
+    }
+    function increment() public {
+        number = number + 1;
+    }
+    function getNumber() public view returns (uint256) {
+        return number;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "CounterTest.t.sol",
+        r#"
+import "./test.sol";
+import {Counter} from "./Counter.sol";
+contract CounterTest is DSTest {
+    function test_PolkadotEVMBackend() public {
+        // This test runs EVM bytecode on pallet-revive EVM backend
+        Counter counter = new Counter(42);
+        assertEq(counter.getNumber(), 42);
+        counter.increment();
+        assertEq(counter.getNumber(), 43);
+        counter.increment();
+        assertEq(counter.getNumber(), 44);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Test with --polkadot flag (EVM backend on pallet-revive)
+    cmd.args(["test", "--polkadot", "-vvv"]).assert_success();
+});
+
+forgetest!(trace_counter_test, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+    prj.add_source(
+        "Counter.sol",
+        r#"
+  // SPDX-License-Identifier: UNLICENSED
+  pragma solidity ^0.8.13;
+
+  contract Counter {
+      uint256 public number = 0;
+      event Increment(uint256 result);
+      event SetNumber(uint256 result);
+      error Revert(string text);
+
+      function setNumber(uint256 newNumber) public {
+          number = newNumber;
+          emit SetNumber(number);
+      }
+
+      function failed_call() public pure {
+        revert Revert("failure");
+      }
+
+      function increment() public {
+          number = number + 1;
+          emit Increment(number);
+
+      }
+  }
+  "#,
+    )
+    .unwrap();
+    prj.add_source(
+        "CounterTest.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {Counter} from "./Counter.sol";
+import {console} from "./console.sol";
+
+contract CounterTest is DSTest {
+Vm constant vm = Vm(HEVM_ADDRESS);
+Counter public counter;
+
+function setUp() public {
+  counter = new Counter(); 
+  vm.expectEmit();
+  emit Counter.SetNumber(5);
+
+  counter.setNumber(5);
+  assertEq(counter.number(), 5);
+}
+
+function test_Increment() public {
+    assertEq(counter.number(), 5);
+    counter.setNumber(55); 
+    assertEq(counter.number(), 55);
+    counter.increment(); 
+    assertEq(counter.number(), 56);
+}
+
+function test_expectRevert() public {
+  vm.expectRevert(abi.encodeWithSelector(Counter.Revert.selector, "failure"));
+  counter.failed_call();
+}
+}
+"#,
+    )
+    .unwrap();
+    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
+
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    res.stderr_eq("").stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 2 tests for src/CounterTest.t.sol:CounterTest
+[PASS] test_Increment() ([GAS])
+Traces:
+  [747441095] CounterTest::setUp()
+    ├─ [260232041] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 7404 bytes of code
+    ├─ [0] VM::expectEmit()
+    │   └─ ← [Return]
+    ├─ emit SetNumber(result: 5)
+    ├─ [376824103] 0x34A1D3fff3958843C43aD80F30b94c510645C316::setNumber(5)
+    │   ├─ emit SetNumber(result: 5)
+    │   └─ ← [Stop]
+    ├─ [110344204] 0x34A1D3fff3958843C43aD80F30b94c510645C316::number() [staticcall]
+    │   └─ ← [Return] 5
+    └─ ← [Stop]
+
+  [1045451058] CounterTest::test_Increment()
+    ├─ [110344204] 0x34A1D3fff3958843C43aD80F30b94c510645C316::number() [staticcall]
+    │   └─ ← [Return] 5
+    ├─ [376824103] 0x34A1D3fff3958843C43aD80F30b94c510645C316::setNumber(55)
+    │   ├─ emit SetNumber(result: 55)
+    │   └─ ← [Stop]
+    ├─ [110344204] 0x34A1D3fff3958843C43aD80F30b94c510645C316::number() [staticcall]
+    │   └─ ← [Return] 55
+    ├─ [447930375] 0x34A1D3fff3958843C43aD80F30b94c510645C316::increment()
+    │   ├─ emit Increment(result: 56)
+    │   └─ ← [Stop]
+    ├─ [0] 0x34A1D3fff3958843C43aD80F30b94c510645C316::number() [staticcall]
+    │   └─ ← [Return] 56
+    └─ ← [Stop]
+
+[PASS] test_expectRevert() ([GAS])
+Traces:
+  [747441095] CounterTest::setUp()
+    ├─ [260232041] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 7404 bytes of code
+    ├─ [0] VM::expectEmit()
+    │   └─ ← [Return]
+    ├─ emit SetNumber(result: 5)
+    ├─ [376824103] 0x34A1D3fff3958843C43aD80F30b94c510645C316::setNumber(5)
+    │   ├─ emit SetNumber(result: 5)
+    │   └─ ← [Stop]
+    ├─ [110344204] 0x34A1D3fff3958843C43aD80F30b94c510645C316::number() [staticcall]
+    │   └─ ← [Return] 5
+    └─ ← [Stop]
+
+  [47479926] CounterTest::test_expectRevert()
+    ├─ [0] VM::expectRevert(custom error 0xf28dceb3: 0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000006456941a80000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000076661696c7572650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)
+    │   └─ ← [Return]
+    ├─ [47471087] 0x34A1D3fff3958843C43aD80F30b94c510645C316::failed_call() [staticcall]
+    │   └─ ← [Revert] Revert("failure")
+    └─ ← [Stop]
+
+Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
+
+"#]]);
+});
+
+forgetest!(record_rw, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+    prj.add_source(
+        "Contracts.sol",
+        r#"
+    
+    pragma solidity ^0.8.18;
+
+contract RecordAccess {
+    function record(NestedRecordAccess target) public {
+        assembly {
+            sstore(1, add(sload(1), 1))
+        }
+
+        target.record();
+    }
+}
+
+contract NestedRecordAccess {
+    function record() public {
+        assembly {
+            sstore(2, add(sload(2), 1))
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+    prj.add_source(
+        "Test.t.sol",
+        r#"
+        pragma solidity ^0.8.18;
+        import "./test.sol";
+        import "./Vm.sol";
+        import "./Contracts.sol";
+        import {console} from "./console.sol";
+contract RecordTest is DSTest {
+  Vm constant vm = Vm(HEVM_ADDRESS);
+
+  function testRecordAccess() public {
+      RecordAccess target = new RecordAccess();
+      NestedRecordAccess inner = new NestedRecordAccess();
+      // Start recording
+      vm.record();
+      target.record(inner);
+
+      // Verify Records
+      (bytes32[] memory reads, bytes32[] memory writes) = vm.accesses(address(target));
+      (bytes32[] memory innerReads, bytes32[] memory innerWrites) = vm.accesses(address(inner));
+
+      assertEq(reads.length, 2, "number of reads is incorrect");
+      assertEq(reads[0], bytes32(uint256(1)), "key for read 0 is incorrect");
+      assertEq(reads[1], bytes32(uint256(1)), "key for read 1 is incorrect");
+
+      assertEq(writes.length, 1, "number of writes is incorrect");
+      assertEq(writes[0], bytes32(uint256(1)), "key for write is incorrect");
+
+      assertEq(innerReads.length, 2, "number of nested reads is incorrect");
+      assertEq(innerReads[0], bytes32(uint256(2)), "key for nested read 0 is incorrect");
+      assertEq(innerReads[1], bytes32(uint256(2)), "key for nested read 1 is incorrect");
+
+      assertEq(innerWrites.length, 1, "number of nested writes is incorrect");
+      assertEq(innerWrites[0], bytes32(uint256(2)), "key for nested write is incorrect");
+  }
+
+  function testStopRecordAccess() public {
+    RecordAccess target = new RecordAccess();
+    NestedRecordAccess inner = new NestedRecordAccess();
+    // Start recording
+    vm.record();
+    target.record(inner);
+
+      // Verify Records
+      (bytes32[] memory reads, bytes32[] memory writes) = vm.accesses(address(target));
+
+      assertEq(reads.length, 2, "number of reads is incorrect");
+      assertEq(reads[0], bytes32(uint256(1)), "key for read 0 is incorrect");
+      assertEq(reads[1], bytes32(uint256(1)), "key for read 1 is incorrect");
+
+      assertEq(writes.length, 1, "number of writes is incorrect");
+      assertEq(writes[0], bytes32(uint256(1)), "key for write is incorrect");
+
+      vm.stopRecord();
+      target.record(inner);
+
+      // Verify that there are no new Records
+      (reads, writes) = vm.accesses(address(target));
+
+      assertEq(reads.length, 2, "number of reads is incorrect");
+      assertEq(reads[0], bytes32(uint256(1)), "key for read 0 is incorrect");
+      assertEq(reads[1], bytes32(uint256(1)), "key for read 1 is incorrect");
+
+      assertEq(writes.length, 1, "number of writes is incorrect");
+      assertEq(writes[0], bytes32(uint256(1)), "key for write is incorrect");
+
+      vm.record();
+      vm.stopRecord();
+
+      // verify reset all records
+      (reads, writes) = vm.accesses(address(target));
+
+      assertEq(reads.length, 0, "number of reads is incorrect");
+      assertEq(writes.length, 0, "number of writes is incorrect");
+  }
+}
+
+    "#,
+    )
+    .unwrap();
+    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
+
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 2 tests for src/Test.t.sol:RecordTest
+[PASS] testRecordAccess() ([GAS])
+Traces:
+  [943952687] RecordTest::testRecordAccess()
+    ├─ [14363527] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 4095 bytes of code
+    ├─ [14363527] → new <unknown>@0x90193C961A926261B756D1E5bb255e67ff9498A1
+    │   └─ ← [Return] 2182 bytes of code
+    ├─ [0] VM::record()
+    │   └─ ← [Return]
+    ├─ [915153532] 0x34A1D3fff3958843C43aD80F30b94c510645C316::record(0x90193C961A926261B756D1E5bb255e67ff9498A1)
+    │   ├─ [0] 0x90193C961A926261B756D1E5bb255e67ff9498A1::record()
+    │   │   └─ ← [Return]
+    │   └─ ← [Stop]
+    ├─ [0] VM::accesses(0x34A1D3fff3958843C43aD80F30b94c510645C316)
+    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
+    ├─ [0] VM::accesses(0x90193C961A926261B756D1E5bb255e67ff9498A1)
+    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000002], [0x0000000000000000000000000000000000000000000000000000000000000002]
+    └─ ← [Stop]
+
+[PASS] testStopRecordAccess() ([GAS])
+Traces:
+  [943956553] RecordTest::testStopRecordAccess()
+    ├─ [14363527] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 4095 bytes of code
+    ├─ [14363527] → new <unknown>@0x90193C961A926261B756D1E5bb255e67ff9498A1
+    │   └─ ← [Return] 2182 bytes of code
+    ├─ [0] VM::record()
+    │   └─ ← [Return]
+    ├─ [915153532] 0x34A1D3fff3958843C43aD80F30b94c510645C316::record(0x90193C961A926261B756D1E5bb255e67ff9498A1)
+    │   ├─ [0] 0x90193C961A926261B756D1E5bb255e67ff9498A1::record()
+    │   │   └─ ← [Return]
+    │   └─ ← [Stop]
+    ├─ [0] VM::accesses(0x34A1D3fff3958843C43aD80F30b94c510645C316)
+    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
+    ├─ [0] VM::stopRecord()
+    │   └─ ← [Return]
+    ├─ [0] 0x34A1D3fff3958843C43aD80F30b94c510645C316::record(0x90193C961A926261B756D1E5bb255e67ff9498A1)
+    │   ├─ [0] 0x90193C961A926261B756D1E5bb255e67ff9498A1::record()
+    │   │   └─ ← [Return]
+    │   └─ ← [Stop]
+    ├─ [0] VM::accesses(0x34A1D3fff3958843C43aD80F30b94c510645C316)
+    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
+    ├─ [0] VM::record()
+    │   └─ ← [Return]
+    ├─ [0] VM::stopRecord()
+    │   └─ ← [Return]
+    ├─ [0] VM::accesses(0x34A1D3fff3958843C43aD80F30b94c510645C316)
+    │   └─ ← [Return] [], []
+    └─ ← [Stop]
+
+Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
+
+"#]]);
+});
+
+forgetest!(record_logs, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+    prj.add_source(
+        "Contracts.sol",
+        r#"
+  
+  pragma solidity ^0.8.18;
+
+  contract Emitter {
+    event LogAnonymous(bytes data) anonymous;
+
+    event LogTopic0(bytes data);
+
+    event LogTopic1(uint256 indexed topic1, bytes data);
+
+    event LogTopic12(uint256 indexed topic1, uint256 indexed topic2, bytes data);
+
+    event LogTopic123(uint256 indexed topic1, uint256 indexed topic2, uint256 indexed topic3, bytes data);
+
+    function emitAnonymousEvent(bytes memory data) public {
+        emit LogAnonymous(data);
+    }
+
+    function emitEvent(bytes memory data) public {
+        emit LogTopic0(data);
+    }
+
+    function emitEvent(uint256 topic1, bytes memory data) public {
+        emit LogTopic1(topic1, data);
+    }
+
+    function emitEvent(uint256 topic1, uint256 topic2, bytes memory data) public {
+        emit LogTopic12(topic1, topic2, data);
+    }
+
+    function emitEvent(uint256 topic1, uint256 topic2, uint256 topic3, bytes memory data) public {
+        emit LogTopic123(topic1, topic2, topic3, data);
+    }
+}
+
+contract Emitterv2 {
+    Emitter emitter = new Emitter();
+
+    function emitEvent(uint256 topic1, uint256 topic2, uint256 topic3, bytes memory data) public {
+        emitter.emitEvent(topic1, topic2, topic3, data);
+    }
+
+    function getEmitterAddr() public view returns (address) {
+        return address(emitter);
+    }
+}
+"#,
+    )
+    .unwrap();
+    prj.add_source(
+        "Test.t.sol",
+        r#"
+      pragma solidity ^0.8.18;
+      import "./test.sol";
+      import "./Vm.sol";
+      import "./Contracts.sol";
+      import {console} from "./console.sol";
+      contract RecordLogsTest is DSTest {
+        Vm constant vm = Vm(HEVM_ADDRESS);
+        Emitter emitter;
+        bytes32 internal seedTestData = keccak256(abi.encodePacked("Some data"));
+    
+        // Used on testRecordOnEmitDifferentDepths()
+        event LogTopic(uint256 indexed topic1, bytes data);
+    
+        function setUp() public {
+            emitter = new Emitter();
+        }
+    
+        function generateTestData(uint8 n) internal returns (bytes memory) {
+            bytes memory output = new bytes(n);
+    
+            for (uint8 i = 0; i < n; i++) {
+                output[i] = seedTestData[i % 32];
+                if (i % 32 == 31) {
+                    seedTestData = keccak256(abi.encodePacked(seedTestData));
+                }
+            }
+    
+            return output;
+        }
+    
+        function testRecordOffGetsNothing() public {
+            emitter.emitEvent(1, 2, 3, generateTestData(48));
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+    
+            assertEq(entries.length, 0);
+        }
+    
+        function testRecordOnNoLogs() public {
+            vm.recordLogs();
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+    
+            assertEq(entries.length, 0);
+        }
+    
+        function testRecordOnSingleLog() public {
+            bytes memory testData = "Event Data in String";
+    
+            vm.recordLogs();
+            emitter.emitEvent(1, 2, 3, testData);
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+    
+            assertEq(entries.length, 1);
+            assertEq(entries[0].topics.length, 4);
+            assertEq(entries[0].topics[0], keccak256("LogTopic123(uint256,uint256,uint256,bytes)"));
+            assertEq(entries[0].topics[1], bytes32(uint256(1)));
+            assertEq(entries[0].topics[2], bytes32(uint256(2)));
+            assertEq(entries[0].topics[3], bytes32(uint256(3)));
+            assertEq(abi.decode(entries[0].data, (string)), string(testData));
+            assertEq(entries[0].emitter, address(emitter));
+        }
+    
+        // TODO
+        // This crashes on decoding!
+        //   The application panicked (crashed).
+        //   Message:  index out of bounds: the len is 0 but the index is 0
+        //   Location: <local-dir>/evm/src/trace/decoder.rs:299
+        function NOtestRecordOnAnonymousEvent() public {
+            bytes memory testData = generateTestData(48);
+    
+            vm.recordLogs();
+            emitter.emitAnonymousEvent(testData);
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+    
+            assertEq(entries.length, 1);
+        }
+    
+        function testRecordOnSingleLogTopic0() public {
+            bytes memory testData = generateTestData(48);
+    
+            vm.recordLogs();
+            emitter.emitEvent(testData);
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+    
+            assertEq(entries.length, 1);
+            assertEq(entries[0].topics.length, 1);
+            assertEq(entries[0].topics[0], keccak256("LogTopic0(bytes)"));
+            // While not a proper string, this conversion allows the comparison.
+            assertEq(abi.decode(entries[0].data, (string)), string(testData));
+            assertEq(entries[0].emitter, address(emitter));
+        }
+    
+        function testEmitRecordEmit() public {
+            bytes memory testData0 = generateTestData(32);
+            emitter.emitEvent(1, 2, testData0);
+    
+            vm.recordLogs();
+            bytes memory testData1 = generateTestData(16);
+            emitter.emitEvent(3, testData1);
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+    
+            assertEq(entries.length, 1, "entries length");
+            assertEq(entries[0].topics.length, 2);
+            assertEq(entries[0].topics[0], keccak256("LogTopic1(uint256,bytes)"));
+            assertEq(entries[0].topics[1], bytes32(uint256(3)));
+            assertEq(abi.decode(entries[0].data, (string)), string(testData1));
+            assertEq(entries[0].emitter, address(emitter));
+        }
+    
+        function testRecordOnEmitDifferentDepths() public {
+            vm.recordLogs();
+    
+            bytes memory testData0 = generateTestData(16);
+            emit LogTopic(1, testData0);
+    
+            bytes memory testData1 = generateTestData(20);
+            emitter.emitEvent(2, 3, testData1);
+    
+            bytes memory testData2 = generateTestData(24);
+            Emitterv2 emitter2 = new Emitterv2();
+            emitter2.emitEvent(4, 5, 6, testData2);
+    
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+    
+            assertEq(entries.length, 3);
+    
+            assertEq(entries[0].topics.length, 2);
+            assertEq(entries[0].topics[0], keccak256("LogTopic(uint256,bytes)"));
+            assertEq(entries[0].topics[1], bytes32(uint256(1)));
+            assertEq(abi.decode(entries[0].data, (string)), string(testData0));
+            assertEq(entries[0].emitter, address(this));
+    
+            assertEq(entries[1].topics.length, 3);
+            assertEq(entries[1].topics[0], keccak256("LogTopic12(uint256,uint256,bytes)"));
+            assertEq(entries[1].topics[1], bytes32(uint256(2)));
+            assertEq(entries[1].topics[2], bytes32(uint256(3)));
+            assertEq(abi.decode(entries[1].data, (string)), string(testData1));
+            assertEq(entries[1].emitter, address(emitter));
+    
+            assertEq(entries[2].topics.length, 4);
+            assertEq(entries[2].topics[0], keccak256("LogTopic123(uint256,uint256,uint256,bytes)"));
+            assertEq(entries[2].topics[1], bytes32(uint256(4)));
+            assertEq(entries[2].topics[2], bytes32(uint256(5)));
+            assertEq(entries[2].topics[3], bytes32(uint256(6)));
+            assertEq(abi.decode(entries[2].data, (string)), string(testData2));
+            assertEq(entries[2].emitter, emitter2.getEmitterAddr());
+        }
+    
+        function testRecordsConsumednAsRead() public {
+            Vm.Log[] memory entries;
+    
+            emitter.emitEvent(1, generateTestData(16));
+    
+            // hit record now
+            vm.recordLogs();
+    
+            entries = vm.getRecordedLogs();
+            assertEq(entries.length, 0);
+    
+            // emit after calling .getRecordedLogs()
+            emitter.emitEvent(2, 3, generateTestData(24));
+    
+            entries = vm.getRecordedLogs();
+            assertEq(entries.length, 1);
+            assertEq(entries[0].topics.length, 3);
+            assertEq(entries[0].emitter, address(emitter));
+    
+            // let's emit two more!
+            emitter.emitEvent(4, 5, 6, generateTestData(20));
+            emitter.emitEvent(generateTestData(32));
+    
+            entries = vm.getRecordedLogs();
+            assertEq(entries.length, 2);
+            assertEq(entries[0].topics.length, 4);
+            assertEq(entries[1].topics.length, 1);
+            assertEq(entries[0].emitter, address(emitter));
+            assertEq(entries[1].emitter, address(emitter));
+    
+            // the last one
+            emitter.emitEvent(7, 8, 9, generateTestData(24));
+    
+            entries = vm.getRecordedLogs();
+            assertEq(entries.length, 1);
+            assertEq(entries[0].topics.length, 4);
+            assertEq(entries[0].emitter, address(emitter));
+        }
+    }
+  "#,
+    )
+    .unwrap();
+    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
+
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    res.stderr_eq("").stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 7 tests for src/Test.t.sol:RecordLogsTest
+[PASS] testEmitRecordEmit() ([GAS])
+Traces:
+  [14435813] RecordLogsTest::setUp()
+    ├─ [14398070] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 12583 bytes of code
+    └─ ← [Stop]
+
+  [307413004] RecordLogsTest::testEmitRecordEmit()
+    ├─ [157803902] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(1, 2, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
+    │   ├─ emit LogTopic12(topic1: 1, topic2: 2, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
+    │   └─ ← [Stop]
+    ├─ [0] VM::recordLogs()
+    │   └─ ← [Return]
+    ├─ [149553523] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(3, 0x2e38edeff9493e0004540e975027a429)
+    │   ├─ emit LogTopic1(topic1: 3, data: 0x2e38edeff9493e0004540e975027a429)
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] [([0x7c7d81fafce31d4330303f05da0ccb9d970101c475382b40aa072986ee4caaad, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000102e38edeff9493e0004540e975027a42900000000000000000000000000000000, 0x34A1D3fff3958843C43aD80F30b94c510645C316)]
+    ├─  storage changes:
+    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
+    └─ ← [Stop]
+
+[PASS] testRecordOffGetsNothing() ([GAS])
+Traces:
+  [14435813] RecordLogsTest::setUp()
+    ├─ [14398070] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 12583 bytes of code
+    └─ ← [Stop]
+
+  [174915500] RecordLogsTest::testRecordOffGetsNothing()
+    ├─ [174866510] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(1, 2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
+    │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] []
+    ├─  storage changes:
+    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
+    └─ ← [Stop]
+
+[PASS] testRecordOnEmitDifferentDepths() ([GAS])
+Traces:
+  [14435813] RecordLogsTest::setUp()
+    ├─ [14398070] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 12583 bytes of code
+    └─ ← [Stop]
+
+  [967163397] RecordLogsTest::testRecordOnEmitDifferentDepths()
+    ├─ [0] VM::recordLogs()
+    │   └─ ← [Return]
+    ├─ emit LogTopic(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
+    ├─ [155315462] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa)
+    │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
+    │   └─ ← [Stop]
+    ├─ [811740674] → new <unknown>@0x90193C961A926261B756D1E5bb255e67ff9498A1
+    │   └─ ← [Return] 10554 bytes of code
+    ├─ [0] 0x90193C961A926261B756D1E5bb255e67ff9498A1::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    │   ├─ [0] 0xd04404bcf6d969FC0Ec22021b4736510CAcec492::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    │   │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    │   │   └─ ← [Return]
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] [([0x61fb7db3625c10432927a76bb32400c33a94e9bb6374137c4cd59f6e465bfdcb, 0x0000000000000000000000000000000000000000000000000000000000000001], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001043a26051362b8040b289abe93334a5e300000000000000000000000000000000, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496), ([0x7af92d5e3102a27d908bb1859fdef71b723f3c438e5d84f3af49dab68e18dc6d, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001443a26051362b8040b289abe93334a5e3662751aa000000000000000000000000, 0x34A1D3fff3958843C43aD80F30b94c510645C316), ([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000004, 0x0000000000000000000000000000000000000000000000000000000000000005, 0x0000000000000000000000000000000000000000000000000000000000000006], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001843a26051362b8040b289abe93334a5e3662751aa691185ae0000000000000000, 0xd04404bcf6d969FC0Ec22021b4736510CAcec492)]
+    ├─ [0] 0x90193C961A926261B756D1E5bb255e67ff9498A1::getEmitterAddr() [staticcall]
+    │   └─ ← [Return] 0xd04404bcf6d969FC0Ec22021b4736510CAcec492
+    └─ ← [Stop]
+
+[PASS] testRecordOnNoLogs() ([GAS])
+Traces:
+  [14435813] RecordLogsTest::setUp()
+    ├─ [14398070] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 12583 bytes of code
+    └─ ← [Stop]
+
+  [4118] RecordLogsTest::testRecordOnNoLogs()
+    ├─ [0] VM::recordLogs()
+    │   └─ ← [Return]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] []
+    └─ ← [Stop]
+
+[PASS] testRecordOnSingleLog() ([GAS])
+Traces:
+  [14435813] RecordLogsTest::setUp()
+    ├─ [14398070] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 12583 bytes of code
+    └─ ← [Stop]
+
+  [160643851] RecordLogsTest::testRecordOnSingleLog()
+    ├─ [0] VM::recordLogs()
+    │   └─ ← [Return]
+    ├─ [160627894] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(1, 2, 3, 0x4576656e74204461746120696e20537472696e67)
+    │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x4576656e74204461746120696e20537472696e67)
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000144576656e74204461746120696e20537472696e67000000000000000000000000, 0x34A1D3fff3958843C43aD80F30b94c510645C316)]
+    └─ ← [Stop]
+
+[PASS] testRecordOnSingleLogTopic0() ([GAS])
+Traces:
+  [14435813] RecordLogsTest::setUp()
+    ├─ [14398070] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 12583 bytes of code
+    └─ ← [Stop]
+
+  [159742399] RecordLogsTest::testRecordOnSingleLogTopic0()
+    ├─ [0] VM::recordLogs()
+    │   └─ ← [Return]
+    ├─ [159689160] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
+    │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] [([0x0a28c6fad56bcbad1788721e440963b3b762934a3134924733eaf8622cb44279], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003043a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a42900000000000000000000000000000000, 0x34A1D3fff3958843C43aD80F30b94c510645C316)]
+    ├─  storage changes:
+    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
+    └─ ← [Stop]
+
+[PASS] testRecordsConsumednAsRead() ([GAS])
+Traces:
+  [14435813] RecordLogsTest::setUp()
+    ├─ [14398070] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 12583 bytes of code
+    └─ ← [Stop]
+
+  [775841573] RecordLogsTest::testRecordsConsumednAsRead()
+    ├─ [149553523] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(1, 0x43a26051362b8040b289abe93334a5e3)
+    │   ├─ emit LogTopic1(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
+    │   └─ ← [Stop]
+    ├─ [0] VM::recordLogs()
+    │   └─ ← [Return]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] []
+    ├─ [156144942] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] [([0x7af92d5e3102a27d908bb1859fdef71b723f3c438e5d84f3af49dab68e18dc6d, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001843a26051362b8040b289abe93334a5e3662751aa691185ae0000000000000000, 0x34A1D3fff3958843C43aD80F30b94c510645C316)]
+    ├─ [160627894] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa)
+    │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
+    │   └─ ← [Stop]
+    ├─ [147938984] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
+    │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000004, 0x0000000000000000000000000000000000000000000000000000000000000005, 0x0000000000000000000000000000000000000000000000000000000000000006], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001443a26051362b8040b289abe93334a5e3662751aa000000000000000000000000, 0x34A1D3fff3958843C43aD80F30b94c510645C316), ([0x0a28c6fad56bcbad1788721e440963b3b762934a3134924733eaf8622cb44279], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002043a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350, 0x34A1D3fff3958843C43aD80F30b94c510645C316)]
+    ├─ [161457374] 0x34A1D3fff3958843C43aD80F30b94c510645C316::emitEvent(7, 8, 9, 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
+    │   ├─ emit LogTopic123(topic1: 7, topic2: 8, topic3: 9, data: 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
+    │   └─ ← [Stop]
+    ├─ [0] VM::getRecordedLogs()
+    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000007, 0x0000000000000000000000000000000000000000000000000000000000000008, 0x0000000000000000000000000000000000000000000000000000000000000009], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000182e38edeff9493e0004540e975027a429ee666d1289f2c7a40000000000000000, 0x34A1D3fff3958843C43aD80F30b94c510645C316)]
+    ├─  storage changes:
+    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
+    └─ ← [Stop]
+
+Suite result: ok. 7 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 7 tests passed, 0 failed, 0 skipped (7 total tests)
+
+"#]]);
+});
+
+forgetest!(record_accesses, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+
+    prj.add_source(
+        "Contracts.sol",
+        r#"
+        contract C {
+          uint256 internal _reserved;
+          uint256 public data;
+          constructor(uint _data) payable { data = _data; }
+          function setter(uint _data) public { data = _data; }
+      }
+
+      contract Proxy {
+        address target;
+        constructor(address _data) payable { target = _data; }
+        function proxyCall(uint _data) public {
+          (bool success,) = address(target).call(abi.encodeWithSelector(C.setter.selector, _data));
+          if (!success) {
+            assert(false);
+          }
+        }
+      }
+"#,
+    )
+    .unwrap();
+    prj.add_source(
+        "Test.t.sol",
+        r#"
+  pragma solidity ^0.8.18;
+  import "./test.sol";
+  import "./Vm.sol";
+  import "./Contracts.sol";
+  import {console} from "./console.sol";
+
+  contract StateDiffTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+    address existing;
+    address proxy;
+
+    function setUp() public {
+      existing = address(new C{value: 1 ether}(100));
+      proxy = address(new Proxy(existing));
+    }
+
+    function testCreateaccesses() public {
+      vm.startStateDiffRecording();
+      C target = new C{value: 1 ether}(100);
+      Vm.AccountAccess[] memory records = vm.stopAndReturnStateDiff();
+      assertEq(records.length, 1, "Records");
+      assertEq(records[0].account, address(target), "Account");
+      assertEq(records[0].accessor, address(this), "Accessor");
+      assertEq(records[0].initialized, true);
+      assertEq(records[0].oldBalance, 0, "oldBalance");
+      assertEq(records[0].newBalance, 1 ether, "newBalance");
+      assertEq(records[0].value, 1 ether, "value");
+      assertEq(records[0].data, abi.encode(uint(100)), "data");
+      assertEq(records[0].reverted, false);
+       
+      assertEq(records[0].storageAccesses.length, 2, "accesses"); // check the write
+      assertEq(records[0].storageAccesses[1].account, address(target), "access address");
+      assertEq(records[0].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
+      assertEq(records[0].storageAccesses[1].isWrite, true);
+      assertEq(records[0].storageAccesses[1].previousValue, bytes32(uint(0)), "previousValue");
+      assertEq(records[0].storageAccesses[1].newValue, bytes32(uint(100)), "newValue");
+      assertEq(records[0].storageAccesses[1].reverted, false);    
+    }
+
+    function testCallaccesses() public {
+      vm.startStateDiffRecording();
+      (bool success,) = address(existing).call(abi.encodeWithSelector(C.setter.selector, 55));
+      if (!success) {
+        assert(false);
+      }
+      Vm.AccountAccess[] memory records = vm.stopAndReturnStateDiff();
+      assertEq(records.length, 1, "records");
+      assertEq(records[0].account, address(existing), "Account");
+      assertEq(records[0].accessor, address(this), "Accessor");
+      assertEq(records[0].initialized, true);
+      assertEq(records[0].oldBalance, 1 ether, "oldBalance");
+      assertEq(records[0].newBalance, 1 ether, "newBalance");
+      assertEq(records[0].value, 0 ether, "value");
+      assertEq(records[0].data, abi.encodeWithSelector(C.setter.selector, 55), "data");
+      assertEq(records[0].reverted, false);
+       
+      assertEq(records[0].storageAccesses.length, 2, "accesses"); // check the write
+      assertEq(records[0].storageAccesses[1].account, address(existing), "access address");
+      assertEq(records[0].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
+      assertEq(records[0].storageAccesses[1].isWrite, true);
+      assertEq(records[0].storageAccesses[1].previousValue, bytes32(uint(100)), "previousValue");
+      assertEq(records[0].storageAccesses[1].newValue, bytes32(uint(55)), "newValue");
+      assertEq(records[0].storageAccesses[1].reverted, false);    
+    }
+    function testCallProxyaccesses() public {
+      vm.startStateDiffRecording();
+      (bool success,) = address(proxy).call(abi.encodeWithSelector(Proxy.proxyCall.selector, 55));
+      if (!success) {
+        assert(false);
+      }
+      Vm.AccountAccess[] memory records = vm.stopAndReturnStateDiff();
+      assertEq(records.length, 2, "records");
+      assertEq(records[1].account, address(existing), "Account"); // checks the access from Proxy to C
+      assertEq(records[1].accessor, address(proxy), "Accessor");
+      assertEq(records[1].initialized, true);
+      assertEq(records[1].oldBalance, 1 ether, "oldBalance");
+      assertEq(records[1].newBalance, 1 ether, "newBalance");
+      assertEq(records[1].value, 0 ether, "value");
+      assertEq(records[1].data, abi.encodeWithSelector(C.setter.selector, 55), "data");
+      assertEq(records[1].reverted, false);
+       
+      assertEq(records[1].storageAccesses.length, 2, "accesses"); // check the write
+      assertEq(records[1].storageAccesses[1].account, address(existing), "access address");
+      assertEq(records[1].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
+      assertEq(records[1].storageAccesses[1].isWrite, true);
+      assertEq(records[1].storageAccesses[1].previousValue, bytes32(uint(100)), "previousValue");
+      assertEq(records[1].storageAccesses[1].newValue, bytes32(uint(55)), "newValue");
+      assertEq(records[1].storageAccesses[1].reverted, false);    
+    }
+  }
+  "#,
+    )
+    .unwrap();
+    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
+
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 3 tests for src/Test.t.sol:StateDiffTest
+[PASS] testCallProxyaccesses() ([GAS])
+Traces:
+  [570494757] StateDiffTest::setUp()
+    ├─ [284769285] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 5531 bytes of code
+    ├─ [285632860] → new <unknown>@0x90193C961A926261B756D1E5bb255e67ff9498A1
+    │   └─ ← [Return] 6405 bytes of code
+    └─ ← [Stop]
+
+  [709209629] StateDiffTest::testCallProxyaccesses()
+    ├─ [0] VM::startStateDiffRecording()
+    │   └─ ← [Return]
+    ├─ [709172296] 0x90193C961A926261B756D1E5bb255e67ff9498A1::proxyCall(55)
+    │   ├─ [0] 0x34A1D3fff3958843C43aD80F30b94c510645C316::setter(55)
+    │   │   └─ ← [Return]
+    │   └─ ← [Stop]
+    ├─ [0] VM::stopAndReturnStateDiff()
+    │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0x90193C961A926261B756D1E5bb255e67ff9498A1, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 0, 0xac1b14ff0000000000000000000000000000000000000000000000000000000000000037, false, [(0x90193C961A926261B756D1E5bb255e67ff9498A1, 0x0000000000000000000000000000000000000000000000000000000000000000, false, 0x00000000000000000000000034a1d3fff3958843c43ad80f30b94c510645c316, 0x00000000000000000000000034a1d3fff3958843c43ad80f30b94c510645c316, false)], 1), ((0, 31337 [3.133e4]), 0, 0x34A1D3fff3958843C43aD80F30b94c510645C316, 0x90193C961A926261B756D1E5bb255e67ff9498A1, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x34A1D3fff3958843C43aD80F30b94c510645C316, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x34A1D3fff3958843C43aD80F30b94c510645C316, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 2)]
+    └─ ← [Stop]
+
+[PASS] testCallaccesses() ([GAS])
+Traces:
+  [570494757] StateDiffTest::setUp()
+    ├─ [284769285] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 5531 bytes of code
+    ├─ [285632860] → new <unknown>@0x90193C961A926261B756D1E5bb255e67ff9498A1
+    │   └─ ← [Return] 6405 bytes of code
+    └─ ← [Stop]
+
+  [272398730] StateDiffTest::testCallaccesses()
+    ├─ [0] VM::startStateDiffRecording()
+    │   └─ ← [Return]
+    ├─ [272369910] 0x34A1D3fff3958843C43aD80F30b94c510645C316::setter(55)
+    │   └─ ← [Stop]
+    ├─ [0] VM::stopAndReturnStateDiff()
+    │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0x34A1D3fff3958843C43aD80F30b94c510645C316, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x34A1D3fff3958843C43aD80F30b94c510645C316, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x34A1D3fff3958843C43aD80F30b94c510645C316, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 1)]
+    └─ ← [Stop]
+
+[PASS] testCreateaccesses() ([GAS])
+Traces:
+  [570494757] StateDiffTest::setUp()
+    ├─ [284769285] → new <unknown>@0x34A1D3fff3958843C43aD80F30b94c510645C316
+    │   └─ ← [Return] 5531 bytes of code
+    ├─ [285632860] → new <unknown>@0x90193C961A926261B756D1E5bb255e67ff9498A1
+    │   └─ ← [Return] 6405 bytes of code
+    └─ ← [Stop]
+
+  [284823563] StateDiffTest::testCreateaccesses()
+    ├─ [0] VM::startStateDiffRecording()
+    │   └─ ← [Return]
+    ├─ [284769285] → new <unknown>@0xA8452Ec99ce0C64f20701dB7dD3abDb607c00496
+    │   └─ ← [Return] 5531 bytes of code
+    ├─ [0] VM::stopAndReturnStateDiff()
+    │   └─ ← [Return] [((0, 31337 [3.133e4]), 4, 0xA8452Ec99ce0C64f20701dB7dD3abDb607c00496, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 1000000000000000000 [1e18], 0x0000000000000000000000000000000000000000000000000000000000000064, false, [(0xA8452Ec99ce0C64f20701dB7dD3abDb607c00496, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000000, false), (0xA8452Ec99ce0C64f20701dB7dD3abDb607c00496, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000064, false)], 1)]
+    └─ ← [Stop]
+
+Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 
 "#]]);
 });

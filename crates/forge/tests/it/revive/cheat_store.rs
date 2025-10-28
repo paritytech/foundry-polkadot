@@ -8,9 +8,9 @@ use rstest::rstest;
 #[case::pvm(ReviveRuntimeMode::Pvm)]
 #[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_mock_calls(#[case] runtime_mode: ReviveRuntimeMode) {
-    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testMockCalls", "MockCalls", ".*/revive/.*");
+async fn test_store_works(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner: forge::MultiContractRunner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testStoreWorks", "Store", ".*/revive/.*");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
@@ -19,9 +19,9 @@ async fn test_mock_calls(#[case] runtime_mode: ReviveRuntimeMode) {
 #[case::pvm(ReviveRuntimeMode::Pvm)]
 #[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_mock_calls_last_should_persist(#[case] runtime_mode: ReviveRuntimeMode) {
-    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testMockCallsLastShouldPersist", "MockCalls", ".*/revive/.*");
+async fn test_store_fuzzed(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner: forge::MultiContractRunner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testStoreFuzzed", "Store", ".*/revive/.*");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
@@ -30,9 +30,9 @@ async fn test_mock_calls_last_should_persist(#[case] runtime_mode: ReviveRuntime
 #[case::pvm(ReviveRuntimeMode::Pvm)]
 #[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_mock_calls_with_value(#[case] runtime_mode: ReviveRuntimeMode) {
-    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testMockCallsWithValue", "MockCalls", ".*/revive/.*");
+async fn test_store_not_available_on_precompiles(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner: forge::MultiContractRunner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testStoreNotAvailableOnPrecompiles", "Store", ".*/revive/.*");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
