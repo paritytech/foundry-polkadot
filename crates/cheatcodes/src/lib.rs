@@ -3,7 +3,7 @@
 //! Foundry cheatcodes implementations.
 
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![allow(elided_lifetimes_in_paths)] // Cheats context uses 3 lifetimes
 
 #[macro_use]
@@ -15,18 +15,20 @@ pub extern crate foundry_cheatcodes_spec as spec;
 #[macro_use]
 extern crate tracing;
 
+use alloy_evm::eth::EthEvmContext;
 use alloy_primitives::Address;
 use foundry_evm_core::backend::DatabaseExt;
-use revm::{ContextPrecompiles, InnerEvmContext};
 use spec::Status;
 
+pub use Vm::ForgeContext;
 pub use config::CheatsConfig;
-pub use error::{Error, ErrorKind, Result};
+pub use error::{Error, ErrorKind, Result, precompile_error};
 pub use inspector::{
-    BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor, Context,
+    BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor,
 };
 pub use spec::{CheatcodeDef, Vm};
-pub use Vm::ForgeContext;
+
+pub use evm::journaled_account;
 
 #[macro_use]
 mod error;
@@ -47,28 +49,29 @@ mod evm;
 mod fs;
 
 mod inspector;
+pub use inspector::{CommonCreateInput, Ecx};
 
 mod json;
 
 mod script;
-pub use script::{Wallets, WalletsInner};
+pub use script::{Broadcast, Wallets, WalletsInner};
 
 mod strategy;
 pub use strategy::{
-    CheatcodeInspectorStrategy, CheatcodeInspectorStrategyContext,
-    CheatcodeInspectorStrategyRunner, CheatcodesStrategy,
+    CheatcodeInspectorStrategy, CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyExt,
+    CheatcodeInspectorStrategyRunner, CheatcodesStrategy, EvmCheatcodeInspectorStrategyRunner,
 };
-
-mod pvm;
 
 mod string;
 
 mod test;
-pub use test::expect::ExpectedCallTracker;
+pub use test::expect::{ExpectedCallTracker, handle_expect_emit};
 
 mod toml;
 
 mod utils;
+
+pub use evm::DealRecord;
 
 /// Cheatcode implementation.
 pub(crate) trait Cheatcode: CheatcodeDef + DynCheatcode {
@@ -98,12 +101,14 @@ pub(crate) trait Cheatcode: CheatcodeDef + DynCheatcode {
     }
 }
 
-pub trait DynCheatcode: 'static {
+pub trait DynCheatcode: 'static + std::any::Any {
     fn cheatcode(&self) -> &'static spec::Cheatcode<'static>;
 
     fn as_debug(&self) -> &dyn std::fmt::Debug;
 
     fn dyn_apply(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result;
+
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 impl<T: Cheatcode> DynCheatcode for T {
@@ -120,6 +125,11 @@ impl<T: Cheatcode> DynCheatcode for T {
     #[inline]
     fn dyn_apply(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result {
         self.apply_full(ccx, executor)
+    }
+
+    #[inline]
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -144,11 +154,9 @@ impl dyn DynCheatcode {
 /// The cheatcode context, used in `Cheatcode`.
 pub struct CheatsCtxt<'cheats, 'evm, 'db, 'db2> {
     /// The cheatcodes inspector state.
-    pub(crate) state: &'cheats mut Cheatcodes,
+    pub state: &'cheats mut Cheatcodes,
     /// The EVM data.
-    pub(crate) ecx: &'evm mut InnerEvmContext<&'db mut (dyn DatabaseExt + 'db2)>,
-    /// The precompiles context.
-    pub(crate) precompiles: &'evm mut ContextPrecompiles<&'db mut (dyn DatabaseExt + 'db2)>,
+    pub ecx: &'evm mut EthEvmContext<&'db mut (dyn DatabaseExt + 'db2)>,
     /// The original `msg.sender`.
     pub(crate) caller: Address,
     /// Gas limit of the current cheatcode call.
@@ -156,7 +164,7 @@ pub struct CheatsCtxt<'cheats, 'evm, 'db, 'db2> {
 }
 
 impl<'db, 'db2> std::ops::Deref for CheatsCtxt<'_, '_, 'db, 'db2> {
-    type Target = InnerEvmContext<&'db mut (dyn DatabaseExt + 'db2)>;
+    type Target = EthEvmContext<&'db mut (dyn DatabaseExt + 'db2)>;
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
@@ -173,7 +181,7 @@ impl std::ops::DerefMut for CheatsCtxt<'_, '_, '_, '_> {
 
 impl CheatsCtxt<'_, '_, '_, '_> {
     #[inline]
-    pub(crate) fn is_precompile(&self, address: &Address) -> bool {
-        self.precompiles.contains(address)
+    pub fn is_precompile(&self, address: &Address) -> bool {
+        self.ecx.journaled_state.inner.precompiles.contains(address)
     }
 }

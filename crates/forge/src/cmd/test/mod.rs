@@ -1,44 +1,45 @@
 use super::{install, test::filter::ProjectPathsAwareFilter, watch::WatchArgs};
 use crate::{
+    MultiContractRunner, MultiContractRunnerBuilder, TestFilter,
     decode::decode_console_logs,
     gas_report::GasReport,
     multi_runner::matches_contract,
     result::{SuiteResult, TestOutcome, TestStatus},
     traces::{
+        CallTraceDecoderBuilder, InternalTraceMode, TraceKind,
         debug::{ContractSources, DebugTraceIdentifier},
         decode_trace_arena, folded_stack_trace,
         identifier::SignaturesIdentifier,
-        CallTraceDecoderBuilder, InternalTraceMode, TraceKind,
     },
-    MultiContractRunner, MultiContractRunnerBuilder, TestFilter,
 };
 use alloy_primitives::U256;
 use chrono::Utc;
 use clap::{Parser, ValueHint};
-use eyre::{bail, Context, OptionExt, Result};
+use eyre::{Context, OptionExt, Result, bail};
 use foundry_block_explorers::EtherscanApiVersion;
 use foundry_cli::{
     opts::{BuildOpts, GlobalArgs},
     utils::{self, LoadConfig},
 };
-use foundry_common::{compile::ProjectCompiler, evm::EvmArgs, fs, shell, TestFunctionExt};
+use foundry_common::{TestFunctionExt, compile::ProjectCompiler, evm::EvmArgs, fs, shell};
 use foundry_compilers::{
+    ProjectCompileOutput,
     artifacts::output_selection::OutputSelection,
     compilers::{
-        multi::{MultiCompiler, MultiCompilerLanguage},
         Language,
+        multi::{MultiCompiler, MultiCompilerLanguage},
+        resolc::dual_compiled_contracts::DualCompiledContracts,
     },
     utils::source_files_iter,
-    ProjectCompileOutput,
 };
 use foundry_config::{
-    figment,
+    Config, figment,
     figment::{
-        value::{Dict, Map},
         Metadata, Profile, Provider,
+        value::{Dict, Map},
     },
     filter::GlobMatcher,
-    Config,
+    revive,
 };
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
@@ -47,7 +48,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Write,
     path::PathBuf,
-    sync::{mpsc::channel, Arc},
+    sync::{Arc, mpsc::channel},
     time::{Duration, Instant},
 };
 use yansi::Paint;
@@ -57,7 +58,7 @@ mod summary;
 use crate::{result::TestKind, traces::render_trace_arena_inner};
 pub use filter::FilterArgs;
 use quick_junit::{NonSuccessKind, Report, TestCase, TestCaseStatus, TestSuite};
-use summary::{format_invariant_metrics_table, TestSummaryReport};
+use summary::{TestSummaryReport, format_invariant_metrics_table};
 
 // Loads project's figment and merges the build cli arguments into it
 foundry_config::merge_impl_figment_convert!(TestArgs, build, evm);
@@ -286,7 +287,8 @@ impl TestArgs {
     pub async fn execute_tests(mut self) -> Result<TestOutcome> {
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
-        let strategy = utils::get_executor_strategy(&config);
+
+        let mut strategy = utils::get_executor_strategy(&config);
 
         // Explicitly enable isolation for gas reports for more correct gas accounting.
         if self.gas_report {
@@ -311,12 +313,55 @@ impl TestArgs {
 
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
-        let compiler = ProjectCompiler::new()
-            .dynamic_test_linking(config.dynamic_test_linking)
-            .quiet(shell::is_json() || self.junit)
-            .files(sources_to_compile);
+        // Handle compilation based on whether dual compilation is enabled
+        let (output, dual_compiled_contracts) = if config.resolc.resolc_compile {
+            // Dual compilation mode: compile both solc and resolc
 
-        let output = compiler.compile(&project)?;
+            // Compile with solc to a subdirectory
+            let mut solc_config = config.clone();
+            solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
+            solc_config.resolc = Default::default();
+            solc_config.build_info_path = Some(solc_config.out.join("build-info"));
+            let solc_project = solc_config.project()?;
+
+            let compiler = ProjectCompiler::new()
+                .dynamic_test_linking(config.dynamic_test_linking)
+                .quiet(shell::is_json() || self.junit)
+                .files(sources_to_compile.clone());
+
+            let solc_output = compiler.compile(&solc_project)?;
+
+            // Compile with resolc to the main output directory
+            let resolc_project = config.clone().project()?;
+
+            let resolc_compiler = ProjectCompiler::new()
+                .quiet(shell::is_json() || self.junit)
+                .files(sources_to_compile)
+                .size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
+
+            let resolc_output = resolc_compiler.compile(&resolc_project)?;
+
+            // Create dual compiled contracts
+            let dual_compiled_contracts = DualCompiledContracts::new(
+                &solc_output,
+                &resolc_output,
+                &solc_project.paths,
+                &resolc_project.paths,
+            );
+
+            (solc_output, Some(dual_compiled_contracts))
+        } else {
+            // Single compilation mode: compile only with solc
+
+            let compiler: ProjectCompiler = ProjectCompiler::new()
+                .dynamic_test_linking(config.dynamic_test_linking)
+                .quiet(shell::is_json() || self.junit)
+                .files(sources_to_compile.clone());
+
+            let solc_output = compiler.compile(&project)?;
+
+            (solc_output, None)
+        };
 
         // Create test options from general project settings and compiler output.
         let project_root = &project.paths.root;
@@ -348,6 +393,13 @@ impl TestArgs {
 
         // Prepare the test builder.
         let config = Arc::new(config);
+
+        // Set dual compiled contracts on the strategy
+        strategy.runner.revive_set_dual_compiled_contracts(
+            strategy.context.as_mut(),
+            dual_compiled_contracts.unwrap_or_default(),
+        );
+
         let runner = MultiContractRunnerBuilder::new(config.clone())
             .set_debug(should_debug)
             .set_decode_internal(decode_internal)
@@ -561,11 +613,11 @@ impl TestArgs {
             decoder.clear_addresses();
 
             // We identify addresses if we're going to print *any* trace or gas report.
-            let identify_addresses = verbosity >= 3 ||
-                self.gas_report ||
-                self.debug ||
-                self.flamegraph ||
-                self.flamechart;
+            let identify_addresses = verbosity >= 3
+                || self.gas_report
+                || self.debug
+                || self.flamegraph
+                || self.flamechart;
 
             // Print suite header.
             if !silent {
@@ -588,10 +640,10 @@ impl TestArgs {
                     sh_println!("{}", result.short_result(name))?;
 
                     // Display invariant metrics if invariant kind.
-                    if let TestKind::Invariant { metrics, .. } = &result.kind {
-                        if !metrics.is_empty() {
-                            let _ = sh_println!("\n{}\n", format_invariant_metrics_table(metrics));
-                        }
+                    if let TestKind::Invariant { metrics, .. } = &result.kind
+                        && !metrics.is_empty()
+                    {
+                        let _ = sh_println!("\n{}\n", format_invariant_metrics_table(metrics));
                     }
 
                     // We only display logs at level 2 and above
@@ -845,7 +897,8 @@ impl TestArgs {
     pub(crate) fn watchexec_config(&self) -> Result<watchexec::Config> {
         self.watch.watchexec_config(|| {
             let config = self.load_config()?;
-            Ok([config.src, config.test])
+            let foundry_toml: PathBuf = config.root.join(Config::FILE_NAME);
+            Ok([config.src, config.test, config.script, foundry_toml])
         })
     }
 }
@@ -923,12 +976,12 @@ fn persist_run_failures(config: &Config, outcome: &TestOutcome) {
         let mut filter = String::new();
         let mut failures = outcome.failures().peekable();
         while let Some((test_name, _)) = failures.next() {
-            if test_name.is_any_test() {
-                if let Some(test_match) = test_name.split("(").next() {
-                    filter.push_str(test_match);
-                    if failures.peek().is_some() {
-                        filter.push('|');
-                    }
+            if test_name.is_any_test()
+                && let Some(test_match) = test_name.split("(").next()
+            {
+                filter.push_str(test_match);
+                if failures.peek().is_some() {
+                    filter.push('|');
                 }
             }
         }

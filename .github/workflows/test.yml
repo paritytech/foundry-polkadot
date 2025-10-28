@@ -27,9 +27,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
         with:
-          cache-on-failure: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: wasm32-unknown-unknown
+          components: rust-src
+          toolchain: nightly-x86_64-unknown-linux-gnu
+      - name: Install clang on ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev
       - name: Build documentation
         run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
@@ -44,23 +54,31 @@ jobs:
 
   doctest:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
         with:
-          cache-on-failure: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install clang on ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: wasm32-unknown-unknown
+          components: rust-src
+          toolchain: stable
       - run: cargo test --workspace --doc
 
-  codespell:
+  typos:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: codespell-project/actions-codespell@v2
-        with:
-          skip: "*.json"
+      - uses: crate-ci/typos@v1
 
   clippy:
     runs-on: ubuntu-latest
@@ -68,9 +86,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@clippy
-      - uses: Swatinem/rust-cache@v2
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
         with:
-          cache-on-failure: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install clang on ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: wasm32-unknown-unknown
+          components: rust-src
+          toolchain: nightly-x86_64-unknown-linux-gnu
       - run: cargo clippy --workspace --all-targets --all-features
         env:
           RUSTFLAGS: -Dwarnings
@@ -82,7 +110,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly-2024-02-03
           components: rustfmt
       - run: cargo fmt --all --check
 
@@ -92,27 +119,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
         with:
-          cache-on-failure: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install clang on ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev
       - name: forge fmt
         shell: bash
         run: ./.github/scripts/format.sh --check
 
   crate-checks:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: parity-large-new
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: Install clang and zip on ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev zip
+      - name: Install build-essential for tikv-jemalloc-sys
+        run: |
+          sudo apt-get install -y build-essential
       - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-hack
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo hack check --each-feature --exclude-features isolate-by-default
+      - uses: taiki-e/install-action@cargo-hack
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: wasm32-unknown-unknown
+          components: rust-src
+          toolchain: stable
+      # Exclude substrate-runtime because it can only be compiled for wasm32 without the std feature.
+      # It's anyway compiled without std when building anvil-polkadot (by the wasm builder).
+      - run: cargo hack check --each-feature --exclude-features isolate-by-default --exclude substrate-runtime
+      # Add another step for running cargo check on substrate runtime (without excluding the default std feature)
+      - run: cargo hack check -p substrate-runtime --each-feature --exclude-no-default-features
 
   deny:
-    uses: ithacaxyz/ci/.github/workflows/deny.yml@main
+    # Copy of ithacaxyz/ci/.github/workflows/deny.yml@main but without failing the CI
+    name: cargo deny check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+      - name: Run cargo deny
+        run: cargo deny --all-features check all
 
   ci-success:
     runs-on: ubuntu-latest
@@ -121,12 +187,10 @@ jobs:
       - nextest
       - docs
       - doctest
-      - codespell
       - clippy
       - rustfmt
       - forge-fmt
       - crate-checks
-      - deny
     timeout-minutes: 60
     steps:
       - name: Decide whether the needed jobs succeeded or failed

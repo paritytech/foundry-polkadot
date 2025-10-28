@@ -3,11 +3,14 @@ use std::{any::Any, fmt::Debug};
 use alloy_primitives::{Address, U256};
 use eyre::Result;
 use foundry_cheatcodes::CheatcodesStrategy;
-use foundry_evm_core::backend::{Backend, BackendResult, BackendStrategy, CowBackend};
-use revm::{
-    primitives::{EnvWithHandlerCfg, ResultAndState},
-    DatabaseRef,
+use foundry_compilers::{
+    ProjectCompileOutput, compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
 };
+use foundry_evm_core::{
+    Env,
+    backend::{Backend, BackendResult, BackendStrategy, CowBackend},
+};
+use revm::{DatabaseRef, context::result::ResultAndState};
 
 use crate::inspectors::InspectorStack;
 
@@ -45,7 +48,7 @@ impl ExecutorStrategyContext for () {
 }
 
 /// Stateless strategy runner for [ExecutorStrategy].
-pub trait ExecutorStrategyRunner: Debug + Send + Sync {
+pub trait ExecutorStrategyRunner: Debug + Send + Sync + ExecutorStrategyExt {
     /// Creates a new [BackendStrategy].
     fn new_backend_strategy(&self, ctx: &dyn ExecutorStrategyContext) -> BackendStrategy;
 
@@ -65,7 +68,7 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync {
 
     /// Set the nonce of an account.
     fn set_nonce(&self, executor: &mut Executor, address: Address, nonce: u64)
-        -> BackendResult<()>;
+    -> BackendResult<()>;
 
     /// Returns the nonce of an account.
     fn get_nonce(&self, executor: &Executor, address: Address) -> BackendResult<u64>;
@@ -75,8 +78,8 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync {
         &self,
         ctx: &dyn ExecutorStrategyContext,
         backend: &mut CowBackend<'_>,
-        env: &mut EnvWithHandlerCfg,
-        executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState>;
 
@@ -85,10 +88,31 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync {
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
         backend: &mut Backend,
-        env: &mut EnvWithHandlerCfg,
-        executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState>;
+}
+
+/// Extended trait for Revive/PVM.
+pub trait ExecutorStrategyExt {
+    /// Set [DualCompiledContracts] on the context.
+    fn revive_set_dual_compiled_contracts(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _dual_compiled_contracts: DualCompiledContracts,
+    ) {
+    }
+
+    fn revive_set_compilation_output(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _output: ProjectCompileOutput,
+    ) {
+    }
+
+    fn checkpoint(&self) {}
+    fn reload_checkpoint(&self) {}
 }
 
 /// Implements [ExecutorStrategyRunner] for EVM.
@@ -132,8 +156,8 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         &self,
         _ctx: &dyn ExecutorStrategyContext,
         backend: &mut CowBackend<'_>,
-        env: &mut EnvWithHandlerCfg,
-        _executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        _executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState> {
         backend.inspect(env, inspector, Box::new(()))
@@ -143,8 +167,8 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         &self,
         _ctx: &mut dyn ExecutorStrategyContext,
         backend: &mut Backend,
-        env: &mut EnvWithHandlerCfg,
-        _executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        _executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState> {
         backend.inspect(env, inspector, Box::new(()))
@@ -158,6 +182,8 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         CheatcodesStrategy::new_evm()
     }
 }
+
+impl ExecutorStrategyExt for EvmExecutorStrategyRunner {}
 
 /// Defines the strategy for an [Executor].
 #[derive(Debug)]
