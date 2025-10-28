@@ -354,6 +354,10 @@ impl pallet_revive::Config for Runtime {
     type ChainId = ChainId;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type Currency = Balances;
+    // TODO: make necessary changes so that we can use `pallet-aura`'s
+    // `FindAuthor` implementation. Main thing it requires is mocking
+    // the inherent data on the node side, effort already part of
+    // `forking` feature.
     type FindAuthor = BlockAuthor;
     type Balance = Balance;
     type NativeToEthRatio = ConstU32<1_000_000>;
