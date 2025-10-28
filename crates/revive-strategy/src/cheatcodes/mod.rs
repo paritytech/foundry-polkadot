@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall,
-        storeCall, warpCall,
+        dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall,
+        setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -30,7 +30,7 @@ use polkadot_sdk::{
     pallet_balances,
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ContractInfo,
-        ExecConfig, Pallet, evm::CallTrace, Executable,
+        ExecConfig, Executable, Pallet, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -38,7 +38,7 @@ use polkadot_sdk::{
 };
 
 use crate::{
-    cheatcodes::mock_handler::MockHandlerImpl,
+    cheatcodes::{mock_handler::MockHandlerImpl, pallet_revive::ContractBlob},
     execute_with_externalities,
     tracing::{Tracer, storage_tracer::AccountAccess},
 };
@@ -217,14 +217,26 @@ fn etch_call(target: &Address, new_runtime_code: &Bytes, ecx: Ecx<'_, '_, '_>) -
 
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
-            let contract_blob = Pallet::<Runtime>::try_upload_pvm_code(
-                origin_account.clone(),
-                new_runtime_code.to_vec(),
-                BalanceOf::<Runtime>::max_value(),
-                &ExecConfig::new_substrate_tx(),
-            )
-            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
-            .0;
+            let code = new_runtime_code.to_vec();
+            let contract_blob = if code.starts_with(&[b'P', b'V', b'M', b'\0']) {
+                let contract_blob = Pallet::<Runtime>::try_upload_pvm_code(
+                    origin_account.clone(),
+                    code,
+                    BalanceOf::<Runtime>::max_value(),
+                    &ExecConfig::new_substrate_tx(),
+                )
+                .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
+                .0;
+                contract_blob
+            } else {
+                let mut contract_blob =
+                    ContractBlob::from_evm_runtime_code(code, origin_account.clone())
+                        .map_err(|_| <&str as Into<Error>>::into("Could not create evm code"))?;
+                contract_blob
+                    .store_code(&ExecConfig::new_substrate_tx(), None)
+                    .map_err(|_| <&str as Into<Error>>::into("could not store evm code"))?;
+                contract_blob
+            };
             let mut contract_info = if let Some(contract_info) =
                 AccountInfo::<Runtime>::load_contract(&H160::from_slice(target.as_slice()))
             {
@@ -990,7 +1002,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             );
             return None;
         }
-        
+
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
 
         let mock_handler = MockHandlerImpl::new(
