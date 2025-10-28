@@ -1,6 +1,9 @@
-use crate::utils::{TestNode, unwrap_response};
+use crate::utils::{unwrap_response, TestNode};
 use alloy_primitives::{Address, B256, U256};
-use alloy_rpc_types::{TransactionRequest, txpool::TxpoolStatus};
+use alloy_rpc_types::{
+    txpool::{TxpoolInspect, TxpoolStatus},
+    TransactionRequest,
+};
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::revive_conversions::ReviveAddress,
@@ -145,4 +148,60 @@ async fn test_drop_all_transactions() {
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
     assert_eq!(status.pending, 0);
     assert_eq!(status.queued, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_txpool_inspect() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
+    let recipient_addr = Address::repeat_byte(0x42);
+
+    let inspect: TxpoolInspect =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolInspect(())).await.unwrap()).unwrap();
+    assert!(inspect.pending.is_empty());
+    assert!(inspect.queued.is_empty());
+
+    for i in 0..3 {
+        let tx = TransactionRequest::default()
+            .from(alith_addr)
+            .to(recipient_addr)
+            .value(U256::from(1000 * (i + 1)))
+            .nonce(i);
+        node.send_transaction(tx, None).await.unwrap();
+    }
+
+    let tx_future = TransactionRequest::default()
+        .from(alith_addr)
+        .to(recipient_addr)
+        .value(U256::from(5000))
+        .nonce(5);
+    node.send_transaction(tx_future, None).await.unwrap();
+
+    let inspect: TxpoolInspect =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolInspect(())).await.unwrap()).unwrap();
+
+    assert_eq!(inspect.pending.len(), 1);
+    assert_eq!(inspect.queued.len(), 1);
+
+    let pending_txs = inspect.pending.get(&alith_addr).unwrap();
+    assert_eq!(pending_txs.len(), 3);
+
+    for i in 0..3 {
+        let summary = pending_txs.get(&i.to_string()).unwrap();
+        assert_eq!(summary.to.unwrap(), recipient_addr);
+        assert_eq!(summary.value, U256::from(1000 * (i + 1)));
+        assert!(summary.gas > 0);
+    }
+
+    let queued_txs = inspect.queued.get(&alith_addr).unwrap();
+    assert_eq!(queued_txs.len(), 1);
+
+    let summary = queued_txs.get("5").unwrap();
+    assert_eq!(summary.to.unwrap(), recipient_addr);
+    assert_eq!(summary.value, U256::from(5000));
+    assert!(summary.gas > 0);
 }
