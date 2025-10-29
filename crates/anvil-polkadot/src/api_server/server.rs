@@ -55,7 +55,7 @@ use polkadot_sdk::{
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::HeaderBackend,
     sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
-    sp_api::ProvideRuntimeApi,
+    sp_api::{Metadata as _, ProvideRuntimeApi},
     sp_arithmetic::Permill,
     sp_blockchain::Info,
     sp_core::{self, Hasher, keccak_256},
@@ -712,6 +712,8 @@ impl ApiServer {
             current_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
         let current_block_timestamp: u64 =
             current_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        let gas_price: u128 =
+            self.gas_price().await?.try_into().map_err(|_| EthRpcError::ConversionError)?;
 
         Ok(NodeInfo {
             current_block_number,
@@ -727,7 +729,7 @@ impl ApiServer {
                 chain_id: self.chain_id(best_hash),
                 // TODO: implement gas limit
                 gas_limit: u64::MAX,
-                gas_price: self.gas_price().await?,
+                gas_price,
             },
             // Forking is not supported yet in anvil-polkadot
             fork_config: Default::default(),
