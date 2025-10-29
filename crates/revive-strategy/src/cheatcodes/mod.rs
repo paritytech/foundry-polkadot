@@ -213,7 +213,10 @@ fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
     // Set timestamp in pallet-revive runtime.
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
-            Timestamp::set_timestamp(new_timestamp.try_into().expect("Timestamp exceeds u64"));
+            // Pallet-revive timestamp is in milliseconds, so we convert from seconds.
+            Timestamp::set_timestamp(
+                (new_timestamp * U256::from(1000)).try_into().expect("Timestamp exceeds u64"),
+            );
         })
     });
 }
