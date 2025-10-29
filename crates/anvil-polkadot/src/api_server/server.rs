@@ -745,7 +745,7 @@ impl ApiServer {
         // This is both gas price and base fee, since pallet-revive does not support tips
         // https://github.com/paritytech/polkadot-sdk/blob/227c73b5c8810c0f34e87447f00e96743234fa52/substrate/frame/revive/rpc/src/lib.rs#L269
         let gas_price: u128 =
-            current_block.gas_price.try_into().map_err(|_| EthRpcError::ConversionError)?;
+            self.gas_price().await?.try_into().map_err(|_| EthRpcError::ConversionError)?;
         let gas_limit: u64 = current_block.gas_limit.try_into().unwrap_or(u64::MAX);
         // pallet-revive should currently support all opcodes in PRAGUE.
         let hard_fork: &str = SpecId::PRAGUE.into();

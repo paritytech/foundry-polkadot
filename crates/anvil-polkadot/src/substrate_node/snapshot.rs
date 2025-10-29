@@ -40,15 +40,15 @@ impl SnapshotManager {
         let current_snapshot_id = self.next_snapshot_id;
         self.next_snapshot_id += U256::ONE;
         let snapshot = self.client.info().best_number.into();
-        let hash = self.client.info().best_hash;
+        let hash = B256::from_slice(self.client.info().best_hash.as_ref());
         self.snapshots.lock().insert(current_snapshot_id, (snapshot, hash));
         current_snapshot_id
     }
 
     /// Revert the chain to the block number represented by the snapshot `id`.
     pub fn revert(&mut self, snapshot_id: U256) -> Result<Option<RevertInfo>> {
-        let (maybe_snapshot, _) = self.snapshots.lock().remove(&snapshot_id);
-        let Some(snap) = maybe_snapshot else {
+        let maybe_snapshot_with_hash = self.snapshots.lock().remove(&snapshot_id);
+        let Some((snap, _)) = maybe_snapshot_with_hash else {
             return Ok(None);
         };
 

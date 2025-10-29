@@ -144,6 +144,7 @@ subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
 jsonrpsee = "0.24.9"
 sqlx = "0.8.6"
+revm.workspace = true
 
 [dev-dependencies]
 alloy-provider = { workspace = true, features = ["txpool-api"] }
