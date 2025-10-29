@@ -42,8 +42,8 @@ use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
         evm::{
-            Account, Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
-            TransactionSigned,
+            Account, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, FeeHistoryResult,
+            FilterResults, ReceiptInfo, TransactionInfo, TransactionSigned,
         },
     },
     parachains_common::{AccountId, Hash, Nonce},
@@ -1030,10 +1030,28 @@ impl ApiServer {
     }
 
     async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
-        self.eth_rpc_client
-            .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
-            .await
-            .map_err(Error::from)
+        match ReviveBlockId::from(block_id).inner() {
+            BlockNumberOrTagOrHash::BlockHash(hash) => Ok(hash),
+            BlockNumberOrTagOrHash::BlockNumber(block_number) => {
+                let n = block_number.try_into().map_err(|_| {
+                    Error::InvalidParams("Block number conversion failed".to_string())
+                })?;
+                let hash = self
+                    .eth_rpc_client
+                    .get_block_hash(n)
+                    .await?
+                    .ok_or(Error::InvalidParams("Block number not found".to_string()))?;
+                Ok(hash)
+            }
+            BlockNumberOrTagOrHash::BlockTag(BlockTag::Finalized | BlockTag::Safe) => {
+                let block = self.eth_rpc_client.latest_finalized_block().await;
+                Ok(block.hash())
+            }
+            BlockNumberOrTagOrHash::BlockTag(_) => {
+                let block = self.eth_rpc_client.latest_block().await;
+                Ok(block.hash())
+            }
+        }
     }
 
     fn get_account_id(&self, block: Hash, address: Address) -> Result<AccountId> {
