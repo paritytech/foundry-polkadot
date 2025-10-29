@@ -32,6 +32,7 @@ pub struct GenesisConfig {
     /// The initial timestamp for the genesis block in milliseconds
     pub timestamp: u64,
     /// All accounts that should be initialised at genesis with their info.
+    /// Populated from user provided JSON.
     pub alloc: Option<BTreeMap<Address, GenesisAccount>>,
     /// The initial number for the genesis block
     pub number: u32,
@@ -39,9 +40,9 @@ pub struct GenesisConfig {
     pub base_fee_per_gas: u64,
     /// The genesis header gas limit.
     pub gas_limit: Option<u128>,
-    /// Signer accounts from account_generator not JSON
+    /// Signer accounts from account_generator
     pub genesis_accounts: Vec<Keypair>,
-    /// Genesis balance
+    /// Signers accounts balance
     pub genesis_balance: U256,
     /// Coinbase address
     pub coinbase: Option<Address>,
