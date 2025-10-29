@@ -457,6 +457,14 @@ impl ApiServer {
             return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = timestamp.to::<u64>();
+        let time_ms = time.saturating_mul(1000);
+        // Get the time for the last block.
+        let latest_block = self.latest_block();
+        let last_block_timestamp = self.backend.read_timestamp(latest_block)?;
+        // Inject the new time if the timestamp precedes last block time
+        if time_ms < last_block_timestamp {
+            self.backend.inject_timestamp(latest_block, time_ms);
+        }
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
 
