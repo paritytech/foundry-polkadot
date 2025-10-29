@@ -6,8 +6,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, getNonce_0Call, loadCall, pvmCall, rollCall, setNonceCall, setNonceUnsafeCall,
-        storeCall, warpCall,
+        dealCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall, setNonceCall,
+        setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -146,21 +146,22 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
     }
 }
 
-fn set_nonce(address: Address, nonce: u64, ecx: Ecx<'_, '_, '_>) {
+fn set_nonce(address: Address, nonce: u64, ecx: Ecx<'_, '_, '_>, check_nonce: bool) {
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
             let account_id =
                 AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
             let current_nonce = System::account_nonce(&account_id);
-
-            assert!(
-                current_nonce as u64 <= nonce,
-                "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-            );
-
-            while (System::account_nonce(&account_id) as u64) < nonce {
-                System::inc_account_nonce(&account_id);
+            if check_nonce {
+                assert!(
+                    current_nonce as u64 <= nonce,
+                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
+                );
             }
+
+            polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
+                a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+            });
         })
     });
     let account = ecx.journaled_state.load_account(address).expect("account loaded").data;
@@ -352,16 +353,23 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 let &setNonceCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, newNonce, ccx.ecx);
+                set_nonce(account, newNonce, ccx.ecx, true);
 
                 Ok(Default::default())
             }
             t if using_pvm && is::<setNonceUnsafeCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                // TODO implement unsafe_set_nonce on polkadot-sdk
+
                 let &setNonceUnsafeCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, newNonce, ccx.ecx);
+                set_nonce(account, newNonce, ccx.ecx, false);
+
+                Ok(Default::default())
+            }
+            t if using_pvm && is::<resetNonceCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                let &resetNonceCall { account } = cheatcode.as_any().downcast_ref().unwrap();
+                set_nonce(account, 0, ccx.ecx, false);
                 Ok(Default::default())
             }
             t if using_pvm && is::<getNonce_0Call>(t) => {
@@ -593,15 +601,9 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                 );
                 // END OF THE BLOCK TO BE REMOVED
 
-                let current_nonce = System::account_nonce(&account_id);
-                assert!(
-                    current_nonce as u64 <= nonce,
-                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-                );
-
-                while (System::account_nonce(&account_id) as u64) < nonce {
-                    System::inc_account_nonce(&account_id);
-                }
+                polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
+                    a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+                });
 
                 // TODO handle immutables
                 // Migrate bytecode for deployed contracts (skip test contract)

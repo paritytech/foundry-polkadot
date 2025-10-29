@@ -1,4 +1,5 @@
 use crate::substrate_node::genesis::GenesisConfig;
+use alloy_signer_local::PrivateKeySigner;
 use polkadot_sdk::{
     sc_chain_spec::{ChainSpec, GetExtension},
     sc_executor::HostFunctions,
@@ -6,10 +7,10 @@ use polkadot_sdk::{
     sc_service::{ChainType, GenericChainSpec, Properties},
     sc_telemetry::TelemetryEndpoints,
     sp_core::storage::Storage,
-    sp_genesis_builder,
     sp_runtime::BuildStorage,
 };
 use substrate_runtime::WASM_BINARY;
+use subxt_signer::eth::Keypair;
 
 /// This is a wrapper around the general Substrate ChainSpec type that allows manual changes to the
 /// genesis block.
@@ -118,9 +119,21 @@ pub fn development_chain_spec(
     .with_name("Development")
     .with_id("dev")
     .with_chain_type(ChainType::Development)
-    .with_genesis_config_preset_name(sp_genesis_builder::DEV_RUNTIME_PRESET)
     .with_genesis_config_patch(genesis_config.runtime_genesis_config_patch())
     .with_properties(props())
     .build();
     Ok(DevelopmentChainSpec { inner, genesis_config })
+}
+
+pub fn keypairs_from_private_keys(
+    accounts: &[PrivateKeySigner],
+) -> Result<Vec<Keypair>, subxt_signer::eth::Error> {
+    accounts
+        .iter()
+        .map(|signer| {
+            let key =
+                subxt_signer::eth::Keypair::from_secret_key(signer.credential().to_bytes().into())?;
+            Ok(key)
+        })
+        .collect()
 }

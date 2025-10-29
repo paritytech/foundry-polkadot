@@ -90,7 +90,7 @@ impl TestNode {
             Some(_) => {}
         }
 
-        let substrate_client = SubstrateCli { genesis_config: GenesisConfig::from(&anvil_config) };
+        let substrate_client = SubstrateCli::new(GenesisConfig::from(&anvil_config));
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
         let logging_manager = if anvil_config.enable_tracing {
             init_tracing(anvil_config.silent)
