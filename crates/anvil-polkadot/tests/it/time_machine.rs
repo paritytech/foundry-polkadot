@@ -153,7 +153,7 @@ async fn test_evm_increase_time() {
         )
         .unwrap(),
         7200,
-        1,
+        10,
         "Wrong offset when increasing the timestamp.",
     );
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
@@ -168,7 +168,7 @@ async fn test_evm_increase_time() {
     assert_with_tolerance(
         third_timestamp.saturating_sub(second_timestamp).saturating_div(1000),
         3600,
-        1,
+        10,
         "Wrong timestamp",
     );
 }

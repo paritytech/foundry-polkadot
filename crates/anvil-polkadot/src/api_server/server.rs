@@ -458,7 +458,7 @@ impl ApiServer {
         }
         let time = timestamp.to::<u64>();
         let time_ms = time.saturating_mul(1000);
-        // Get the time inherent for the last block.
+        // Get the time for the last block.
         let latest_block = self.latest_block();
         let last_block_timestamp = self.backend.read_timestamp(latest_block)?;
         // Inject the new time if the timestamp precedes last block time
