@@ -741,23 +741,24 @@ impl ApiServer {
             current_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
         let current_block_timestamp: u64 =
             current_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        // This is both gas price and base fee, since pallet-revive does not support tips
+        // https://github.com/paritytech/polkadot-sdk/blob/227c73b5c8810c0f34e87447f00e96743234fa52/substrate/frame/revive/rpc/src/lib.rs#L269
         let gas_price: u128 =
             self.gas_price().await?.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        let gas_limit: u64 = current_block.gas_limit.try_into().unwrap_or(u64::MAX);
 
         Ok(NodeInfo {
             current_block_number,
             current_block_timestamp,
             current_block_hash: B256::from_slice(best_hash.as_ref()),
-            // TODO: extend enum for Polkadot?
+            // This does not really apply to Polkadot, but we keep it default for compatibility.
             hard_fork: Default::default(),
-            // TODO: double check if this is correct
-            transaction_order: Default::default(),
+            // pallet-revive does not support tips
+            transaction_order: "fifo".to_string(),
             environment: NodeEnvironment {
-                // TODO: implement base fee
-                base_fee: 0,
+                base_fee: gas_price,
                 chain_id: self.chain_id(best_hash),
-                // TODO: implement gas limit
-                gas_limit: u64::MAX,
+                gas_limit,
                 gas_price,
             },
             // Forking is not supported yet in anvil-polkadot
