@@ -261,3 +261,65 @@ async fn test_txpool_content() {
     assert_eq!(from_addr, alith_addr);
     assert!(tx_info.hash != Default::default());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_remove_pool_transactions() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
+
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let baltathar_addr = Address::from(ReviveAddress::new(baltathar.address()));
+
+    let recipient_addr = Address::repeat_byte(0x42);
+
+    // Send 3 transactions from Alith
+    for i in 0..3 {
+        let tx = TransactionRequest::default()
+            .from(alith_addr)
+            .to(recipient_addr)
+            .value(U256::from(1000 * (i + 1)))
+            .nonce(i);
+        node.send_transaction(tx, None).await.unwrap();
+    }
+
+    // Send 2 transactions from Baltathar
+    for i in 0..2 {
+        let tx = TransactionRequest::default()
+            .from(baltathar_addr)
+            .to(recipient_addr)
+            .value(U256::from(2000 * (i + 1)))
+            .nonce(i);
+        node.send_transaction(tx, None).await.unwrap();
+    }
+
+    let status: TxpoolStatus =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
+    assert_eq!(status.pending, 5);
+    assert_eq!(status.queued, 0);
+
+    // Remove all transactions from Alith
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::RemovePoolTransactions(alith_addr)).await.unwrap(),
+    )
+    .unwrap();
+
+    let status: TxpoolStatus =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
+    assert_eq!(status.pending, 2);
+    assert_eq!(status.queued, 0);
+
+    // Verify only Baltathar's transactions remain
+    let content: TxpoolContent<TransactionInfo> =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
+
+    assert_eq!(content.pending.len(), 1);
+    assert!(content.pending.contains_key(&baltathar_addr));
+    assert!(!content.pending.contains_key(&alith_addr));
+
+    let baltathar_txs = content.pending.get(&baltathar_addr).unwrap();
+    assert_eq!(baltathar_txs.len(), 2);
+}
