@@ -368,7 +368,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_pvm && is::<resetNonceCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                // TODO implement unsafe_set_nonce on polkadot-sdk
                 let &resetNonceCall { account } = cheatcode.as_any().downcast_ref().unwrap();
                 set_nonce(account, 0, ccx.ecx, false);
                 Ok(Default::default())
