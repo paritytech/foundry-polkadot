@@ -1,20 +1,26 @@
 //! Genesis settings
 
-use crate::{config::AnvilNodeConfig, substrate_node::service::storage::well_known_keys};
+use crate::{
+    api_server::revive_conversions::ReviveAddress, config::AnvilNodeConfig,
+    substrate_node::service::storage::well_known_keys,
+};
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
+    pallet_revive::genesis::ContractData,
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
     sp_blockchain,
-    sp_core::storage::Storage,
+    sp_core::{H160, storage::Storage},
     sp_runtime::{
         BuildStorage,
         traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
     },
 };
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 /// Genesis settings
@@ -32,6 +38,8 @@ pub struct GenesisConfig {
     pub base_fee_per_gas: u64,
     /// The genesis header gas limit.
     pub gas_limit: Option<u128>,
+    /// Coinbase address
+    pub coinbase: Option<Address>,
 }
 
 impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
@@ -50,19 +58,82 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 .expect("Genesis block number overflow"),
             base_fee_per_gas: anvil_config.get_base_fee(),
             gas_limit: anvil_config.gas_limit,
+            coinbase: anvil_config.genesis.as_ref().map(|g| g.coinbase),
         }
     }
 }
 
+/// Used to provide genesis accounts to pallet-revive
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviveGenesisAccount {
+    pub address: H160,
+    #[serde(default)]
+    pub balance: U256,
+    #[serde(default)]
+    pub nonce: u64,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub contract_data: Option<ContractData>,
+}
+
 impl GenesisConfig {
     pub fn as_storage_key_value(&self) -> Vec<(Vec<u8>, Vec<u8>)> {
+        let mut aura_authority_id = [0xEE; 32];
+        aura_authority_id[..20].copy_from_slice(
+            self.coinbase.as_ref().map(|addr| addr.0.as_slice()).unwrap_or(&[0; 20]),
+        );
         let storage = vec![
             (well_known_keys::CHAIN_ID.to_vec(), self.chain_id.encode()),
             (well_known_keys::TIMESTAMP.to_vec(), self.timestamp.encode()),
             (well_known_keys::BLOCK_NUMBER_KEY.to_vec(), self.number.encode()),
+            (well_known_keys::AURA_AUTHORITIES.to_vec(), vec![aura_authority_id].encode()),
         ];
         // TODO: add other fields
         storage
+    }
+
+    pub fn runtime_genesis_config_patch(&self) -> Value {
+        // Relies on ReviveGenesisAccount type from pallet-revive
+        let revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
+            .alloc
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .map(|(address, account)| {
+                let genesis_address: H160 = ReviveAddress::from(*address).inner();
+                let genesis_balance: U256 = account.balance;
+                let genesis_nonce: u64 = account.nonce.unwrap_or_default();
+                let contract_data: Option<ContractData> = if account.code.is_some() {
+                    Some(ContractData {
+                        code: account.code.clone().map(|code| code.to_vec()).unwrap_or_default(),
+                        storage: account
+                            .storage
+                            .clone()
+                            .map(|storage| {
+                                storage
+                                    .into_iter()
+                                    .map(|(k, v)| (k.0.into(), v.0.into()))
+                                    .collect::<BTreeMap<_, _>>()
+                            })
+                            .unwrap_or_default(),
+                    })
+                } else {
+                    None
+                };
+
+                ReviveGenesisAccount {
+                    address: genesis_address,
+                    balance: genesis_balance,
+                    nonce: genesis_nonce,
+                    contract_data,
+                }
+            })
+            .collect();
+
+        json!({
+            "revive": {
+                "accounts": revive_genesis_accounts,
+            },
+        })
     }
 }
 
@@ -171,8 +242,14 @@ mod tests {
         let block_number: u32 = 5;
         let timestamp: u64 = 10;
         let chain_id: u64 = 42;
-        let genesis_config =
-            GenesisConfig { number: block_number, timestamp, chain_id, ..Default::default() };
+        let authority_id: [u8; 32] = [0xEE; 32];
+        let genesis_config = GenesisConfig {
+            number: block_number,
+            timestamp,
+            chain_id,
+            coinbase: Some(Address::from([0xEE; 20])),
+            ..Default::default()
+        };
         let genesis_storage = genesis_config.as_storage_key_value();
         assert!(
             genesis_storage
@@ -186,6 +263,14 @@ mod tests {
         assert!(
             genesis_storage.contains(&(well_known_keys::CHAIN_ID.to_vec(), chain_id.encode())),
             "Chain id not found in genesis key-value storage"
+        );
+
+        assert!(
+            genesis_storage.contains(&(
+                well_known_keys::AURA_AUTHORITIES.to_vec(),
+                vec![authority_id].encode()
+            )),
+            "Authorities not found in genesis key-value storage"
         );
     }
 }
