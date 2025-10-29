@@ -312,6 +312,10 @@ impl ApiServer {
                 node_info!("anvil_dropTransaction");
                 self.anvil_drop_transaction(eth_hash).await.to_rpc_result()
             }
+            EthRequest::RemovePoolTransactions(address) => {
+                node_info!("anvil_removePoolTransactions");
+                self.anvil_remove_pool_transactions(address).await.to_rpc_result()
+            }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -1157,6 +1161,36 @@ impl ApiServer {
         // Transaction not found
         Ok(None)
     }
+
+    /// Remove all transactions from a specific sender address
+    async fn anvil_remove_pool_transactions(&self, address: Address) -> Result<()> {
+        let mut invalid_txs = IndexMap::new();
+
+        // Find all transactions from this sender in ready pool
+        for tx in self.tx_pool.ready() {
+            if let Some(sender) = extract_sender(tx.data()) {
+                if sender == address {
+                    invalid_txs.insert(*tx.hash(), None);
+                }
+            }
+        }
+
+        // Find all transactions from this sender in future pool
+        for tx in self.tx_pool.futures() {
+            if let Some(sender) = extract_sender(tx.data()) {
+                if sender == address {
+                    invalid_txs.insert(*tx.hash(), None);
+                }
+            }
+        }
+
+        // Remove all found transactions
+        if !invalid_txs.is_empty() {
+            self.tx_pool.report_invalid(None, invalid_txs).await;
+        }
+
+        Ok(())
+    }
 }
 
 /// Helper function to check if transaction matches ETH hash
@@ -1310,6 +1344,33 @@ fn extract_tx_info(
     };
 
     Some((sender, nonce_u64, tx_info))
+}
+
+/// Helper function to extract sender address from extrinsic
+fn extract_sender(tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>) -> Option<Address> {
+    // Decode extrinsic
+    let encoded = tx_data.encode();
+    let ext =
+        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
+            .ok()?;
+
+    // Extract eth_transact payload
+    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
+        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
+        ..
+    } = ext.0
+    else {
+        return None;
+    };
+
+    // Decode ETH transaction
+    let signed_tx = TransactionSigned::decode(&payload).ok()?;
+
+    // Recover sender address
+    let from = signed_tx.recover_eth_address().ok()?;
+    let sender = Address::from_slice(from.as_bytes());
+
+    Some(sender)
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
