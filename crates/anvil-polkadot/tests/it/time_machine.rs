@@ -28,27 +28,63 @@ async fn test_evm_set_time_in_the_past() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
+    // Mine the first block
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
-    let first_hash = node.block_hash_by_number(1).await.unwrap();
-    let first_timestamp = node.get_decoded_timestamp(Some(first_hash)).await;
 
     // Set the timestamp in the past
-    let new_timestamp = first_timestamp.saturating_div(1000).saturating_sub(1);
     assert_eq!(
         unwrap_response::<u64>(
-            node.eth_rpc(EthRequest::EvmSetTime(U256::from(new_timestamp))).await.unwrap()
+            node.eth_rpc(EthRequest::EvmSetTime(U256::from(10000u64))).await.unwrap()
         )
         .unwrap(),
         0
     );
-
+    // Sleep for a second to check that the time flows correctly after EvmSetTime
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
-    // This is a placeholder as it is not currently possible to set the timeline
-    // for a value in the past, however this shall change when we have the state
-    // injector.
     let second_hash = node.block_hash_by_number(2).await.unwrap();
     let second_timestamp = node.get_decoded_timestamp(Some(second_hash)).await;
-    assert_eq!(second_timestamp.saturating_sub(first_timestamp), 1);
+    assert_with_tolerance(second_timestamp, 10001000, 200, "Failed to produce block in time.");
+
+    // Set the timestamp further in the past
+    assert_eq!(
+        unwrap_response::<u64>(
+            node.eth_rpc(EthRequest::EvmSetTime(U256::from(1000))).await.unwrap()
+        )
+        .unwrap(),
+        0
+    );
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+    let third_hash = node.block_hash_by_number(3).await.unwrap();
+    let third_timestamp = node.get_decoded_timestamp(Some(third_hash)).await;
+    assert_with_tolerance(third_timestamp, 1000000, 200, "Difference between blocks is too large.");
+
+    // Check that the time manipulation is applied to the previously injected time.
+    // Current offset should be ~ time since EPOCH - 1000
+    let current_offset = unwrap_response::<i64>(
+        node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(0))).await.unwrap(),
+    )
+    .unwrap();
+    // The new offset should be ~time since EPOCH - 2000
+    assert_with_tolerance(
+        unwrap_response::<i64>(
+            node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(1))).await.unwrap(),
+        )
+        .unwrap(),
+        current_offset + 1,
+        200,
+        "message",
+    );
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+
+    let fourth_hash = node.block_hash_by_number(4).await.unwrap();
+    let fourth_timestamp = node.get_decoded_timestamp(Some(fourth_hash)).await;
+    assert_with_tolerance(
+        fourth_timestamp.saturating_sub(third_timestamp),
+        1000,
+        200,
+        "Difference between blocks timestamp is too large.",
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -111,6 +147,30 @@ async fn test_evm_increase_time() {
         second_timestamp.saturating_sub(first_timestamp).saturating_div(1000),
         3600,
         1,
+        "Wrong timestamp",
+    );
+    assert_with_tolerance(
+        unwrap_response::<i64>(
+            node.eth_rpc(EthRequest::EvmIncreaseTime(U256::from(3600))).await.unwrap(),
+        )
+        .unwrap(),
+        7200,
+        10,
+        "Wrong offset when increasing the timestamp.",
+    );
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+    let third_hash = node.block_hash_by_number(3).await.unwrap();
+    let third_timestamp = node.get_decoded_timestamp(Some(third_hash)).await;
+    assert_with_tolerance(
+        third_timestamp.saturating_sub(first_timestamp).saturating_div(1000),
+        7200,
+        1,
+        "Wrong timestamp",
+    );
+    assert_with_tolerance(
+        third_timestamp.saturating_sub(second_timestamp).saturating_div(1000),
+        3600,
+        10,
         "Wrong timestamp",
     );
 }

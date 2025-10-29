@@ -154,6 +154,35 @@ impl ApiServer {
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
             EthRequest::EvmMineDetailed(mine) => self.evm_mine_detailed(mine).await.to_rpc_result(),
 
+            // ---- Coinbase ----
+            EthRequest::SetCoinbase(address) => {
+                node_info!("anvil_setCoinbase");
+                let latest_block = self.latest_block();
+                let account_id = self
+                    .client
+                    .runtime_api()
+                    .account_id(latest_block, H160::from_slice(address.as_slice()))
+                    .map_err(Error::RuntimeApi);
+                account_id
+                    .map(|inner| self.backend.inject_aura_authority(latest_block, inner))
+                    .to_rpc_result()
+            }
+            EthRequest::EthCoinbase(()) => {
+                node_info!("eth_coinbase");
+                let latest_block = self.latest_block();
+                let authority =
+                    self.backend.read_aura_authority(latest_block).map_err(Error::Backend);
+                authority
+                    .and_then(|inner| {
+                        self.client
+                            .runtime_api()
+                            .address(latest_block, inner)
+                            .map_err(Error::RuntimeApi)
+                    })
+                    .map(|inner| Address::from(inner.to_fixed_bytes()))
+                    .to_rpc_result()
+            }
+
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
@@ -428,6 +457,14 @@ impl ApiServer {
             return Err(Error::InvalidParams("The timestamp is too big".to_string()));
         }
         let time = timestamp.to::<u64>();
+        let time_ms = time.saturating_mul(1000);
+        // Get the time for the last block.
+        let latest_block = self.latest_block();
+        let last_block_timestamp = self.backend.read_timestamp(latest_block)?;
+        // Inject the new time if the timestamp precedes last block time
+        if time_ms < last_block_timestamp {
+            self.backend.inject_timestamp(latest_block, time_ms);
+        }
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
 

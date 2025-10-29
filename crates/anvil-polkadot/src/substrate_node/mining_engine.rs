@@ -258,7 +258,7 @@ impl MiningEngine {
     /// * `time_in_seconds` - Duration to advance in seconds
     ///
     /// # Returns
-    /// * `new_timestamp` - The new current timestamp as i64
+    /// * `new_timestamp` - The new offset to the current time as i64
     pub fn increase_time(&self, time: Duration) -> i64 {
         self.time_manager.increase_time(time.as_secs()).saturating_div(1000) as i64
     }
