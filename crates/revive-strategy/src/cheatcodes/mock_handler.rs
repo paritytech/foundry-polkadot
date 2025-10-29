@@ -118,9 +118,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
 
     fn mock_caller(&self, frames_len: usize) -> Option<OriginFor<Runtime>> {
         let mock_inner = self.inner.borrow();
-
-        if (frames_len == 0 || !mock_inner.first_call_only) && mock_inner.delegated_caller.is_none()
-        {
+        if frames_len == 0 && mock_inner.delegated_caller.is_none() {
             return Some(mock_inner.caller.clone());
         }
         None
@@ -172,7 +170,6 @@ struct MockHandlerInner<T: frame_system::Config> {
     pub delegated_caller: Option<OriginFor<T>>,
     pub callee: H160,
 
-    pub first_call_only: bool,
     pub mocked_calls: HashMap<Address, BTreeMap<MockCallDataContext, VecDeque<MockCallReturnData>>>,
     pub mocked_functions: HashMap<Address, HashMap<Bytes, Address>>,
 }
@@ -199,18 +196,15 @@ impl MockHandlerInner<Runtime> {
             )))
         });
 
-        let mut state_inject = Self {
+        let state_inject = Self {
             caller: pranked_caller,
             delegated_caller,
-            first_call_only: true,
             mocked_calls: state.mocked_calls.clone(),
             callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
             mocked_functions: state.mocked_functions.clone(),
         };
-
         if let Some(prank) = &state.get_prank(curr_depth) {
             if curr_depth >= prank.depth {
-                state_inject.first_call_only = prank.single_call;
                 prank_enabled = true;
             }
         }
