@@ -154,6 +154,35 @@ impl ApiServer {
             EthRequest::EvmMine(mine) => self.evm_mine(mine).await.to_rpc_result(),
             EthRequest::EvmMineDetailed(mine) => self.evm_mine_detailed(mine).await.to_rpc_result(),
 
+            // ---- Coinbase ----
+            EthRequest::SetCoinbase(address) => {
+                node_info!("anvil_setCoinbase");
+                let latest_block = self.latest_block();
+                let account_id = self
+                    .client
+                    .runtime_api()
+                    .account_id(latest_block, H160::from_slice(address.as_slice()))
+                    .map_err(Error::RuntimeApi);
+                account_id
+                    .map(|inner| self.backend.inject_aura_authority(latest_block, inner))
+                    .to_rpc_result()
+            }
+            EthRequest::EthCoinbase(()) => {
+                node_info!("eth_coinbase");
+                let latest_block = self.latest_block();
+                let authority =
+                    self.backend.read_aura_authority(latest_block).map_err(Error::Backend);
+                authority
+                    .and_then(|inner| {
+                        self.client
+                            .runtime_api()
+                            .address(latest_block, inner)
+                            .map_err(Error::RuntimeApi)
+                    })
+                    .map(|inner| Address::from(inner.to_fixed_bytes()))
+                    .to_rpc_result()
+            }
+
             //------- TimeMachine---------
             EthRequest::EvmSetBlockTimeStampInterval(time) => {
                 self.set_block_timestamp_interval(time).to_rpc_result()
