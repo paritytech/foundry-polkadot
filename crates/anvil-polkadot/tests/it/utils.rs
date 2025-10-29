@@ -2,6 +2,7 @@ use alloy_eips::BlockId;
 use alloy_primitives::{Address, B256, Bytes, U256, hex};
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
+use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{
@@ -38,6 +39,8 @@ use serde_json::{Value, json};
 use std::{fmt::Debug, time::Duration};
 use subxt::utils::H160;
 use tempfile::TempDir;
+
+use crate::abi::Multicall;
 
 const NATIVE_TO_ETH_RATIO: u128 = 1000000;
 pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
@@ -428,4 +431,24 @@ pub fn to_hex_string(value: u64) -> String {
     let trimmed = hex.trim_start_matches('0');
     let result = if trimmed.is_empty() { "0" } else { trimmed };
     format!("0x{result}")
+}
+
+pub async fn multicall_get_coinbase(
+    node: &mut TestNode,
+    from: Address,
+    contract_address: Address,
+) -> Address {
+    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(from)
+        .to(contract_address)
+        .input(TransactionInput::both(get_coinbase.into()));
+
+    let res: Bytes = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap()
 }
