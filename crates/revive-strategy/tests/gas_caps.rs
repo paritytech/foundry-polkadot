@@ -6,7 +6,7 @@
 //! in `cheatcodes/mod.rs`. The implementation converts EVM gas limits to Substrate Weight
 //! and calculates storage deposit caps based on the available balance after accounting for:
 //! - Existential deposit
-//! - Weight fees (from gas -> weight -> fee conversion)  
+//! - Weight fees (from gas -> weight -> fee conversion)
 //! - Value transfers
 
 use polkadot_sdk::{
