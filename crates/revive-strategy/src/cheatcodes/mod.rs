@@ -24,6 +24,7 @@ use polkadot_sdk::{
     frame_support::{
         dispatch::DispatchClass,
         traits::{Currency, fungible::Mutate},
+        weights::Weight,
     },
     frame_system, pallet_balances,
     pallet_revive::{
@@ -32,7 +33,7 @@ use polkadot_sdk::{
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
-    sp_runtime::traits::SaturatedConversion,
+    sp_runtime::traits::{SaturatedConversion, Zero},
 };
 
 use crate::{
@@ -51,6 +52,7 @@ use revm::{
     },
     state::Bytecode,
 };
+
 pub trait PvmCheatcodeInspectorStrategyBuilder {
     fn new_pvm(dual_compiled_contracts: DualCompiledContracts, resolc_startup: bool) -> Self;
 }
@@ -136,6 +138,86 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
     fn as_any_ref(&self) -> &dyn Any {
         self
     }
+}
+
+fn compute_gas_caps(
+    caller: &H160,
+    gas_limit: u64,
+    value_native: BalanceOf<Runtime>,
+) -> Option<(Weight, BalanceOf<Runtime>)> {
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
+            let normal = block_weights.get(DispatchClass::Normal);
+            let max_normal =
+                normal.max_extrinsic.unwrap_or(normal.max_total.unwrap_or(block_weights.max_block));
+            let base_extrinsic = normal.base_extrinsic;
+            
+            let account_id = AccountId::to_fallback_account_id(caller);
+            let free_balance = pallet_balances::Pallet::<Runtime>::free_balance(&account_id);
+            let existential_deposit = pallet_balances::Pallet::<Runtime>::minimum_balance();
+
+            // Compute weight per gas from runtime benchmarks
+            let weight_per_gas = {
+                use polkadot_sdk::pallet_revive::weights::WeightInfo;
+                let loop_iteration = <Runtime as Config>::WeightInfo::instr(1)
+                    .saturating_sub(<Runtime as Config>::WeightInfo::instr(0))
+                    .ref_time();
+                let empty_loop = <Runtime as Config>::WeightInfo::instr_empty_loop(1)
+                    .saturating_sub(<Runtime as Config>::WeightInfo::instr_empty_loop(0))
+                    .ref_time();
+                loop_iteration.saturating_sub(empty_loop)
+            };
+
+            if weight_per_gas == 0 || max_normal.is_zero() {
+                warn!(
+                    "Gas weight computation disabled (weight_per_gas={}, max_normal={:?}); falling back to static caps",
+                    weight_per_gas,
+                    max_normal
+                );
+                return None;
+            }
+
+            let max_budget_weight = max_normal.saturating_sub(base_extrinsic);
+
+            if max_budget_weight.is_zero() {
+                warn!("No weight budget available after subtracting base_extrinsic; falling back to static caps");
+                return None;
+            }
+
+            let weight = if gas_limit == 0 {
+                max_budget_weight
+            } else {
+                let ref_time_cap = max_budget_weight.ref_time();
+                let mut requested_ref_time = weight_per_gas.saturating_mul(gas_limit);
+                
+                if requested_ref_time > ref_time_cap {
+                    requested_ref_time = ref_time_cap;
+                }
+
+                let proof_size_budget = if requested_ref_time == 0 {
+                    0
+                } else {
+                    let max_proof_size = max_budget_weight.proof_size();
+                    ((max_proof_size as u128)
+                        .saturating_mul(requested_ref_time as u128)
+                        .saturating_div(ref_time_cap as u128)) as u64
+                };
+
+                Weight::from_parts(requested_ref_time, proof_size_budget)
+            };
+
+            let storage = free_balance
+                .saturating_sub(existential_deposit)
+                .saturating_sub(value_native);
+
+            Some((weight, storage))
+        })
+    })
+}
+
+fn clamp_evm_value_to_native(value: sp_core::U256) -> BalanceOf<Runtime> {
+    value.min(u128::MAX.into()).as_u128().saturated_into()
 }
 
 fn set_nonce(address: Address, nonce: u64, ecx: Ecx<'_, '_, '_>) {
@@ -766,37 +848,34 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let contract = find_contract.contract();
         let resolc_bytecode = contract.resolc_bytecode.as_bytes().unwrap().to_vec();
 
-        // 1) Weight cap
-        let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
-        let normal = block_weights.get(DispatchClass::Normal);
-        let max_weight_cap =
-            normal.max_extrinsic.unwrap_or(normal.max_total.unwrap_or(block_weights.max_block));
+        let caller_h160 = H160::from_slice(input.caller().as_slice());
+        let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
+        let value_native = clamp_evm_value_to_native(evm_value);
 
-        // 2) Storage deposit cap
-        // NOTE: Substrate storage access must use an Externalities scope.
-        let storage_deposit_cap: u128 = execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
-                let caller_acc =
-                    AccountId::to_fallback_account_id(&H160::from_slice(input.caller().as_slice()));
-                let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
-                let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
-                let evm_value_native: BalanceOf<Runtime> =
-                    evm_value.min(u128::MAX.into()).as_u128().saturated_into();
-                let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
-                let cap: u128 = available.saturated_into();
-                cap
-            })
-        });
+        let (max_weight_cap, storage_deposit_cap) =
+            compute_gas_caps(&caller_h160, input.gas_limit(), value_native).unwrap_or_else(|| {
+                warn!("Falling back to legacy gas caps for CREATE; using max block weight");
+                execute_with_externalities(|ext| {
+                    ext.execute_with(|| {
+                        let max_weight = <Runtime as frame_system::Config>::BlockWeights::get()
+                            .get(DispatchClass::Normal)
+                            .max_extrinsic
+                            .unwrap_or_default();
+                        let account_id = AccountId::to_fallback_account_id(&caller_h160);
+                        let free = pallet_balances::Pallet::<Runtime>::free_balance(&account_id);
+                        let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
+                        (max_weight, free.saturating_sub(ed).saturating_sub(value_native))
+                    })
+                })
+            });
 
         let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(input.caller().as_slice()),
+                        &caller_h160,
                     ));
-                    let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
                     let code = Code::Upload(resolc_bytecode.clone());
                     let data = constructor_args.to_vec();
@@ -816,7 +895,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         origin,
                         evm_value,
                         max_weight_cap,
-                        storage_deposit_cap.saturated_into(),
+                        storage_deposit_cap,
                         code,
                         data,
                         salt,
@@ -906,28 +985,26 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         tracing::info!("running call in PVM {:#?}", call);
 
-        // 1) Weight cap
-        let block_weights = <Runtime as frame_system::Config>::BlockWeights::get();
-        let normal = block_weights.get(DispatchClass::Normal);
-        let max_weight_cap =
-            normal.max_extrinsic.unwrap_or(normal.max_total.unwrap_or(block_weights.max_block));
+        let caller_h160 = H160::from_slice(call.caller.as_slice());
+        let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
+        let value_native = clamp_evm_value_to_native(evm_value);
 
-        // 2) Storage deposit cap
-        // NOTE: Substrate storage access must use an Externalities scope.
-        let storage_deposit_cap: u128 = execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
-                let caller_acc =
-                    AccountId::to_fallback_account_id(&H160::from_slice(call.caller.as_slice()));
-                let free = pallet_balances::Pallet::<Runtime>::free_balance(&caller_acc);
-                let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
-                let evm_value_native: BalanceOf<Runtime> =
-                    evm_value.min(u128::MAX.into()).as_u128().saturated_into();
-                let available = free.saturating_sub(ed).saturating_sub(evm_value_native);
-                let cap: u128 = available.saturated_into();
-                cap
-            })
-        });
+        let (max_weight_cap, storage_deposit_cap) =
+            compute_gas_caps(&caller_h160, call.gas_limit, value_native).unwrap_or_else(|| {
+                warn!("Falling back to legacy gas caps for CALL; using max block weight");
+                execute_with_externalities(|ext| {
+                    ext.execute_with(|| {
+                        let max_weight = <Runtime as frame_system::Config>::BlockWeights::get()
+                            .get(DispatchClass::Normal)
+                            .max_extrinsic
+                            .unwrap_or_default();
+                        let account_id = AccountId::to_fallback_account_id(&caller_h160);
+                        let free = pallet_balances::Pallet::<Runtime>::free_balance(&account_id);
+                        let ed = pallet_balances::Pallet::<Runtime>::minimum_balance();
+                        (max_weight, free.saturating_sub(ed).saturating_sub(value_native))
+                    })
+                })
+            });
 
         let target_address_h160 = H160::from_slice(call.target_address.as_slice());
         let has_pvm_contract = execute_with_externalities(|externalities| {
@@ -948,18 +1025,15 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(call.caller.as_slice()),
+                        &caller_h160,
                     ));
-
-                    let evm_value =
-                        sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
 
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target_address_h160,
                         evm_value,
                         max_weight_cap,
-                        storage_deposit_cap.saturated_into(),
+                        storage_deposit_cap,
                         call.input.bytes(ecx).to_vec(),
                         ExecConfig::new_substrate_tx(),
                     )
