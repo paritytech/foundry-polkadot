@@ -36,6 +36,7 @@ impl ContractsNodeProcess {
             .env("RUST_LOG", "error")
             .arg("--dev")
             .arg(format!("--base-path={}", tmp_dir.path().to_string_lossy()))
+            .arg("--no-prometheus")
             .spawn()?;
         // wait for rpc to be initialized
         let mut attempts = 1;
