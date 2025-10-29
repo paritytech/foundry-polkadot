@@ -56,7 +56,6 @@ async fn test_get_start_balance() {
             None
         )
         .await,
-        // Default balance - existential deposit
         U256::from_str_radix("10000000000000000000000", 10).unwrap()
     );
 }

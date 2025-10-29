@@ -35,25 +35,12 @@ pub fn spawn(
     let mut impersonation_manager = ImpersonationManager::default();
     impersonation_manager.set_auto_impersonate_account(config.enable_auto_impersonate);
     let mut signers = config.signer_accounts.clone();
-    signers.extend(
-        config
-            .genesis
-            .iter()
-            .flat_map(|genesis| genesis.alloc.values())
-            .filter_map(|acc| acc.private_key)
-            .filter_map(|k| Keypair::from_secret_key(*k).ok()),
-    );
-    if let Some(genesis) = &config.genesis {
-        let genesis_signers = genesis
-            .alloc
-            .values()
-            .filter_map(|acc| acc.private_key)
-            .flat_map(|k| Keypair::from_secret_key(*k))
-            .collect::<Vec<_>>();
-        if !genesis_signers.is_empty() {
-            signers.extend(genesis_signers);
-        }
-    }
+    signers.extend(config.genesis.iter().flat_map(|genesis| genesis.alloc.values()).filter_map(
+        |acc| {
+            let private_key = acc.private_key?;
+            Keypair::from_secret_key(*private_key).ok()
+        },
+    ));
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
         let api_server = ApiServer::new(
             service,

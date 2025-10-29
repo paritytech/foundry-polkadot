@@ -39,7 +39,7 @@ pub struct GenesisConfig {
     pub base_fee_per_gas: u64,
     /// The genesis header gas limit.
     pub gas_limit: Option<u128>,
-    /// Genesis accounts
+    /// Signer accounts that will be initialised with `genesis_balance` in the genesis block
     pub genesis_accounts: Vec<Keypair>,
     /// Genesis balance
     pub genesis_balance: U256,

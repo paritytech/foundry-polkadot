@@ -43,9 +43,9 @@ use sp_weights::ConstantMultiplier;
 
 pub mod currency {
     use super::Balance;
-    pub const MILLICENTS: Balance = 1_000_000_000;
-    pub const CENTS: Balance = 1_000 * MILLICENTS;
-    pub const DOLLARS: Balance = 100 * CENTS;
+    pub const DOLLARS: Balance = 1_000_000_000_000;
+    pub const CENTS: Balance = DOLLARS / 100;
+    pub const MILLICENTS: Balance = CENTS / 1_000;
 }
 
 /// The runtime version.

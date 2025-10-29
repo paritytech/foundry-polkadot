@@ -1030,6 +1030,7 @@ impl ApiServer {
         &self,
         tx: WithOtherFields<TransactionRequest>,
     ) -> Result<TransactionSigned> {
+        node_info!("eth_signTransaction");
         let from = tx.inner().from.ok_or(Error::ReviveRpc(EthRpcError::InvalidTransaction))?;
         let generic_transaction = convert_to_generic_transaction(tx.into_inner());
         let unsigned_transaction = generic_transaction
@@ -1048,6 +1049,7 @@ impl ApiServer {
         address: Address,
         block_number: Option<BlockId>,
     ) -> Result<TrieAccount> {
+        node_info!("eth_getAccount");
         let addr = ReviveAddress::from(address).inner();
         let nonce = self.get_transaction_count(addr, block_number).await?;
         let balance = self.get_balance(address, block_number).await?;
@@ -1065,6 +1067,7 @@ impl ApiServer {
         address: Address,
         block_number: Option<BlockId>,
     ) -> Result<alloy_rpc_types::eth::AccountInfo> {
+        node_info!("eth_getAccountInfo");
         let account = self.get_account(address, block_number);
         let code = self.get_code(address, block_number);
         let (account, code) = try_join!(account, code)?;
