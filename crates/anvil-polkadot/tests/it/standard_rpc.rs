@@ -960,8 +960,6 @@ async fn test_anvil_node_info() {
     assert_eq!(node_info.hard_fork, "Prague".to_string());
     assert_eq!(node_info.transaction_order, "fifo");
     assert_eq!(node_info.environment.chain_id, 0x7a69);
-    // gas limit and gas price are the same since tipping is not supported
-    assert_eq!(node_info.environment.base_fee, node_info.environment.gas_price);
 
     // Verify fork config is empty (forking not supported)
     assert_eq!(node_info.fork_config.fork_url, None);
@@ -972,6 +970,8 @@ async fn test_anvil_node_info() {
     assert_eq!(node_info.current_block_hash, B256::from_slice(genesis_block_hash.as_ref()));
     let block = node.get_block_by_hash(genesis_block_hash).await;
     assert_eq!(block.gas_limit, node_info.environment.gas_limit.into());
+    assert_eq!(block.base_fee_per_gas, node_info.environment.base_fee.into());
+    assert_eq!(block.base_fee_per_gas, node_info.environment.gas_price.into());
 
     // Mine some blocks and check that node_info updates
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(3)), None)).await.unwrap())

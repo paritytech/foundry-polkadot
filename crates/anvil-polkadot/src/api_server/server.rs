@@ -42,7 +42,6 @@ use pallet_revive_eth_rpc::{
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
 };
-use parking_lot::RwLock;
 use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
@@ -90,7 +89,7 @@ pub struct ApiServer {
     snapshot_manager: SnapshotManager,
     impersonation_manager: ImpersonationManager,
     tx_pool: Arc<TransactionPoolHandle>,
-    instance_id: Arc<RwLock<B256>>,
+    instance_id: B256,
 }
 
 impl ApiServer {
@@ -135,7 +134,7 @@ impl ApiServer {
                     Account::from(subxt_signer::eth::dev::charleth()),
                 ],
             },
-            instance_id: Arc::new(RwLock::new(B256::random())),
+            instance_id: B256::random(),
         })
     }
 
@@ -262,7 +261,7 @@ impl ApiServer {
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
             EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
 
-            // --- Configuration ---
+            // --- Metadata ---
             EthRequest::NodeInfo(_) => self.anvil_node_info().await.to_rpc_result(),
             EthRequest::AnvilMetadata(_) => self.anvil_metadata().await.to_rpc_result(),
 
@@ -752,8 +751,8 @@ impl ApiServer {
             current_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
         // This is both gas price and base fee, since pallet-revive does not support tips
         // https://github.com/paritytech/polkadot-sdk/blob/227c73b5c8810c0f34e87447f00e96743234fa52/substrate/frame/revive/rpc/src/lib.rs#L269
-        let gas_price: u128 =
-            self.gas_price().await?.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        let base_fee: u128 =
+            current_block.base_fee_per_gas.try_into().map_err(|_| EthRpcError::ConversionError)?;
         let gas_limit: u64 = current_block.gas_limit.try_into().unwrap_or(u64::MAX);
         // pallet-revive should currently support all opcodes in PRAGUE.
         let hard_fork: &str = SpecId::PRAGUE.into();
@@ -766,10 +765,10 @@ impl ApiServer {
             // pallet-revive does not support tips
             transaction_order: "fifo".to_string(),
             environment: NodeEnvironment {
-                base_fee: gas_price,
+                base_fee,
                 chain_id: self.chain_id(best_hash),
                 gas_limit,
-                gas_price,
+                gas_price: base_fee,
             },
             // Forking is not supported yet in anvil-polkadot
             fork_config: Default::default(),
@@ -793,7 +792,7 @@ impl ApiServer {
             chain_id: self.chain_id(best_hash),
             latest_block_hash: B256::from_slice(best_hash.as_ref()),
             latest_block_number,
-            instance_id: *self.instance_id.read(),
+            instance_id: self.instance_id,
             // Forking is not supported yet in anvil-polkadot
             forked_network: None,
             snapshots: self.snapshot_manager.list_snapshots(),
