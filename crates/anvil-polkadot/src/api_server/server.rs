@@ -56,7 +56,7 @@ use polkadot_sdk::{
     sp_arithmetic::Permill,
     sp_blockchain::Info,
     sp_core::{self, Hasher, keccak_256},
-    sp_runtime::traits::BlakeTwo256,
+    sp_runtime::{FixedU128, traits::BlakeTwo256},
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
@@ -136,6 +136,16 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         let res = match req.clone() {
             EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
+            //------- Gas -----------
+            EthRequest::SetNextBlockBaseFeePerGas(base_fee) => {
+                let latest_block = self.latest_block();
+                TryInto::<u128>::try_into(base_fee)
+                    .map_err(|err| Error::InvalidParams(format!("Base fee too big: {err}")))
+                    .map(|fee| {
+                        self.backend.inject_next_fee_multiplier(latest_block, FixedU128::from(fee))
+                    })
+                    .to_rpc_result()
+            }
 
             //------- Mining---------
             EthRequest::Mine(blocks, interval) => self.mine(blocks, interval).await.to_rpc_result(),

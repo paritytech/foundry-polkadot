@@ -22,12 +22,13 @@ use pallet_revive::{
         runtime::EthExtra,
     },
 };
-use pallet_transaction_payment::{ConstFeeMultiplier, FeeDetails, Multiplier, RuntimeDispatchInfo};
+use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
     parachains_common::{
         AccountId, AssetHubPolkadotAuraId as AuraId, BlockNumber, Hash as CommonHash, Header,
         Nonce, Signature,
     },
+    polkadot_runtime_common::SlowAdjustingFeeUpdate,
     polkadot_sdk_frame::{
         deps::sp_genesis_builder,
         runtime::{apis, prelude::*},
@@ -257,17 +258,27 @@ impl pallet_sudo::Config for Runtime {}
 impl pallet_timestamp::Config for Runtime {}
 
 parameter_types! {
-    pub const TransactionByteFee: Balance = 10 * MILLICENTS;
-    pub FeeMultiplier: Multiplier = Multiplier::one();
+    // That's how assethub sets this.
+    pub const TransactionByteFee: Balance = MILLICENTS;
 }
+
+// That's how assethub sets this.
+pub type WeightToFee = BlockRatioFee<
+    // p
+    CENTS,
+    // q
+    { 100 * ExtrinsicBaseWeight::get().ref_time() as u128 },
+    Runtime,
+>;
 
 // Implements the types required for the transaction payment pallet.
 #[derive_impl(pallet_transaction_payment::config_preludes::TestDefaultConfig)]
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
-    type WeightToFee = BlockRatioFee<1, 1, Self>;
+    type WeightToFee = WeightToFee;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
+    // That's how assethub sets this.
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
 }
 
 parameter_types! {
