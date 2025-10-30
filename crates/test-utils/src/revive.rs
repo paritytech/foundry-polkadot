@@ -35,7 +35,7 @@ impl ContractsNodeProcess {
         let mut node = process::Command::new(NODE_BINARY)
             .env("RUST_LOG", "error")
             .arg("--dev")
-            .arg(format!("--base-path={}", tmp_dir.path().to_string_lossy()))
+            .arg("--tmp")
             .arg("--no-prometheus")
             .spawn()?;
         // wait for rpc to be initialized
