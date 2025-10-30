@@ -1326,6 +1326,28 @@ fn transaction_matches_eth_hash(
     B256::from_slice(&tx_eth_hash) == target_eth_hash
 }
 
+/// Helper function to decode extrinsic into ETH transaction payload and signed transaction
+fn decode_eth_transaction(
+    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
+) -> Option<(Vec<u8>, TransactionSigned)> {
+    let encoded = tx_data.encode();
+    let ext =
+        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
+            .ok()?;
+
+    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
+        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
+        ..
+    } = ext.0
+    else {
+        return None;
+    };
+
+    let signed_tx = TransactionSigned::decode(&payload).ok()?;
+
+    Some((payload, signed_tx))
+}
+
 /// Fields extracted from an Ethereum transaction
 struct TransactionFields {
     nonce: polkadot_sdk::sp_core::U256,
@@ -1395,20 +1417,7 @@ fn extract_tx_fields(signed_tx: &TransactionSigned) -> TransactionFields {
 fn extract_tx_summary(
     tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
 ) -> Option<(Address, u64, TxpoolInspectSummary)> {
-    let encoded = tx_data.encode();
-    let ext =
-        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
-            .ok()?;
-
-    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-        ..
-    } = ext.0
-    else {
-        return None;
-    };
-
-    let signed_tx = TransactionSigned::decode(&payload).ok()?;
+    let (_payload, signed_tx) = decode_eth_transaction(tx_data)?;
 
     let from = signed_tx.recover_eth_address().ok()?;
     let sender = Address::from_slice(from.as_bytes());
@@ -1437,20 +1446,7 @@ fn extract_tx_summary(
 fn extract_tx_info(
     tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
 ) -> Option<(Address, u64, TransactionInfo)> {
-    let encoded = tx_data.encode();
-    let ext =
-        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
-            .ok()?;
-
-    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-        ..
-    } = ext.0
-    else {
-        return None;
-    };
-
-    let signed_tx = TransactionSigned::decode(&payload).ok()?;
+    let (payload, signed_tx) = decode_eth_transaction(tx_data)?;
 
     let eth_hash = keccak_256(&payload);
     let eth_hash_h256 = H256::from_slice(&eth_hash);
@@ -1475,20 +1471,7 @@ fn extract_tx_info(
 
 /// Helper function to extract sender address from extrinsic
 fn extract_sender(tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>) -> Option<Address> {
-    let encoded = tx_data.encode();
-    let ext =
-        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
-            .ok()?;
-
-    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-        ..
-    } = ext.0
-    else {
-        return None;
-    };
-
-    let signed_tx = TransactionSigned::decode(&payload).ok()?;
+    let (_payload, signed_tx) = decode_eth_transaction(tx_data)?;
 
     let from = signed_tx.recover_eth_address().ok()?;
     let sender = Address::from_slice(from.as_bytes());
