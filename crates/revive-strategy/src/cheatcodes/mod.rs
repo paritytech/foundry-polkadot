@@ -577,7 +577,6 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                     a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
                 });
 
-                // TODO handle immutables
                 // Migrate bytecode for deployed contracts (skip test contract)
                 if test_contract != Some(address)
                     && let Some(bytecode) = acc.data.info.code.as_ref() {
@@ -587,18 +586,54 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                     // Skip if contract already exists in pallet-revive
                     if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
                         // Determine which bytecode to upload based on runtime mode
-                        let bytecode_to_upload = ctx.dual_compiled_contracts
-                                    .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
-                                    .and_then(|(_, contract)| {
-                                        match ctx.runtime_mode {
-                                            crate::ReviveRuntimeMode::Pvm => contract.resolc_bytecode.as_bytes().map(|b| b.to_vec()),
-                                            crate::ReviveRuntimeMode::Evm => None,
-                                            // TODO: We do not have method to upload the EVM bytecode to pallet-revive
-                                            //contract.evm_bytecode.as_bytes().map(|b| b.to_vec())
-                                        }
-                                    });
+                        let bytecode_match = ctx.dual_compiled_contracts
+                                    .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice());
 
-                        if let Some(code_bytes) = bytecode_to_upload {
+                        if let Some((contract_info, contract)) = bytecode_match {
+                            // Extract immutable values from EVM bytecode
+                            let immutable_data = if let Some(immutable_refs) = &contract.evm_immutable_references {
+                                if !immutable_refs.is_empty() {
+                                    let mut immutables_bytes = Vec::new();
+                                    let evm_bytecode = bytecode.original_byte_slice();
+
+                                    for offsets in immutable_refs.values() {
+                                        for offset in offsets {
+                                            let start = offset.start as usize;
+                                            let end = (offset.start + offset.length) as usize;
+                                            if end <= evm_bytecode.len() {
+                                                immutables_bytes.extend_from_slice(&evm_bytecode[start..end]);
+                                            } else {
+                                                tracing::warn!(
+                                                    address = ?address,
+                                                    offset_start = start,
+                                                    offset_end = end,
+                                                    bytecode_len = evm_bytecode.len(),
+                                                    "Immutable offset out of bounds"
+                                                );
+                                            }
+                                        }
+                                    }
+
+                                    if !immutables_bytes.is_empty() {
+                                        Some(immutables_bytes)
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            let code_bytes = match ctx.runtime_mode {
+                                crate::ReviveRuntimeMode::Pvm => contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),
+                                crate::ReviveRuntimeMode::Evm => None,
+                                // TODO: We do not have method to upload the EVM bytecode to pallet-revive
+                                //contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec())
+                            };
+
+                        if let Some(code_bytes) = code_bytes {
                             let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
                             let upload_result = Pallet::<Runtime>::bare_upload_code(
                                 origin,
@@ -612,6 +647,13 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
                                         .expect("Failed to create contract info");
                                     AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
+
+                                    if immutable_data.and_then(|immutables| immutables.try_into().ok()).and_then(|data|
+                                        Pallet::<Runtime>::set_immutables(account_h160, data).ok()
+                                    ).is_none()
+                                    {
+                                        panic!("Failed to migrate immutables");
+                                    }
                                 }
                                 Err(err) => {
                                     tracing::warn!(
@@ -628,7 +670,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 address = ?address,
                                 "no PVM equivalent found for EVM bytecode, skipping migration"
                             );
-                        }
+                        }}
                     }
                 }
             }
