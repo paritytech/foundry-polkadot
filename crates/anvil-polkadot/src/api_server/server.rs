@@ -758,10 +758,13 @@ impl ApiServer {
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<Option<U256>> {
-        let Some(block) = self.get_block_by_number(block_number, false).await? else {
+        let Some(hash) =
+            self.maybe_get_block_hash_for_tag(Some(BlockId::Number(block_number))).await?
+        else {
             return Ok(None);
         };
-        Ok(self.eth_rpc_client.receipts_count_per_block(&block.hash).await.map(U256::from))
+
+        Ok(self.eth_rpc_client.receipts_count_per_block(&hash).await.map(U256::from))
     }
 
     async fn get_transaction_by_block_hash_and_index(
@@ -1123,29 +1126,33 @@ impl ApiServer {
         Ok(())
     }
 
-    async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
+    async fn maybe_get_block_hash_for_tag(
+        &self,
+        block_id: Option<BlockId>,
+    ) -> Result<Option<H256>> {
         match ReviveBlockId::from(block_id).inner() {
-            BlockNumberOrTagOrHash::BlockHash(hash) => Ok(hash),
+            BlockNumberOrTagOrHash::BlockHash(hash) => Ok(Some(hash)),
             BlockNumberOrTagOrHash::BlockNumber(block_number) => {
                 let n = block_number.try_into().map_err(|_| {
                     Error::InvalidParams("Block number conversion failed".to_string())
                 })?;
-                let hash = self
-                    .eth_rpc_client
-                    .get_block_hash(n)
-                    .await?
-                    .ok_or(Error::InvalidParams("Block number not found".to_string()))?;
-                Ok(hash)
+                Ok(self.eth_rpc_client.get_block_hash(n).await?)
             }
             BlockNumberOrTagOrHash::BlockTag(BlockTag::Finalized | BlockTag::Safe) => {
                 let block = self.eth_rpc_client.latest_finalized_block().await;
-                Ok(block.hash())
+                Ok(Some(block.hash()))
             }
             BlockNumberOrTagOrHash::BlockTag(_) => {
                 let block = self.eth_rpc_client.latest_block().await;
-                Ok(block.hash())
+                Ok(Some(block.hash()))
             }
         }
+    }
+
+    async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
+        self.maybe_get_block_hash_for_tag(block_id)
+            .await?
+            .ok_or(Error::InvalidParams("Block number not found".to_string()))
     }
 
     fn get_account_id(&self, block: Hash, address: Address) -> Result<AccountId> {

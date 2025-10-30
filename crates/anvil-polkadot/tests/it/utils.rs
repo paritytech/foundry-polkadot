@@ -46,9 +46,6 @@ use tempfile::TempDir;
 
 use crate::abi::Multicall;
 
-const NATIVE_TO_ETH_RATIO: u128 = 1000000;
-pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
-
 pub struct BlockWaitTimeout {
     pub block_number: u32,
     pub timeout: Duration,
@@ -291,8 +288,7 @@ impl TestNode {
                 from_initial_balance
                     - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used)
                         .inner()
-                    - transfer_amount
-                    - U256::from(EXISTENTIAL_DEPOSIT),
+                    - transfer_amount,
                 "signer's balance should have changed"
             );
             assert_eq!(
