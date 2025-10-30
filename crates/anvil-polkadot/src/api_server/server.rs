@@ -1326,36 +1326,67 @@ fn transaction_matches_eth_hash(
     B256::from_slice(&tx_eth_hash) == target_eth_hash
 }
 
+/// Fields extracted from an Ethereum transaction
+struct TransactionFields {
+    nonce: polkadot_sdk::sp_core::U256,
+    to: Option<polkadot_sdk::sp_core::H160>,
+    value: polkadot_sdk::sp_core::U256,
+    gas: polkadot_sdk::sp_core::U256,
+    gas_price: polkadot_sdk::sp_core::U256,
+}
+
 /// Helper function to extract fields from different ETH transaction types
-fn extract_tx_fields(
-    signed_tx: &TransactionSigned,
-) -> (
-    polkadot_sdk::sp_core::U256,
-    Option<polkadot_sdk::sp_core::H160>,
-    polkadot_sdk::sp_core::U256,
-    polkadot_sdk::sp_core::U256,
-    polkadot_sdk::sp_core::U256,
-) {
+fn extract_tx_fields(signed_tx: &TransactionSigned) -> TransactionFields {
     match signed_tx {
         TransactionSigned::TransactionLegacySigned(tx) => {
             let t = &tx.transaction_legacy_unsigned;
-            (t.nonce, t.to, t.value, t.gas, t.gas_price)
+            TransactionFields {
+                nonce: t.nonce,
+                to: t.to,
+                value: t.value,
+                gas: t.gas,
+                gas_price: t.gas_price,
+            }
         }
         TransactionSigned::Transaction2930Signed(tx) => {
             let t = &tx.transaction_2930_unsigned;
-            (t.nonce, t.to, t.value, t.gas, t.gas_price)
+            TransactionFields {
+                nonce: t.nonce,
+                to: t.to,
+                value: t.value,
+                gas: t.gas,
+                gas_price: t.gas_price,
+            }
         }
         TransactionSigned::Transaction1559Signed(tx) => {
             let t = &tx.transaction_1559_unsigned;
-            (t.nonce, t.to, t.value, t.gas, t.max_fee_per_gas)
+            TransactionFields {
+                nonce: t.nonce,
+                to: t.to,
+                value: t.value,
+                gas: t.gas,
+                gas_price: t.max_fee_per_gas,
+            }
         }
         TransactionSigned::Transaction4844Signed(tx) => {
             let t = &tx.transaction_4844_unsigned;
-            (t.nonce, Some(t.to), t.value, t.gas, t.max_fee_per_gas)
+            TransactionFields {
+                nonce: t.nonce,
+                to: Some(t.to),
+                value: t.value,
+                gas: t.gas,
+                gas_price: t.max_fee_per_gas,
+            }
         }
         TransactionSigned::Transaction7702Signed(tx) => {
             let t = &tx.transaction_7702_unsigned;
-            (t.nonce, Some(t.to), t.value, t.gas, t.max_fee_per_gas)
+            TransactionFields {
+                nonce: t.nonce,
+                to: Some(t.to),
+                value: t.value,
+                gas: t.gas,
+                gas_price: t.max_fee_per_gas,
+            }
         }
     }
 }
@@ -1382,13 +1413,13 @@ fn extract_tx_summary(
     let from = signed_tx.recover_eth_address().ok()?;
     let sender = Address::from_slice(from.as_bytes());
 
-    let (nonce, to, value, gas, gas_price) = extract_tx_fields(&signed_tx);
+    let fields = extract_tx_fields(&signed_tx);
 
-    let to_addr = to.map(|addr| Address::from_slice(addr.as_bytes()));
-    let value_u256 = U256::from_limbs(value.0);
-    let gas_u64 = gas.as_u64();
-    let gas_price_u128 = gas_price.as_u128();
-    let nonce_u64 = nonce.as_u64();
+    let to_addr = fields.to.map(|addr| Address::from_slice(addr.as_bytes()));
+    let value_u256 = U256::from_limbs(fields.value.0);
+    let gas_u64 = fields.gas.as_u64();
+    let gas_price_u128 = fields.gas_price.as_u128();
+    let nonce_u64 = fields.nonce.as_u64();
 
     Some((
         sender,
@@ -1427,8 +1458,8 @@ fn extract_tx_info(
     let from = signed_tx.recover_eth_address().ok()?;
     let sender = Address::from_slice(from.as_bytes());
 
-    let (nonce, _, _, _, _) = extract_tx_fields(&signed_tx);
-    let nonce_u64 = nonce.as_u64();
+    let fields = extract_tx_fields(&signed_tx);
+    let nonce_u64 = fields.nonce.as_u64();
 
     let tx_info = TransactionInfo {
         hash: eth_hash_h256,
