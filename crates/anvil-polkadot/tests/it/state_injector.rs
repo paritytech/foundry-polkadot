@@ -190,12 +190,11 @@ async fn test_set_balance() {
 
     assert_eq!(
         node.get_balance(alith, None).await,
-        // 1000 dollars
-        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+        U256::from_str_radix("10000000000000000000000", 10).unwrap()
     );
 
     // Test decreasing the balance to 5 dollars.
-    let new_balance = U256::from(5e20);
+    let new_balance = U256::from(5e18);
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::SetBalance(Address::from(ReviveAddress::new(alith)), new_balance))
             .await
@@ -214,7 +213,7 @@ async fn test_set_balance() {
     // deposit of 1 dollar.
     let charleth = Account::from(subxt_signer::eth::dev::charleth());
     let tx = TransactionRequest::default()
-        .value(U256::from(2e20))
+        .value(U256::from(2e18))
         .from(Address::from(ReviveAddress::new(alith)))
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
@@ -228,15 +227,15 @@ async fn test_set_balance() {
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
     assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 
-    let alith_new_balance = U256::from(2e20)
+    let alith_new_balance = U256::from(2e18)
         - AlloyU256::from(transaction_receipt.effective_gas_price * transaction_receipt.gas_used)
             .inner();
     assert_eq!(node.get_balance(alith, None).await, alith_new_balance);
-    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e20));
+    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e18));
 
     // Now try sending more money than we have (5 dollars), should fail.
     let tx = TransactionRequest::default()
-        .value(U256::from(5e20))
+        .value(U256::from(5e18))
         .from(Address::from(ReviveAddress::new(alith)))
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
@@ -248,15 +247,14 @@ async fn test_set_balance() {
         }
     );
     assert_eq!(node.get_balance(alith, None).await, alith_new_balance);
-    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e20));
+    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e18));
 
     // Test increasing the balance of an existing account to 2000 dollars.
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar()).address();
 
     assert_eq!(
         node.get_balance(baltathar, None).await,
-        // 1000 dollars
-        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+        U256::from_str_radix("10000000000000000000000", 10).unwrap()
     );
 
     let new_balance = U256::from_str_radix("200000000000000000000", 10).unwrap();

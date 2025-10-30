@@ -149,6 +149,11 @@ impl BackendWithOverlay {
         overrides.set_system_account_info(at, account_id, value);
     }
 
+    pub fn inject_timestamp(&self, at: Hash, timestamp: u64) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_timestamp(at, timestamp);
+    }
+
     pub fn inject_chain_id(&self, at: Hash, chain_id: u64) {
         let mut overrides = self.overrides.lock();
         overrides.set_chain_id(at, chain_id);
@@ -251,7 +256,6 @@ impl StorageOverrides {
         self.add(latest_block, changeset);
     }
 
-    #[allow(unused)]
     fn set_timestamp(&mut self, latest_block: Hash, timestamp: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(timestamp.encode()));
