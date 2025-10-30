@@ -1,3 +1,4 @@
+use crate::substrate_node::chain_spec::keypairs_from_private_keys;
 use alloy_genesis::Genesis;
 use alloy_primitives::{U256, hex, map::HashMap, utils::Unit};
 use alloy_signer::Signer;
@@ -9,6 +10,7 @@ use anvil_server::ServerConfig;
 use eyre::{Context, Result};
 use foundry_common::{duration_since_unix_epoch, sh_println};
 use polkadot_sdk::{
+    pallet_revive::evm::Account,
     sc_cli::{
         self, CliConfiguration as SubstrateCliConfiguration, Cors, DEFAULT_WASM_EXECUTION_METHOD,
         DEFAULT_WASMTIME_INSTANTIATION_STRATEGY, RPC_DEFAULT_MAX_CONNECTIONS,
@@ -28,6 +30,7 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
+use subxt_signer::eth::Keypair;
 use yansi::Paint;
 
 pub use foundry_common::version::SHORT_VERSION as VERSION_MESSAGE;
@@ -276,7 +279,7 @@ pub struct AnvilNodeConfig {
     /// If set to `true`, disables the enforcement of a minimum suggested priority fee
     pub disable_min_priority_fee: bool,
     /// Signer accounts that will be initialised with `genesis_balance` in the genesis block
-    pub genesis_accounts: Vec<PrivateKeySigner>,
+    pub genesis_accounts: Vec<Keypair>,
     /// Native token balance of every genesis account in the genesis block
     pub genesis_balance: U256,
     /// Genesis block timestamp
@@ -284,7 +287,7 @@ pub struct AnvilNodeConfig {
     /// Genesis block number
     pub genesis_block_number: Option<u64>,
     /// Signer accounts that can sign messages/transactions from the EVM node
-    pub signer_accounts: Vec<PrivateKeySigner>,
+    pub signer_accounts: Vec<Keypair>,
     /// Configured block time for the EVM chain. Use `None` to mine a new block for every tx
     pub block_time: Option<Duration>,
     /// Disable auto, interval mining mode uns use `MiningMode::None` instead
@@ -344,7 +347,8 @@ Available Accounts
         );
         let balance = alloy_primitives::utils::format_ether(self.genesis_balance);
         for (idx, wallet) in self.genesis_accounts.iter().enumerate() {
-            write!(s, "\n({idx}) {} ({balance} ETH)", wallet.address()).unwrap();
+            write!(s, "\n({idx}) {} ({balance} ETH)", Account::from(wallet.clone()).address())
+                .unwrap();
         }
 
         let _ = write!(
@@ -357,7 +361,7 @@ Private Keys
         );
 
         for (idx, wallet) in self.genesis_accounts.iter().enumerate() {
-            let hex = hex::encode(wallet.credential().to_bytes());
+            let hex = hex::encode(wallet.secret_key());
             let _ = write!(s, "\n({idx}) 0x{hex}");
         }
 
@@ -450,8 +454,8 @@ Genesis Number
         let mut private_keys = Vec::with_capacity(self.genesis_accounts.len());
 
         for wallet in &self.genesis_accounts {
-            available_accounts.push(format!("{:?}", wallet.address()));
-            private_keys.push(format!("0x{}", hex::encode(wallet.credential().to_bytes())));
+            available_accounts.push(format!("{:?}", Account::from(wallet.clone()).address()));
+            private_keys.push(hex::encode_prefixed(wallet.secret_key()));
         }
 
         if let Some(ref rng_gen) = self.account_generator {
@@ -481,24 +485,34 @@ Genesis Number
     }
 
     pub fn test_config() -> Self {
-        Self {
+        let mut anvil_node_config = Self {
             port: 0,
             no_mining: true,
             mixed_mining: false,
             enable_tracing: false,
             silent: true,
+            genesis_balance: Unit::ETHER.wei().saturating_mul(U256::from(10000u64)),
             ..Default::default()
-        }
+        };
+        let dev_accounts =
+            vec![subxt_signer::eth::dev::alith(), subxt_signer::eth::dev::baltathar()];
+        anvil_node_config.genesis_accounts.extend(dev_accounts.clone());
+        anvil_node_config.signer_accounts.extend(dev_accounts);
+        anvil_node_config
     }
 }
 
 impl Default for AnvilNodeConfig {
     fn default() -> Self {
         // generate some random wallets
-        let genesis_accounts = AccountGenerator::new(10)
-            .phrase(DEFAULT_MNEMONIC)
-            .rng_gen()
-            .expect("Invalid mnemonic.");
+        let genesis_accounts = keypairs_from_private_keys(
+            &AccountGenerator::new(10)
+                .phrase(DEFAULT_MNEMONIC)
+                .rng_gen()
+                .expect("Invalid mnemonic."),
+        )
+        .expect("Invalid keys");
+
         Self {
             chain_id: None,
             gas_limit: None,
@@ -585,16 +599,9 @@ impl AnvilNodeConfig {
             .unwrap_or(CHAIN_ID)
     }
 
-    /// Sets the chain id and updates all wallets
+    /// Sets the chain id
     pub fn set_chain_id(&mut self, chain_id: Option<impl Into<u64>>) {
         self.chain_id = chain_id.map(Into::into);
-        let chain_id = self.get_chain_id();
-        self.genesis_accounts.iter_mut().for_each(|wallet| {
-            *wallet = wallet.clone().with_chain_id(Some(chain_id));
-        });
-        self.signer_accounts.iter_mut().for_each(|wallet| {
-            *wallet = wallet.clone().with_chain_id(Some(chain_id));
-        })
     }
 
     /// Sets the gas limit
@@ -675,14 +682,14 @@ impl AnvilNodeConfig {
 
     /// Sets the genesis accounts
     #[must_use]
-    pub fn with_genesis_accounts(mut self, accounts: Vec<PrivateKeySigner>) -> Self {
+    pub fn with_genesis_accounts(mut self, accounts: Vec<Keypair>) -> Self {
         self.genesis_accounts = accounts;
         self
     }
 
     /// Sets the signer accounts
     #[must_use]
-    pub fn with_signer_accounts(mut self, accounts: Vec<PrivateKeySigner>) -> Self {
+    pub fn with_signer_accounts(mut self, accounts: Vec<Keypair>) -> Self {
         self.signer_accounts = accounts;
         self
     }
@@ -692,6 +699,7 @@ impl AnvilNodeConfig {
     pub fn with_account_generator(mut self, generator: AccountGenerator) -> eyre::Result<Self> {
         let accounts = generator.rng_gen()?;
         self.account_generator = Some(generator);
+        let accounts = keypairs_from_private_keys(&accounts)?;
         Ok(self.with_signer_accounts(accounts.clone()).with_genesis_accounts(accounts))
     }
 

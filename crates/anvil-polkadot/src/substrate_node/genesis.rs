@@ -8,7 +8,7 @@ use alloy_genesis::GenesisAccount;
 use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
-    pallet_revive::genesis::ContractData,
+    pallet_revive::{evm::Account, genesis::ContractData},
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
@@ -22,6 +22,7 @@ use polkadot_sdk::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
+use subxt_signer::eth::Keypair;
 
 /// Genesis settings
 #[derive(Clone, Debug, Default)]
@@ -31,6 +32,7 @@ pub struct GenesisConfig {
     /// The initial timestamp for the genesis block in milliseconds
     pub timestamp: u64,
     /// All accounts that should be initialised at genesis with their info.
+    /// Populated from user provided JSON.
     pub alloc: Option<BTreeMap<Address, GenesisAccount>>,
     /// The initial number for the genesis block
     pub number: u32,
@@ -38,6 +40,10 @@ pub struct GenesisConfig {
     pub base_fee_per_gas: u64,
     /// The genesis header gas limit.
     pub gas_limit: Option<u128>,
+    /// Signer accounts from account_generator
+    pub genesis_accounts: Vec<Keypair>,
+    /// Signers accounts balance
+    pub genesis_balance: U256,
     /// Coinbase address
     pub coinbase: Option<Address>,
 }
@@ -58,6 +64,8 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 .expect("Genesis block number overflow"),
             base_fee_per_gas: anvil_config.get_base_fee(),
             gas_limit: anvil_config.gas_limit,
+            genesis_accounts: anvil_config.genesis_accounts.clone(),
+            genesis_balance: anvil_config.genesis_balance,
             coinbase: anvil_config.genesis.as_ref().map(|g| g.coinbase),
         }
     }
@@ -93,7 +101,7 @@ impl GenesisConfig {
 
     pub fn runtime_genesis_config_patch(&self) -> Value {
         // Relies on ReviveGenesisAccount type from pallet-revive
-        let revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
+        let mut revive_genesis_accounts: Vec<ReviveGenesisAccount> = self
             .alloc
             .clone()
             .unwrap_or_default()
@@ -128,7 +136,17 @@ impl GenesisConfig {
                 }
             })
             .collect();
-
+        revive_genesis_accounts.extend(
+            self.genesis_accounts
+                .iter()
+                .map(|key| ReviveGenesisAccount {
+                    address: Account::from(key.clone()).address(),
+                    balance: self.genesis_balance,
+                    nonce: 0,
+                    contract_data: None,
+                })
+                .collect::<Vec<_>>(),
+        );
         json!({
             "revive": {
                 "accounts": revive_genesis_accounts,
