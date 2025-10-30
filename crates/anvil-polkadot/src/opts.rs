@@ -36,7 +36,13 @@ pub enum AnvilSubcommand {
 
 pub struct SubstrateCli {
     // Used to inject the anvil config into the chain spec
-    pub genesis_config: GenesisConfig,
+    genesis_config: GenesisConfig,
+}
+
+impl SubstrateCli {
+    pub fn new(genesis_config: GenesisConfig) -> Self {
+        Self { genesis_config }
+    }
 }
 
 // Implementation of the SubstrateCli, which enables us to launch an in-process substrate node.

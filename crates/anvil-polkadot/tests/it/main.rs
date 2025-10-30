@@ -2,6 +2,7 @@ mod abi;
 mod genesis;
 mod impersonation;
 mod mining;
+mod sign;
 mod snapshot;
 mod standard_rpc;
 mod state_injector;
