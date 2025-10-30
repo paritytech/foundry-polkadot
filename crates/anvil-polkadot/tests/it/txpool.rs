@@ -1,8 +1,8 @@
-use crate::utils::{TestNode, unwrap_response};
+use crate::utils::{unwrap_response, TestNode};
 use alloy_primitives::{Address, B256, U256};
 use alloy_rpc_types::{
-    TransactionRequest,
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
+    TransactionRequest,
 };
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
@@ -221,13 +221,15 @@ async fn test_txpool_content() {
     assert!(content.pending.is_empty());
     assert!(content.queued.is_empty());
 
+    let mut pending_hashes = vec![];
     for i in 0..3 {
         let tx = TransactionRequest::default()
             .from(alith_addr)
             .to(recipient_addr)
             .value(U256::from(1000 * (i + 1)))
             .nonce(i);
-        node.send_transaction(tx, None).await.unwrap();
+        let hash = node.send_transaction(tx, None).await.unwrap();
+        pending_hashes.push(hash);
     }
 
     let tx_future = TransactionRequest::default()
@@ -235,7 +237,7 @@ async fn test_txpool_content() {
         .to(recipient_addr)
         .value(U256::from(5000))
         .nonce(5);
-    node.send_transaction(tx_future, None).await.unwrap();
+    let queued_hash = node.send_transaction(tx_future, None).await.unwrap();
 
     let content: TxpoolContent<TransactionInfo> =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
@@ -250,7 +252,10 @@ async fn test_txpool_content() {
         let tx_info = pending_txs.get(&i.to_string()).unwrap();
         let from_addr = Address::from_slice(tx_info.from.as_bytes());
         assert_eq!(from_addr, alith_addr);
-        assert!(tx_info.hash != Default::default());
+
+        let expected_hash = B256::from_slice(pending_hashes[i as usize].0.as_ref());
+        let actual_hash = B256::from_slice(tx_info.hash.as_ref());
+        assert_eq!(actual_hash, expected_hash);
     }
 
     let queued_txs = content.queued.get(&alith_addr).unwrap();
@@ -259,7 +264,10 @@ async fn test_txpool_content() {
     let tx_info = queued_txs.get("5").unwrap();
     let from_addr = Address::from_slice(tx_info.from.as_bytes());
     assert_eq!(from_addr, alith_addr);
-    assert!(tx_info.hash != Default::default());
+
+    let expected_hash = B256::from_slice(queued_hash.0.as_ref());
+    let actual_hash = B256::from_slice(tx_info.hash.as_ref());
+    assert_eq!(actual_hash, expected_hash);
 }
 
 #[tokio::test(flavor = "multi_thread")]
