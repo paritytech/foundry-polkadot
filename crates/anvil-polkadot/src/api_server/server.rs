@@ -1,12 +1,12 @@
 use crate::{
     api_server::{
-        ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
-            ReviveFilter, SubstrateU256, convert_to_generic_transaction,
+            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId,
+            ReviveBlockNumberOrTag, ReviveBytes, ReviveFilter, SubstrateU256,
         },
         signer::DevSigner,
+        ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
@@ -15,42 +15,42 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
-            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
             storage::{
                 AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
+            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
         },
         snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_dyn_abi::TypedData;
 use alloy_eips::{BlockId, BlockNumberOrTag};
-use alloy_primitives::{Address, B256, U64, U256};
+use alloy_primitives::{Address, B256, U256, U64};
 use alloy_rpc_types::{
-    Filter, TransactionRequest,
     anvil::MineOptions,
     txpool::{TxpoolContent, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
+    Filter, TransactionRequest,
 };
 use alloy_serde::WithOtherFields;
-use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
+use alloy_trie::{TrieAccount, EMPTY_ROOT_HASH, KECCAK_EMPTY};
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use codec::{Decode, DecodeLimit, Encode};
-use futures::{StreamExt, channel::mpsc};
+use futures::{channel::mpsc, StreamExt};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
-    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
+    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
 };
 use polkadot_sdk::{
     pallet_revive::{
-        ReviveApi,
         evm::{
             Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
             TransactionSigned,
         },
+        ReviveApi,
     },
     parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
@@ -59,16 +59,16 @@ use polkadot_sdk::{
     sp_api::{Metadata, ProvideRuntimeApi},
     sp_arithmetic::Permill,
     sp_blockchain::Info,
-    sp_core::{self, Hasher, keccak_256},
+    sp_core::{self, keccak_256, Hasher},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use substrate_runtime::{Balance, RuntimeCall, UncheckedExtrinsic};
 use subxt::{
-    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
-    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
-    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    backend::rpc::RpcClient, client::RuntimeVersion as SubxtRuntimeVersion,
+    config::substrate::H256, ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    Metadata as SubxtMetadata, OnlineClient,
 };
 use subxt_signer::eth::Keypair;
 use tokio::try_join;
@@ -336,28 +336,16 @@ impl ApiServer {
                 self.get_account_info(addr, block).await.to_rpc_result()
             }
             //------- Transaction Pool ---------
-            EthRequest::TxPoolStatus(_) => {
-                node_info!("txpool_status");
-                self.txpool_status().await.to_rpc_result()
-            }
-            EthRequest::TxPoolInspect(_) => {
-                node_info!("txpool_inspect");
-                self.txpool_inspect().await.to_rpc_result()
-            }
-            EthRequest::TxPoolContent(_) => {
-                node_info!("txpool_content");
-                self.txpool_content().await.to_rpc_result()
-            }
+            EthRequest::TxPoolStatus(_) => self.txpool_status().await.to_rpc_result(),
+            EthRequest::TxPoolInspect(_) => self.txpool_inspect().await.to_rpc_result(),
+            EthRequest::TxPoolContent(_) => self.txpool_content().await.to_rpc_result(),
             EthRequest::DropAllTransactions() => {
-                node_info!("anvil_dropAllTransactions");
                 self.anvil_drop_all_transactions().await.to_rpc_result()
             }
             EthRequest::DropTransaction(eth_hash) => {
-                node_info!("anvil_dropTransaction");
                 self.anvil_drop_transaction(eth_hash).await.to_rpc_result()
             }
             EthRequest::RemovePoolTransactions(address) => {
-                node_info!("anvil_removePoolTransactions");
                 self.anvil_remove_pool_transactions(address).await.to_rpc_result()
             }
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
@@ -1190,12 +1178,14 @@ impl ApiServer {
 
     /// Returns transaction pool status
     async fn txpool_status(&self) -> Result<TxpoolStatus> {
+        node_info!("txpool_status");
         let pool_status = self.tx_pool.status();
         Ok(TxpoolStatus { pending: pool_status.ready as u64, queued: pool_status.future as u64 })
     }
 
     /// Returns a summary of all transactions in the pool
     async fn txpool_inspect(&self) -> Result<TxpoolInspect> {
+        node_info!("txpool_inspect");
         let mut inspect = TxpoolInspect::default();
 
         for tx in self.tx_pool.ready() {
@@ -1217,6 +1207,7 @@ impl ApiServer {
 
     /// Returns full transaction details for all transactions in the pool
     async fn txpool_content(&self) -> Result<TxpoolContent<TransactionInfo>> {
+        node_info!("txpool_content");
         let mut content = TxpoolContent::default();
 
         for tx in self.tx_pool.ready() {
@@ -1238,6 +1229,7 @@ impl ApiServer {
 
     /// Drop all transactions from pool
     async fn anvil_drop_all_transactions(&self) -> Result<()> {
+        node_info!("anvil_dropAllTransactions");
         let ready_txs = self.tx_pool.ready();
         let future_txs = self.tx_pool.futures();
 
@@ -1258,6 +1250,7 @@ impl ApiServer {
 
     /// Drop a specific transaction from the pool by its ETH hash
     async fn anvil_drop_transaction(&self, eth_hash: B256) -> Result<Option<B256>> {
+        node_info!("anvil_dropTransaction");
         for tx in self.tx_pool.ready() {
             if transaction_matches_eth_hash(tx.data(), eth_hash) {
                 let mut invalid_txs = IndexMap::new();
@@ -1282,6 +1275,7 @@ impl ApiServer {
 
     /// Remove all transactions from a specific sender address
     async fn anvil_remove_pool_transactions(&self, address: Address) -> Result<()> {
+        node_info!("anvil_removePoolTransactions");
         let mut invalid_txs = IndexMap::new();
 
         for tx in self.tx_pool.ready() {
