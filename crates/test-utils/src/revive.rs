@@ -89,6 +89,7 @@ impl RpcProxyProcess {
         let mut rpc_proxy = process::Command::new(RPC_PROXY_BINARY)
             .env("RUST_LOG", "error")
             .arg("--dev")
+            .arg("--no-prometheus")
             .spawn()?;
 
         let client = ClientBuilder::default().connect(RPC_URL).await?;
