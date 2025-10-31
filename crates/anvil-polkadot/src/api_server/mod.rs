@@ -9,10 +9,12 @@ use anvil_core::eth::EthRequest;
 use anvil_rpc::response::ResponseResult;
 use futures::channel::{mpsc, oneshot};
 use server::ApiServer;
+use subxt_signer::eth::Keypair;
 
 pub mod error;
 pub mod revive_conversions;
 mod server;
+mod signer;
 
 pub type ApiHandle = mpsc::Sender<ApiRequest>;
 
@@ -32,6 +34,13 @@ pub fn spawn(
     let service = substrate_service.clone();
     let mut impersonation_manager = ImpersonationManager::default();
     impersonation_manager.set_auto_impersonate_account(config.enable_auto_impersonate);
+    let mut signers = config.signer_accounts.clone();
+    signers.extend(config.genesis.iter().flat_map(|genesis| genesis.alloc.values()).filter_map(
+        |acc| {
+            let private_key = acc.private_key?;
+            Keypair::from_secret_key(*private_key).ok()
+        },
+    ));
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
         let api_server = ApiServer::new(
             service,
@@ -39,6 +48,7 @@ pub fn spawn(
             logging_manager,
             snapshot_manager,
             impersonation_manager,
+            signers,
         )
         .await
         .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));

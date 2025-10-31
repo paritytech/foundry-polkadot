@@ -24,6 +24,8 @@ pub enum Error {
     BalanceConversion,
     #[error("Internal error: {0}")]
     InternalError(String),
+    #[error("No signer available")]
+    NoSignerAvailable,
 }
 
 impl From<subxt::Error> for Error {

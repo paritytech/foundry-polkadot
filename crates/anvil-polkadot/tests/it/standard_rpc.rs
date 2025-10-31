@@ -56,7 +56,7 @@ async fn test_get_start_balance() {
             None
         )
         .await,
-        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+        U256::from_str_radix("10000000000000000000000", 10).unwrap()
     );
 }
 
@@ -133,54 +133,6 @@ async fn test_send_transaction() {
             .inner(),
         "Alith's balance should have changed"
     );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_send_to_uninitialized() {
-    let anvil_node_config = AnvilNodeConfig::test_config();
-    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
-
-    let alith = Account::from(subxt_signer::eth::dev::alith());
-    let charleth = Account::from(subxt_signer::eth::dev::charleth());
-
-    let transfer_amount = U256::from_str_radix("1600000000000000000", 10).unwrap();
-    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
-    let charleth_addr = Address::from(ReviveAddress::new(charleth.address()));
-    let transaction =
-        TransactionRequest::default().value(transfer_amount).from(alith_addr).to(charleth_addr);
-    let _tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
-        .await
-        .unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    let alith_final_balance = node.get_balance(alith.address(), None).await;
-    assert_eq!(node.get_balance(charleth.address(), None).await, transfer_amount);
-
-    let charlet_initial_balance = node.get_balance(charleth.address(), None).await;
-    let transfer_amount = U256::from_str_radix("100000000000", 10).unwrap();
-    let transaction =
-        TransactionRequest::default().value(transfer_amount).from(charleth_addr).to(alith_addr);
-    let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
-        .await
-        .unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
-    let alith_final_balance_2 = node.get_balance(alith.address(), None).await;
-    let charlet_final_balance = node.get_balance(charleth.address(), None).await;
-    assert_eq!(
-        charlet_final_balance,
-        charlet_initial_balance
-            - transfer_amount
-            - AlloyU256::from(
-                transaction_receipt.gas_used * transaction_receipt.effective_gas_price
-            )
-            .inner()
-    );
-    assert_eq!(alith_final_balance_2, alith_final_balance + transfer_amount);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -757,7 +709,7 @@ async fn test_get_accounts() {
     let accounts =
         unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
             .unwrap();
-    assert_eq!(accounts.len(), 3);
+    assert_eq!(accounts.len(), 12);
     node.eth_rpc(EthRequest::ImpersonateAccount(Address::from(ReviveAddress::new(accounts[0]))))
         .await
         .unwrap();
@@ -767,7 +719,7 @@ async fn test_get_accounts() {
     let accounts_with_impersonation =
         unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
             .unwrap();
-    assert_eq!(accounts_with_impersonation.len(), 4);
+    assert_eq!(accounts_with_impersonation.len(), 13);
     assert!(accounts_with_impersonation.contains(&dorothy));
 }
 

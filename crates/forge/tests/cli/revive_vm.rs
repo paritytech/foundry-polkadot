@@ -194,13 +194,20 @@ import "./test.sol";
 import "./Vm.sol";
 import {console} from "./console.sol";
 
+contract BlockTimestampRevive {
+    function getBlockTimestamp() public view returns (uint256) {
+        return block.timestamp;
+    }
+}
+
 contract Warp is DSTest {
   Vm constant vm = Vm(HEVM_ADDRESS);
 
   function test_Warp() public {
       uint256 original = block.timestamp;
       vm.warp(100);
-      uint256 newValue = block.timestamp;
+      BlockTimestampRevive revive = new BlockTimestampRevive();
+      uint256 newValue = revive.getBlockTimestamp();
       assert(original != newValue);
       assertEq(newValue, 100);
   }
