@@ -21,11 +21,7 @@ use std::{
 use tracing::warn;
 
 use polkadot_sdk::{
-    frame_support::{
-        dispatch::DispatchClass,
-        traits::{fungible::Inspect},
-        weights::Weight,
-    },
+    frame_support::{dispatch::DispatchClass, traits::fungible::Inspect, weights::Weight},
     frame_system, pallet_balances,
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ContractInfo,
@@ -264,7 +260,7 @@ fn set_balance(address: Address, amount: U256, ecx: Ecx<'_, '_, '_>) -> U256 {
     let _balance_native =
         BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
 
-    let _min_balance = <pallet_balances::Pallet::<Runtime> as Inspect<_>>::minimum_balance();
+    let _min_balance = <pallet_balances::Pallet<Runtime> as Inspect<_>>::minimum_balance();
 
     let old_balance = execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
@@ -880,7 +876,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                             .unwrap_or_default();
                         let account_id = AccountId::to_fallback_account_id(&caller_h160);
                         let free = pallet_balances::Pallet::<Runtime>::free_balance(&account_id);
-                        let ed = <pallet_balances::Pallet::<Runtime> as Inspect<_>>::minimum_balance();
+                        let ed =
+                            <pallet_balances::Pallet<Runtime> as Inspect<_>>::minimum_balance();
                         (max_weight, free.saturating_sub(ed).saturating_sub(value_native))
                     })
                 })
@@ -1017,7 +1014,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                             .unwrap_or_default();
                         let account_id = AccountId::to_fallback_account_id(&caller_h160);
                         let free = pallet_balances::Pallet::<Runtime>::free_balance(&account_id);
-                        let ed = <pallet_balances::Pallet::<Runtime> as Inspect<_>>::minimum_balance();
+                        let ed =
+                            <pallet_balances::Pallet<Runtime> as Inspect<_>>::minimum_balance();
                         (max_weight, free.saturating_sub(ed).saturating_sub(value_native))
                     })
                 })
