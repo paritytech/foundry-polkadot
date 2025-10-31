@@ -42,7 +42,7 @@ use tempfile::TempDir;
 
 use crate::abi::Multicall;
 
-const NATIVE_TO_ETH_RATIO: u128 = 1000000;
+const NATIVE_TO_ETH_RATIO: u128 = 1_000_000;
 pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
 
 pub struct BlockWaitTimeout {

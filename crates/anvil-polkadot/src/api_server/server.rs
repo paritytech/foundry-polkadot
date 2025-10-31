@@ -139,12 +139,11 @@ impl ApiServer {
             //------- Gas -----------
             EthRequest::SetNextBlockBaseFeePerGas(base_fee) => {
                 let latest_block = self.latest_block();
-                TryInto::<u128>::try_into(base_fee)
-                    .map_err(|err| Error::InvalidParams(format!("Base fee too big: {err}")))
-                    .map(|fee| {
-                        self.backend.inject_next_fee_multiplier(latest_block, FixedU128::from(fee))
-                    })
-                    .to_rpc_result()
+                self.backend.inject_next_fee_multiplier(
+                    latest_block,
+                    FixedU128::from_inner(base_fee.to::<u128>()),
+                );
+                Ok(()).to_rpc_result()
             }
 
             //------- Mining---------

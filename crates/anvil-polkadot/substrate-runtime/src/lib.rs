@@ -22,8 +22,9 @@ use pallet_revive::{
         runtime::EthExtra,
     },
 };
-use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
+use pallet_transaction_payment::{ConstFeeMultiplier, FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
+    pallet_transaction_payment::Multiplier,
     parachains_common::{
         AccountId, AssetHubPolkadotAuraId as AuraId, BlockNumber, Hash as CommonHash, Header,
         Nonce, Signature,
@@ -260,6 +261,7 @@ impl pallet_timestamp::Config for Runtime {}
 parameter_types! {
     // That's how assethub sets this.
     pub const TransactionByteFee: Balance = MILLICENTS;
+    pub FeeMultiplier: Multiplier = Multiplier::one();
 }
 
 // That's how assethub sets this.
@@ -278,7 +280,8 @@ impl pallet_transaction_payment::Config for Runtime {
     type WeightToFee = WeightToFee;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     // That's how assethub sets this.
-    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
+    // type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
+    type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
 }
 
 parameter_types! {

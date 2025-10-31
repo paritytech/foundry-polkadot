@@ -11,9 +11,9 @@ use polkadot_sdk::{
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
     sp_blockchain,
-    sp_core::{H160, H256},
+    sp_core::{H160, H256, U256},
     sp_io::hashing::blake2_256,
-    sp_runtime::FixedU128,
+    sp_runtime::{FixedPointNumber, FixedU128},
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
@@ -84,13 +84,15 @@ impl BackendWithOverlay {
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeChainId)
     }
 
-    pub fn read_next_fee_multiplier(&self, hash: Hash) -> Result<FixedU128> {
+    pub fn read_next_fee_multiplier(&self, hash: Hash) -> Result<U256> {
         let key = well_known_keys::NEXT_FEE_MULTIPLIER;
 
         let value = self
             .read_top_state(hash, key.to_vec())?
             .ok_or(BackendError::MissingNextFeeMultiplier)?;
-        FixedU128::decode(&mut &value[..]).map_err(BackendError::DecodeNextFeeMultiplier)
+        let raw_value =
+            FixedU128::decode(&mut &value[..]).map_err(BackendError::DecodeNextFeeMultiplier)?;
+        Ok(raw_value.saturating_mul_int::<u128>(1_000_000u128).into())
     }
 
     pub fn read_aura_authority(&self, hash: Hash) -> Result<AccountId> {
