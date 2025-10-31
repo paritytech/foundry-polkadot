@@ -1116,12 +1116,7 @@ impl ApiServer {
             self.update_block_provider_on_revert(&revert_info.info).await?;
         }
 
-        let hash = self
-            .get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Number(
-                revert_info.info.best_number.into(),
-            ))))
-            .await?;
-        self.update_time_on_revert(hash).await?;
+        self.update_time_on_revert(revert_info.info.best_hash).await?;
 
         Ok(())
     }
