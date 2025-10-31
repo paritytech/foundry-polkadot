@@ -36,6 +36,7 @@ impl ContractsNodeProcess {
             .env("RUST_LOG", "error")
             .arg("--dev")
             .arg(format!("--base-path={}", tmp_dir.path().to_string_lossy()))
+            .arg("--no-prometheus")
             .spawn()?;
         // wait for rpc to be initialized
         let mut attempts = 1;
@@ -88,6 +89,7 @@ impl RpcProxyProcess {
         let mut rpc_proxy = process::Command::new(RPC_PROXY_BINARY)
             .env("RUST_LOG", "error")
             .arg("--dev")
+            .arg("--no-prometheus")
             .spawn()?;
 
         let client = ClientBuilder::default().connect(RPC_URL).await?;

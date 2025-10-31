@@ -1224,6 +1224,7 @@ dependencies = [
  "parking_lot 0.12.4",
  "polkadot-sdk",
  "rand 0.8.5",
+ "revm",
  "rstest 0.26.1",
  "secp256k1 0.28.2",
  "serde",

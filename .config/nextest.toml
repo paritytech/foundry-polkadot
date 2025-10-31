@@ -1,5 +1,6 @@
 [test-groups]
 chisel-serial = { max-threads = 1 }
+polkadot-localnode-serial = { max-threads = 1 }
 
 [profile.default]
 retries = { backoff = "exponential", count = 2, delay = "5s", jitter = true }
@@ -20,3 +21,8 @@ retries = 0
 [[profile.default.overrides]]
 filter = "package(chisel)"
 test-group = "chisel-serial"
+
+[[profile.default.overrides]]
+filter = "test(/polkadot_localnode/)"
+test-group = "polkadot-localnode-serial"
+slow-timeout = { period = "5m", terminate-after = 4 }
