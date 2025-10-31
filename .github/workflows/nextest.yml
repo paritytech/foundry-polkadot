@@ -57,7 +57,7 @@ jobs:
             runner: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
 
       # Check existing caches first
       - name: Cache substrate-node binary
@@ -85,7 +85,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          
+
       # macOS-specific setup
       - name: Install libusb 1.0.27 (macOS)
         if: matrix.os == 'macos'
@@ -107,7 +107,7 @@ jobs:
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
           target: ${{ matrix.target }}, wasm32-unknown-unknown
           components: rust-src
@@ -189,11 +189,11 @@ jobs:
       - name: Install Vyper
         run: pip --version && pip install vyper==0.4.3
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
           target: ${{ matrix.target }}, wasm32-unknown-unknown
           components: rust-src
-  
+
       - name: Install clang (macOS)
         if: contains(matrix.runner_label, 'macos')
         run: |
