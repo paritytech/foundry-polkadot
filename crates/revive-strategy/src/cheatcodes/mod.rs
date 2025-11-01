@@ -7,7 +7,7 @@ use foundry_cheatcodes::{
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         dealCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall, setNonceCall,
-        setNonceUnsafeCall, storeCall, warpCall,
+        setNonceUnsafeCall, storeCall, txGasPriceCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -209,6 +209,10 @@ fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
     });
 }
 
+fn set_gas_price(new_gas_price: U256, ecx: Ecx<'_, '_, '_>) {
+    ecx.tx.gas_price = new_gas_price.saturating_to::<u128>();
+}
+
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
@@ -386,6 +390,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 set_timestamp(newTimestamp, ccx.ecx);
+
+                Ok(Default::default())
+            }
+            t if using_pvm && is::<txGasPriceCall>(t) => {
+                let &txGasPriceCall { newGasPrice } = cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                set_gas_price(newGasPrice, ccx.ecx);
 
                 Ok(Default::default())
             }

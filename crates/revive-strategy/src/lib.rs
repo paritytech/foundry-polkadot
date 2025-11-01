@@ -19,7 +19,7 @@ use crate::executor::{
 };
 
 mod backend;
-mod cheatcodes;
+pub mod cheatcodes;
 mod executor;
 mod tracing;
 
