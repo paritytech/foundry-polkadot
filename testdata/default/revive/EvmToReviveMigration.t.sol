@@ -40,6 +40,43 @@ contract StorageWithImmutables {
     }
 }
 
+interface IAuthorizationCallback {
+    function onAuthorization(address caller, uint256 value) external returns (bool);
+}
+
+contract CallbackContract {
+    address public owner;
+    uint256 public lastValue;
+    address public lastCaller;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    // This function calls back to the caller to verify authorization
+    // Similar to how Morpho calls back to verify permissions
+    function executeWithCallback(uint256 value) public returns (bool) {
+        // Call back to the msg.sender to verify authorization
+        bool authorized = IAuthorizationCallback(msg.sender).onAuthorization(msg.sender, value);
+
+        if (authorized) {
+            lastValue = value;
+            lastCaller = msg.sender;
+            return true;
+        }
+
+        return false;
+    }
+
+    function getLastValue() public view returns (uint256) {
+        return lastValue;
+    }
+
+    function getLastCaller() public view returns (address) {
+        return lastCaller;
+    }
+}
+
 contract EvmReviveMigrationTest is DSTest {
     Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
     address alice = address(0x1111);
@@ -183,5 +220,27 @@ contract EvmReviveMigrationTest is DSTest {
         );
         assertEq(immutableContract.getDeployer(), address(this), "Deployer should be preserved in Revive");
         assertEq(immutableContract.getMagicNumber(), magicNumber, "Magic number should be preserved in Revive");
+    }
+
+    // Implement the authorization callback interface
+    function onAuthorization(address caller, uint256 value) external returns (bool) {
+        // Simple authorization: allow if value is less than 1000
+        return value < 1000;
+    }
+
+    function testCallbackFromRevive() public {
+        CallbackContract callbackContract = new CallbackContract();
+        // Try to execute with authorized value (should succeed)
+        uint256 authorizedValue = 500;
+        bool result = callbackContract.executeWithCallback(authorizedValue);
+        assertTrue(result, "Authorized callback should succeed");
+        assertEq(callbackContract.getLastValue(), authorizedValue, "Last value should be updated");
+        assertEq(callbackContract.getLastCaller(), address(this), "Last caller should be test contract");
+
+        // Try to execute with unauthorized value (should fail)
+        uint256 unauthorizedValue = 1500;
+        bool result2 = callbackContract.executeWithCallback(unauthorizedValue);
+        assertTrue(!result2, "Unauthorized callback should fail");
+        assertEq(callbackContract.getLastValue(), authorizedValue, "Last value should not be updated");
     }
 }

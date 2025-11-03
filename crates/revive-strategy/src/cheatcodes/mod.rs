@@ -22,11 +22,12 @@ use tracing::warn;
 
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, Code, ContractInfo, ExecConfig, Pallet,
-        evm::CallTrace,
+        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, ExecConfig,
+        Pallet, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::{self, H160},
+    sp_core::{self, H160, H256},
+    sp_io,
     sp_weights::Weight,
 };
 
@@ -577,9 +578,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                     a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
                 });
 
-                // Migrate bytecode for deployed contracts (skip test contract)
-                if test_contract != Some(address)
-                    && let Some(bytecode) = acc.data.info.code.as_ref() {
+                if let Some(bytecode) = acc.data.info.code.as_ref() {
 
                     let account_h160 = H160::from_slice(address.as_slice());
 
@@ -589,8 +588,9 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                         if let Some((_, contract)) = ctx.dual_compiled_contracts
                             .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
                         {
-                            // Extract immutable values from EVM bytecode - they're at scattered offsets
-                            let immutable_data = contract.evm_immutable_references
+                            let (code_bytes, immutable_data, code_type) = match ctx.runtime_mode {
+                                crate::ReviveRuntimeMode::Pvm => {
+                                     let immutable_data = contract.evm_immutable_references
                                 .as_ref()
                                 .map(|immutable_refs| {
                                     let evm_bytecode = bytecode.original_byte_slice();
@@ -608,34 +608,28 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                         .copied()
                                         .collect::<Vec<u8>>()
                                 });
-
-                            let code_bytes = match ctx.runtime_mode {
-                                crate::ReviveRuntimeMode::Pvm => contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),
-                                crate::ReviveRuntimeMode::Evm => None,
-                                // TODO: We do not have method to upload the EVM bytecode to pallet-revive
-                                //contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec())
+                                    (contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),immutable_data, BytecodeType::Pvm)},
+                                crate::ReviveRuntimeMode::Evm => (contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec()), None, BytecodeType::Evm),
                             };
 
                             if let Some(code_bytes) = code_bytes {
-                                let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
-                                let upload_result = Pallet::<Runtime>::bare_upload_code(
-                                    origin,
+                                let upload_result = Pallet::<Runtime>::try_upload_code(
+                                    Pallet::<Runtime>::account_id(),
                                     code_bytes.clone(),
-                                    BalanceOf::<Runtime>::MAX,
+                                    code_type,
+                                    u64::MAX.into(),
+                                    &ExecConfig::new_substrate_tx(),
                                 );
-
                                 match upload_result {
-                                    Ok(result) => {
-                                        let code_hash = result.code_hash;
+                                    Ok(_) => {
+                                        let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
                                         let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
                                             .expect("Failed to create contract info");
                                         AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
 
-                                        if immutable_data.and_then(|immutables| immutables.try_into().ok()).and_then(|data|
-                                            Pallet::<Runtime>::set_immutables(account_h160, data).ok()
-                                        ).is_none()
+                                        if let Some(data) = immutable_data.and_then(|immutables| immutables.try_into().ok())
                                         {
-                                            panic!("Failed to migrate immutables");
+                                            Pallet::<Runtime>::set_immutables(account_h160, data).expect("Failed to migrate immutables");
                                         }
                                     }
                                     Err(err) => {
