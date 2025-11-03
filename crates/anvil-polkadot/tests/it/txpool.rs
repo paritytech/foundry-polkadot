@@ -338,9 +338,22 @@ async fn test_txpool_with_impersonated_transactions() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
-    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
-    let impersonated_addr = Address::from(ReviveAddress::new(baltathar.address()));
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
+
+    let dorothy = Account::from(subxt_signer::eth::dev::dorothy());
+    let impersonated_addr = Address::from(ReviveAddress::new(dorothy.address()));
     let recipient_addr = Address::repeat_byte(0x42);
+
+    // Fund dorothy account (dorothy is not initialized in genesis)
+    let fund_tx = TransactionRequest::default()
+        .from(alith_addr)
+        .to(impersonated_addr)
+        .value(U256::from(10000000000000000000u64));
+    node.send_transaction(fund_tx, None).await.unwrap();
+
+    // Mine the funding transaction
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::ImpersonateAccount(impersonated_addr)).await.unwrap(),
