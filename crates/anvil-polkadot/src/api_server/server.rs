@@ -592,7 +592,7 @@ impl ApiServer {
             return Ok(None);
         };
         let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
-        Ok(Some(block))
+        Ok(block)
     }
 
     async fn estimate_gas(
@@ -663,8 +663,8 @@ impl ApiServer {
             return Err(Error::ReviveRpc(EthRpcError::InvalidTransaction));
         };
 
-        let latest_block = self.latest_block();
-        let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block.as_ref())));
+        let latest_block_hash = self.latest_block();
+        let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block_hash.as_ref())));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {
@@ -676,21 +676,22 @@ impl ApiServer {
                     .ok_or(Error::ReviveRpc(EthRpcError::AccountNotFound(from)))?,
             )
         };
-
         if transaction.gas.is_none() {
-            transaction.gas =
-                Some(self.estimate_gas(transaction_req.clone(), latest_block_id).await?);
+            transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
         }
 
         if transaction.gas_price.is_none() {
             transaction.gas_price = Some(self.gas_price().await?);
         }
+
         if transaction.nonce.is_none() {
-            transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
+            transaction.nonce = Some(self.get_transaction_count(from, None).await?);
         }
+
         if transaction.chain_id.is_none() {
-            transaction.chain_id =
-                Some(sp_core::U256::from_big_endian(&self.chain_id(latest_block).to_be_bytes()));
+            transaction.chain_id = Some(sp_core::U256::from_big_endian(
+                &self.chain_id(latest_block_hash).to_be_bytes(),
+            ));
         }
 
         let tx = transaction
@@ -725,7 +726,7 @@ impl ApiServer {
             return Ok(None);
         };
         let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
-        Ok(Some(block))
+        Ok(block)
     }
 
     pub(crate) async fn snapshot(&mut self) -> Result<U256> {
