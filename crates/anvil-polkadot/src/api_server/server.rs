@@ -1,12 +1,12 @@
 use crate::{
     api_server::{
+        ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         revive_conversions::{
-            convert_to_generic_transaction, AlloyU256, ReviveAddress, ReviveBlockId,
-            ReviveBlockNumberOrTag, ReviveBytes, ReviveFilter, SubstrateU256,
+            AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
+            ReviveFilter, SubstrateU256, convert_to_generic_transaction,
         },
         signer::DevSigner,
-        ApiRequest,
     },
     logging::LoggingManager,
     macros::node_info,
@@ -15,42 +15,42 @@ use crate::{
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
         service::{
+            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
             storage::{
                 AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
-            BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
         },
         snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_dyn_abi::TypedData;
 use alloy_eips::{BlockId, BlockNumberOrTag};
-use alloy_primitives::{Address, B256, U256, U64};
+use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{
+    Filter, TransactionRequest,
     anvil::MineOptions,
     txpool::{TxpoolContent, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
-    Filter, TransactionRequest,
 };
 use alloy_serde::WithOtherFields;
-use alloy_trie::{TrieAccount, EMPTY_ROOT_HASH, KECCAK_EMPTY};
+use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
 use codec::{Decode, DecodeLimit, Encode};
-use futures::{channel::mpsc, StreamExt};
+use futures::{StreamExt, channel::mpsc};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
+    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{self, SrcChainConfig},
-    BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
 };
 use polkadot_sdk::{
     pallet_revive::{
+        ReviveApi,
         evm::{
             Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
             TransactionSigned,
         },
-        ReviveApi,
     },
     parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
@@ -59,16 +59,16 @@ use polkadot_sdk::{
     sp_api::{Metadata, ProvideRuntimeApi},
     sp_arithmetic::Permill,
     sp_blockchain::Info,
-    sp_core::{self, keccak_256, Hasher},
+    sp_core::{self, Hasher, keccak_256},
     sp_runtime::traits::BlakeTwo256,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use substrate_runtime::{Balance, RuntimeCall, UncheckedExtrinsic};
 use subxt::{
-    backend::rpc::RpcClient, client::RuntimeVersion as SubxtRuntimeVersion,
-    config::substrate::H256, ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
-    Metadata as SubxtMetadata, OnlineClient,
+    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
+    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
+    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
 };
 use subxt_signer::eth::Keypair;
 use tokio::try_join;
@@ -1350,11 +1350,56 @@ fn decode_eth_transaction(
 
 /// Fields extracted from an Ethereum transaction
 struct TransactionFields {
-    nonce: polkadot_sdk::sp_core::U256,
-    to: Option<polkadot_sdk::sp_core::H160>,
-    value: polkadot_sdk::sp_core::U256,
-    gas: polkadot_sdk::sp_core::U256,
-    gas_price: polkadot_sdk::sp_core::U256,
+    nonce: sp_core::U256,
+    to: Option<sp_core::H160>,
+    value: sp_core::U256,
+    gas: sp_core::U256,
+    gas_price: sp_core::U256,
+}
+
+/// Recover sender address from signed transaction, handling both normal and impersonated
+/// transactions
+fn recover_sender_address(_payload: &[u8], signed_tx: &TransactionSigned) -> Option<sp_core::H160> {
+    if let Ok(addr) = signed_tx.recover_eth_address() {
+        return Some(addr);
+    }
+
+    // Check for impersonated transaction (fake signature with embedded address)
+    let sig_bytes = extract_signature_bytes(signed_tx)?;
+    if is_impersonated_signature(&sig_bytes) {
+        return Some(sp_core::H160::from_slice(&sig_bytes[12..32]));
+    }
+
+    None
+}
+
+/// Check if signature follows impersonated transaction format (matches substrate_node/host.rs)
+fn is_impersonated_signature(sig: &[u8]) -> bool {
+    sig.len() == 65 && sig[..12] == [0; 12] && sig[32..64] == [0; 32]
+}
+
+/// Extract signature bytes (r, s, v) from signed transaction into 65-byte format
+fn extract_signature_bytes(signed_tx: &TransactionSigned) -> Option<Vec<u8>> {
+    use sp_core::U256;
+
+    let (r, s, v): (U256, U256, U256) = match signed_tx {
+        TransactionSigned::TransactionLegacySigned(tx) => (tx.r, tx.s, tx.v),
+        TransactionSigned::Transaction2930Signed(tx) => (tx.r, tx.s, tx.v.unwrap_or(U256::zero())),
+        TransactionSigned::Transaction1559Signed(tx) => (tx.r, tx.s, tx.v.unwrap_or(U256::zero())),
+        TransactionSigned::Transaction4844Signed(tx) => (tx.r, tx.s, tx.y_parity),
+        TransactionSigned::Transaction7702Signed(tx) => (tx.r, tx.s, tx.v.unwrap_or(U256::zero())),
+    };
+
+    let mut sig_bytes = Vec::with_capacity(65);
+    for i in (0..32).rev() {
+        sig_bytes.push(r.byte(i));
+    }
+    for i in (0..32).rev() {
+        sig_bytes.push(s.byte(i));
+    }
+    sig_bytes.push(v.byte(0));
+
+    Some(sig_bytes)
 }
 
 /// Helper function to extract fields from different ETH transaction types
@@ -1417,9 +1462,9 @@ fn extract_tx_fields(signed_tx: &TransactionSigned) -> TransactionFields {
 fn extract_tx_summary(
     tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
 ) -> Option<(Address, u64, TxpoolInspectSummary)> {
-    let (_payload, signed_tx) = decode_eth_transaction(tx_data)?;
+    let (payload, signed_tx) = decode_eth_transaction(tx_data)?;
 
-    let from = signed_tx.recover_eth_address().ok()?;
+    let from = recover_sender_address(&payload, &signed_tx)?;
     let sender = Address::from_slice(from.as_bytes());
 
     let fields = extract_tx_fields(&signed_tx);
@@ -1451,7 +1496,7 @@ fn extract_tx_info(
     let eth_hash = keccak_256(&payload);
     let eth_hash_h256 = H256::from_slice(&eth_hash);
 
-    let from = signed_tx.recover_eth_address().ok()?;
+    let from = recover_sender_address(&payload, &signed_tx)?;
     let sender = Address::from_slice(from.as_bytes());
 
     let fields = extract_tx_fields(&signed_tx);
@@ -1471,9 +1516,9 @@ fn extract_tx_info(
 
 /// Helper function to extract sender address from extrinsic
 fn extract_sender(tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>) -> Option<Address> {
-    let (_payload, signed_tx) = decode_eth_transaction(tx_data)?;
+    let (payload, signed_tx) = decode_eth_transaction(tx_data)?;
 
-    let from = signed_tx.recover_eth_address().ok()?;
+    let from = recover_sender_address(&payload, &signed_tx)?;
     let sender = Address::from_slice(from.as_bytes());
 
     Some(sender)
