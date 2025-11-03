@@ -585,46 +585,31 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
                     // Skip if contract already exists in pallet-revive
                     if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
-                        // Determine which bytecode to upload based on runtime mode
-                        let bytecode_match = ctx.dual_compiled_contracts
-                                    .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice());
-
-                        if let Some((contract_info, contract)) = bytecode_match {
-                            // Extract immutable values from EVM bytecode
-                            let immutable_data = if let Some(immutable_refs) = &contract.evm_immutable_references {
-                                if !immutable_refs.is_empty() {
-                                    let mut immutables_bytes = Vec::new();
+                        // Find the matching dual-compiled contract by EVM bytecode
+                        if let Some((_, contract)) = ctx.dual_compiled_contracts
+                            .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
+                        {
+                            // Extract immutable values from EVM bytecode - they're at scattered offsets
+                            let immutable_data = contract.evm_immutable_references
+                                .as_ref()
+                                .map(|immutable_refs| {
                                     let evm_bytecode = bytecode.original_byte_slice();
 
-                                    for offsets in immutable_refs.values() {
-                                        for offset in offsets {
+                                    // Collect all immutable bytes from their scattered offsets
+                                    immutable_refs
+                                        .values()
+                                        .flatten()
+                                        .flat_map(|offset| {
                                             let start = offset.start as usize;
-                                            let end = (offset.start + offset.length) as usize;
-                                            if end <= evm_bytecode.len() {
-                                                immutables_bytes.extend_from_slice(&evm_bytecode[start..end]);
-                                            } else {
-                                                tracing::warn!(
-                                                    address = ?address,
-                                                    offset_start = start,
-                                                    offset_end = end,
-                                                    bytecode_len = evm_bytecode.len(),
-                                                    "Immutable offset out of bounds"
-                                                );
-                                            }
-                                        }
-                                    }
-
-                                    if !immutables_bytes.is_empty() {
-                                        Some(immutables_bytes)
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            };
+                                            let end = start + offset.length as usize;
+                                            evm_bytecode.get(start..end).expect(&format!(
+                                                "Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
+                                                address, start, end, evm_bytecode.len()
+                                            ))
+                                        })
+                                        .copied()
+                                        .collect::<Vec<u8>>()
+                                });
 
                             let code_bytes = match ctx.runtime_mode {
                                 crate::ReviveRuntimeMode::Pvm => contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),
@@ -633,44 +618,45 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 //contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec())
                             };
 
-                        if let Some(code_bytes) = code_bytes {
-                            let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
-                            let upload_result = Pallet::<Runtime>::bare_upload_code(
-                                origin,
-                                code_bytes.clone(),
-                                BalanceOf::<Runtime>::MAX,
-                            );
+                            if let Some(code_bytes) = code_bytes {
+                                let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
+                                let upload_result = Pallet::<Runtime>::bare_upload_code(
+                                    origin,
+                                    code_bytes.clone(),
+                                    BalanceOf::<Runtime>::MAX,
+                                );
 
-                            match upload_result {
-                                Ok(result) => {
-                                    let code_hash = result.code_hash;
-                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
-                                        .expect("Failed to create contract info");
-                                    AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
+                                match upload_result {
+                                    Ok(result) => {
+                                        let code_hash = result.code_hash;
+                                        let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                            .expect("Failed to create contract info");
+                                        AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
 
-                                    if immutable_data.and_then(|immutables| immutables.try_into().ok()).and_then(|data|
-                                        Pallet::<Runtime>::set_immutables(account_h160, data).ok()
-                                    ).is_none()
-                                    {
-                                        panic!("Failed to migrate immutables");
+                                        if immutable_data.and_then(|immutables| immutables.try_into().ok()).and_then(|data|
+                                            Pallet::<Runtime>::set_immutables(account_h160, data).ok()
+                                        ).is_none()
+                                        {
+                                            panic!("Failed to migrate immutables");
+                                        }
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            address = ?address,
+                                            runtime_mode = ?ctx.runtime_mode,
+                                            bytecode_len = code_bytes.len(),
+                                            error = ?err,
+                                            "Failed to upload bytecode to pallet-revive, skipping migration"
+                                        );
                                     }
                                 }
-                                Err(err) => {
-                                    tracing::warn!(
-                                        address = ?address,
-                                        runtime_mode = ?ctx.runtime_mode,
-                                        bytecode_len = code_bytes.len(),
-                                        error = ?err,
-                                        "Failed to upload bytecode to pallet-revive, skipping migration"
-                                    );
-                                }
+                            } else {
+                                tracing::info!(
+                                    address = ?address,
+                                    "no PVM equivalent found for EVM bytecode, skipping migration"
+                                );
                             }
-                        } else {
-                            tracing::info!(
-                                address = ?address,
-                                "no PVM equivalent found for EVM bytecode, skipping migration"
-                            );
-                        }}
+                        }
                     }
                 }
             }
