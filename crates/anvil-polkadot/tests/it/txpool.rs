@@ -1,8 +1,8 @@
-use crate::utils::{unwrap_response, TestNode};
+use crate::utils::{TestNode, unwrap_response};
 use alloy_primitives::{Address, B256, U256};
 use alloy_rpc_types::{
-    txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
     TransactionRequest,
+    txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
 };
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
@@ -330,4 +330,74 @@ async fn test_remove_pool_transactions() {
 
     let baltathar_txs = content.pending.get(&baltathar_addr).unwrap();
     assert_eq!(baltathar_txs.len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_txpool_with_impersonated_transactions() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let impersonated_addr = Address::from(ReviveAddress::new(baltathar.address()));
+    let recipient_addr = Address::repeat_byte(0x42);
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::ImpersonateAccount(impersonated_addr)).await.unwrap(),
+    )
+    .unwrap();
+
+    for i in 0..3 {
+        let tx = TransactionRequest::default()
+            .from(impersonated_addr)
+            .to(recipient_addr)
+            .value(U256::from(1000 * (i + 1)))
+            .nonce(i);
+        node.send_unsigned_transaction(tx, None).await.unwrap();
+    }
+
+    let status: TxpoolStatus =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
+    assert_eq!(status.pending, 3);
+    assert_eq!(status.queued, 0);
+
+    // Test txpool_inspect (uses extract_tx_summary with impersonation support)
+    let inspect: TxpoolInspect =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolInspect(())).await.unwrap()).unwrap();
+    assert_eq!(inspect.pending.len(), 1);
+    assert!(inspect.pending.contains_key(&impersonated_addr));
+
+    let impersonated_txs = inspect.pending.get(&impersonated_addr).unwrap();
+    assert_eq!(impersonated_txs.len(), 3);
+
+    // Test txpool_content (uses extract_tx_info with impersonation support)
+    let content: TxpoolContent<TransactionInfo> =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
+    assert_eq!(content.pending.len(), 1);
+
+    let pending_txs = content.pending.get(&impersonated_addr).unwrap();
+    assert_eq!(pending_txs.len(), 3);
+
+    for i in 0..3 {
+        let tx_info = pending_txs.get(&i.to_string()).unwrap();
+        let from_addr = Address::from_slice(tx_info.from.as_bytes());
+        assert_eq!(from_addr, impersonated_addr);
+        assert!(tx_info.hash != Default::default());
+    }
+
+    // Test anvil_removePoolTransactions (uses extract_sender with impersonation support)
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::RemovePoolTransactions(impersonated_addr)).await.unwrap(),
+    )
+    .unwrap();
+
+    let status: TxpoolStatus =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
+    assert_eq!(status.pending, 0);
+    assert_eq!(status.queued, 0);
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::StopImpersonatingAccount(impersonated_addr)).await.unwrap(),
+    )
+    .unwrap();
 }
