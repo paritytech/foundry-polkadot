@@ -29,10 +29,8 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{
     Filter, TransactionRequest,
-    anvil::MineOptions,
-    txpool::{TxpoolContent, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
     anvil::{Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
-    txpool::TxpoolStatus,
+    txpool::{TxpoolContent, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
 };
 use alloy_serde::WithOtherFields;
 use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
