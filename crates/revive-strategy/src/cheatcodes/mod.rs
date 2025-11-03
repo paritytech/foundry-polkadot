@@ -560,9 +560,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
 
-            let test_contract = data.journaled_state.database.get_test_contract_address();
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
-
             for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;

@@ -81,6 +81,7 @@ async fn test_revive_immutables_migration(#[case] runtime_mode: ReviveRuntimeMod
 }
 
 #[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
 #[case::pvm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_revive_callback_from_revive(#[case] runtime_mode: ReviveRuntimeMode) {
