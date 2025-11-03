@@ -11,7 +11,6 @@ use foundry_cheatcodes::{
     },
     journaled_account, precompile_error,
 };
-use foundry_common::sh_err;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 use std::{
@@ -22,11 +21,9 @@ use std::{
 use tracing::warn;
 
 use polkadot_sdk::{
-    frame_support::traits::{Currency, fungible::Mutate},
-    pallet_balances,
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, BalanceWithDust, Code, Config, ContractInfo,
-        ExecConfig, Pallet, evm::CallTrace,
+        self, AccountInfo, AddressMapper, BalanceOf, Code, ContractInfo, ExecConfig, Pallet,
+        evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -174,21 +171,13 @@ fn set_balance(address: Address, amount: U256, ecx: Ecx<'_, '_, '_>) -> U256 {
     account.mark_touch();
     account.info.balance = amount;
     let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-    let balance_native =
-        BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-
-    let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
 
     let old_balance = execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
-            let addr = &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&H160::from_slice(
-                address.as_slice(),
-            ));
-            pallet_balances::Pallet::<Runtime>::set_balance(
-                addr,
-                balance_native.into_rounded_balance().saturating_add(min_balance),
-            );
+            let h160_addr = H160::from_slice(address.as_slice());
+            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&h160_addr);
+            pallet_revive::Pallet::<Runtime>::set_evm_balance(&h160_addr, amount_pvm)
+                .expect("failed to set evm balance");
             old_balance
         })
     });
@@ -208,13 +197,14 @@ fn set_block_number(new_height: U256, ecx: Ecx<'_, '_, '_>) {
 }
 
 fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
-    // Set timestamp in EVM context.
+    // Set timestamp in EVM context (seconds).
     ecx.block.timestamp = new_timestamp;
 
-    // Set timestamp in pallet-revive runtime.
+    // Set timestamp in pallet-revive runtime (milliseconds).
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
-            Timestamp::set_timestamp(new_timestamp.try_into().expect("Timestamp exceeds u64"));
+            let timestamp_ms = new_timestamp.saturating_to::<u64>().saturating_mul(1000);
+            Timestamp::set_timestamp(timestamp_ms);
         })
     });
 }
@@ -576,30 +566,12 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;
                 let nonce = acc.data.info.nonce;
+                let account = H160::from_slice(address.as_slice());
                 let account_id =
-                    AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-
-                // Convert EVM balance to PVM balance with precision handling
-                // TODO: needs to be replaced with `set_evm_balance`` once new pallet-revive is used
-                let amount_pvm =
-                    sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-                let balance_native =
-                    BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-                let balance = Pallet::<Runtime>::convert_native_to_evm(balance_native);
-                let amount_evm = U256::from_limbs(balance.0);
-
-                if amount != amount_evm {
-                    let _ = sh_err!(
-                        "Amount mismatch {amount} != {amount_evm}, Polkadot balances are u128. Test results may be incorrect."
-                    );
-                }
-
-                let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
-                <Runtime as Config>::Currency::set_balance(
-                    &account_id,
-                    balance_native.into_rounded_balance().saturating_add(min_balance),
-                );
-                // END OF THE BLOCK TO BE REMOVED
+                    AccountId::to_fallback_account_id(&account);
+                let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+                Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
+                    .expect("failed to set evm balance");
 
                 polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
                     a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");

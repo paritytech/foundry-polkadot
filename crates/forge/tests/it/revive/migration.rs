@@ -48,23 +48,22 @@ async fn test_revive_bytecode_migration_to_revive(#[case] runtime_mode: ReviveRu
     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
 }
 
-// Enable it after new pallet-revive is being used
-// #[rstest]
-// #[case::pvm(ReviveRuntimeMode::Pvm)]
-// #[case::evm(ReviveRuntimeMode::Evm)]
-// #[tokio::test(flavor = "multi_thread")]
-// async fn test_revive_precision_preservation(#[case] runtime_mode: ReviveRuntimeMode) {
-//     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-//     let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest",
-// ".*/revive/.*");     TestConfig::with_filter(runner,
-// filter).spec_id(SpecId::SHANGHAI).run().await; }
+#[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_revive_precision_preservation(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testPrecisionPreservation", "EvmReviveMigrationTest", ".*/revive/.*");
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
+}
 
-// #[rstest]
-// #[case::pvm(ReviveRuntimeMode::Pvm)]
-// #[case::evm(ReviveRuntimeMode::Evm)]
-// #[tokio::test(flavor = "multi_thread")]
-// async fn test_revive_timestamp_migration(#[case] runtime_mode: ReviveRuntimeMode) {
-//     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-//     let filter = Filter::new("testTimestampMigration", "EvmReviveMigrationTest", ".*/revive/.*");
-//     TestConfig::with_filter(runner, filter).spec_id(SpecId::SHANGHAI).run().await;
-// }
+#[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_revive_timestamp_migration(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testTimestampMigration", "EvmReviveMigrationTest", ".*/revive/.*");
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}
