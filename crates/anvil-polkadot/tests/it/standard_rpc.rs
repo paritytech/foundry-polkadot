@@ -8,7 +8,10 @@ use crate::{
     },
 };
 use alloy_primitives::{Address, B256, Bytes, U256, map::HashSet};
-use alloy_rpc_types::{Index, TransactionInput, TransactionRequest};
+use alloy_rpc_types::{
+    Index, TransactionInput, TransactionRequest,
+    anvil::{Metadata as AnvilMetadata, NodeInfo},
+};
 use alloy_serde::WithOtherFields;
 use alloy_sol_types::{SolCall, SolEvent};
 use anvil_core::eth::EthRequest;
@@ -893,4 +896,106 @@ async fn test_coinbase() {
     );
     let coinbase = multicall_get_coinbase(&mut node, alith_addr, contract_address).await;
     assert_eq!(coinbase, new_coinbase);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_anvil_node_info() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    let node_info =
+        unwrap_response::<NodeInfo>(node.eth_rpc(EthRequest::NodeInfo(())).await.unwrap()).unwrap();
+
+    // Check initial state - should be at genesis block
+    assert_eq!(node_info.current_block_number, 0);
+    assert_eq!(node_info.hard_fork, "Prague".to_string());
+    assert_eq!(node_info.transaction_order, "fifo");
+    assert_eq!(node_info.environment.chain_id, 0x7a69);
+
+    // Verify fork config is empty (forking not supported)
+    assert_eq!(node_info.fork_config.fork_url, None);
+    assert_eq!(node_info.fork_config.fork_block_number, None);
+    assert_eq!(node_info.fork_config.fork_retry_backoff, None);
+
+    let genesis_block_hash = node.block_hash_by_number(0).await.unwrap();
+    assert_eq!(node_info.current_block_hash, B256::from_slice(genesis_block_hash.as_ref()));
+    let block = node.get_block_by_hash(genesis_block_hash).await;
+    assert_eq!(block.gas_limit, node_info.environment.gas_limit.into());
+    assert_eq!(block.base_fee_per_gas, node_info.environment.base_fee.into());
+    assert_eq!(block.base_fee_per_gas, node_info.environment.gas_price.into());
+
+    // Mine some blocks and check that node_info updates
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(3)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    let node_info_after =
+        unwrap_response::<NodeInfo>(node.eth_rpc(EthRequest::NodeInfo(())).await.unwrap()).unwrap();
+
+    // Block number should have increased
+    assert_eq!(node_info_after.current_block_number, 3);
+
+    // Timestamp should be greater or equal (may have advanced)
+    assert!(node_info_after.current_block_timestamp >= node_info.current_block_timestamp);
+    assert_eq!(node_info_after.environment.chain_id, node_info.environment.chain_id);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_anvil_metadata() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    let metadata = unwrap_response::<AnvilMetadata>(
+        node.eth_rpc(EthRequest::AnvilMetadata(())).await.unwrap(),
+    )
+    .unwrap();
+
+    assert!(metadata.client_version.contains("anvil-polkadot"));
+    assert_eq!(metadata.latest_block_number, 0);
+    assert_eq!(metadata.chain_id, 0x7a69);
+
+    // Verify forked_network is None (forking not supported)
+    assert_eq!(metadata.forked_network, None);
+
+    // Initial snapshots should be empty
+    assert!(metadata.snapshots.is_empty());
+
+    // Get current block hash for comparison
+    let block_hash = node.block_hash_by_number(0).await.unwrap();
+    assert_eq!(metadata.latest_block_hash, B256::from_slice(block_hash.as_ref()));
+
+    // Create a snapshot and verify it appears in metadata
+    let snapshot_id = U256::from_str_radix(
+        unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
+            .unwrap()
+            .trim_start_matches("0x"),
+        16,
+    )
+    .unwrap();
+
+    let metadata_after_snapshot = unwrap_response::<AnvilMetadata>(
+        node.eth_rpc(EthRequest::AnvilMetadata(())).await.unwrap(),
+    )
+    .unwrap();
+
+    // Should have one snapshot
+    assert_eq!(metadata_after_snapshot.snapshots.len(), 1);
+    assert!(metadata_after_snapshot.snapshots.contains_key(&snapshot_id));
+
+    // Mine some blocks and check that metadata updates
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    let metadata_after_mining = unwrap_response::<AnvilMetadata>(
+        node.eth_rpc(EthRequest::AnvilMetadata(())).await.unwrap(),
+    )
+    .unwrap();
+
+    // Block number should have increased
+    assert_eq!(metadata_after_mining.latest_block_number, 5);
+    // Snapshot should still be present
+    assert!(metadata_after_mining.snapshots.contains_key(&snapshot_id));
 }
