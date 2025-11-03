@@ -179,9 +179,9 @@ contract EvmReviveMigrationTest is DSTest {
         vm.pvm(true);
 
         assertEq(
-            immutableContract.getDeployedAt(), deploymentTimestamp, "Deployed timestamp should be preserved in PVM"
+            immutableContract.getDeployedAt(), deploymentTimestamp, "Deployed timestamp should be preserved in Revive"
         );
-        assertEq(immutableContract.getDeployer(), address(this), "Deployer should be preserved in PVM");
-        assertEq(immutableContract.getMagicNumber(), magicNumber, "Magic number should be preserved in PVM");
+        assertEq(immutableContract.getDeployer(), address(this), "Deployer should be preserved in Revive");
+        assertEq(immutableContract.getMagicNumber(), magicNumber, "Magic number should be preserved in Revive");
     }
 }
