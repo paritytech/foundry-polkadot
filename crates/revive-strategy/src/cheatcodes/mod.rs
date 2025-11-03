@@ -602,10 +602,8 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                         .flat_map(|offset| {
                                             let start = offset.start as usize;
                                             let end = start + offset.length as usize;
-                                            evm_bytecode.get(start..end).expect(&format!(
-                                                "Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
-                                                address, start, end, evm_bytecode.len()
-                                            ))
+                                            evm_bytecode.get(start..end).unwrap_or_else(|| panic!("Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
+                                                 address, start, end, evm_bytecode.len()))
                                         })
                                         .copied()
                                         .collect::<Vec<u8>>()
