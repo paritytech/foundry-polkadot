@@ -258,6 +258,11 @@ async fn test_txpool_content() {
         let expected_hash = B256::from_slice(pending_hashes[i as usize].0.as_ref());
         let actual_hash = B256::from_slice(tx_info.hash.as_ref());
         assert_eq!(actual_hash, expected_hash);
+
+        // Pending transactions should have None for block-related fields
+        assert_eq!(tx_info.block_hash, None);
+        assert_eq!(tx_info.block_number, None);
+        assert_eq!(tx_info.transaction_index, None);
     }
 
     let queued_txs = content.queued.get(&alith_addr).unwrap();
@@ -270,6 +275,11 @@ async fn test_txpool_content() {
     let expected_hash = B256::from_slice(queued_hash.0.as_ref());
     let actual_hash = B256::from_slice(tx_info.hash.as_ref());
     assert_eq!(actual_hash, expected_hash);
+
+    // Queued transactions should also have None for block-related fields
+    assert_eq!(tx_info.block_hash, None);
+    assert_eq!(tx_info.block_number, None);
+    assert_eq!(tx_info.transaction_index, None);
 }
 
 #[tokio::test(flavor = "multi_thread")]
