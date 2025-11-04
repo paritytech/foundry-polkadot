@@ -28,7 +28,7 @@ use sp_runtime_interface::{
 
 // The host functions in this module expect transactions
 // with fake signatures conforming the format checked in this function.
-fn is_impersonated(sig: &[u8]) -> bool {
+pub fn is_impersonated(sig: &[u8]) -> bool {
     sig[..12] == [0; 12] && sig[32..64] == [0; 32]
 }
 

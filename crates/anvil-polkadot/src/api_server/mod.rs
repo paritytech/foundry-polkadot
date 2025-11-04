@@ -15,6 +15,7 @@ pub mod error;
 pub mod revive_conversions;
 mod server;
 mod signer;
+pub mod txpool_helpers;
 
 pub type ApiHandle = mpsc::Sender<ApiRequest>;
 

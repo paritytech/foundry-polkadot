@@ -7,6 +7,10 @@ use crate::{
             ReviveFilter, SubstrateU256, convert_to_generic_transaction,
         },
         signer::DevSigner,
+        txpool_helpers::{
+            TxpoolTransactionInfo, extract_sender, extract_tx_info, extract_tx_summary,
+            recover_sender_address, transaction_matches_eth_hash,
+        },
     },
     logging::LoggingManager,
     macros::node_info,
@@ -30,13 +34,13 @@ use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{
     Filter, TransactionRequest,
     anvil::{Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
-    txpool::{TxpoolContent, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
+    txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
 };
 use alloy_serde::WithOtherFields;
 use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
-use codec::{Decode, DecodeLimit, Encode};
+use codec::{Decode, Encode};
 use futures::{StreamExt, channel::mpsc};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
@@ -65,7 +69,7 @@ use polkadot_sdk::{
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
-use substrate_runtime::{Balance, RuntimeCall, UncheckedExtrinsic};
+use substrate_runtime::Balance;
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
     client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
@@ -75,7 +79,6 @@ use subxt_signer::eth::Keypair;
 use tokio::try_join;
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
-const MAX_EXTRINSIC_DEPTH: u32 = 256;
 
 pub struct ApiServer {
     eth_rpc_client: EthRpcClient,
@@ -1275,7 +1278,7 @@ impl ApiServer {
     }
 
     /// Returns full transaction details for all transactions in the pool
-    async fn txpool_content(&self) -> Result<TxpoolContent<TransactionInfo>> {
+    async fn txpool_content(&self) -> Result<TxpoolContent<TxpoolTransactionInfo>> {
         node_info!("txpool_content");
         let mut content = TxpoolContent::default();
 
@@ -1369,228 +1372,6 @@ impl ApiServer {
 
         Ok(())
     }
-}
-
-/// Helper function to check if transaction matches ETH hash
-fn transaction_matches_eth_hash(
-    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
-    target_eth_hash: B256,
-) -> bool {
-    let encoded = tx_data.encode();
-    let Ok(ext) =
-        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
-    else {
-        return false;
-    };
-
-    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-        ..
-    } = ext.0
-    else {
-        return false;
-    };
-
-    let tx_eth_hash = keccak_256(&payload);
-    B256::from_slice(&tx_eth_hash) == target_eth_hash
-}
-
-/// Helper function to decode extrinsic into ETH transaction payload and signed transaction
-fn decode_eth_transaction(
-    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
-) -> Option<(Vec<u8>, TransactionSigned)> {
-    let encoded = tx_data.encode();
-    let ext =
-        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
-            .ok()?;
-
-    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-        ..
-    } = ext.0
-    else {
-        return None;
-    };
-
-    let signed_tx = TransactionSigned::decode(&payload).ok()?;
-
-    Some((payload, signed_tx))
-}
-
-/// Fields extracted from an Ethereum transaction
-struct TransactionFields {
-    nonce: sp_core::U256,
-    to: Option<sp_core::H160>,
-    value: sp_core::U256,
-    gas: sp_core::U256,
-    gas_price: sp_core::U256,
-}
-
-/// Recover sender address from signed transaction, handling both normal and impersonated
-/// transactions
-fn recover_sender_address(_payload: &[u8], signed_tx: &TransactionSigned) -> Option<sp_core::H160> {
-    if let Ok(addr) = signed_tx.recover_eth_address() {
-        return Some(addr);
-    }
-
-    // Check for impersonated transaction (fake signature with embedded address)
-    let sig_bytes = extract_signature_bytes(signed_tx)?;
-    if is_impersonated_signature(&sig_bytes) {
-        return Some(sp_core::H160::from_slice(&sig_bytes[12..32]));
-    }
-
-    None
-}
-
-/// Check if signature follows impersonated transaction format (matches substrate_node/host.rs)
-fn is_impersonated_signature(sig: &[u8]) -> bool {
-    sig.len() == 65 && sig[..12] == [0; 12] && sig[32..64] == [0; 32]
-}
-
-/// Extract signature bytes (r, s, v) from signed transaction into 65-byte format
-fn extract_signature_bytes(signed_tx: &TransactionSigned) -> Option<Vec<u8>> {
-    use sp_core::U256;
-
-    let (r, s, v): (U256, U256, U256) = match signed_tx {
-        TransactionSigned::TransactionLegacySigned(tx) => (tx.r, tx.s, tx.v),
-        TransactionSigned::Transaction2930Signed(tx) => (tx.r, tx.s, tx.v.unwrap_or(U256::zero())),
-        TransactionSigned::Transaction1559Signed(tx) => (tx.r, tx.s, tx.v.unwrap_or(U256::zero())),
-        TransactionSigned::Transaction4844Signed(tx) => (tx.r, tx.s, tx.y_parity),
-        TransactionSigned::Transaction7702Signed(tx) => (tx.r, tx.s, tx.v.unwrap_or(U256::zero())),
-    };
-
-    let mut sig_bytes = Vec::with_capacity(65);
-    for i in (0..32).rev() {
-        sig_bytes.push(r.byte(i));
-    }
-    for i in (0..32).rev() {
-        sig_bytes.push(s.byte(i));
-    }
-    sig_bytes.push(v.byte(0));
-
-    Some(sig_bytes)
-}
-
-/// Helper function to extract fields from different ETH transaction types
-fn extract_tx_fields(signed_tx: &TransactionSigned) -> TransactionFields {
-    match signed_tx {
-        TransactionSigned::TransactionLegacySigned(tx) => {
-            let t = &tx.transaction_legacy_unsigned;
-            TransactionFields {
-                nonce: t.nonce,
-                to: t.to,
-                value: t.value,
-                gas: t.gas,
-                gas_price: t.gas_price,
-            }
-        }
-        TransactionSigned::Transaction2930Signed(tx) => {
-            let t = &tx.transaction_2930_unsigned;
-            TransactionFields {
-                nonce: t.nonce,
-                to: t.to,
-                value: t.value,
-                gas: t.gas,
-                gas_price: t.gas_price,
-            }
-        }
-        TransactionSigned::Transaction1559Signed(tx) => {
-            let t = &tx.transaction_1559_unsigned;
-            TransactionFields {
-                nonce: t.nonce,
-                to: t.to,
-                value: t.value,
-                gas: t.gas,
-                gas_price: t.max_fee_per_gas,
-            }
-        }
-        TransactionSigned::Transaction4844Signed(tx) => {
-            let t = &tx.transaction_4844_unsigned;
-            TransactionFields {
-                nonce: t.nonce,
-                to: Some(t.to),
-                value: t.value,
-                gas: t.gas,
-                gas_price: t.max_fee_per_gas,
-            }
-        }
-        TransactionSigned::Transaction7702Signed(tx) => {
-            let t = &tx.transaction_7702_unsigned;
-            TransactionFields {
-                nonce: t.nonce,
-                to: Some(t.to),
-                value: t.value,
-                gas: t.gas,
-                gas_price: t.max_fee_per_gas,
-            }
-        }
-    }
-}
-
-/// Helper function to extract transaction summary from extrinsic
-fn extract_tx_summary(
-    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
-) -> Option<(Address, u64, TxpoolInspectSummary)> {
-    let (payload, signed_tx) = decode_eth_transaction(tx_data)?;
-
-    let from = recover_sender_address(&payload, &signed_tx)?;
-    let sender = Address::from_slice(from.as_bytes());
-
-    let fields = extract_tx_fields(&signed_tx);
-
-    let to_addr = fields.to.map(|addr| Address::from_slice(addr.as_bytes()));
-    let value_u256 = U256::from_limbs(fields.value.0);
-    let gas_u64 = fields.gas.as_u64();
-    let gas_price_u128 = fields.gas_price.as_u128();
-    let nonce_u64 = fields.nonce.as_u64();
-
-    Some((
-        sender,
-        nonce_u64,
-        TxpoolInspectSummary {
-            to: to_addr,
-            value: value_u256,
-            gas: gas_u64,
-            gas_price: gas_price_u128,
-        },
-    ))
-}
-
-/// Helper function to extract full transaction info from extrinsic
-fn extract_tx_info(
-    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
-) -> Option<(Address, u64, TransactionInfo)> {
-    let (payload, signed_tx) = decode_eth_transaction(tx_data)?;
-
-    let eth_hash = keccak_256(&payload);
-    let eth_hash_h256 = H256::from_slice(&eth_hash);
-
-    let from = recover_sender_address(&payload, &signed_tx)?;
-    let sender = Address::from_slice(from.as_bytes());
-
-    let fields = extract_tx_fields(&signed_tx);
-    let nonce_u64 = fields.nonce.as_u64();
-
-    let tx_info = TransactionInfo {
-        hash: eth_hash_h256,
-        block_hash: H256::default(),
-        block_number: polkadot_sdk::sp_core::U256::zero(),
-        transaction_index: polkadot_sdk::sp_core::U256::zero(),
-        from,
-        transaction_signed: signed_tx,
-    };
-
-    Some((sender, nonce_u64, tx_info))
-}
-
-/// Helper function to extract sender address from extrinsic
-fn extract_sender(tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>) -> Option<Address> {
-    let (payload, signed_tx) = decode_eth_transaction(tx_data)?;
-
-    let from = recover_sender_address(&payload, &signed_tx)?;
-    let sender = Address::from_slice(from.as_bytes());
-
-    Some(sender)
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
@@ -1708,16 +1489,7 @@ async fn create_revive_rpc_client(
     let receipt_extractor = ReceiptExtractor::new_with_custom_address_recovery(
         api.clone(),
         None,
-        Arc::new(|signed_tx: &TransactionSigned| {
-            let sig = signed_tx.raw_signature()?;
-            if sig[..12] == [0; 12] && sig[32..64] == [0; 32] {
-                let mut res = [0; 20];
-                res.copy_from_slice(&sig[12..32]);
-                Ok(H160::from(res))
-            } else {
-                signed_tx.recover_eth_address()
-            }
-        }),
+        Arc::new(recover_sender_address),
     )
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
