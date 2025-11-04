@@ -1328,34 +1328,67 @@ Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 "#]]);
 });
 
-// Test gas metering cheatcodes in PVM mode
-forgetest!(gas_metering_pvm, |prj, cmd| {
+forgetest!(gas_metering_pvm_with_calls, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
     prj.insert_console();
     prj.add_source(
-        "GasMeteringPvm.t.sol",
+        "Worker.sol",
         r#"
-import "./test.sol";
-import "./Vm.sol";
-import {console} from "./console.sol";
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
 
-contract GasMeteringPvmTest is DSTest {
-    Vm constant vm = Vm(HEVM_ADDRESS);
+contract Worker {
+    uint256 public result;
     
-    function test_PauseGasMetering() public {
-        uint256 gasStart = gasleft();
+    function doWork() public returns (uint256) {
         uint256 sum = 0;
         for (uint256 i = 0; i < 100; i++) {
             sum += i;
         }
+        result = sum;
+        return sum;
+    }
+    
+    function expensiveWork() public returns (uint256) {
+        uint256 sum = 0;
+        for (uint256 i = 0; i < 1000; i++) {
+            sum += i;
+        }
+        result = sum;
+        return sum;
+    }
+}
+"#,
+    )
+    .unwrap();
+    prj.add_source(
+        "GasMeteringPvmTest.t.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+
+import "./test.sol";
+import "./Vm.sol";
+import {Worker} from "./Worker.sol";
+import {console} from "./console.sol";
+
+contract GasMeteringPvmTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+    Worker public worker;
+    
+    function setUp() public {
+        worker = new Worker();
+    }
+    
+    function test_PauseGasMeteringWithPvmCall() public {
+        uint256 gasStart = gasleft();
+        worker.doWork();
         uint256 gasUsedNormal = gasStart - gasleft();
         
         vm.pauseGasMetering();
         uint256 gasPausedStart = gasleft();
-        for (uint256 i = 0; i < 100; i++) {
-            sum += i;
-        }
+        worker.doWork();
         uint256 gasUsedPaused = gasPausedStart - gasleft();
         vm.resumeGasMetering();
         
@@ -1363,26 +1396,21 @@ contract GasMeteringPvmTest is DSTest {
         assertEq(gasUsedPaused, 0);
     }
     
-    function test_ResumeGasMetering() public {
+    function test_ResumeGasMeteringWithPvmCall() public {
         vm.pauseGasMetering();
+        worker.doWork();
         vm.resumeGasMetering();
         
         uint256 gasStart = gasleft();
-        uint256 sum = 0;
-        for (uint256 i = 0; i < 100; i++) {
-            sum += i;
-        }
+        worker.doWork();
         uint256 gasUsed = gasStart - gasleft();
         
         assertTrue(gasUsed > 0);
     }
     
-    function test_ResetGasMetering() public {
+    function test_ResetGasMeteringWithPvmCall() public {
         uint256 gasStart = gasleft();
-        uint256 sum = 0;
-        for (uint256 i = 0; i < 100; i++) {
-            sum += i;
-        }
+        worker.expensiveWork();
         uint256 gasAfterWork = gasleft();
         uint256 gasConsumed = gasStart - gasAfterWork;
         
@@ -1393,11 +1421,105 @@ contract GasMeteringPvmTest is DSTest {
         uint256 gasRecovered = gasAfterReset - gasAfterWork;
         assertTrue(gasRecovered > gasConsumed / 2);
     }
+    
+    function test_CreateDuringPausedMetering() public {
+        vm.pauseGasMetering();
+        uint256 gasStart = gasleft();
+        
+        Worker newWorker = new Worker();
+        newWorker.doWork();
+        
+        uint256 gasUsed = gasStart - gasleft();
+        vm.resumeGasMetering();
+        
+        assertEq(gasUsed, 0);
+    }
 }
 "#,
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
-    res.stderr_eq(str![""]);
+    let res = cmd.args(["test", "--resolc", "-vvvvv", "--polkadot"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 4 tests for src/GasMeteringPvmTest.t.sol:GasMeteringPvmTest
+[PASS] test_CreateDuringPausedMetering() ([GAS])
+Traces:
+  [15639150] GasMeteringPvmTest::setUp()
+    ├─ [15601660] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 5035 bytes of code
+    └─ ← [Stop]
+
+  [3204] GasMeteringPvmTest::test_CreateDuringPausedMetering()
+    ├─ [0] VM::pauseGasMetering()
+    │   └─ ← [Return]
+    ├─ [15601660] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 5035 bytes of code
+    ├─ [639065850] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::doWork()
+    │   └─ ← [Return] 4950
+    ├─ [0] VM::resumeGasMetering()
+    │   └─ ← [Return]
+    └─ ← [Stop]
+
+[PASS] test_PauseGasMeteringWithPvmCall() ([GAS])
+Traces:
+  [15639150] GasMeteringPvmTest::setUp()
+    ├─ [15601660] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 5035 bytes of code
+    └─ ← [Stop]
+
+  [639074514] GasMeteringPvmTest::test_PauseGasMeteringWithPvmCall()
+    ├─ [639065850] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::doWork()
+    │   └─ ← [Return] 4950
+    ├─ [0] VM::pauseGasMetering()
+    │   └─ ← [Return]
+    ├─ [0] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::doWork()
+    │   └─ ← [Return] 4950
+    ├─ [0] VM::resumeGasMetering()
+    │   └─ ← [Return]
+    └─ ← [Stop]
+
+[PASS] test_ResetGasMeteringWithPvmCall() ([GAS])
+Traces:
+  [15639150] GasMeteringPvmTest::setUp()
+    ├─ [15601660] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 5035 bytes of code
+    └─ ← [Stop]
+
+  [536] GasMeteringPvmTest::test_ResetGasMeteringWithPvmCall()
+    ├─ [0] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::expensiveWork()
+    │   └─ ← [Return] 499500 [4.995e5]
+    ├─ [0] VM::resetGasMetering()
+    │   └─ ← [Return]
+    └─ ← [Stop]
+
+[PASS] test_ResumeGasMeteringWithPvmCall() ([GAS])
+Traces:
+  [15639150] GasMeteringPvmTest::setUp()
+    ├─ [15601660] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 5035 bytes of code
+    └─ ← [Stop]
+
+  [639161970] GasMeteringPvmTest::test_ResumeGasMeteringWithPvmCall()
+    ├─ [0] VM::pauseGasMetering()
+    │   └─ ← [Return]
+    ├─ [639065850] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::doWork()
+    │   └─ ← [Return] 4950
+    ├─ [0] VM::resumeGasMetering()
+    │   └─ ← [Return]
+    ├─ [639157914] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::doWork()
+    │   └─ ← [Return] 4950
+    └─ ← [Stop]
+
+Suite result: ok. 4 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 4 tests passed, 0 failed, 0 skipped (4 total tests)
+
+"#]]);
 });
