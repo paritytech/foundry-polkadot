@@ -187,6 +187,12 @@ async fn test_txpool_inspect() {
     assert_eq!(inspect.pending.len(), 1);
     assert_eq!(inspect.queued.len(), 1);
 
+    // Get current block to verify gas_price >= base_fee_per_gas
+    let block_number = node.best_block_number().await;
+    let block_hash = node.block_hash_by_number(block_number).await.unwrap();
+    let block = node.get_block_by_hash(block_hash).await;
+    let base_fee = block.base_fee_per_gas.as_u128();
+
     let pending_txs = inspect.pending.get(&alith_addr).unwrap();
     assert_eq!(pending_txs.len(), 3);
 
@@ -195,7 +201,7 @@ async fn test_txpool_inspect() {
         assert_eq!(summary.to.unwrap(), recipient_addr);
         assert_eq!(summary.value, U256::from(1000 * (i + 1)));
         assert!(summary.gas > 0);
-        assert!(summary.gas_price > 0);
+        assert!(summary.gas_price >= base_fee);
     }
 
     let queued_txs = inspect.queued.get(&alith_addr).unwrap();
@@ -205,7 +211,7 @@ async fn test_txpool_inspect() {
     assert_eq!(summary.to.unwrap(), recipient_addr);
     assert_eq!(summary.value, U256::from(5000));
     assert!(summary.gas > 0);
-    assert!(summary.gas_price > 0);
+    assert!(summary.gas_price >= base_fee);
 }
 
 #[tokio::test(flavor = "multi_thread")]
