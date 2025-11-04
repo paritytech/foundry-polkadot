@@ -9,7 +9,7 @@ use anvil_polkadot::{
         self, ApiHandle,
         revive_conversions::{AlloyU256, ReviveAddress},
     },
-    config::{AnvilNodeConfig, SubstrateNodeConfig},
+    config::{AnvilNodeConfig, NATIVE_TO_ETH_RATIO, SubstrateNodeConfig},
     init_tracing,
     logging::LoggingManager,
     opts::SubstrateCli,
@@ -42,8 +42,8 @@ use tempfile::TempDir;
 
 use crate::abi::Multicall;
 
-pub const NATIVE_TO_ETH_RATIO: u128 = 1_000_000;
-pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
+pub const EXISTENTIAL_DEPOSIT: u128 =
+    substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO as u128;
 
 pub struct BlockWaitTimeout {
     pub block_number: u32,

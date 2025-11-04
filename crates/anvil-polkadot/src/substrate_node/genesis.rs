@@ -15,7 +15,7 @@ use polkadot_sdk::{
     sp_blockchain,
     sp_core::{H160, storage::Storage},
     sp_runtime::{
-        BuildStorage,
+        BuildStorage, FixedU128,
         traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
     },
 };
@@ -37,7 +37,7 @@ pub struct GenesisConfig {
     /// The initial number for the genesis block
     pub number: u32,
     /// The genesis header base fee
-    pub base_fee_per_gas: u64,
+    pub base_fee_per_gas: FixedU128,
     /// The genesis header gas limit.
     pub gas_limit: Option<u128>,
     /// Signer accounts from account_generator

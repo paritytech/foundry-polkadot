@@ -8,6 +8,7 @@ use crate::{
         },
         signer::DevSigner,
     },
+    config::NATIVE_TO_ETH_RATIO,
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
@@ -94,6 +95,7 @@ impl ApiServer {
         snapshot_manager: SnapshotManager,
         impersonation_manager: ImpersonationManager,
         signers: Vec<Keypair>,
+        base_fee_per_gas: FixedU128,
     ) -> Result<Self> {
         let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
         let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
@@ -107,14 +109,25 @@ impl ApiServer {
             substrate_service.spawn_handle.clone(),
         )
         .await?;
+
+        // Set up the genesis base_fee_per_gas.
+        let backend = BackendWithOverlay::new(
+            substrate_service.backend.clone(),
+            substrate_service.storage_overrides.clone(),
+        );
+        let genesis_hash = backend.blockchain().info().best_hash;
+        backend.inject_next_fee_multiplier(
+            genesis_hash,
+            // Here we expect the base fee in 1e18 (ETH) denomination, so we need to transform
+            // it to 1e12 (DOT) denomination.
+            FixedU128::from_rational(base_fee_per_gas.into_inner(), NATIVE_TO_ETH_RATIO.into()),
+        );
+
         Ok(Self {
             block_provider,
             req_receiver,
             logging_manager,
-            backend: BackendWithOverlay::new(
-                substrate_service.backend.clone(),
-                substrate_service.storage_overrides.clone(),
-            ),
+            backend,
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
@@ -139,9 +152,11 @@ impl ApiServer {
             //------- Gas -----------
             EthRequest::SetNextBlockBaseFeePerGas(base_fee) => {
                 let latest_block = self.latest_block();
+                // We inject in substrate storage an 1e18 denominated value after transforming it
+                // to a 1e12.
                 self.backend.inject_next_fee_multiplier(
                     latest_block,
-                    FixedU128::from_inner(base_fee.to::<u128>()),
+                    FixedU128::from_rational(base_fee.to::<u128>(), NATIVE_TO_ETH_RATIO.into()),
                 );
                 Ok(()).to_rpc_result()
             }
@@ -664,7 +679,6 @@ impl ApiServer {
         };
 
         let latest_block_hash = self.latest_block();
-        let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block_hash.as_ref())));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {

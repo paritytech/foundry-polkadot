@@ -18,6 +18,7 @@ use polkadot_sdk::{
         RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN,
     },
     sc_service,
+    sp_runtime::FixedU128,
 };
 use rand_08::thread_rng;
 use serde_json::{Value, json};
@@ -49,7 +50,12 @@ pub const DEFAULT_IPC_ENDPOINT: &str =
     if cfg!(unix) { "/tmp/anvil.ipc" } else { r"\\.\pipe\anvil.ipc" };
 
 /// Initial base fee for EIP-1559 blocks.
-pub const INITIAL_BASE_FEE: u64 = 1_000_000_000;
+/// This is also the initial base fee set by assethub
+/// runtimes.
+pub const INITIAL_BASE_FEE: FixedU128 = FixedU128::from_u32(1);
+
+/// DOT precision (1e12) to ETH precision (1e18) ratio.
+pub const NATIVE_TO_ETH_RATIO: u128 = 1_000_000;
 
 /// Initial default gas price for the first block
 pub const INITIAL_GAS_PRICE: u128 = 1_875_000_000;
@@ -275,7 +281,7 @@ pub struct AnvilNodeConfig {
     /// Default gas price for all txs
     pub gas_price: Option<u128>,
     /// Default base fee
-    pub base_fee: Option<u64>,
+    pub base_fee: Option<FixedU128>,
     /// If set to `true`, disables the enforcement of a minimum suggested priority fee
     pub disable_min_priority_fee: bool,
     /// Signer accounts that will be initialised with `genesis_balance` in the genesis block
@@ -400,7 +406,7 @@ Base Fee
 
 {}
 "#,
-            self.get_base_fee().green()
+            self.get_base_fee().clone().into_inner().green()
         );
 
         let _ = write!(
@@ -477,7 +483,7 @@ Genesis Number
           "available_accounts": available_accounts,
           "private_keys": private_keys,
           "wallet": wallet_description,
-          "base_fee": format!("{}", self.get_base_fee()),
+          "base_fee": format!("{}", self.get_base_fee().clone().into_inner()),
           "gas_price": format!("{}", self.get_gas_price()),
           "gas_limit": gas_limit,
           "genesis_timestamp": format!("{}", self.get_genesis_timestamp()),
@@ -559,9 +565,13 @@ impl AnvilNodeConfig {
         self
     }
     /// Returns the base fee to use
-    pub fn get_base_fee(&self) -> u64 {
+    pub fn get_base_fee(&self) -> FixedU128 {
         self.base_fee
-            .or_else(|| self.genesis.as_ref().and_then(|g| g.base_fee_per_gas.map(|g| g as u64)))
+            .or_else(|| {
+                self.genesis
+                    .as_ref()
+                    .and_then(|g| g.base_fee_per_gas.map(|g| FixedU128::from_inner(g)))
+            })
             .unwrap_or(INITIAL_BASE_FEE)
     }
 
@@ -630,7 +640,7 @@ impl AnvilNodeConfig {
     /// Sets the base fee
     #[must_use]
     pub fn with_base_fee(mut self, base_fee: Option<u64>) -> Self {
-        self.base_fee = base_fee;
+        self.base_fee = base_fee.map(|bf| FixedU128::from_inner(bf.into()));
         self
     }
 
