@@ -10,7 +10,10 @@ use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{BlockId, TransactionInput, TransactionRequest};
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
-use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
+use anvil_polkadot::{
+    api_server::revive_conversions::ReviveAddress,
+    config::{AnvilNodeConfig, SubstrateNodeConfig},
+};
 use polkadot_sdk::pallet_revive::{self, evm::Account};
 use std::{collections::BTreeMap, path::PathBuf, str::FromStr, time::Duration};
 use subxt::utils::H160;
@@ -194,17 +197,7 @@ async fn test_genesis_alloc() {
     assert_eq!(contract_code_result, runtime_bytecode, "Genesis contract code should match");
 
     // Test contract storage
-    let result = node
-        .eth_rpc(EthRequest::EthGetStorageAt(
-            Address::from(test_contract_bytes),
-            U256::from(0),
-            None,
-        ))
-        .await
-        .unwrap();
-    let hex_string = unwrap_response::<String>(result).unwrap();
-    let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
-    let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
+    let stored_value = node.get_storage_at(U256::from(0), test_contract_address).await;
     assert_eq!(stored_value, 511, "Storage slot 0 of genesis contract should contain value 511");
 
     // Test contract functionality by calling getValue()
@@ -374,17 +367,12 @@ async fn test_genesis_json() {
         contract_account_code_actual, contract_account_code,
         "Contract account code should match the one in genesis.json"
     );
-    let result = node
-        .eth_rpc(EthRequest::EthGetStorageAt(
-            contract_account_addr,
+    let stored_value = node
+        .get_storage_at(
             contract_account_storage_slot,
-            None,
-        ))
-        .await
-        .unwrap();
-    let hex_string = unwrap_response::<String>(result).unwrap();
-    let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
-    let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
+            ReviveAddress::from(contract_account_addr).inner(),
+        )
+        .await;
     assert_eq!(
         stored_value, contract_account_storage_value,
         "Contract account storage slot 0 should match the one in genesis.json"
