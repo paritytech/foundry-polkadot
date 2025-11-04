@@ -26,6 +26,8 @@ pub enum BackendError {
     MissingTotalIssuance,
     #[error("Could not find chain id in the state")]
     MissingChainId,
+    #[error("Could not find aura authorities in the state")]
+    MissingAuraAuthorities,
     #[error("Could not find timestamp in the state")]
     MissingTimestamp,
     #[error("Unable to decode total issuance {0}")]
@@ -42,6 +44,8 @@ pub enum BackendError {
     DecodeCodeInfo(codec::Error),
     #[error("Unable to decode timestamp: {0}")]
     DecodeTimestamp(codec::Error),
+    #[error("Unable to decode aura authorities: {0}")]
+    DecodeAuraAuthorities(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -73,6 +77,20 @@ impl BackendWithOverlay {
 
         let value = self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingChainId)?;
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeChainId)
+    }
+
+    pub fn read_aura_authority(&self, hash: Hash) -> Result<AccountId> {
+        let key = well_known_keys::AURA_AUTHORITIES;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingAuraAuthorities)?;
+        let authorities = <Vec<[u8; 32]>>::decode(&mut &value[..])
+            .map_err(BackendError::DecodeAuraAuthorities)?;
+        // Read the first authority, since that's what we modify via RPC, or at genesis,
+        // and instruct the runtime to pick via the consensus data provider, whenever it
+        // needs the block author.
+        let authority = *authorities.first().ok_or(BackendError::MissingAuraAuthorities)?;
+        Ok(authority.into())
     }
 
     pub fn read_total_issuance(&self, hash: Hash) -> Result<Balance> {
@@ -131,9 +149,19 @@ impl BackendWithOverlay {
         overrides.set_system_account_info(at, account_id, value);
     }
 
+    pub fn inject_timestamp(&self, at: Hash, timestamp: u64) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_timestamp(at, timestamp);
+    }
+
     pub fn inject_chain_id(&self, at: Hash, chain_id: u64) {
         let mut overrides = self.overrides.lock();
         overrides.set_chain_id(at, chain_id);
+    }
+
+    pub fn inject_aura_authority(&self, at: Hash, aura_authority: AccountId) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_coinbase(at, aura_authority);
     }
 
     pub fn inject_total_issuance(&self, at: Hash, value: Balance) {
@@ -218,7 +246,16 @@ impl StorageOverrides {
         self.add(latest_block, changeset);
     }
 
-    #[allow(unused)]
+    fn set_coinbase(&mut self, latest_block: Hash, aura_authority: AccountId) {
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(
+            well_known_keys::AURA_AUTHORITIES.to_vec(),
+            Some(vec![aura_authority].encode()),
+        );
+
+        self.add(latest_block, changeset);
+    }
+
     fn set_timestamp(&mut self, latest_block: Hash, timestamp: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(timestamp.encode()));

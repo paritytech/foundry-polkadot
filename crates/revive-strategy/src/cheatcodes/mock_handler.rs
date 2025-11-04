@@ -25,7 +25,7 @@ use revm::{context::JournalTr, interpreter::InstructionResult};
 #[derive(Clone)]
 pub(crate) struct MockHandlerImpl {
     inner: Rc<RefCell<MockHandlerInner<Runtime>>>,
-    pub prank_enabled: bool,
+    pub _prank_enabled: bool,
 }
 
 impl MockHandlerImpl {
@@ -39,7 +39,7 @@ impl MockHandlerImpl {
     ) -> Self {
         let (inject_env, prank_enabled) =
             MockHandlerInner::new(ecx, caller, target_address, callee, state);
-        Self { inner: Rc::new(RefCell::new(inject_env)), prank_enabled }
+        Self { inner: Rc::new(RefCell::new(inject_env)), _prank_enabled: prank_enabled }
     }
 
     /// Updates the given Cheatcodes state with the current mock state.
@@ -54,15 +54,13 @@ impl MockHandlerImpl {
         // Fuzzed prank addresses have no balance, so they won't exist in revive, and
         // calls will fail, this is not a problem when running in REVM.
         // TODO: Figure it out why this is still needed.
-        if self.prank_enabled {
-            let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
-            if balance == 0.into() {
-                Pallet::<Runtime>::set_evm_balance(
-                    &H160::from_slice(account.as_slice()),
-                    u128::MAX.into(),
-                )
-                .expect("Could not fund pranked account");
-            }
+        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
+        if balance == 0.into() {
+            Pallet::<Runtime>::set_evm_balance(
+                &H160::from_slice(account.as_slice()),
+                u128::MAX.into(),
+            )
+            .expect("Could not fund pranked account");
         }
     }
 }
