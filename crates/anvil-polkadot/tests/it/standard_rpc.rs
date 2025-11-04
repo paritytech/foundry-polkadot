@@ -599,6 +599,16 @@ async fn test_get_storage() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
     let alith = Account::from(subxt_signer::eth::dev::alith());
 
+    // Test retrieving the storage of an EOA account (alith)
+    let stored_value = node.get_storage_at(U256::from(0), alith.address()).await;
+    assert_eq!(stored_value, 0);
+
+    // Test retrieving the storage of a non-existant account.
+    let random_addr = Address::random();
+    let stored_value =
+        node.get_storage_at(U256::from(0), ReviveAddress::from(random_addr).inner()).await;
+    assert_eq!(stored_value, 0);
+
     let contract_code = get_contract_code("SimpleStorage");
     let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
     tokio::time::sleep(Duration::from_millis(400)).await;
