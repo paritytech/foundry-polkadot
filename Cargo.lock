@@ -1224,6 +1224,7 @@ dependencies = [
  "parking_lot 0.12.4",
  "polkadot-sdk 0.1.0 (git+https://github.com/paritytech/polkadot-sdk.git?branch=pg%2Ffix-gas-used)",
  "rand 0.8.5",
+ "revm",
  "rstest 0.26.1",
  "secp256k1 0.28.2",
  "serde",
