@@ -1017,6 +1017,7 @@ impl ApiServer {
         }
 
         let trie_id = match self.backend.read_revive_account_info(latest_block, address)? {
+            // If the account doesn't exist, create one.
             None => {
                 let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
                 let trie_id = contract_info.trie_id.clone();
@@ -1032,6 +1033,7 @@ impl ApiServer {
 
                 trie_id
             }
+            // If the account is not already a contract account, make it one.
             Some(ReviveAccountInfo { account_type: AccountType::EOA, dust }) => {
                 let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
                 let trie_id = contract_info.trie_id.clone();

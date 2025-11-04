@@ -635,7 +635,6 @@ async fn test_set_storage() {
         assert_eq!(stored_value, 0);
 
         // Set a new value for the slot 0.
-
         unwrap_response::<()>(
             node.eth_rpc(EthRequest::SetStorageAt(
                 Address::from(ReviveAddress::new(contract_address)),
