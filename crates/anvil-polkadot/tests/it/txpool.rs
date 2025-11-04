@@ -6,10 +6,10 @@ use alloy_rpc_types::{
 };
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::revive_conversions::ReviveAddress,
+    api_server::{revive_conversions::ReviveAddress, txpool_helpers::TxpoolTransactionInfo},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
-use polkadot_sdk::pallet_revive::evm::{Account, TransactionInfo};
+use polkadot_sdk::pallet_revive::evm::Account;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_txpool_status() {
@@ -216,7 +216,7 @@ async fn test_txpool_content() {
     let alith_addr = Address::from(ReviveAddress::new(alith.address()));
     let recipient_addr = Address::repeat_byte(0x42);
 
-    let content: TxpoolContent<TransactionInfo> =
+    let content: TxpoolContent<TxpoolTransactionInfo> =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
     assert!(content.pending.is_empty());
     assert!(content.queued.is_empty());
@@ -239,7 +239,7 @@ async fn test_txpool_content() {
         .nonce(5);
     let queued_hash = node.send_transaction(tx_future, None).await.unwrap();
 
-    let content: TxpoolContent<TransactionInfo> =
+    let content: TxpoolContent<TxpoolTransactionInfo> =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
 
     assert_eq!(content.pending.len(), 1);
@@ -321,7 +321,7 @@ async fn test_remove_pool_transactions() {
     assert_eq!(status.queued, 0);
 
     // Verify only Baltathar's transactions remain
-    let content: TxpoolContent<TransactionInfo> =
+    let content: TxpoolContent<TxpoolTransactionInfo> =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
 
     assert_eq!(content.pending.len(), 1);
@@ -384,7 +384,7 @@ async fn test_txpool_with_impersonated_transactions() {
     assert_eq!(impersonated_txs.len(), 3);
 
     // Test txpool_content (uses extract_tx_info with impersonation support)
-    let content: TxpoolContent<TransactionInfo> =
+    let content: TxpoolContent<TxpoolTransactionInfo> =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
     assert_eq!(content.pending.len(), 1);
 
