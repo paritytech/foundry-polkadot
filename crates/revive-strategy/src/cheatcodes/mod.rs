@@ -878,7 +878,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .journaled_state
             .database
             .get_test_contract_address()
-            .map(|addr| call.bytecode_address == addr)
+            .map(|addr| call.bytecode_address == addr || call.target_address == addr)
             .unwrap_or_default()
         {
             tracing::info!(
