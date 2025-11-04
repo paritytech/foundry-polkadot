@@ -9,12 +9,13 @@ use crate::{
         signer::DevSigner,
         txpool_helpers::{
             TxpoolTransactionInfo, extract_sender, extract_tx_info, extract_tx_summary,
-            recover_sender_address, transaction_matches_eth_hash,
+            transaction_matches_eth_hash,
         },
     },
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
+        host::recover_maybe_impersonated_address,
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
@@ -1489,7 +1490,7 @@ async fn create_revive_rpc_client(
     let receipt_extractor = ReceiptExtractor::new_with_custom_address_recovery(
         api.clone(),
         None,
-        Arc::new(recover_sender_address),
+        Arc::new(recover_maybe_impersonated_address),
     )
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;

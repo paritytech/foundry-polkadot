@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use substrate_runtime::{RuntimeCall, UncheckedExtrinsic};
 
-use crate::substrate_node::host::is_impersonated;
+use crate::substrate_node::host::recover_maybe_impersonated_address;
 
 const MAX_EXTRINSIC_DEPTH: u32 = 256;
 
@@ -72,18 +72,6 @@ pub(super) struct TransactionFields {
     pub value: sp_core::U256,
     pub gas: sp_core::U256,
     pub gas_price: sp_core::U256,
-}
-
-/// Recover sender address from signed transaction as Substrate H160 type
-pub fn recover_sender_address(signed_tx: &TransactionSigned) -> Result<sp_core::H160, ()> {
-    let sig = signed_tx.raw_signature()?;
-    if is_impersonated(&sig) {
-        let mut res = [0; 20];
-        res.copy_from_slice(&sig[12..32]);
-        Ok(sp_core::H160::from(res))
-    } else {
-        signed_tx.recover_eth_address()
-    }
 }
 
 /// Extract fields from ETH transaction
@@ -148,7 +136,7 @@ pub(super) fn extract_tx_summary(
 ) -> Option<(Address, u64, TxpoolInspectSummary)> {
     let (_payload, signed_tx) = decode_eth_transaction(tx_data)?;
 
-    let from = recover_sender_address(&signed_tx).ok()?;
+    let from = recover_maybe_impersonated_address(&signed_tx).ok()?;
     let sender = Address::from_slice(from.as_bytes());
 
     let fields = extract_tx_fields(&signed_tx);
@@ -180,7 +168,7 @@ pub(super) fn extract_tx_info(
     let eth_hash = keccak256(&payload);
     let eth_hash_h256 = H256::from_slice(eth_hash.as_ref());
 
-    let from = recover_sender_address(&signed_tx).ok()?;
+    let from = recover_maybe_impersonated_address(&signed_tx).ok()?;
     let sender = Address::from_slice(from.as_bytes());
 
     let fields = extract_tx_fields(&signed_tx);
@@ -205,7 +193,7 @@ pub(super) fn extract_sender(
 ) -> Option<Address> {
     let (_payload, signed_tx) = decode_eth_transaction(tx_data)?;
 
-    let from = recover_sender_address(&signed_tx).ok()?;
+    let from = recover_maybe_impersonated_address(&signed_tx).ok()?;
     let sender = Address::from_slice(from.as_bytes());
 
     Some(sender)

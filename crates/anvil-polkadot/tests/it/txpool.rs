@@ -6,7 +6,7 @@ use alloy_rpc_types::{
 };
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::{revive_conversions::ReviveAddress, txpool_helpers::TxpoolTransactionInfo},
+    api_server::{TxpoolTransactionInfo, revive_conversions::ReviveAddress},
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
 use polkadot_sdk::pallet_revive::evm::Account;
