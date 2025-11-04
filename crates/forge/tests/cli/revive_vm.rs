@@ -1332,7 +1332,7 @@ Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 forgetest!(gas_metering_pvm, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
-    
+
     prj.add_test(
         "GasMeteringPvm.t.sol",
         r#"
@@ -1396,7 +1396,7 @@ contract GasMeteringPvmTest is DSTest {
 "#,
     )
     .unwrap();
-    
+
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]);
 });

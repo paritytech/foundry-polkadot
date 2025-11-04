@@ -15,14 +15,14 @@ use revive_strategy::{PvmCheatcodeInspectorStrategyBuilder, ReviveRuntimeMode};
 #[test]
 fn evm_pause_gas_metering_sets_flag() {
     let state = Cheatcodes::default();
-    
+
     assert!(!state.gas_metering.paused, "Gas metering should not be paused initially");
 }
 
 #[test]
 fn evm_gas_metering_initial_state() {
     let state = Cheatcodes::default();
-    
+
     assert!(!state.gas_metering.paused);
     assert!(!state.gas_metering.touched);
     assert!(!state.gas_metering.reset);
@@ -33,26 +33,26 @@ fn evm_gas_metering_initial_state() {
 #[test]
 fn pvm_cheatcodes_state_initializes() {
     use foundry_cheatcodes::CheatcodeInspectorStrategy;
-    
+
     let mut state = Cheatcodes::default();
     state.strategy = CheatcodeInspectorStrategy::new_pvm(
         DualCompiledContracts::default(),
         ReviveRuntimeMode::Pvm,
     );
-    
+
     assert!(!state.gas_metering.paused, "Gas metering should not be paused initially in PVM");
 }
 
 #[test]
 fn pvm_gas_metering_state_structure() {
     use foundry_cheatcodes::CheatcodeInspectorStrategy;
-    
+
     let mut state = Cheatcodes::default();
     state.strategy = CheatcodeInspectorStrategy::new_pvm(
         DualCompiledContracts::default(),
         ReviveRuntimeMode::Pvm,
     );
-    
+
     assert!(!state.gas_metering.paused);
     assert!(!state.gas_metering.touched);
     assert!(!state.gas_metering.reset);
@@ -62,19 +62,17 @@ fn pvm_gas_metering_state_structure() {
 #[test]
 fn gas_metering_is_independent_of_mode() {
     use foundry_cheatcodes::CheatcodeInspectorStrategy;
-    
+
     let evm_state = Cheatcodes::default();
-    
+
     let mut pvm_state = Cheatcodes::default();
     pvm_state.strategy = CheatcodeInspectorStrategy::new_pvm(
         DualCompiledContracts::default(),
         ReviveRuntimeMode::Pvm,
     );
-    
+
     assert_eq!(
-        evm_state.gas_metering.paused,
-        pvm_state.gas_metering.paused,
+        evm_state.gas_metering.paused, pvm_state.gas_metering.paused,
         "Gas metering state should be identical in EVM and PVM modes initially"
     );
 }
-
