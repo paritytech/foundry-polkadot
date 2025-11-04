@@ -53,7 +53,7 @@ jobs:
           force_orphan: true
 
   doctest:
-    runs-on: ubuntu-latest
+    runs-on: parity-large-new
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
