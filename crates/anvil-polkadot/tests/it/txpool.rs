@@ -1,8 +1,8 @@
-use crate::utils::{TestNode, unwrap_response};
+use crate::utils::{unwrap_response, TestNode};
 use alloy_primitives::{Address, B256, U256};
 use alloy_rpc_types::{
-    TransactionRequest,
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
+    TransactionRequest,
 };
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
@@ -195,6 +195,7 @@ async fn test_txpool_inspect() {
         assert_eq!(summary.to.unwrap(), recipient_addr);
         assert_eq!(summary.value, U256::from(1000 * (i + 1)));
         assert!(summary.gas > 0);
+        assert!(summary.gas_price > 0);
     }
 
     let queued_txs = inspect.queued.get(&alith_addr).unwrap();
@@ -204,6 +205,7 @@ async fn test_txpool_inspect() {
     assert_eq!(summary.to.unwrap(), recipient_addr);
     assert_eq!(summary.value, U256::from(5000));
     assert!(summary.gas > 0);
+    assert!(summary.gas_price > 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
