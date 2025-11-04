@@ -472,53 +472,53 @@ Compiler run successful!
 Ran 2 tests for src/CounterTest.t.sol:CounterTest
 [PASS] test_Increment() ([GAS])
 Traces:
-  [765075403] CounterTest::setUp()
-    ├─ [262294819] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 7404 bytes of code
+  [762904767] CounterTest::setUp()
+    ├─ [260881139] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 7349 bytes of code
     ├─ [0] VM::expectEmit()
     │   └─ ← [Return]
     ├─ emit SetNumber(result: 5)
-    ├─ [385250826] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setNumber(5)
+    ├─ [384529579] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setNumber(5)
     │   ├─ emit SetNumber(result: 5)
     │   └─ ← [Stop]
-    ├─ [117489011] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
+    ├─ [117453302] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
     │   └─ ← [Return] 5
     └─ ← [Stop]
 
-  [737726031] CounterTest::test_Increment()
-    ├─ [117489011] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
+  [736989721] CounterTest::test_Increment()
+    ├─ [117453302] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
     │   └─ ← [Return] 5
-    ├─ [385250826] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setNumber(55)
+    ├─ [384621643] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setNumber(55)
     │   ├─ emit SetNumber(result: 55)
     │   └─ ← [Stop]
-    ├─ [117489011] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
+    ├─ [117453302] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
     │   └─ ← [Return] 55
     ├─ [0] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::increment()
     │   ├─ emit Increment(result: 56)
     │   └─ ← [Stop]
-    ├─ [117489011] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
+    ├─ [117453302] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
     │   └─ ← [Return] 56
     └─ ← [Stop]
 
 [PASS] test_expectRevert() ([GAS])
 Traces:
-  [765075403] CounterTest::setUp()
-    ├─ [262294819] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 7404 bytes of code
+  [762904767] CounterTest::setUp()
+    ├─ [260881139] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 7349 bytes of code
     ├─ [0] VM::expectEmit()
     │   └─ ← [Return]
     ├─ emit SetNumber(result: 5)
-    ├─ [385250826] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setNumber(5)
+    ├─ [384529579] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setNumber(5)
     │   ├─ emit SetNumber(result: 5)
     │   └─ ← [Stop]
-    ├─ [117489011] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
+    ├─ [117453302] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::number() [staticcall]
     │   └─ ← [Return] 5
     └─ ← [Stop]
 
-  [56930227] CounterTest::test_expectRevert()
+  [57445601] CounterTest::test_expectRevert()
     ├─ [0] VM::expectRevert(custom error 0xf28dceb3: 0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000006456941a80000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000076661696c7572650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)
     │   └─ ← [Return]
-    ├─ [56921388] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::failed_call() [staticcall]
+    ├─ [57436762] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::failed_call() [staticcall]
     │   └─ ← [Revert] Revert("failure")
     └─ ← [Stop]
 
@@ -654,14 +654,14 @@ Compiler run successful!
 Ran 2 tests for src/Test.t.sol:RecordTest
 [PASS] testRecordAccess() ([GAS])
 Traces:
-  [961089406] RecordTest::testRecordAccess()
-    ├─ [16788608] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 4095 bytes of code
-    ├─ [16788608] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] 2182 bytes of code
+  [957517995] RecordTest::testRecordAccess()
+    ├─ [15686442] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 4043 bytes of code
+    ├─ [15686442] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 2137 bytes of code
     ├─ [0] VM::record()
     │   └─ ← [Return]
-    ├─ [927440089] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::record(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
+    ├─ [926073010] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::record(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
     │   ├─ [0] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record()
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
@@ -673,14 +673,14 @@ Traces:
 
 [PASS] testStopRecordAccess() ([GAS])
 Traces:
-  [961093272] RecordTest::testStopRecordAccess()
-    ├─ [16788608] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 4095 bytes of code
-    ├─ [16788608] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] 2182 bytes of code
+  [957521861] RecordTest::testStopRecordAccess()
+    ├─ [15686442] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 4043 bytes of code
+    ├─ [15686442] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 2137 bytes of code
     ├─ [0] VM::record()
     │   └─ ← [Return]
-    ├─ [927440089] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::record(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
+    ├─ [926073010] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::record(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
     │   ├─ [0] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record()
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
@@ -971,18 +971,18 @@ Compiler run successful!
 Ran 7 tests for src/Test.t.sol:RecordLogsTest
 [PASS] testEmitRecordEmit() ([GAS])
 Traces:
-  [16868742] RecordLogsTest::setUp()
-    ├─ [16830999] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 12583 bytes of code
+  [15766576] RecordLogsTest::setUp()
+    ├─ [15728833] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 12544 bytes of code
     └─ ← [Stop]
 
-  [357757177] RecordLogsTest::testEmitRecordEmit()
-    ├─ [183812741] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 2, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
+  [359596403] RecordLogsTest::testEmitRecordEmit()
+    ├─ [184732354] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 2, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
     │   ├─ emit LogTopic12(topic1: 1, topic2: 2, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
     │   └─ ← [Stop]
     ├─ [0] VM::recordLogs()
     │   └─ ← [Return]
-    ├─ [173888857] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(3, 0x2e38edeff9493e0004540e975027a429)
+    ├─ [174808470] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(3, 0x2e38edeff9493e0004540e975027a429)
     │   ├─ emit LogTopic1(topic1: 3, data: 0x2e38edeff9493e0004540e975027a429)
     │   └─ ← [Stop]
     ├─ [0] VM::getRecordedLogs()
@@ -993,13 +993,13 @@ Traces:
 
 [PASS] testRecordOffGetsNothing() ([GAS])
 Traces:
-  [16868742] RecordLogsTest::setUp()
-    ├─ [16830999] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 12583 bytes of code
+  [15766576] RecordLogsTest::setUp()
+    ├─ [15728833] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 12544 bytes of code
     └─ ← [Stop]
 
-  [202674284] RecordLogsTest::testRecordOffGetsNothing()
-    ├─ [202625294] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
+  [203593897] RecordLogsTest::testRecordOffGetsNothing()
+    ├─ [203544907] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
     │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
     │   └─ ← [Stop]
     ├─ [0] VM::getRecordedLogs()
@@ -1010,20 +1010,20 @@ Traces:
 
 [PASS] testRecordOnEmitDifferentDepths() ([GAS])
 Traces:
-  [16868742] RecordLogsTest::setUp()
-    ├─ [16830999] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 12583 bytes of code
+  [15766576] RecordLogsTest::setUp()
+    ├─ [15728833] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 12544 bytes of code
     └─ ← [Stop]
 
-  [999237291] RecordLogsTest::testRecordOnEmitDifferentDepths()
+  [997770019] RecordLogsTest::testRecordOnEmitDifferentDepths()
     ├─ [0] VM::recordLogs()
     │   └─ ← [Return]
     ├─ emit LogTopic(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
-    ├─ [180758801] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa)
+    ├─ [181678414] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa)
     │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
     │   └─ ← [Stop]
-    ├─ [818371229] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] 10554 bytes of code
+    ├─ [815984344] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 10517 bytes of code
     ├─ [0] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
     │   ├─ [0] 0x104fBc016F4bb334D775a19E8A6510109AC63E00::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
     │   │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
@@ -1037,9 +1037,9 @@ Traces:
 
 [PASS] testRecordOnNoLogs() ([GAS])
 Traces:
-  [16868742] RecordLogsTest::setUp()
-    ├─ [16830999] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 12583 bytes of code
+  [15766576] RecordLogsTest::setUp()
+    ├─ [15728833] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 12544 bytes of code
     └─ ← [Stop]
 
   [4118] RecordLogsTest::testRecordOnNoLogs()
@@ -1051,15 +1051,15 @@ Traces:
 
 [PASS] testRecordOnSingleLog() ([GAS])
 Traces:
-  [16868742] RecordLogsTest::setUp()
-    ├─ [16830999] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 12583 bytes of code
+  [15766576] RecordLogsTest::setUp()
+    ├─ [15728833] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 12544 bytes of code
     └─ ← [Stop]
 
-  [187093023] RecordLogsTest::testRecordOnSingleLog()
+  [188012636] RecordLogsTest::testRecordOnSingleLog()
     ├─ [0] VM::recordLogs()
     │   └─ ← [Return]
-    ├─ [187077066] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 2, 3, 0x4576656e74204461746120696e20537472696e67)
+    ├─ [187996679] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 2, 3, 0x4576656e74204461746120696e20537472696e67)
     │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x4576656e74204461746120696e20537472696e67)
     │   └─ ← [Stop]
     ├─ [0] VM::getRecordedLogs()
@@ -1068,15 +1068,15 @@ Traces:
 
 [PASS] testRecordOnSingleLogTopic0() ([GAS])
 Traces:
-  [16868742] RecordLogsTest::setUp()
-    ├─ [16830999] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 12583 bytes of code
+  [15766576] RecordLogsTest::setUp()
+    ├─ [15728833] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 12544 bytes of code
     └─ ← [Stop]
 
-  [184656340] RecordLogsTest::testRecordOnSingleLogTopic0()
+  [185575953] RecordLogsTest::testRecordOnSingleLogTopic0()
     ├─ [0] VM::recordLogs()
     │   └─ ← [Return]
-    ├─ [184603101] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
+    ├─ [185522714] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
     │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
     │   └─ ← [Stop]
     ├─ [0] VM::getRecordedLogs()
@@ -1087,33 +1087,33 @@ Traces:
 
 [PASS] testRecordsConsumednAsRead() ([GAS])
 Traces:
-  [16868742] RecordLogsTest::setUp()
-    ├─ [16830999] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 12583 bytes of code
+  [15766576] RecordLogsTest::setUp()
+    ├─ [15728833] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 12544 bytes of code
     └─ ← [Stop]
 
-  [903065419] RecordLogsTest::testRecordsConsumednAsRead()
-    ├─ [173888857] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 0x43a26051362b8040b289abe93334a5e3)
+  [907663484] RecordLogsTest::testRecordsConsumednAsRead()
+    ├─ [174808470] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(1, 0x43a26051362b8040b289abe93334a5e3)
     │   ├─ emit LogTopic1(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
     │   └─ ← [Stop]
     ├─ [0] VM::recordLogs()
     │   └─ ← [Return]
     ├─ [0] VM::getRecordedLogs()
     │   └─ ← [Return] []
-    ├─ [181776781] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    ├─ [182696394] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
     │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
     │   └─ ← [Stop]
     ├─ [0] VM::getRecordedLogs()
     │   └─ ← [Return] [([0x7af92d5e3102a27d908bb1859fdef71b723f3c438e5d84f3af49dab68e18dc6d, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001843a26051362b8040b289abe93334a5e3662751aa691185ae0000000000000000, 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC)]
-    ├─ [187077066] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa)
+    ├─ [187996679] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa)
     │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
     │   └─ ← [Stop]
-    ├─ [172108813] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
+    ├─ [173028426] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
     │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
     │   └─ ← [Stop]
     ├─ [0] VM::getRecordedLogs()
     │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000004, 0x0000000000000000000000000000000000000000000000000000000000000005, 0x0000000000000000000000000000000000000000000000000000000000000006], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001443a26051362b8040b289abe93334a5e3662751aa000000000000000000000000, 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC), ([0x0a28c6fad56bcbad1788721e440963b3b762934a3134924733eaf8622cb44279], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002043a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350, 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC)]
-    ├─ [188095046] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(7, 8, 9, 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
+    ├─ [189014659] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::emitEvent(7, 8, 9, 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
     │   ├─ emit LogTopic123(topic1: 7, topic2: 8, topic3: 9, data: 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
     │   └─ ← [Stop]
     ├─ [0] VM::getRecordedLogs()
@@ -1267,17 +1267,17 @@ Compiler run successful!
 Ran 3 tests for src/Test.t.sol:StateDiffTest
 [PASS] testCallProxyaccesses() ([GAS])
 Traces:
-  [585251161] StateDiffTest::setUp()
-    ├─ [292049387] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 5531 bytes of code
-    ├─ [293109162] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] 6405 bytes of code
+  [583131611] StateDiffTest::setUp()
+    ├─ [290989612] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 5485 bytes of code
+    ├─ [292049387] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 6359 bytes of code
     └─ ← [Stop]
 
-  [728077974] StateDiffTest::testCallProxyaccesses()
+  [727692988] StateDiffTest::testCallProxyaccesses()
     ├─ [0] VM::startStateDiffRecording()
     │   └─ ← [Return]
-    ├─ [728040641] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::proxyCall(55)
+    ├─ [727655655] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::proxyCall(55)
     │   ├─ [0] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setter(55)
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
@@ -1287,17 +1287,17 @@ Traces:
 
 [PASS] testCallaccesses() ([GAS])
 Traces:
-  [585251161] StateDiffTest::setUp()
-    ├─ [292049387] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 5531 bytes of code
-    ├─ [293109162] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] 6405 bytes of code
+  [583131611] StateDiffTest::setUp()
+    ├─ [290989612] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 5485 bytes of code
+    ├─ [292049387] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 6359 bytes of code
     └─ ← [Stop]
 
-  [276825754] StateDiffTest::testCallaccesses()
+  [276251742] StateDiffTest::testCallaccesses()
     ├─ [0] VM::startStateDiffRecording()
     │   └─ ← [Return]
-    ├─ [276796934] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setter(55)
+    ├─ [276222922] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::setter(55)
     │   └─ ← [Stop]
     ├─ [0] VM::stopAndReturnStateDiff()
     │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 1)]
@@ -1305,18 +1305,18 @@ Traces:
 
 [PASS] testCreateaccesses() ([GAS])
 Traces:
-  [585251161] StateDiffTest::setUp()
-    ├─ [292049387] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
-    │   └─ ← [Return] 5531 bytes of code
-    ├─ [293109162] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] 6405 bytes of code
+  [583131611] StateDiffTest::setUp()
+    ├─ [290989612] → new <unknown>@0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC
+    │   └─ ← [Return] 5485 bytes of code
+    ├─ [292049387] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 6359 bytes of code
     └─ ← [Stop]
 
-  [292103665] StateDiffTest::testCreateaccesses()
+  [291043890] StateDiffTest::testCreateaccesses()
     ├─ [0] VM::startStateDiffRecording()
     │   └─ ← [Return]
-    ├─ [292049387] → new <unknown>@0x2e234DAe75C793f67A35089C9d99245E1C58470b
-    │   └─ ← [Return] 5531 bytes of code
+    ├─ [290989612] → new <unknown>@0x2e234DAe75C793f67A35089C9d99245E1C58470b
+    │   └─ ← [Return] 5485 bytes of code
     ├─ [0] VM::stopAndReturnStateDiff()
     │   └─ ← [Return] [((0, 31337 [3.133e4]), 4, 0x2e234DAe75C793f67A35089C9d99245E1C58470b, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 1000000000000000000 [1e18], 0x0000000000000000000000000000000000000000000000000000000000000064, false, [(0x2e234DAe75C793f67A35089C9d99245E1C58470b, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000000, false), (0x2e234DAe75C793f67A35089C9d99245E1C58470b, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000064, false)], 1)]
     └─ ← [Stop]
