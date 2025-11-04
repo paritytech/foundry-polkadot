@@ -35,6 +35,7 @@ pub fn is_impersonated(sig: &[u8]) -> bool {
 /// Recover sender address from signed transaction, handling impersonated transactions.
 /// For impersonated transactions (fake signatures), extracts the address embedded in the signature.
 /// For normal transactions, performs standard ECDSA recovery.
+#[allow(clippy::result_unit_err)]
 pub fn recover_maybe_impersonated_address(
     signed_tx: &polkadot_sdk::pallet_revive::evm::TransactionSigned,
 ) -> Result<polkadot_sdk::sp_core::H160, ()> {
