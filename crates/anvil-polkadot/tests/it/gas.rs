@@ -71,10 +71,10 @@ async fn test_set_next_fee_multiplier() {
     node.wait_for_block_with_timeout(2, Duration::from_millis(400)).await.unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
-    // let effective_gas_price =
-    //     U256::from_be_bytes(transaction_receipt.effective_gas_price.to_big_endian());
+    let effective_gas_price =
+        U256::from_be_bytes(transaction_receipt.effective_gas_price.to_big_endian());
     let gas_used = U256::from_be_bytes(transaction_receipt.gas_used.to_big_endian());
-    // assert_eq!(effective_gas_price, new_base_fee / native_to_eth_ratio);
+    assert_eq!(effective_gas_price, new_base_fee / native_to_eth_ratio);
     let alith_final_balance = node.get_balance(alith.address(), None).await;
     let baltathar_final_balance = node.get_balance(baltathar.address(), None).await;
     assert_eq!(
@@ -84,7 +84,7 @@ async fn test_set_next_fee_multiplier() {
     );
     assert_eq!(
         alith_final_balance,
-        alith_initial_balance - transfer_amount - (new_base_fee / native_to_eth_ratio) * gas_used,
+        alith_initial_balance - transfer_amount - effective_gas_price * gas_used,
         "Alith's balance should have changed"
     );
 
