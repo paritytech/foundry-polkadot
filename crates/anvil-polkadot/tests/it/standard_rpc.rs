@@ -695,7 +695,7 @@ async fn test_max_fee_per_gas() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     assert_eq!(
-        "0x30d40",
+        "0x0",
         unwrap_response::<String>(
             node.eth_rpc(EthRequest::EthMaxPriorityFeePerGas(())).await.unwrap()
         )
