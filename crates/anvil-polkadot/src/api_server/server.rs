@@ -1007,7 +1007,7 @@ impl ApiServer {
         if maybe_system_account_info.is_none() {
             self.set_frame_system_balance(
                 latest_block,
-                account_id.clone(),
+                account_id,
                 substrate_runtime::currency::DOLLARS,
             )?;
         }
