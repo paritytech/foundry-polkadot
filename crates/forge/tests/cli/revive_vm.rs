@@ -1332,12 +1332,13 @@ Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 forgetest!(gas_metering_pvm, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
-
-    prj.add_test(
+    prj.insert_console();
+    prj.add_source(
         "GasMeteringPvm.t.sol",
         r#"
 import "./test.sol";
 import "./Vm.sol";
+import {console} from "./console.sol";
 
 contract GasMeteringPvmTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
@@ -1358,8 +1359,8 @@ contract GasMeteringPvmTest is DSTest {
         uint256 gasUsedPaused = gasPausedStart - gasleft();
         vm.resumeGasMetering();
         
-        assertTrue(gasUsedNormal > 0, "Normal gas should be consumed");
-        assertEq(gasUsedPaused, 0, "Paused gas should be zero");
+        assertTrue(gasUsedNormal > 0);
+        assertEq(gasUsedPaused, 0);
     }
     
     function test_ResumeGasMetering() public {
@@ -1373,7 +1374,7 @@ contract GasMeteringPvmTest is DSTest {
         }
         uint256 gasUsed = gasStart - gasleft();
         
-        assertTrue(gasUsed > 0, "Gas should be consumed after resume");
+        assertTrue(gasUsed > 0);
     }
     
     function test_ResetGasMetering() public {
@@ -1388,9 +1389,9 @@ contract GasMeteringPvmTest is DSTest {
         vm.resetGasMetering();
         uint256 gasAfterReset = gasleft();
         
-        assertTrue(gasAfterReset > gasAfterWork, "Gas should be restored after reset");
+        assertTrue(gasAfterReset > gasAfterWork);
         uint256 gasRecovered = gasAfterReset - gasAfterWork;
-        assertTrue(gasRecovered > gasConsumed / 2, "Should recover significant gas");
+        assertTrue(gasRecovered > gasConsumed / 2);
     }
 }
 "#,
