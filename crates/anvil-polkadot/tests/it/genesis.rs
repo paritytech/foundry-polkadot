@@ -273,7 +273,7 @@ async fn test_genesis_json() {
     coinbase_bytes[19] = 0x07;
     let expected_coinbase = Address::from(coinbase_bytes);
 
-    // Expected account addresses
+    // Expected account addresses (alloc)
     let eoa_account_addr = Address::from_str("71562b71999873db5b286df957af199ec94617f7")
         .expect("Invalid account1 address");
     let eoa_account_balance = U256::from(2_000_000_000_000_000_000u64); // 2 DOT
@@ -324,21 +324,19 @@ async fn test_genesis_json() {
             .unwrap();
     assert_eq!(coinbase, expected_coinbase, "Coinbase should match the one in genesis.json");
 
-    // Test account 1 (EOA with balance and nonce)
+    // Test EOA account balance and nonce
     let eoa_account_balance_actual =
         node.get_balance(H160::from_slice(eoa_account_addr.as_slice()), None).await;
     assert_eq!(
         eoa_account_balance_actual, eoa_account_balance,
         "EOA account balance should match the one in genesis.json"
     );
-
     let eoa_account_nonce_actual = node.get_nonce(eoa_account_addr).await;
     assert_eq!(
         eoa_account_nonce_actual, eoa_account_nonce,
         "EOA account nonce should match the one in genesis.json"
     );
-
-    // Account 1 should have no code (EOA)
+    // EOA account should have no code
     let eoa_account_code = unwrap_response::<Bytes>(
         node.eth_rpc(EthRequest::EthGetCodeAt(
             eoa_account_addr,
@@ -350,21 +348,18 @@ async fn test_genesis_json() {
     .unwrap();
     assert!(eoa_account_code.is_empty(), "EOA account should have no code");
 
-    // Test account 2 (Contract with balance, code, and storage)
+    // Test contract account balance, nonce, code, and storage
     let contract_account_balance_actual =
         node.get_balance(H160::from_slice(contract_account_addr.as_slice()), None).await;
     assert_eq!(
         contract_account_balance_actual, contract_account_balance,
         "Contract account balance should match the one in genesis.json"
     );
-
     let contract_account_nonce_actual = node.get_nonce(contract_account_addr).await;
     assert_eq!(
         contract_account_nonce_actual, contract_account_nonce,
         "Contract account nonce should be default (0)"
     );
-
-    // Account 2 should have code
     let contract_account_code_actual = unwrap_response::<Bytes>(
         node.eth_rpc(EthRequest::EthGetCodeAt(
             contract_account_addr,
@@ -379,8 +374,6 @@ async fn test_genesis_json() {
         contract_account_code_actual, contract_account_code,
         "Contract account code should match the one in genesis.json"
     );
-
-    // Test account 2 storage
     let result = node
         .eth_rpc(EthRequest::EthGetStorageAt(
             contract_account_addr,
