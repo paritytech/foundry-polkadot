@@ -7,10 +7,15 @@ use crate::{
             ReviveFilter, SubstrateU256, convert_to_generic_transaction,
         },
         signer::DevSigner,
+        txpool_helpers::{
+            TxpoolTransactionInfo, extract_sender, extract_tx_info, extract_tx_summary,
+            transaction_matches_eth_hash,
+        },
     },
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
+        host::recover_maybe_impersonated_address,
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
@@ -30,13 +35,13 @@ use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{
     Filter, TransactionRequest,
     anvil::{Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
-    txpool::TxpoolStatus,
+    txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
 };
 use alloy_serde::WithOtherFields;
 use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
-use codec::{Decode, DecodeLimit, Encode};
+use codec::{Decode, Encode};
 use futures::{StreamExt, channel::mpsc};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
@@ -65,7 +70,7 @@ use polkadot_sdk::{
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
-use substrate_runtime::{Balance, RuntimeCall, UncheckedExtrinsic};
+use substrate_runtime::Balance;
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
     client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
@@ -75,7 +80,6 @@ use subxt_signer::eth::Keypair;
 use tokio::try_join;
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
-const MAX_EXTRINSIC_DEPTH: u32 = 256;
 
 pub struct ApiServer {
     eth_rpc_client: EthRpcClient,
@@ -339,17 +343,17 @@ impl ApiServer {
                 self.get_account_info(addr, block).await.to_rpc_result()
             }
             //------- Transaction Pool ---------
-            EthRequest::TxPoolStatus(_) => {
-                node_info!("txpool_status");
-                self.txpool_status().await.to_rpc_result()
-            }
+            EthRequest::TxPoolStatus(_) => self.txpool_status().await.to_rpc_result(),
+            EthRequest::TxPoolInspect(_) => self.txpool_inspect().await.to_rpc_result(),
+            EthRequest::TxPoolContent(_) => self.txpool_content().await.to_rpc_result(),
             EthRequest::DropAllTransactions() => {
-                node_info!("anvil_dropAllTransactions");
                 self.anvil_drop_all_transactions().await.to_rpc_result()
             }
             EthRequest::DropTransaction(eth_hash) => {
-                node_info!("anvil_dropTransaction");
                 self.anvil_drop_transaction(eth_hash).await.to_rpc_result()
+            }
+            EthRequest::RemovePoolTransactions(address) => {
+                self.anvil_remove_pool_transactions(address).await.to_rpc_result()
             }
             // --- Metadata ---
             EthRequest::NodeInfo(_) => self.anvil_node_info().await.to_rpc_result(),
@@ -1247,12 +1251,58 @@ impl ApiServer {
 
     /// Returns transaction pool status
     async fn txpool_status(&self) -> Result<TxpoolStatus> {
+        node_info!("txpool_status");
         let pool_status = self.tx_pool.status();
         Ok(TxpoolStatus { pending: pool_status.ready as u64, queued: pool_status.future as u64 })
     }
 
+    /// Returns a summary of all transactions in the pool
+    async fn txpool_inspect(&self) -> Result<TxpoolInspect> {
+        node_info!("txpool_inspect");
+        let mut inspect = TxpoolInspect::default();
+
+        for tx in self.tx_pool.ready() {
+            if let Some((sender, nonce, summary)) = extract_tx_summary(tx.data()) {
+                let entry = inspect.pending.entry(sender).or_default();
+                entry.insert(nonce.to_string(), summary);
+            }
+        }
+
+        for tx in self.tx_pool.futures() {
+            if let Some((sender, nonce, summary)) = extract_tx_summary(tx.data()) {
+                let entry = inspect.queued.entry(sender).or_default();
+                entry.insert(nonce.to_string(), summary);
+            }
+        }
+
+        Ok(inspect)
+    }
+
+    /// Returns full transaction details for all transactions in the pool
+    async fn txpool_content(&self) -> Result<TxpoolContent<TxpoolTransactionInfo>> {
+        node_info!("txpool_content");
+        let mut content = TxpoolContent::default();
+
+        for tx in self.tx_pool.ready() {
+            if let Some((sender, nonce, tx_info)) = extract_tx_info(tx.data()) {
+                let entry = content.pending.entry(sender).or_default();
+                entry.insert(nonce.to_string(), tx_info);
+            }
+        }
+
+        for tx in self.tx_pool.futures() {
+            if let Some((sender, nonce, tx_info)) = extract_tx_info(tx.data()) {
+                let entry = content.queued.entry(sender).or_default();
+                entry.insert(nonce.to_string(), tx_info);
+            }
+        }
+
+        Ok(content)
+    }
+
     /// Drop all transactions from pool
     async fn anvil_drop_all_transactions(&self) -> Result<()> {
+        node_info!("anvil_dropAllTransactions");
         let ready_txs = self.tx_pool.ready();
         let future_txs = self.tx_pool.futures();
 
@@ -1273,7 +1323,7 @@ impl ApiServer {
 
     /// Drop a specific transaction from the pool by its ETH hash
     async fn anvil_drop_transaction(&self, eth_hash: B256) -> Result<Option<B256>> {
-        // Search in ready transactions
+        node_info!("anvil_dropTransaction");
         for tx in self.tx_pool.ready() {
             if transaction_matches_eth_hash(tx.data(), eth_hash) {
                 let mut invalid_txs = IndexMap::new();
@@ -1283,7 +1333,6 @@ impl ApiServer {
             }
         }
 
-        // Search in future transactions
         for tx in self.tx_pool.futures() {
             if transaction_matches_eth_hash(tx.data(), eth_hash) {
                 let mut invalid_txs = IndexMap::new();
@@ -1296,30 +1345,34 @@ impl ApiServer {
         // Transaction not found
         Ok(None)
     }
-}
 
-/// Helper function to check if transaction matches ETH hash
-fn transaction_matches_eth_hash(
-    tx_data: &Arc<polkadot_sdk::sp_runtime::OpaqueExtrinsic>,
-    target_eth_hash: B256,
-) -> bool {
-    let encoded = tx_data.encode();
-    let Ok(ext) =
-        UncheckedExtrinsic::decode_all_with_depth_limit(MAX_EXTRINSIC_DEPTH, &mut &encoded[..])
-    else {
-        return false;
-    };
+    /// Remove all transactions from a specific sender address
+    async fn anvil_remove_pool_transactions(&self, address: Address) -> Result<()> {
+        node_info!("anvil_removePoolTransactions");
+        let mut invalid_txs = IndexMap::new();
 
-    let polkadot_sdk::sp_runtime::generic::UncheckedExtrinsic {
-        function: RuntimeCall::Revive(polkadot_sdk::pallet_revive::Call::eth_transact { payload }),
-        ..
-    } = ext.0
-    else {
-        return false;
-    };
+        for tx in self.tx_pool.ready() {
+            if let Some(sender) = extract_sender(tx.data()) {
+                if sender == address {
+                    invalid_txs.insert(*tx.hash(), None);
+                }
+            }
+        }
 
-    let tx_eth_hash = keccak_256(&payload);
-    B256::from_slice(&tx_eth_hash) == target_eth_hash
+        for tx in self.tx_pool.futures() {
+            if let Some(sender) = extract_sender(tx.data()) {
+                if sender == address {
+                    invalid_txs.insert(*tx.hash(), None);
+                }
+            }
+        }
+
+        if !invalid_txs.is_empty() {
+            self.tx_pool.report_invalid(None, invalid_txs).await;
+        }
+
+        Ok(())
+    }
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
@@ -1437,16 +1490,7 @@ async fn create_revive_rpc_client(
     let receipt_extractor = ReceiptExtractor::new_with_custom_address_recovery(
         api.clone(),
         None,
-        Arc::new(|signed_tx: &TransactionSigned| {
-            let sig = signed_tx.raw_signature()?;
-            if sig[..12] == [0; 12] && sig[32..64] == [0; 32] {
-                let mut res = [0; 20];
-                res.copy_from_slice(&sig[12..32]);
-                Ok(H160::from(res))
-            } else {
-                signed_tx.recover_eth_address()
-            }
-        }),
+        Arc::new(recover_maybe_impersonated_address),
     )
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
