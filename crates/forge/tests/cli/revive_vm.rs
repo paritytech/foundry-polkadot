@@ -1327,3 +1327,76 @@ Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 
 "#]]);
 });
+
+// Test gas metering cheatcodes in PVM mode
+forgetest!(gas_metering_pvm, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    
+    prj.add_test(
+        "GasMeteringPvm.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+
+contract GasMeteringPvmTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+    
+    function test_PauseGasMetering() public {
+        uint256 gasStart = gasleft();
+        uint256 sum = 0;
+        for (uint256 i = 0; i < 100; i++) {
+            sum += i;
+        }
+        uint256 gasUsedNormal = gasStart - gasleft();
+        
+        vm.pauseGasMetering();
+        uint256 gasPausedStart = gasleft();
+        for (uint256 i = 0; i < 100; i++) {
+            sum += i;
+        }
+        uint256 gasUsedPaused = gasPausedStart - gasleft();
+        vm.resumeGasMetering();
+        
+        assertTrue(gasUsedNormal > 0, "Normal gas should be consumed");
+        assertEq(gasUsedPaused, 0, "Paused gas should be zero");
+    }
+    
+    function test_ResumeGasMetering() public {
+        vm.pauseGasMetering();
+        vm.resumeGasMetering();
+        
+        uint256 gasStart = gasleft();
+        uint256 sum = 0;
+        for (uint256 i = 0; i < 100; i++) {
+            sum += i;
+        }
+        uint256 gasUsed = gasStart - gasleft();
+        
+        assertTrue(gasUsed > 0, "Gas should be consumed after resume");
+    }
+    
+    function test_ResetGasMetering() public {
+        uint256 gasStart = gasleft();
+        uint256 sum = 0;
+        for (uint256 i = 0; i < 100; i++) {
+            sum += i;
+        }
+        uint256 gasAfterWork = gasleft();
+        uint256 gasConsumed = gasStart - gasAfterWork;
+        
+        vm.resetGasMetering();
+        uint256 gasAfterReset = gasleft();
+        
+        assertTrue(gasAfterReset > gasAfterWork, "Gas should be restored after reset");
+        uint256 gasRecovered = gasAfterReset - gasAfterWork;
+        assertTrue(gasRecovered > gasConsumed / 2, "Should recover significant gas");
+    }
+}
+"#,
+    )
+    .unwrap();
+    
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
+    res.stderr_eq(str![""]);
+});
