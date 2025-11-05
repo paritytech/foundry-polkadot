@@ -695,7 +695,12 @@ async fn test_fee_history() {
     )
     .unwrap();
     assert_eq!(fee_history.gas_used_ratio.len(), 10);
-    assert!(fee_history.base_fee_per_gas.iter().all(|&v| v == pallet_revive::U256::from(1000000)));
+    let base_fees = vec![
+        999981, 999962, 999944, 999925, 999906, 999888, 999869, 999851, 999832, 999813, 999813,
+    ];
+    for (idx, base_fee) in fee_history.base_fee_per_gas.into_iter().enumerate() {
+        assert_eq!(base_fee, pallet_revive::U256::from(base_fees[idx]));
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -126,12 +126,12 @@ impl ApiServer {
             substrate_service.backend.clone(),
             substrate_service.storage_overrides.clone(),
         );
+
         let genesis_hash = backend.blockchain().info().best_hash;
         backend.inject_next_fee_multiplier(
             genesis_hash,
-            // Here we expect the base fee in 1e18 (ETH) denomination, so we need to transform
-            // it to 1e12 (DOT) denomination.
-            FixedU128::from_rational(base_fee_per_gas.into_inner(), NATIVE_TO_ETH_RATIO.into()),
+            // Here we expect the base fee in 1e12 (DOT) denomination.
+            base_fee_per_gas,
         );
 
         Ok(Self {
