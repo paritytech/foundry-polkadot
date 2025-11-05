@@ -42,7 +42,7 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"sc-keystore",
 	"sc-network",
 	"sc-network-types",
-	"sc-rpc",
+    "sc-rpc",
 	"sc-rpc-api",
 	"sc-rpc-server",
 	"sc-rpc-spec-v2",
