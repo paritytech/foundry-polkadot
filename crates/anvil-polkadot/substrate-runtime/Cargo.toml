@@ -29,7 +29,7 @@ scale-info = { version = "2.11.6", default-features = false }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [build-dependencies]
-polkadot-sdk = {git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, optional = true, features = ["substrate-wasm-builder"] }
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, optional = true, features = ["substrate-wasm-builder"] }
 
 [features]
 default = ["std"]
