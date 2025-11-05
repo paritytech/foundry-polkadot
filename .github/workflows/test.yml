@@ -53,19 +53,19 @@ jobs:
           force_orphan: true
 
   doctest:
-    runs-on: ubuntu-latest
+    runs-on: parity-large-new
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev unzip build-essential
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install clang on ubuntu
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           target: wasm32-unknown-unknown

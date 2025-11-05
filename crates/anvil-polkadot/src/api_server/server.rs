@@ -564,13 +564,21 @@ impl ApiServer {
         addr: Address,
         slot: U256,
         block: Option<BlockId>,
-    ) -> Result<Bytes> {
+    ) -> Result<B256> {
         node_info!("eth_getStorageAt");
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let bytes =
-            runtime_api.get_storage(ReviveAddress::from(addr).inner(), slot.to_be_bytes()).await?;
-        Ok(bytes.unwrap_or_default().into())
+        let bytes: B256 = match runtime_api
+            .get_storage(ReviveAddress::from(addr).inner(), slot.to_be_bytes())
+            .await
+        {
+            Ok(Some(bytes)) => bytes.as_slice().try_into().map_err(|_| {
+                Error::InternalError("Unable to convert value to 32-byte value".to_string())
+            })?,
+            Ok(None) | Err(ClientError::ContractNotFound) => Default::default(),
+            Err(err) => return Err(Error::ReviveRpc(EthRpcError::ClientError(err))),
+        };
+        Ok(bytes)
     }
 
     async fn get_code(&self, address: Address, block: Option<BlockId>) -> Result<Bytes> {
@@ -994,15 +1002,58 @@ impl ApiServer {
 
         let latest_block = self.latest_block();
 
-        let Some(ReviveAccountInfo { account_type: AccountType::Contract(contract_info), .. }) =
-            self.backend.read_revive_account_info(latest_block, address)?
-        else {
-            return Ok(());
+        let account_id = self.get_account_id(latest_block, address)?;
+
+        let maybe_system_account_info =
+            self.backend.read_system_account_info(latest_block, account_id.clone())?;
+        let nonce = maybe_system_account_info.as_ref().map(|info| info.nonce).unwrap_or_default();
+
+        if maybe_system_account_info.is_none() {
+            self.set_frame_system_balance(
+                latest_block,
+                account_id,
+                substrate_runtime::currency::DOLLARS,
+            )?;
+        }
+
+        let trie_id = match self.backend.read_revive_account_info(latest_block, address)? {
+            // If the account doesn't exist, create one.
+            None => {
+                let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
+                let trie_id = contract_info.trie_id.clone();
+
+                self.backend.inject_revive_account_info(
+                    latest_block,
+                    address,
+                    ReviveAccountInfo {
+                        account_type: AccountType::Contract(contract_info),
+                        dust: 0,
+                    },
+                );
+
+                trie_id
+            }
+            // If the account is not already a contract account, make it one.
+            Some(ReviveAccountInfo { account_type: AccountType::EOA, dust }) => {
+                let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
+                let trie_id = contract_info.trie_id.clone();
+
+                self.backend.inject_revive_account_info(
+                    latest_block,
+                    address,
+                    ReviveAccountInfo { account_type: AccountType::Contract(contract_info), dust },
+                );
+
+                trie_id
+            }
+            Some(ReviveAccountInfo {
+                account_type: AccountType::Contract(contract_info), ..
+            }) => contract_info.trie_id,
         };
 
         self.backend.inject_child_storage(
             latest_block,
-            contract_info.trie_id.to_vec(),
+            trie_id.to_vec(),
             key.to_be_bytes_vec(),
             value.to_vec(),
         );
