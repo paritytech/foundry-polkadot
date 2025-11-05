@@ -22,8 +22,8 @@ use tracing::warn;
 
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, Code, ContractInfo, ExecConfig, Pallet,
-        evm::CallTrace,
+        self, AccountInfo, AddressMapper, BalanceOf, Code, ContractInfo, DebugSettings, ExecConfig,
+        Pallet, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -795,6 +795,13 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         _ => None,
                     };
 
+                    // If limits are set to max, enable debug mode to bypass them in revive
+                    if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
+                        || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
+                    {
+                        let debug_settings = DebugSettings::new(true);
+                        debug_settings.write_to_storage::<Runtime>();
+                    }
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
