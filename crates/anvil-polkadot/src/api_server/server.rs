@@ -1025,7 +1025,7 @@ impl ApiServer {
             // If the account doesn't exist, create one.
             None => {
                 let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
-                let trie_id = contract_info.trie_id.clone();
+                let trie_id = contract_info.trie_id.0.clone();
 
                 self.backend.inject_revive_account_info(
                     latest_block,
@@ -1041,7 +1041,7 @@ impl ApiServer {
             // If the account is not already a contract account, make it one.
             Some(ReviveAccountInfo { account_type: AccountType::EOA, dust }) => {
                 let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
-                let trie_id = contract_info.trie_id.clone();
+                let trie_id = contract_info.trie_id.0.clone();
 
                 self.backend.inject_revive_account_info(
                     latest_block,
@@ -1053,12 +1053,12 @@ impl ApiServer {
             }
             Some(ReviveAccountInfo {
                 account_type: AccountType::Contract(contract_info), ..
-            }) => contract_info.trie_id,
+            }) => contract_info.trie_id.0,
         };
 
         self.backend.inject_child_storage(
             latest_block,
-            trie_id.0,
+            trie_id,
             key.to_be_bytes_vec(),
             value.to_vec(),
         );
