@@ -1459,9 +1459,9 @@ Traces:
   [3204] GasMeteringPvmTest::test_CreateDuringPausedMetering()
     ├─ [0] VM::pauseGasMetering()
     │   └─ ← [Return]
-    ├─ [15601660] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    ├─ [0] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] 5035 bytes of code
-    ├─ [639065850] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::doWork()
+    ├─ [0] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::doWork()
     │   └─ ← [Return] 4950
     ├─ [0] VM::resumeGasMetering()
     │   └─ ← [Return]
@@ -1509,7 +1509,7 @@ Traces:
   [639161970] GasMeteringPvmTest::test_ResumeGasMeteringWithPvmCall()
     ├─ [0] VM::pauseGasMetering()
     │   └─ ← [Return]
-    ├─ [639065850] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::doWork()
+    ├─ [0] 0x7D8CB8F412B3ee9AC79558791333F41d2b1ccDAC::doWork()
     │   └─ ← [Return] 4950
     ├─ [0] VM::resumeGasMetering()
     │   └─ ← [Return]
