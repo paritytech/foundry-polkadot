@@ -9,7 +9,7 @@ use anvil_polkadot::{
         self, ApiHandle,
         revive_conversions::{AlloyU256, ReviveAddress},
     },
-    config::{AnvilNodeConfig, NATIVE_TO_ETH_RATIO, SubstrateNodeConfig},
+    config::{AnvilNodeConfig, SubstrateNodeConfig},
     init_tracing,
     logging::LoggingManager,
     opts::SubstrateCli,

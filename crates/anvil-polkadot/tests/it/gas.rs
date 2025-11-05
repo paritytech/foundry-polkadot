@@ -116,7 +116,7 @@ async fn test_next_fee_multiplier_minimum() {
     // Currently the gas_price returned from evm is equivalent to the base_fee.
     let gas_price =
         unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
-    assert_eq!(gas_price, U256::from(50_000));
+    assert_eq!(gas_price, new_base_fee);
 
     // We send a regular eth transfer to check the associated effective gas price used by the
     // transaction, after it will be included in a next block. We're interested especially in
