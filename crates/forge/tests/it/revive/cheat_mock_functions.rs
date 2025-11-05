@@ -10,7 +10,7 @@ use rstest::rstest;
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mockx_function(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("test_mockx_function", "MockFunction", ".*/revive/.*");
+    let filter = Filter::new("test_mockx_function", "MockFunction", ".*/revive/MockFunction.t.sol");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
@@ -21,7 +21,7 @@ async fn test_mockx_function(#[case] runtime_mode: ReviveRuntimeMode) {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mock_function_concrete_args(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("test_mock_function_concrete_args", "MockFunction", ".*/revive/.*");
+    let filter = Filter::new("test_mock_function_concrete_args", "MockFunction", ".*/revive/MockFunction.t.sol");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
@@ -32,7 +32,7 @@ async fn test_mock_function_concrete_args(#[case] runtime_mode: ReviveRuntimeMod
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mock_function_all_args(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("test_mock_function_all_args", "MockFunction", ".*/revive/.*");
+    let filter = Filter::new("test_mock_function_all_args", "MockFunction", ".*/revive/MockFunction.t.sol");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
