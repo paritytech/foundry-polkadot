@@ -58,10 +58,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
-      - name: Install clang and unzip on ubuntu
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libclang-dev unzip
+          sudo apt-get install -y clang libclang-dev unzip build-essential
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
