@@ -61,7 +61,7 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"sp-core-hashing-proc-macro",
 	"sp-database",
 	"sp-panic-handler",
-    "sp-rpc",
+	"sp-rpc",
 	"std",
     "substrate-frame-rpc-support",
 	"substrate-frame-rpc-system",
