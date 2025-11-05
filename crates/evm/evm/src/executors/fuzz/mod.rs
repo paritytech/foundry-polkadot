@@ -107,8 +107,10 @@ impl FuzzedExecutor {
                 return Err(TestCaseError::fail(TEST_TIMEOUT));
             }
             self.executor.strategy.runner.checkpoint();
-            let fuzz_res = self.single_fuzz(address, calldata)?;
+            let fuzz_res = self.single_fuzz(address, calldata);
             self.executor.strategy.runner.reload_checkpoint();
+
+            let fuzz_res = fuzz_res?;
 
             // If running with progress then increment current run.
             if let Some(progress) = progress {
