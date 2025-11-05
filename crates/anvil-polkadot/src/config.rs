@@ -50,9 +50,8 @@ pub const DEFAULT_IPC_ENDPOINT: &str =
     if cfg!(unix) { "/tmp/anvil.ipc" } else { r"\\.\pipe\anvil.ipc" };
 
 /// Initial base fee for EIP-1559 blocks.
-/// This is also the initial base fee set by assethub
-/// runtimes.
-pub const INITIAL_BASE_FEE: FixedU128 = FixedU128::from_u32(1);
+/// In anvil this is `1_000_000_000` in 1e-18, which represents `1_000` in 1e-12.
+pub const INITIAL_BASE_FEE: FixedU128 = FixedU128::from_u32(1_000);
 
 /// DOT precision (1e12) to ETH precision (1e18) ratio.
 pub const NATIVE_TO_ETH_RATIO: u128 = 1_000_000;

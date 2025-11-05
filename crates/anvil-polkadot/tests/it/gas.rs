@@ -4,7 +4,7 @@ use crate::utils::{TestNode, unwrap_response};
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::TransactionRequest;
 use anvil_core::eth::EthRequest;
-use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
+use anvil_polkadot::config::{AnvilNodeConfig, INITIAL_BASE_FEE, SubstrateNodeConfig};
 use polkadot_sdk::pallet_revive::evm::Account;
 use rstest::rstest;
 use std::ops::Not;
@@ -20,6 +20,15 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
         .with_base_fee(rpc_driven.not().then_some(new_base_fee.to::<u64>()));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    let gas_price =
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
+
+    if rpc_driven {
+        assert_eq!(gas_price.to::<u128>(), INITIAL_BASE_FEE.into_inner());
+    } else {
+        assert_eq!(gas_price, new_base_fee);
+    }
 
     if rpc_driven {
         unwrap_response::<()>(
