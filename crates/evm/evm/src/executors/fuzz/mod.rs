@@ -106,11 +106,7 @@ impl FuzzedExecutor {
             if timer.is_timed_out() {
                 return Err(TestCaseError::fail(TEST_TIMEOUT));
             }
-            self.executor.strategy.runner.checkpoint();
-            let fuzz_res = self.single_fuzz(address, calldata);
-            self.executor.strategy.runner.reload_checkpoint();
-
-            let fuzz_res = fuzz_res?;
+            let fuzz_res = self.single_fuzz(address, calldata)?;
 
             // If running with progress then increment current run.
             if let Some(progress) = progress {
@@ -241,8 +237,8 @@ impl FuzzedExecutor {
         address: Address,
         calldata: alloy_primitives::Bytes,
     ) -> Result<FuzzOutcome, TestCaseError> {
-        let mut call = self
-            .executor
+        let executor = self.executor.clone();
+        let mut call = executor
             .call_raw(self.sender, address, calldata.clone(), U256::ZERO)
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -265,7 +261,7 @@ impl FuzzedExecutor {
         {
             true
         } else {
-            self.executor.is_raw_call_mut_success(address, &mut call, false)
+            executor.is_raw_call_mut_success(address, &mut call, false)
         };
 
         if success {

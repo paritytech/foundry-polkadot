@@ -12,7 +12,6 @@ use revive_env::Runtime;
 use revm::{context::JournalTr, database::states::StorageSlot, state::Bytecode};
 use storage_tracer::{AccountAccess, StorageTracer};
 pub mod storage_tracer;
-use crate::execute_with_externalities;
 
 pub struct Tracer {
     pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
@@ -46,16 +45,12 @@ impl Tracer {
 
     /// Collects call traces
     pub fn collect_call_traces(&mut self) -> Option<CallTrace> {
-        execute_with_externalities(|externalities| {
-            externalities.execute_with(|| self.call_tracer.clone().collect_trace())
-        })
+        self.call_tracer.clone().collect_trace()
     }
 
     /// Collects prestate traces
     fn collect_prestate_traces(&mut self) -> PrestateTrace {
-        execute_with_externalities(|externalities| {
-            externalities.execute_with(|| self.prestate_tracer.clone().collect_trace())
-        })
+        self.prestate_tracer.clone().collect_trace()
     }
 
     /// Collects recorded accesses

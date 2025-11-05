@@ -392,7 +392,6 @@ impl<'a> InvariantExecutor<'a> {
                     .last()
                     .ok_or_else(|| eyre!("no input generated to call fuzzed target."))?;
 
-                self.executor.strategy.runner.checkpoint();
                 // Execute call from the randomly generated sequence without committing state.
                 // State is committed only if call is not a magic assume.
                 let call_result = current_run
@@ -404,7 +403,6 @@ impl<'a> InvariantExecutor<'a> {
                         U256::ZERO,
                     )
                     .map_err(|e| eyre!(format!("Could not make raw evm call: {e}")));
-                self.executor.strategy.runner.reload_checkpoint();
 
                 let mut call_result = call_result?;
 

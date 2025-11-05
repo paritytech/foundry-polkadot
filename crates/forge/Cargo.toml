@@ -23,7 +23,6 @@ path = "tests/ui.rs"
 harness = false
 
 [dependencies]
-revive-strategy = { workspace = true }
 # lib
 foundry-block-explorers = { workspace = true, features = ["foundry-compilers"] }
 foundry-common.workspace = true
@@ -101,6 +100,7 @@ soldeer-commands.workspace = true
 quick-junit = "0.5.1"
 
 [dev-dependencies]
+revive-strategy = { workspace = true }
 alloy-hardforks.workspace = true
 anvil.workspace = true
 forge-script-sequence.workspace = true

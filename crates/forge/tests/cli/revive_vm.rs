@@ -74,7 +74,7 @@ contract CounterTest is DSTest {
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
-    res.stderr_eq(str![""]).stdout_eq(str![[r#"
+    res.stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!

@@ -6,7 +6,7 @@ use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
+    CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         dealCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall, setNonceCall,
         setNonceUnsafeCall, storeCall, warpCall,
@@ -25,7 +25,7 @@ use tracing::warn;
 
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, Code, ContractInfo, ExecConfig, Pallet,
+        AccountInfo, AddressMapper, BalanceOf, Code, ContractInfo, ExecConfig, Pallet,
         evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
@@ -35,7 +35,7 @@ use polkadot_sdk::{
 
 use crate::{
     cheatcodes::mock_handler::MockHandlerImpl,
-    execute_with_externalities,
+    state::TestEnv,
     tracing::{Tracer, storage_tracer::AccountAccess},
 };
 use foundry_cheatcodes::Vm::{AccountAccess as FAccountAccess, ChainInfo};
@@ -54,6 +54,7 @@ pub trait PvmCheatcodeInspectorStrategyBuilder {
     fn new_pvm(
         dual_compiled_contracts: DualCompiledContracts,
         runtime_mode: crate::ReviveRuntimeMode,
+        externalities: TestEnv,
     ) -> Self;
 }
 impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
@@ -61,12 +62,14 @@ impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
     fn new_pvm(
         dual_compiled_contracts: DualCompiledContracts,
         runtime_mode: crate::ReviveRuntimeMode,
+        externalities: TestEnv,
     ) -> Self {
         Self {
             runner: &PvmCheatcodeInspectorStrategyRunner,
             context: Box::new(PvmCheatcodeInspectorStrategyContext::new(
                 dual_compiled_contracts,
                 runtime_mode,
+                externalities,
             )),
         }
     }
@@ -114,12 +117,20 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     /// Runtime backend mode when using pallet-revive (PVM or EVM)
     pub runtime_mode: crate::ReviveRuntimeMode,
     pub remove_recorded_access_at: Option<usize>,
+    pub externalities: TestEnv,
+}
+
+impl Debug for TestEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<Externalities>")
+    }
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
     pub fn new(
         dual_compiled_contracts: DualCompiledContracts,
         runtime_mode: crate::ReviveRuntimeMode,
+        externalities: TestEnv,
     ) -> Self {
         Self {
             // Start in REVM mode by default
@@ -129,6 +140,7 @@ impl PvmCheatcodeInspectorStrategyContext {
             dual_compiled_contracts,
             runtime_mode,
             remove_recorded_access_at: None,
+            externalities,
         }
     }
 }
@@ -145,72 +157,6 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
     fn as_any_ref(&self) -> &dyn Any {
         self
     }
-}
-
-fn set_nonce(address: Address, nonce: u64, ecx: Ecx<'_, '_, '_>, check_nonce: bool) {
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            let account_id =
-                AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-            let current_nonce = System::account_nonce(&account_id);
-            if check_nonce {
-                assert!(
-                    current_nonce as u64 <= nonce,
-                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-                );
-            }
-
-            polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
-                a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
-            });
-        })
-    });
-    let account = ecx.journaled_state.load_account(address).expect("account loaded").data;
-    account.mark_touch();
-    account.info.nonce = nonce;
-}
-
-fn set_balance(address: Address, amount: U256, ecx: Ecx<'_, '_, '_>) -> U256 {
-    let account = ecx.journaled_state.load_account(address).expect("account loaded").data;
-    account.mark_touch();
-    account.info.balance = amount;
-    let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-
-    let old_balance = execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            let h160_addr = H160::from_slice(address.as_slice());
-            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&h160_addr);
-            pallet_revive::Pallet::<Runtime>::set_evm_balance(&h160_addr, amount_pvm)
-                .expect("failed to set evm balance");
-            old_balance
-        })
-    });
-    U256::from_limbs(old_balance.0)
-}
-
-fn set_block_number(new_height: U256, ecx: Ecx<'_, '_, '_>) {
-    // Set block number in EVM context.
-    ecx.block.number = new_height;
-
-    // Set block number in pallet-revive runtime.
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            System::set_block_number(new_height.try_into().expect("Block number exceeds u64"));
-        })
-    });
-}
-
-fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
-    // Set timestamp in EVM context (seconds).
-    ecx.block.timestamp = new_timestamp;
-
-    // Set timestamp in pallet-revive runtime (milliseconds).
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            let timestamp_ms = new_timestamp.saturating_to::<u64>().saturating_mul(1000);
-            Timestamp::set_timestamp(timestamp_ms);
-        })
-    });
 }
 
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
@@ -318,7 +264,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             TypeId::of::<T>() == t
         }
         let using_pvm = get_context_ref_mut(ccx.state.strategy.context.as_mut()).using_pvm;
-
+        let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+            get_context_ref_mut(ccx.state.strategy.context.as_mut());
         match cheatcode.as_any().type_id() {
             t if is::<pvmCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
@@ -334,79 +281,63 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_pvm && is::<dealCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
-                let &dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
-
-                let old_balance = set_balance(account, newBalance, ccx.ecx);
-                let record = DealRecord { address: account, old_balance, new_balance: newBalance };
-                ccx.state.eth_deals.push(record);
-                Ok(Default::default())
+                ctx.externalities.set_balance(*account, *newBalance);
+                cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<setNonceCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
 
                 let &setNonceCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, newNonce, ccx.ecx, true);
+                ctx.externalities.set_nonce(account, newNonce, true);
 
-                Ok(Default::default())
+                cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<setNonceUnsafeCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
 
                 let &setNonceUnsafeCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, newNonce, ccx.ecx, false);
+                ctx.externalities.set_nonce(account, newNonce, false);
 
-                Ok(Default::default())
+                cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<resetNonceCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &resetNonceCall { account } = cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, 0, ccx.ecx, false);
-                Ok(Default::default())
+                ctx.externalities.set_nonce(account, 0, false);
+                cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<getNonce_0Call>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &getNonce_0Call { account } = cheatcode.as_any().downcast_ref().unwrap();
-                let nonce = execute_with_externalities(|externalities| {
-                    externalities.execute_with(|| {
-                        System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                            account.as_slice(),
-                        )))
-                    })
-                });
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                let nonce = ctx.externalities.get_nonce(account);
                 Ok(u64::from(nonce).abi_encode())
             }
             t if using_pvm && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
 
-                set_block_number(newHeight, ccx.ecx);
+                ctx.externalities.set_block_number(newHeight);
 
-                Ok(Default::default())
+                cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                set_timestamp(newTimestamp, ccx.ecx);
+                ctx.externalities.set_timestamp(newTimestamp);
 
-                Ok(Default::default())
+                cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<loadCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
-                let target_address_h160 = H160::from_slice(target.as_slice());
-                let storage_value = execute_with_externalities(|externalities| {
-                    externalities.execute_with(|| {
-                        Pallet::<Runtime>::get_storage(target_address_h160, slot.into())
-                    })
-                });
-                let result = storage_value
-                    .ok()
-                    .flatten()
-                    .map(|b| B256::from_slice(&b))
-                    .unwrap_or(B256::ZERO);
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                let storage_value = ctx.externalities.get_storage(target, slot)?;
+                let result = storage_value.map(|b| B256::from_slice(&b)).unwrap_or(B256::ZERO);
                 Ok(result.abi_encode())
             }
             t if using_pvm && is::<storeCall>(t) => {
@@ -415,19 +346,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 if ccx.is_precompile(&target) {
                     return Err(precompile_error(&target));
                 }
-
-                let target_address_h160 = H160::from_slice(target.as_slice());
-                let _ = execute_with_externalities(|externalities| {
-                    externalities.execute_with(|| {
-                        Pallet::<Runtime>::set_storage(
-                            target_address_h160,
-                            slot.into(),
-                            Some(value.to_vec()),
-                        )
-                    })
-                })
-                .map_err(|_| <&str as Into<Error>>::into("Could not set storage"))?;
-                Ok(Default::default())
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.externalities.store(target, slot, value)?;
+                cheatcode.dyn_apply(ccx, executor)
             }
             // Not custom, just invoke the default behavior
             _ => cheatcode.dyn_apply(ccx, executor),
@@ -527,12 +448,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             _ => return true,
         };
 
-        let balance = execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                Pallet::<Runtime>::evm_balance(&H160::from_slice(address.as_slice()))
-            })
-        });
-        let balance = U256::from_limbs(balance.0);
+        let balance = ctx.externalities.get_balance(address);
         tracing::info!(operation = "get_balance" , using_pvm = ?ctx.using_pvm, target = ?address, balance = ?balance);
 
         // Skip the current BALANCE instruction since we've already handled it
@@ -558,85 +474,96 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
     let block_number = data.block.number;
     let timestamp = data.block.timestamp;
 
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            System::set_block_number(block_number.saturating_to());
-            Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
+    ctx.externalities.0.lock().unwrap().execute_with(|| {
+        System::set_block_number(block_number.saturating_to());
+        Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
 
-            let test_contract = data.journaled_state.database.get_test_contract_address();
-            let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
+        let test_contract = data.journaled_state.database.get_test_contract_address();
+        let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
 
-            for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
-                let acc = data.journaled_state.load_account(address).expect("failed to load account");
-                let amount = acc.data.info.balance;
-                let nonce = acc.data.info.nonce;
-                let account = H160::from_slice(address.as_slice());
-                let account_id =
-                    AccountId::to_fallback_account_id(&account);
-                let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-                Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
-                    .expect("failed to set evm balance");
+        for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
+            let acc = data.journaled_state.load_account(address).expect("failed to load account");
+            let amount = acc.data.info.balance;
+            let nonce = acc.data.info.nonce;
+            let account = H160::from_slice(address.as_slice());
+            let account_id = AccountId::to_fallback_account_id(&account);
+            let amount_pvm =
+                sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+            Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
+                .expect("failed to set evm balance");
 
-                polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
-                    a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
-                });
+            polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
+                a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+            });
 
-                // TODO handle immutables
-                // Migrate bytecode for deployed contracts (skip test contract)
-                if test_contract != Some(address)
-                    && let Some(bytecode) = acc.data.info.code.as_ref() {
+            // TODO handle immutables
+            // Migrate bytecode for deployed contracts (skip test contract)
+            if test_contract != Some(address)
+                && let Some(bytecode) = acc.data.info.code.as_ref()
+            {
+                let account_h160 = H160::from_slice(address.as_slice());
 
-                    let account_h160 = H160::from_slice(address.as_slice());
-
-                    // Skip if contract already exists in pallet-revive
-                    if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
-                        // Determine which bytecode to upload based on runtime mode
-                        let bytecode_to_upload = ctx.dual_compiled_contracts
-                                    .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
-                                    .and_then(|(_, contract)| {
-                                        match ctx.runtime_mode {
-                                            crate::ReviveRuntimeMode::Pvm => contract.resolc_bytecode.as_bytes().map(|b| b.to_vec()),
-                                            crate::ReviveRuntimeMode::Evm => None,
-                                            // TODO: We do not have method to upload the EVM bytecode to pallet-revive
-                                            //contract.evm_bytecode.as_bytes().map(|b| b.to_vec())
-                                        }
-                                    });
-
-                        if let Some(code_bytes) = bytecode_to_upload {
-                            let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
-                            let upload_result = Pallet::<Runtime>::bare_upload_code(
-                                origin,
-                                code_bytes.clone(),
-                                BalanceOf::<Runtime>::MAX,
-                            );
-
-                            match upload_result {
-                                Ok(result) => {
-                                    let code_hash = result.code_hash;
-                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
-                                        .expect("Failed to create contract info");
-                                    AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
+                // Skip if contract already exists in pallet-revive
+                if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
+                    // Determine which bytecode to upload based on runtime mode
+                    let bytecode_to_upload = ctx
+                        .dual_compiled_contracts
+                        .find_by_evm_deployed_bytecode_with_immutables(
+                            bytecode.original_byte_slice(),
+                        )
+                        .and_then(|(_, contract)| {
+                            match ctx.runtime_mode {
+                                crate::ReviveRuntimeMode::Pvm => {
+                                    contract.resolc_bytecode.as_bytes().map(|b| b.to_vec())
                                 }
-                                Err(err) => {
-                                    tracing::warn!(
-                                        address = ?address,
-                                        runtime_mode = ?ctx.runtime_mode,
-                                        bytecode_len = code_bytes.len(),
-                                        error = ?err,
-                                        "Failed to upload bytecode to pallet-revive, skipping migration"
-                                    );
-                                }
+                                crate::ReviveRuntimeMode::Evm => None,
+                                // TODO: We do not have method to upload the EVM bytecode to
+                                // pallet-revive
+                                // contract.evm_bytecode.as_bytes().map(|b| b.to_vec())
                             }
-                        } else {
-                            tracing::info!(
-                                address = ?address,
-                                "no PVM equivalent found for EVM bytecode, skipping migration"
-                            );
+                        });
+
+                    if let Some(code_bytes) = bytecode_to_upload {
+                        let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
+                        let upload_result = Pallet::<Runtime>::bare_upload_code(
+                            origin,
+                            code_bytes.clone(),
+                            BalanceOf::<Runtime>::MAX,
+                        );
+
+                        match upload_result {
+                            Ok(result) => {
+                                let code_hash = result.code_hash;
+                                let contract_info = ContractInfo::<Runtime>::new(
+                                    &account_h160,
+                                    nonce as u32,
+                                    code_hash,
+                                )
+                                .expect("Failed to create contract info");
+                                AccountInfo::<Runtime>::insert_contract(
+                                    &account_h160,
+                                    contract_info,
+                                );
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    address = ?address,
+                                    runtime_mode = ?ctx.runtime_mode,
+                                    bytecode_len = code_bytes.len(),
+                                    error = ?err,
+                                    "Failed to upload bytecode to pallet-revive, skipping migration"
+                                );
+                            }
                         }
+                    } else {
+                        tracing::info!(
+                            address = ?address,
+                            "no PVM equivalent found for EVM bytecode, skipping migration"
+                        );
                     }
                 }
             }
-        })
+        }
     });
 }
 
@@ -649,66 +576,64 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     tracing::info!("switching from pallet-revive back to REVM");
     ctx.using_pvm = false;
 
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            let block_number = System::block_number();
-            let timestamp = Timestamp::get();
+    ctx.externalities.0.lock().unwrap().execute_with(|| {
+        let block_number = System::block_number();
+        let timestamp = Timestamp::get();
 
-            data.block.number = U256::from(block_number);
-            data.block.timestamp = U256::from(timestamp / 1000);
+        data.block.number = U256::from(block_number);
+        data.block.timestamp = U256::from(timestamp / 1000);
 
-            let test_contract = data.journaled_state.database.get_test_contract_address();
-            let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
-            for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
-                let account_evm = H160::from_slice(address.as_slice());
-                let pallet_evm_nonce = Pallet::<Runtime>::evm_nonce(&account_evm);
-                let pallet_evm_balance = Pallet::<Runtime>::evm_balance(&account_evm);
-                let amount_evm = U256::from_limbs(pallet_evm_balance.0);
-                let account = journaled_account(data, address).expect("failed to load account");
-                account.info.balance = amount_evm;
-                account.info.nonce = pallet_evm_nonce as u64;
+        let test_contract = data.journaled_state.database.get_test_contract_address();
+        let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
+        for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
+            let account_evm = H160::from_slice(address.as_slice());
+            let pallet_evm_nonce = Pallet::<Runtime>::evm_nonce(&account_evm);
+            let pallet_evm_balance = Pallet::<Runtime>::evm_balance(&account_evm);
+            let amount_evm = U256::from_limbs(pallet_evm_balance.0);
+            let account = journaled_account(data, address).expect("failed to load account");
+            account.info.balance = amount_evm;
+            account.info.nonce = pallet_evm_nonce as u64;
 
-                // Migrate bytecode for deployed contracts (skip test contract)
-                if test_contract != Some(address)
-                    && let Some(info) = AccountInfo::<Runtime>::load_contract(&account_evm)
-                {
-                    let hash = hex::encode(info.code_hash);
+            // Migrate bytecode for deployed contracts (skip test contract)
+            if test_contract != Some(address)
+                && let Some(info) = AccountInfo::<Runtime>::load_contract(&account_evm)
+            {
+                let hash = hex::encode(info.code_hash);
 
-                    if let Some((code_hash, bytecode)) = match ctx.runtime_mode {
-                        crate::ReviveRuntimeMode::Pvm => ctx
-                            .dual_compiled_contracts
-                            .find_by_resolc_bytecode_hash(hash)
-                            .and_then(|(_, contract)| {
-                                contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
-                                    (
-                                        contract.evm_bytecode_hash,
-                                        Bytecode::new_raw(evm_bytecode.clone()),
-                                    )
-                                })
-                            }),
-                        crate::ReviveRuntimeMode::Evm => ctx
-                            .dual_compiled_contracts
-                            .find_by_evm_bytecode_hash(hash)
-                            .and_then(|(_, contract)| {
-                                contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
-                                    (
-                                        contract.evm_bytecode_hash,
-                                        Bytecode::new_raw(evm_bytecode.clone()),
-                                    )
-                                })
-                            }),
-                    } {
-                        account.info.code_hash = code_hash;
-                        account.info.code = Some(bytecode);
-                    } else {
-                        tracing::info!(
-                            address = ?address,
-                            "no EVM equivalent found for PVM bytecode, skipping migration"
-                        );
-                    }
+                if let Some((code_hash, bytecode)) = match ctx.runtime_mode {
+                    crate::ReviveRuntimeMode::Pvm => ctx
+                        .dual_compiled_contracts
+                        .find_by_resolc_bytecode_hash(hash)
+                        .and_then(|(_, contract)| {
+                            contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                                (
+                                    contract.evm_bytecode_hash,
+                                    Bytecode::new_raw(evm_bytecode.clone()),
+                                )
+                            })
+                        }),
+                    crate::ReviveRuntimeMode::Evm => ctx
+                        .dual_compiled_contracts
+                        .find_by_evm_bytecode_hash(hash)
+                        .and_then(|(_, contract)| {
+                            contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                                (
+                                    contract.evm_bytecode_hash,
+                                    Bytecode::new_raw(evm_bytecode.clone()),
+                                )
+                            })
+                        }),
+                } {
+                    account.info.code_hash = code_hash;
+                    account.info.code = Some(bytecode);
+                } else {
+                    tracing::info!(
+                        address = ?address,
+                        "no EVM equivalent found for PVM bytecode, skipping migration"
+                    );
                 }
             }
-        })
+        }
     });
 }
 
@@ -786,55 +711,53 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         };
 
         let mut tracer = Tracer::new(true);
-        let res = execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                tracer.trace(|| {
-                    let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
-                    ));
-                    let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
+        let res = ctx.externalities.execute_with(|| {
+            tracer.trace(|| {
+                let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+                    &H160::from_slice(ecx.tx.caller.as_slice()),
+                ));
+                let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
-                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
+                mock_handler.fund_pranked_accounts(ecx.tx.caller);
 
-                    // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
-                    // that here too to replicate the same address generation.
-                    System::inc_account_nonce(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
-                    ));
+                // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
+                // that here too to replicate the same address generation.
+                System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
+                    ecx.tx.caller.as_slice(),
+                )));
 
-                    let exec_config = ExecConfig {
-                        bump_nonce: true,
-                        collect_deposit_from_hold: None,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
-                        mock_handler: Some(Box::new(mock_handler.clone())),
-                        is_dry_run: false,
-                    };
-                    let code = Code::Upload(code_bytes.clone());
-                    let data = constructor_args;
-                    let salt = match input.scheme() {
-                        Some(CreateScheme::Create2 { salt }) => Some(
-                            salt.as_limbs()
-                                .iter()
-                                .flat_map(|&x| x.to_le_bytes())
-                                .collect::<Vec<u8>>()
-                                .try_into()
-                                .unwrap(),
-                        ),
-                        _ => None,
-                    };
+                let exec_config = ExecConfig {
+                    bump_nonce: true,
+                    collect_deposit_from_hold: None,
+                    effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                    mock_handler: Some(Box::new(mock_handler.clone())),
+                    is_dry_run: false,
+                };
+                let code = Code::Upload(code_bytes.clone());
+                let data = constructor_args;
+                let salt = match input.scheme() {
+                    Some(CreateScheme::Create2 { salt }) => Some(
+                        salt.as_limbs()
+                            .iter()
+                            .flat_map(|&x| x.to_le_bytes())
+                            .collect::<Vec<u8>>()
+                            .try_into()
+                            .unwrap(),
+                    ),
+                    _ => None,
+                };
 
-                    Pallet::<Runtime>::bare_instantiate(
-                        origin,
-                        evm_value,
-                        Weight::MAX,
-                        // TODO: fixing.
-                        BalanceOf::<Runtime>::MAX,
-                        code,
-                        data,
-                        salt,
-                        exec_config,
-                    )
-                })
+                Pallet::<Runtime>::bare_instantiate(
+                    origin,
+                    evm_value,
+                    Weight::MAX,
+                    // TODO: fixing.
+                    BalanceOf::<Runtime>::MAX,
+                    code,
+                    data,
+                    salt,
+                    exec_config,
+                )
             })
         });
         let mut gas = Gas::new(input.gas_limit());
@@ -931,37 +854,36 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             state,
         );
 
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
         let mut tracer = Tracer::new(true);
-        let res = execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                tracer.trace(|| {
-                    let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
-                    ));
+        let res = ctx.externalities.execute_with(|| {
+            tracer.trace(|| {
+                let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+                    &H160::from_slice(ecx.tx.caller.as_slice()),
+                ));
 
-                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
+                mock_handler.fund_pranked_accounts(ecx.tx.caller);
 
-                    let evm_value =
-                        sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
-                    let target = H160::from_slice(call.target_address.as_slice());
-                    let exec_config = ExecConfig {
-                        bump_nonce: true,
-                        collect_deposit_from_hold: None,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
-                        mock_handler: Some(Box::new(mock_handler.clone())),
-                        is_dry_run: false,
-                    };
-                    Pallet::<Runtime>::bare_call(
-                        origin,
-                        target,
-                        evm_value,
-                        Weight::MAX,
-                        // TODO: fixing.
-                        BalanceOf::<Runtime>::MAX,
-                        call.input.bytes(ecx).to_vec(),
-                        exec_config,
-                    )
-                })
+                let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
+                let target = H160::from_slice(call.target_address.as_slice());
+                let exec_config = ExecConfig {
+                    bump_nonce: true,
+                    collect_deposit_from_hold: None,
+                    effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                    mock_handler: Some(Box::new(mock_handler.clone())),
+                    is_dry_run: false,
+                };
+                Pallet::<Runtime>::bare_call(
+                    origin,
+                    target,
+                    evm_value,
+                    Weight::MAX,
+                    // TODO: fixing.
+                    BalanceOf::<Runtime>::MAX,
+                    call.input.bytes(ecx).to_vec(),
+                    exec_config,
+                )
             })
         });
         mock_handler.update_state_mocks(state);
@@ -970,6 +892,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
         }
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
+
         match res.result {
             Ok(result) => {
                 let _ = gas.record_cost(res.gas_required.ref_time());
@@ -1047,8 +970,13 @@ fn post_exec(
     tracer: &mut Tracer,
     is_static_call: bool,
 ) {
-    tracer.apply_prestate_trace(ecx);
-    if let Some(traces) = tracer.collect_call_traces()
+    let externalities = &mut get_context_ref_mut(state.strategy.context.as_mut()).externalities;
+
+    let call_traces = externalities.execute_with(|| {
+        tracer.apply_prestate_trace(ecx);
+        tracer.collect_call_traces()
+    });
+    if let Some(traces) = call_traces
         && !is_static_call
     {
         let mut logs = vec![];

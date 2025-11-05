@@ -130,6 +130,8 @@ impl<'a> ContractRunner<'a> {
 
         // Deploy libraries.
         self.executor.set_balance(LIBRARY_DEPLOYER, U256::MAX)?;
+        let nonce = self.executor.get_nonce(self.sender)?;
+        let address = self.sender.create(nonce);
 
         let mut result = TestSetup::default();
         for code in &self.mcr.libs_to_deploy {
@@ -153,7 +155,6 @@ impl<'a> ContractRunner<'a> {
             }
         }
 
-        let address = self.sender.create(self.executor.get_nonce(self.sender)?);
         result.address = address;
         // NOTE(revive): the test contract is set here instead of where upstream does it as
         // the test contract address needs to be retrieved in order to skip
@@ -411,7 +412,7 @@ impl<'a> ContractRunner<'a> {
             let fail =  TestResult::fail("`testFail*` has been removed. Consider changing to test_Revert[If|When]_Condition and expecting a revert".to_string());
             return SuiteResult::new(start.elapsed(), [(instances, fail)].into(), warnings);
         }
-        let f = |backend: Option<revive_strategy::Backend>, func: &Function| {
+        let f = |func: &Function| {
             let f = || {
                 let start = Instant::now();
 
@@ -443,22 +444,11 @@ impl<'a> ContractRunner<'a> {
 
                 (sig, res)
             };
-            if let Some(backend) = backend {
-                revive_strategy::with_externalities(backend, f)
-            } else {
-                f()
-            }
-        };
-        let backend = if self.config.resolc.resolc_compile || self.config.resolc.polkadot {
-            Some(revive_strategy::Backend::get())
-        } else {
-            None
+            f()
         };
 
-        let test_results = functions
-            .into_par_iter()
-            .map(|item| f(backend.clone(), item))
-            .collect::<BTreeMap<_, _>>();
+        let test_results =
+            functions.into_par_iter().map(|item| f(item)).collect::<BTreeMap<_, _>>();
 
         let duration = start.elapsed();
         SuiteResult::new(duration, test_results, warnings)
