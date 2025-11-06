@@ -558,7 +558,11 @@ impl<'a> FunctionRunner<'a> {
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
         // Prepare unit test execution.
+        self.executor.strategy.runner.checkpoint();
+
         if self.prepare_test(func).is_err() {
+            self.executor.strategy.runner.reload_checkpoint();
+
             return self.result;
         }
         let mut binding = self.executor.clone();
@@ -576,10 +580,14 @@ impl<'a> FunctionRunner<'a> {
             Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
             Err(EvmError::Skip(reason)) => {
                 self.result.single_skip(reason);
+                self.executor.strategy.runner.reload_checkpoint();
+
                 return self.result;
             }
             Err(err) => {
                 self.result.single_fail(Some(err.to_string()));
+                self.executor.strategy.runner.reload_checkpoint();
+
                 return self.result;
             }
         };
@@ -587,6 +595,8 @@ impl<'a> FunctionRunner<'a> {
         let success =
             self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
         self.result.single_result(success, reason, raw_call_result);
+        self.executor.strategy.runner.reload_checkpoint();
+
         self.result
     }
 

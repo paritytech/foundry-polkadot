@@ -1,3 +1,5 @@
+mod mock_handler;
+
 use alloy_primitives::{Address, B256, Bytes, Log, hex, ruint::aliases::U256};
 use alloy_rpc_types::BlobTransactionSidecar;
 use alloy_sol_types::SolValue;
@@ -11,6 +13,7 @@ use foundry_cheatcodes::{
     },
     journaled_account, precompile_error,
 };
+
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 use std::{
@@ -31,6 +34,7 @@ use polkadot_sdk::{
 };
 
 use crate::{
+    cheatcodes::mock_handler::MockHandlerImpl,
     execute_with_externalities,
     tracing::{Tracer, storage_tracer::AccountAccess},
 };
@@ -41,7 +45,7 @@ use revm::{
     bytecode::opcode as op,
     context::{CreateScheme, JournalTr},
     interpreter::{
-        CallInputs, CallOutcome, CreateOutcome, Gas, InstructionResult, Interpreter,
+        CallInputs, CallOutcome, CallScheme, CreateOutcome, Gas, InstructionResult, Interpreter,
         InterpreterResult, interpreter_types::Jumps,
     },
     state::Bytecode,
@@ -709,6 +713,12 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
 }
 
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
+    fn is_pvm_enabled(&self, state: &mut foundry_cheatcodes::Cheatcodes) -> bool {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        ctx.using_pvm
+    }
+
     /// Try handling the `CREATE` within PVM.
     ///
     /// If `Some` is returned then the result must be returned immediately, else the call must be
@@ -720,7 +730,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         input: &dyn CommonCreateInput,
         executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
     ) -> Option<CreateOutcome> {
-        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+        let mock_handler = MockHandlerImpl::new(&ecx, &input.caller(), None, None, state);
+
+        let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+            get_context_ref_mut(state.strategy.context.as_mut());
 
         if !ctx.using_pvm {
             return None;
@@ -777,10 +790,25 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(input.caller().as_slice()),
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
+                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
+
+                    // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
+                    // that here too to replicate the same address generation.
+                    System::inc_account_nonce(AccountId::to_fallback_account_id(
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                    ));
+
+                    let exec_config = ExecConfig {
+                        bump_nonce: true,
+                        collect_deposit_from_hold: None,
+                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                        mock_handler: Some(Box::new(mock_handler.clone())),
+                        is_dry_run: false,
+                    };
                     let code = Code::Upload(code_bytes.clone());
                     let data = constructor_args;
                     let salt = match input.scheme() {
@@ -804,17 +832,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         code,
                         data,
                         salt,
-                        ExecConfig::new_substrate_tx(),
+                        exec_config,
                     )
                 })
             })
         });
-
         let mut gas = Gas::new(input.gas_limit());
         if res.result.as_ref().is_ok_and(|r| !r.result.did_revert()) {
             self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
         }
         post_exec(state, ecx, executor, &mut tracer, false);
+        mock_handler.update_state_mocks(state);
+
         match &res.result {
             Ok(result) => {
                 let _ = gas.record_cost(res.gas_required.ref_time());
@@ -869,6 +898,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
     ) -> Option<CallOutcome> {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+        let target_address = match call.scheme {
+            CallScheme::DelegateCall => Some(call.target_address),
+            _ => None,
+        };
 
         if !ctx.using_pvm {
             return None;
@@ -889,19 +922,35 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
+
+        let mock_handler = MockHandlerImpl::new(
+            &ecx,
+            &call.caller,
+            target_address.as_ref(),
+            Some(&call.bytecode_address),
+            state,
+        );
+
         let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(call.caller.as_slice()),
+                        &H160::from_slice(ecx.tx.caller.as_slice()),
                     ));
+
+                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
 
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
-
                     let target = H160::from_slice(call.target_address.as_slice());
-
+                    let exec_config = ExecConfig {
+                        bump_nonce: true,
+                        collect_deposit_from_hold: None,
+                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                        mock_handler: Some(Box::new(mock_handler.clone())),
+                        is_dry_run: false,
+                    };
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target,
@@ -910,12 +959,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         // TODO: fixing.
                         BalanceOf::<Runtime>::MAX,
                         call.input.bytes(ecx).to_vec(),
-                        ExecConfig::new_substrate_tx(),
+                        exec_config,
                     )
                 })
             })
         });
-
+        mock_handler.update_state_mocks(state);
         let mut gas = Gas::new(call.gas_limit);
         if res.result.as_ref().is_ok_and(|r| !r.did_revert()) {
             self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
