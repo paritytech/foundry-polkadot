@@ -142,7 +142,7 @@ clap_complete_fig = "4"
 subxt = "0.43.0"
 subxt-signer = "0.43.0"
 tokio-stream = "0.1.17"
-jsonrpsee = "0.24.9"
+jsonrpsee = "0.24.10"
 sqlx = "0.8.6"
 revm.workspace = true
 
