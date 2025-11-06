@@ -1,6 +1,9 @@
-use crate::substrate_node::chain_spec::keypairs_from_private_keys;
+use crate::{
+    api_server::revive_conversions::ReviveAddress,
+    substrate_node::chain_spec::keypairs_from_private_keys,
+};
 use alloy_genesis::Genesis;
-use alloy_primitives::{U256, hex, map::HashMap, utils::Unit};
+use alloy_primitives::{Address, U256, hex, map::HashMap, utils::Unit};
 use alloy_signer::Signer;
 use alloy_signer_local::{
     MnemonicBuilder, PrivateKeySigner,
@@ -347,8 +350,12 @@ Available Accounts
         );
         let balance = alloy_primitives::utils::format_ether(self.genesis_balance);
         for (idx, wallet) in self.genesis_accounts.iter().enumerate() {
-            write!(s, "\n({idx}) {} ({balance} ETH)", Account::from(wallet.clone()).address())
-                .unwrap();
+            write!(
+                s,
+                "\n({idx}) {} ({balance} ETH)",
+                Address::from(ReviveAddress::new(Account::from(wallet.clone()).address()))
+            )
+            .unwrap();
         }
 
         let _ = write!(

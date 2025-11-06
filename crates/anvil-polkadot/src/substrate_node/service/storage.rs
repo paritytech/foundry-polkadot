@@ -1,54 +1,10 @@
-use codec::{Decode, Encode};
-use polkadot_sdk::{
-    frame_support::BoundedVec,
-    frame_system,
-    pallet_balances::AccountData,
-    parachains_common::{AccountId, Nonce},
-    sp_core::ConstU32,
+use polkadot_sdk::{frame_system, pallet_balances::AccountData, parachains_common::Nonce};
+use substrate_runtime::Balance;
+
+pub use pallet_revive_eth_rpc::subxt_client::runtime_types::pallet_revive::{
+    storage::{AccountInfo as ReviveAccountInfo, AccountType, ContractInfo},
+    vm::{BytecodeType, CodeInfo},
 };
-use substrate_runtime::{Balance, Hash};
-
-#[derive(Encode, Decode)]
-pub struct ReviveAccountInfo {
-    pub account_type: AccountType,
-    pub dust: u32,
-}
-
-#[derive(Encode, Decode)]
-pub enum AccountType {
-    Contract(ContractInfo),
-    EOA,
-}
-
-#[derive(Encode, Decode)]
-pub struct ContractInfo {
-    pub trie_id: BoundedVec<u8, ConstU32<128>>,
-    pub code_hash: Hash,
-    pub storage_bytes: u32,
-    pub storage_items: u32,
-    pub storage_byte_deposit: Balance,
-    pub storage_item_deposit: Balance,
-    pub storage_base_deposit: Balance,
-    pub immutable_data_len: u32,
-}
-
-#[derive(Encode, Decode)]
-pub struct CodeInfo {
-    pub owner: AccountId,
-    #[codec(compact)]
-    pub deposit: Balance,
-    #[codec(compact)]
-    pub refcount: u64,
-    pub code_len: u32,
-    pub code_type: ByteCodeType,
-    pub behaviour_version: u32,
-}
-
-#[derive(Encode, Decode)]
-pub enum ByteCodeType {
-    Pvm,
-    Evm,
-}
 
 pub type SystemAccountInfo = frame_system::AccountInfo<Nonce, AccountData<Balance>>;
 
