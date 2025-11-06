@@ -511,7 +511,7 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
 
     mine_blocks(&mut node, 1, 6, Some(Duration::from_millis(500))).await;
 
-    // Get current block to verify gas_price >= base_fee_per_gas
+    // Get current block to verify gas_price < base_fee_per_gas
     let block_number = node.best_block_number().await;
     let block_hash = node.block_hash_by_number(block_number).await.unwrap();
     let block = node.get_block_by_hash(block_hash).await;
