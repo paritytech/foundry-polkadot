@@ -47,4 +47,3 @@ async fn test_tx_gas_price_works_in_both_modes(#[case] runtime_mode: ReviveRunti
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
-
