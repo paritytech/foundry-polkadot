@@ -209,8 +209,7 @@ async fn test_set_balance() {
 
     assert_eq!(node.get_balance(alith, None).await, new_balance);
 
-    // Send 2 dollars to another account. We'll actually send 3, to cover for the existential
-    // deposit of 1 dollar.
+    // Send 2 dollars to another account.
     let charleth = Account::from(subxt_signer::eth::dev::charleth());
     let tx = TransactionRequest::default()
         .value(U256::from(2e18))
@@ -227,7 +226,7 @@ async fn test_set_balance() {
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
     assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 
-    let alith_new_balance = U256::from(2e18)
+    let alith_new_balance = U256::from(3e18)
         - AlloyU256::from(transaction_receipt.effective_gas_price * transaction_receipt.gas_used)
             .inner();
     assert_eq!(node.get_balance(alith, None).await, alith_new_balance);

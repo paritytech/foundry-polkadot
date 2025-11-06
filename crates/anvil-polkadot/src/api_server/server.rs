@@ -22,7 +22,7 @@ use crate::{
         service::{
             BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
             storage::{
-                AccountType, ByteCodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
+                AccountType, BytecodeType, CodeInfo, ContractInfo, ReviveAccountInfo,
                 SystemAccountInfo,
             },
         },
@@ -47,14 +47,16 @@ use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
     BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
-    subxt_client::{self, SrcChainConfig},
+    subxt_client::{
+        self, SrcChainConfig, runtime_types::bounded_collections::bounded_vec::BoundedVec,
+    },
 };
 use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
         evm::{
-            Block, Bytes, FeeHistoryResult, FilterResults, ReceiptInfo, TransactionInfo,
-            TransactionSigned,
+            Block, BlockNumberOrTagOrHash, BlockTag, Bytes, FeeHistoryResult, FilterResults,
+            ReceiptInfo, TransactionInfo, TransactionSigned,
         },
     },
     parachains_common::{AccountId, Hash, Nonce},
@@ -62,7 +64,6 @@ use polkadot_sdk::{
     sc_client_api::HeaderBackend,
     sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
     sp_api::{Metadata as _, ProvideRuntimeApi},
-    sp_arithmetic::Permill,
     sp_blockchain::Info,
     sp_core::{self, Hasher, keccak_256},
     sp_runtime::traits::BlakeTwo256,
@@ -605,7 +606,7 @@ impl ApiServer {
             return Ok(None);
         };
         let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
-        Ok(Some(block))
+        Ok(block)
     }
 
     async fn estimate_gas(
@@ -738,7 +739,7 @@ impl ApiServer {
             return Ok(None);
         };
         let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
-        Ok(Some(block))
+        Ok(block)
     }
 
     pub(crate) async fn snapshot(&mut self) -> Result<U256> {
@@ -843,10 +844,13 @@ impl ApiServer {
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<Option<U256>> {
-        let Some(block) = self.get_block_by_number(block_number, false).await? else {
+        let Some(hash) =
+            self.maybe_get_block_hash_for_tag(Some(BlockId::Number(block_number))).await?
+        else {
             return Ok(None);
         };
-        Ok(self.eth_rpc_client.receipts_count_per_block(&block.hash).await.map(U256::from))
+
+        Ok(self.eth_rpc_client.receipts_count_per_block(&hash).await.map(U256::from))
     }
 
     async fn get_transaction_by_block_hash_and_index(
@@ -926,8 +930,9 @@ impl ApiServer {
     }
 
     async fn max_priority_fee_per_gas(&self) -> Result<sp_core::U256> {
-        let gas_price = self.gas_price().await?;
-        Ok(Permill::from_percent(20).mul_ceil(gas_price))
+        // We do not support tips. Hence the recommended priority fee is
+        // always zero. The effective gas price will always be the base price.
+        Ok(Default::default())
     }
 
     pub fn accounts(&self) -> Result<Vec<H160>> {
@@ -1020,7 +1025,7 @@ impl ApiServer {
             // If the account doesn't exist, create one.
             None => {
                 let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
-                let trie_id = contract_info.trie_id.clone();
+                let trie_id = contract_info.trie_id.0.clone();
 
                 self.backend.inject_revive_account_info(
                     latest_block,
@@ -1036,7 +1041,7 @@ impl ApiServer {
             // If the account is not already a contract account, make it one.
             Some(ReviveAccountInfo { account_type: AccountType::EOA, dust }) => {
                 let contract_info = new_contract_info(&address, (*KECCAK_EMPTY).into(), nonce);
-                let trie_id = contract_info.trie_id.clone();
+                let trie_id = contract_info.trie_id.0.clone();
 
                 self.backend.inject_revive_account_info(
                     latest_block,
@@ -1048,12 +1053,12 @@ impl ApiServer {
             }
             Some(ReviveAccountInfo {
                 account_type: AccountType::Contract(contract_info), ..
-            }) => contract_info.trie_id,
+            }) => contract_info.trie_id.0,
         };
 
         self.backend.inject_child_storage(
             latest_block,
-            trie_id.to_vec(),
+            trie_id,
             key.to_be_bytes_vec(),
             value.to_vec(),
         );
@@ -1128,7 +1133,7 @@ impl ApiServer {
         let code_info = old_code_info
             .map(|mut code_info| {
                 code_info.code_len = bytes.len() as u32;
-                code_info.code_type = ByteCodeType::Evm;
+                code_info.code_type = BytecodeType::Evm;
                 code_info
             })
             .unwrap_or_else(|| CodeInfo {
@@ -1137,7 +1142,7 @@ impl ApiServer {
                 refcount: 1,
                 code_len: bytes.len() as u32,
                 behaviour_version: 0,
-                code_type: ByteCodeType::Evm,
+                code_type: BytecodeType::Evm,
             });
 
         self.backend.inject_pristine_code(latest_block, code_hash, Some(bytes));
@@ -1241,21 +1246,38 @@ impl ApiServer {
             self.update_block_provider_on_revert(&revert_info.info).await?;
         }
 
-        let hash = self
-            .get_block_hash_for_tag(Some(BlockId::Number(BlockNumberOrTag::Number(
-                revert_info.info.best_number.into(),
-            ))))
-            .await?;
-        self.update_time_on_revert(hash).await?;
+        self.update_time_on_revert(revert_info.info.best_hash).await?;
 
         Ok(())
     }
 
+    async fn maybe_get_block_hash_for_tag(
+        &self,
+        block_id: Option<BlockId>,
+    ) -> Result<Option<H256>> {
+        match ReviveBlockId::from(block_id).inner() {
+            BlockNumberOrTagOrHash::BlockHash(hash) => Ok(Some(hash)),
+            BlockNumberOrTagOrHash::BlockNumber(block_number) => {
+                let n = block_number.try_into().map_err(|_| {
+                    Error::InvalidParams("Block number conversion failed".to_string())
+                })?;
+                Ok(self.eth_rpc_client.get_block_hash(n).await?)
+            }
+            BlockNumberOrTagOrHash::BlockTag(BlockTag::Finalized | BlockTag::Safe) => {
+                let block = self.eth_rpc_client.latest_finalized_block().await;
+                Ok(Some(block.hash()))
+            }
+            BlockNumberOrTagOrHash::BlockTag(_) => {
+                let block = self.eth_rpc_client.latest_block().await;
+                Ok(Some(block.hash()))
+            }
+        }
+    }
+
     async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
-        self.eth_rpc_client
-            .block_hash_for_tag(ReviveBlockId::from(block_id).inner())
-            .await
-            .map_err(Error::from)
+        self.maybe_get_block_hash_for_tag(block_id)
+            .await?
+            .ok_or(Error::InvalidParams("Block number not found".to_string()))
     }
 
     fn get_account_id(&self, block: Hash, address: Address) -> Result<AccountId> {
@@ -1403,18 +1425,18 @@ impl ApiServer {
         let mut invalid_txs = IndexMap::new();
 
         for tx in self.tx_pool.ready() {
-            if let Some(sender) = extract_sender(tx.data()) {
-                if sender == address {
-                    invalid_txs.insert(*tx.hash(), None);
-                }
+            if let Some(sender) = extract_sender(tx.data())
+                && sender == address
+            {
+                invalid_txs.insert(*tx.hash(), None);
             }
         }
 
         for tx in self.tx_pool.futures() {
-            if let Some(sender) = extract_sender(tx.data()) {
-                if sender == address {
-                    invalid_txs.insert(*tx.hash(), None);
-                }
+            if let Some(sender) = extract_sender(tx.data())
+                && sender == address
+            {
+                invalid_txs.insert(*tx.hash(), None);
             }
         }
 
@@ -1429,16 +1451,11 @@ impl ApiServer {
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
     let address = H160::from_slice(address.as_slice());
 
-    let trie_id = {
-        let buf = ("bcontract_trie_v1", address, nonce).using_encoded(BlakeTwo256::hash);
-        buf.as_ref()
-            .to_vec()
-            .try_into()
-            .expect("Runtime uses a reasonable hash size. Hence sizeof(T::Hash) <= 128; qed")
-    };
+    let trie_id =
+        ("bcontract_trie_v1", address, nonce).using_encoded(BlakeTwo256::hash).as_ref().to_vec();
 
     ContractInfo {
-        trie_id,
+        trie_id: BoundedVec(trie_id),
         code_hash,
         storage_bytes: 0,
         storage_items: 0,

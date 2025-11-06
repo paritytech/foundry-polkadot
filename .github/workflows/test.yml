@@ -41,7 +41,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang libclang-dev
       - name: Build documentation
-        run: cargo doc --workspace --all-features --no-deps --document-private-items
+        run: cargo +nightly doc --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: --cfg docsrs -D warnings --show-type-layout --generate-link-to-definition --enable-index-page -Zunstable-options
       - name: Deploy documentation

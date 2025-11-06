@@ -274,8 +274,8 @@ async fn test_eth_get_transaction_count() {
         .unwrap(),
     )
     .unwrap_err();
-    assert_eq!(err.code, ErrorCode::InternalError);
-    assert_eq!(err.message, "Revive call failed: Client error: hash not found");
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+    assert_eq!(err.message, "Block number not found");
 
     assert_eq!(
         unwrap_response::<U256>(
@@ -494,11 +494,12 @@ async fn test_get_transaction_by_hash_and_index() {
     .unwrap()
     .unwrap();
 
-    assert_eq!(first_hash, transaction_info_1.block_hash);
+    let eth_first_hash = node.resolve_ethereum_hash(first_hash).unwrap();
+    assert_eq!(eth_first_hash, transaction_info_1.block_hash);
     assert_eq!(transaction_info_1.from, alith.address());
     assert_eq!(tx_hash0, transaction_info_1.hash);
 
-    assert_eq!(first_hash, transaction_info_2.block_hash);
+    assert_eq!(eth_first_hash, transaction_info_2.block_hash);
     assert_eq!(transaction_info_2.from, baltathar.address());
     assert_eq!(tx_hash1, transaction_info_2.hash);
 }
@@ -550,7 +551,7 @@ async fn test_get_transaction_by_number_and_index() {
     .unwrap()
     .unwrap();
 
-    let first_hash = node.block_hash_by_number(1).await.unwrap();
+    let first_hash = node.eth_block_hash_by_number(1).await.unwrap();
     assert_eq!(first_hash, transaction_info_1.block_hash);
     assert_eq!(transaction_info_1.from, alith.address());
     assert_eq!(tx_hash0, transaction_info_1.hash);
@@ -585,7 +586,7 @@ async fn test_get_transaction_by_hash() {
     .unwrap()
     .unwrap();
 
-    let first_hash = node.block_hash_by_number(1).await.unwrap();
+    let first_hash = node.eth_block_hash_by_number(1).await.unwrap();
     assert_eq!(first_hash, transaction_info.block_hash);
     assert_eq!(transaction_info.from, alith.address());
     assert_eq!(tx_hash0, transaction_info.hash);
@@ -704,7 +705,7 @@ async fn test_max_fee_per_gas() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     assert_eq!(
-        "0x30d40",
+        "0x0",
         unwrap_response::<String>(
             node.eth_rpc(EthRequest::EthMaxPriorityFeePerGas(())).await.unwrap()
         )
