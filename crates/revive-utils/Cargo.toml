@@ -14,7 +14,7 @@ exclude.workspace = true
 [dependencies]
 foundry-evm-core.workspace = true
 foundry-evm-traces.workspace = true
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", features = [
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "alindima/fix-genesis-eth-builder", features = [
     "experimental",
     "runtime",
     "polkadot-runtime-common",
