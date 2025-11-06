@@ -16,6 +16,30 @@ contract SimpleStorage {
     }
 }
 
+contract StorageWithImmutables {
+    uint256 public immutable deployedAt;
+    address public immutable deployer;
+    uint256 public immutable magicNumber;
+
+    constructor(uint256 _magicNumber) {
+        deployedAt = block.timestamp;
+        deployer = msg.sender;
+        magicNumber = _magicNumber;
+    }
+
+    function getDeployedAt() public view returns (uint256) {
+        return deployedAt;
+    }
+
+    function getDeployer() public view returns (address) {
+        return deployer;
+    }
+
+    function getMagicNumber() public view returns (uint256) {
+        return magicNumber;
+    }
+}
+
 contract EvmReviveMigrationTest is DSTest {
     Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
     address alice = address(0x1111);
@@ -136,5 +160,28 @@ contract EvmReviveMigrationTest is DSTest {
 
         uint256 finalReviveTimestamp = block.timestamp;
         assertEq(finalReviveTimestamp, newEvmTimestamp, "Timestamp should migrate from EVM to Revive");
+    }
+
+    function testImmutablesMigration() public {
+        vm.pvm(false);
+
+        uint256 deploymentTimestamp = 1234567890;
+        vm.warp(deploymentTimestamp);
+        uint256 magicNumber = 0x42424242;
+        StorageWithImmutables immutableContract = new StorageWithImmutables(magicNumber);
+
+        vm.makePersistent(address(immutableContract));
+
+        assertEq(immutableContract.getDeployedAt(), deploymentTimestamp, "Deployed timestamp should match in EVM");
+        assertEq(immutableContract.getDeployer(), address(this), "Deployer should match in EVM");
+        assertEq(immutableContract.getMagicNumber(), magicNumber, "Magic number should match in EVM");
+
+        vm.pvm(true);
+
+        assertEq(
+            immutableContract.getDeployedAt(), deploymentTimestamp, "Deployed timestamp should be preserved in Revive"
+        );
+        assertEq(immutableContract.getDeployer(), address(this), "Deployer should be preserved in Revive");
+        assertEq(immutableContract.getMagicNumber(), magicNumber, "Magic number should be preserved in Revive");
     }
 }
