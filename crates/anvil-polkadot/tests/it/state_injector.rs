@@ -14,7 +14,6 @@ use anvil_polkadot::{
 use anvil_rpc::error::{ErrorCode, RpcError};
 use assert_matches::assert_matches;
 use polkadot_sdk::pallet_revive::{self, evm::Account};
-use std::time::Duration;
 use subxt::utils::H160;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -79,8 +78,6 @@ async fn test_set_chain_id() {
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
@@ -108,7 +105,6 @@ async fn test_set_nonce() {
     assert_eq!(node.get_nonce(address).await, U256::from(10));
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_nonce(address).await, U256::from(10));
 
@@ -131,8 +127,6 @@ async fn test_set_nonce() {
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
@@ -149,7 +143,6 @@ async fn test_set_nonce() {
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
@@ -173,7 +166,6 @@ async fn test_set_nonce() {
     assert_eq!(node.get_nonce(address).await, U256::from(1));
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_nonce(address).await, U256::from(1));
 }
@@ -205,7 +197,6 @@ async fn test_set_balance() {
     assert_eq!(node.get_balance(alith, None).await, new_balance);
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_balance(alith, None).await, new_balance);
 
@@ -219,7 +210,6 @@ async fn test_set_balance() {
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
 
@@ -270,7 +260,6 @@ async fn test_set_balance() {
     assert_eq!(node.get_balance(baltathar, None).await, new_balance);
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(node.get_balance(baltathar, None).await, new_balance);
 
@@ -289,7 +278,6 @@ async fn test_set_balance() {
 
     assert_eq!(node.get_balance(random_addr, None).await, new_balance);
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
     assert_eq!(node.get_balance(random_addr, None).await, new_balance);
 }
 
@@ -314,7 +302,6 @@ async fn test_set_code_existing_contract() {
         .await;
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = Address::from(ReviveAddress::new(receipt.contract_address.unwrap()));
@@ -343,7 +330,6 @@ async fn test_set_code_existing_contract() {
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
 
@@ -390,7 +376,6 @@ async fn test_set_code_existing_contract() {
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
 
@@ -465,7 +450,6 @@ async fn test_set_code_new() {
     assert_eq!(code, Bytes::from(runtime_bytecode.clone()));
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(code, Bytes::from(runtime_bytecode));
 
@@ -478,7 +462,6 @@ async fn test_set_code_new() {
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
 
@@ -554,7 +537,6 @@ async fn test_set_code_of_regular_account() {
     assert_eq!(code, Bytes::from(runtime_bytecode.clone()));
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     assert_eq!(code, Bytes::from(runtime_bytecode));
 
@@ -567,7 +549,6 @@ async fn test_set_code_of_regular_account() {
     let tx_hash = node.send_transaction(tx, None).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let _receipt = node.get_transaction_receipt(tx_hash).await;
 
@@ -625,7 +606,6 @@ async fn test_set_storage() {
         let contract_code = get_contract_code("SimpleStorage");
         let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
         unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         let receipt = node.get_transaction_receipt(tx_hash).await;
         let contract_address = receipt.contract_address.unwrap();
 

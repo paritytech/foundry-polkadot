@@ -164,7 +164,6 @@ async fn test_estimate_gas() {
     .unwrap();
     let tx_hash = node.send_transaction(transaction, None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     // https://github.com/paritytech/polkadot-sdk/blob/b21cbb58ab50d5d10371393967537f6f221bb92f/substrate/frame/revive/src/primitives.rs#L76
     // eth_gas that is returned by estimate_gas holds both the storage deposit and
@@ -299,7 +298,6 @@ async fn test_eth_get_transaction_count() {
         )));
     let _tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
         unwrap_response::<U256>(
             node.eth_rpc(EthRequest::EthGetTransactionCount(
@@ -355,7 +353,6 @@ async fn test_get_transaction_count_by_hash_number() {
         U256::from(0)
     );
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
         unwrap_response::<Option<U256>>(
             node.eth_rpc(EthRequest::EthGetTransactionCountByHash(B256::from_slice(
@@ -388,7 +385,6 @@ async fn test_get_code_at() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     // Check random address
     let code = unwrap_response::<Bytes>(
@@ -399,8 +395,8 @@ async fn test_get_code_at() {
     assert!(code.is_empty(), "Contract code should be empty");
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let contract_code = get_contract_code("SimpleStorage");
-    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
     let receipt = node.get_transaction_receipt(tx_hash).await;
     assert_eq!(receipt.status, Some(pallet_revive::U256::from(1)));
     let contract_address = receipt.contract_address.unwrap();
@@ -458,7 +454,6 @@ async fn test_get_transaction_by_hash_and_index() {
         .await
         .unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
         unwrap_response::<Option<TransactionInfo>>(
             node.eth_rpc(EthRequest::EthGetTransactionByBlockHashAndIndex(
@@ -528,7 +523,6 @@ async fn test_get_transaction_by_number_and_index() {
         .await
         .unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
 
     let transaction_info_1 = unwrap_response::<Option<TransactionInfo>>(
         node.eth_rpc(EthRequest::EthGetTransactionByBlockNumberAndIndex(
@@ -576,8 +570,6 @@ async fn test_get_transaction_by_hash() {
         .to(Address::from(ReviveAddress::new(baltathar.address())));
     let tx_hash0 = node.send_transaction(transaction.clone(), None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
-
     let transaction_info = unwrap_response::<Option<TransactionInfo>>(
         node.eth_rpc(EthRequest::EthGetTransactionByHash(B256::from_slice(tx_hash0.as_ref())))
             .await
@@ -748,7 +740,6 @@ async fn test_get_logs() {
     let contract_code = get_contract_code("SimpleStorage");
     let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
@@ -763,7 +754,6 @@ async fn test_get_logs() {
         let _call_tx_hash = node.send_transaction(call_tx, None).await.unwrap();
     }
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
 
     let filter = alloy_rpc_types::Filter::new()
         .address(Address::from(ReviveAddress::new(contract_address)))
@@ -939,7 +929,6 @@ async fn test_anvil_node_info() {
     // Mine some blocks and check that node_info updates
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(3)), None)).await.unwrap())
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
 
     let node_info_after =
         unwrap_response::<NodeInfo>(node.eth_rpc(EthRequest::NodeInfo(())).await.unwrap()).unwrap();
@@ -998,7 +987,6 @@ async fn test_anvil_metadata() {
     // Mine some blocks and check that metadata updates
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
 
     let metadata_after_mining = unwrap_response::<AnvilMetadata>(
         node.eth_rpc(EthRequest::AnvilMetadata(())).await.unwrap(),

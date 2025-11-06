@@ -390,10 +390,18 @@ impl ApiServer {
                 "The interval between blocks is too large".to_string(),
             ));
         }
-        self.mining_engine
+
+        // Subscribe to new block only when automine is enabled.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+
+        let awaited_hash = self
+            .mining_engine
             .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
             .await
-            .map_err(Error::Mining)
+            .map_err(Error::Mining)?;
+        // Wait for the transaction to be included in a block if automine is enabled
+        wait_for_hash(receiver, awaited_hash).await?;
+        Ok(())
     }
 
     fn set_interval_mining(&self, interval: u64) -> Result<()> {
@@ -425,7 +433,10 @@ impl ApiServer {
     async fn evm_mine(&self, mine: Option<MineParams<Option<MineOptions>>>) -> Result<String> {
         node_info!("evm_mine");
 
-        self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        // Subscribe to new block only when automine is enabled.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+        let awaited_hash = self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        wait_for_hash(receiver, awaited_hash).await?;
         Ok("0x0".to_string())
     }
 
@@ -434,7 +445,16 @@ impl ApiServer {
         mine: Option<MineParams<Option<MineOptions>>>,
     ) -> Result<Vec<Block>> {
         node_info!("evm_mine_detailed");
-        let mined_blocks = self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+
+        // Subscribe to new block only when automine is enabled.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+
+        let result = self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+        let mined_blocks = result.0;
+        let awaited_hash = result.1;
+
+        wait_for_hash(receiver, awaited_hash).await?;
+
         let mut blocks = Vec::with_capacity(mined_blocks as usize);
         let last_block = self.client.info().best_number as u64;
         let starting = last_block - mined_blocks + 1;
@@ -1572,9 +1592,12 @@ async fn create_revive_rpc_client(
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
 
-    let eth_rpc_client = EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
-        .await
-        .map_err(Error::from)?;
+    let mut eth_rpc_client =
+        EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
+            .await
+            .map_err(Error::from)?;
+
+    eth_rpc_client.create_block_notifier();
     let eth_rpc_client_clone = eth_rpc_client.clone();
     task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;
@@ -1589,4 +1612,28 @@ async fn create_revive_rpc_client(
     });
 
     Ok(eth_rpc_client)
+}
+
+async fn wait_for_hash(
+    receiver: Option<tokio::sync::broadcast::Receiver<H256>>,
+    awaited_hash: H256,
+) -> Result<()> {
+    if let Some(mut receiver) = receiver {
+        tokio::time::timeout(Duration::from_millis(500), async {
+            loop {
+                if let Ok(block_hash) = receiver.recv().await {
+                    if block_hash == awaited_hash {
+                        break;
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|e| {
+            Error::InternalError(format!(
+                "Was not notified about the new best block in time {e:?}."
+            ))
+        })?;
+    }
+    Ok(())
 }

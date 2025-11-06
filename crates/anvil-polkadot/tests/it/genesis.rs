@@ -12,7 +12,7 @@ use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
 use polkadot_sdk::pallet_revive::{self, evm::Account};
-use std::{collections::BTreeMap, time::Duration};
+use std::collections::BTreeMap;
 use subxt::utils::H160;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -230,13 +230,12 @@ async fn test_coinbase_genesis() {
         .with_genesis(Some(Genesis { coinbase: genesis_coinbase, ..Default::default() }));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
 
     // Deploy multicall contract
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let contract_code = get_contract_code("Multicall");
-    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), Some(1)).await;
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
 
     // Get contract address.
     let receipt = node.get_transaction_receipt(tx_hash).await;
