@@ -258,11 +258,11 @@ impl pallet_sudo::Config for Runtime {}
 impl pallet_timestamp::Config for Runtime {}
 
 parameter_types! {
-    // That's how assethub sets this.
+    // That's how asset-hub-westend sets this.
     pub const TransactionByteFee: Balance = MILLICENTS;
 }
 
-// That's how assethub sets this.
+// That's how asset-hub-westend sets this.
 pub type WeightToFee = BlockRatioFee<
     // p
     CENTS,

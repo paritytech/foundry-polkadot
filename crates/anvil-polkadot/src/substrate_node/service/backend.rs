@@ -1,6 +1,9 @@
-use crate::substrate_node::service::{
-    Backend,
-    storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
+use crate::{
+    config::NATIVE_TO_ETH_RATIO,
+    substrate_node::service::{
+        Backend,
+        storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
+    },
 };
 use alloy_primitives::{Address, Bytes};
 use codec::{Decode, Encode};
@@ -92,7 +95,7 @@ impl BackendWithOverlay {
             .ok_or(BackendError::MissingNextFeeMultiplier)?;
         let raw_value =
             FixedU128::decode(&mut &value[..]).map_err(BackendError::DecodeNextFeeMultiplier)?;
-        Ok(raw_value.saturating_mul_int::<u128>(1_000_000u128).into())
+        Ok(raw_value.saturating_mul_int::<u128>(NATIVE_TO_ETH_RATIO).into())
     }
 
     pub fn read_aura_authority(&self, hash: Hash) -> Result<AccountId> {
