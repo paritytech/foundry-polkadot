@@ -785,6 +785,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             }
         };
 
+        let gas_price_pvm =
+            sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
@@ -805,7 +807,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let exec_config = ExecConfig {
                         bump_nonce: true,
                         collect_deposit_from_hold: None,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                        effective_gas_price: Some(gas_price_pvm),
                         mock_handler: Some(Box::new(mock_handler.clone())),
                         is_dry_run: false,
                     };
@@ -923,6 +925,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
 
+        let gas_price_pvm =
+            sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mock_handler = MockHandlerImpl::new(
             &ecx,
             &call.caller,
@@ -947,7 +951,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let exec_config = ExecConfig {
                         bump_nonce: true,
                         collect_deposit_from_hold: None,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                        effective_gas_price: Some(gas_price_pvm),
                         mock_handler: Some(Box::new(mock_handler.clone())),
                         is_dry_run: false,
                     };

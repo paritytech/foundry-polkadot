@@ -47,3 +47,14 @@ async fn test_tx_gas_price_works_in_both_modes(#[case] runtime_mode: ReviveRunti
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
+
+#[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_tx_gas_price_preserved_in_pvm_contract(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner: forge::MultiContractRunner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testTxGasPricePreservedInPvmContract", "TxGasPrice", ".*/revive/.*");
+
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}
