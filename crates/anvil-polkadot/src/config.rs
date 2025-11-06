@@ -53,7 +53,7 @@ pub const DEFAULT_IPC_ENDPOINT: &str =
     if cfg!(unix) { "/tmp/anvil.ipc" } else { r"\\.\pipe\anvil.ipc" };
 
 /// In anvil this is `1_000_000_000`, in 1e18 denomination. However,
-/// assethub runtimes sets it to `1_000_000` in 1e12 denomination.
+/// assethub runtimes sets it to `1` in 1e12 denomination.
 pub const INITIAL_BASE_FEE: FixedU128 = FixedU128::from_rational(1_000_000, NATIVE_TO_ETH_RATIO);
 
 /// DOT precision (1e12) to ETH precision (1e18) ratio.
