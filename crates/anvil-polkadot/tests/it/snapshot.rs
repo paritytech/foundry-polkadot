@@ -538,7 +538,7 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
     )
     .unwrap();
     // Previous txs are not included in the block because they have
-    // a gas_price
+    // a gas_price smaller than the current block's base_fee_per_gas.
     assert_eq!(txs_in_block, U256::ZERO);
 }
 
