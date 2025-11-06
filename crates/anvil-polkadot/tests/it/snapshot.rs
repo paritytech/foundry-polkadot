@@ -214,6 +214,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
 
     // Snapshot at block number 5.
     let zero = snapshot(&mut node, U256::ZERO).await;
+    let initial_gas_price =
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
 
     // Get known accounts initial balances.
     let (alith_addr, alith_account) = alith();
@@ -276,8 +278,12 @@ async fn test_balances_and_txs_index_after_evm_revert() {
         "Alith's balance should have changed"
     );
 
-    // Revert to a block before the transactions have been mined.
+    // Revert to a block before the transactions have been included.
     revert(&mut node, zero, 5, true, Some(Duration::from_millis(500))).await;
+
+    let after_revert_gas_price =
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
+    assert_eq!(initial_gas_price, after_revert_gas_price);
 
     // Assert on accounts balances to be the initial balances.
     let dest_addr = Address::from(dest_h160.to_fixed_bytes());
@@ -291,7 +297,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     assert_eq!(node.get_nonce(baltathar_addr).await, U256::ZERO);
     assert_eq!(node.get_nonce(dest_addr).await, U256::ZERO);
 
-    // Remine the 6th block with same txs above.
+    // Remine the 6th block with the same txs but included in a single block.
     let (tx_hash1, _) =
         do_transfer(&mut node, alith_addr, Some(dest_addr), U256::from(16e17), None).await;
     let (tx_hash2, receipt_info2) = do_transfer(
