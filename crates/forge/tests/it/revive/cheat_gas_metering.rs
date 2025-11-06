@@ -47,4 +47,3 @@ async fn test_create_during_paused_metering(#[case] runtime_mode: ReviveRuntimeM
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
-
