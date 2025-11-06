@@ -223,7 +223,8 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
     "polkadot-runtime-common",
     "pallet-revive",
     "pallet-balances",
-    "pallet-timestamp"
+    "pallet-timestamp",
+    "pallet-revive-uapi",
 ]}
 
 # solc & compilation utilities

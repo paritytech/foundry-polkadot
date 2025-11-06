@@ -14331,6 +14331,7 @@ dependencies = [
  "pallet-referenda",
  "pallet-remark",
  "pallet-revive",
+ "pallet-revive-uapi",
  "pallet-root-offences",
  "pallet-root-testing",
  "pallet-safe-mode",
