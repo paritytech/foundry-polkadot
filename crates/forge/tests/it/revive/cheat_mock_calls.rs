@@ -10,29 +10,7 @@ use rstest::rstest;
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mock_calls(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testMockCalls", "MockCalls", ".*/revive/.*");
-
-    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
-}
-
-#[rstest]
-#[case::pvm(ReviveRuntimeMode::Pvm)]
-#[case::evm(ReviveRuntimeMode::Evm)]
-#[tokio::test(flavor = "multi_thread")]
-async fn test_mock_calls_last_should_persist(#[case] runtime_mode: ReviveRuntimeMode) {
-    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testMockCallsLastShouldPersist", "MockCalls", ".*/revive/.*");
-
-    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
-}
-
-#[rstest]
-#[case::pvm(ReviveRuntimeMode::Pvm)]
-#[case::evm(ReviveRuntimeMode::Evm)]
-#[tokio::test(flavor = "multi_thread")]
-async fn test_mock_calls_with_value(#[case] runtime_mode: ReviveRuntimeMode) {
-    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new("testMockCallsWithValue", "MockCalls", ".*/revive/.*");
+    let filter = Filter::new(".*", ".*", ".*/revive/MockCalls.t.sol");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }

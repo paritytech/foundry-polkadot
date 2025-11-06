@@ -25,7 +25,7 @@ use revm::{context::JournalTr, interpreter::InstructionResult};
 #[derive(Clone)]
 pub(crate) struct MockHandlerImpl {
     inner: Rc<RefCell<MockHandlerInner<Runtime>>>,
-    pub prank_enabled: bool,
+    pub _prank_enabled: bool,
 }
 
 impl MockHandlerImpl {
@@ -39,7 +39,7 @@ impl MockHandlerImpl {
     ) -> Self {
         let (inject_env, prank_enabled) =
             MockHandlerInner::new(ecx, caller, target_address, callee, state);
-        Self { inner: Rc::new(RefCell::new(inject_env)), prank_enabled }
+        Self { inner: Rc::new(RefCell::new(inject_env)), _prank_enabled: prank_enabled }
     }
 
     /// Updates the given Cheatcodes state with the current mock state.
@@ -54,15 +54,13 @@ impl MockHandlerImpl {
         // Fuzzed prank addresses have no balance, so they won't exist in revive, and
         // calls will fail, this is not a problem when running in REVM.
         // TODO: Figure it out why this is still needed.
-        if self.prank_enabled {
-            let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
-            if balance == 0.into() {
-                Pallet::<Runtime>::set_evm_balance(
-                    &H160::from_slice(account.as_slice()),
-                    u128::MAX.into(),
-                )
-                .expect("Could not fund pranked account");
-            }
+        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
+        if balance == 0.into() {
+            Pallet::<Runtime>::set_evm_balance(
+                &H160::from_slice(account.as_slice()),
+                u128::MAX.into(),
+            )
+            .expect("Could not fund pranked account");
         }
     }
 }
@@ -118,9 +116,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
 
     fn mock_caller(&self, frames_len: usize) -> Option<OriginFor<Runtime>> {
         let mock_inner = self.inner.borrow();
-
-        if (frames_len == 0 || !mock_inner.first_call_only) && mock_inner.delegated_caller.is_none()
-        {
+        if frames_len == 0 && mock_inner.delegated_caller.is_none() {
             return Some(mock_inner.caller.clone());
         }
         None
@@ -172,7 +168,6 @@ struct MockHandlerInner<T: frame_system::Config> {
     pub delegated_caller: Option<OriginFor<T>>,
     pub callee: H160,
 
-    pub first_call_only: bool,
     pub mocked_calls: HashMap<Address, BTreeMap<MockCallDataContext, VecDeque<MockCallReturnData>>>,
     pub mocked_functions: HashMap<Address, HashMap<Bytes, Address>>,
 }
@@ -199,18 +194,15 @@ impl MockHandlerInner<Runtime> {
             )))
         });
 
-        let mut state_inject = Self {
+        let state_inject = Self {
             caller: pranked_caller,
             delegated_caller,
-            first_call_only: true,
             mocked_calls: state.mocked_calls.clone(),
             callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
             mocked_functions: state.mocked_functions.clone(),
         };
-
         if let Some(prank) = &state.get_prank(curr_depth) {
             if curr_depth >= prank.depth {
-                state_inject.first_call_only = prank.single_call;
                 prank_enabled = true;
             }
         }

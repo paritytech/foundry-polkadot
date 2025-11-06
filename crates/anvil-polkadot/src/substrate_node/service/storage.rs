@@ -1,54 +1,10 @@
-use codec::{Decode, Encode};
-use polkadot_sdk::{
-    frame_support::BoundedVec,
-    frame_system,
-    pallet_balances::AccountData,
-    parachains_common::{AccountId, Nonce},
-    sp_core::ConstU32,
+use polkadot_sdk::{frame_system, pallet_balances::AccountData, parachains_common::Nonce};
+use substrate_runtime::Balance;
+
+pub use pallet_revive_eth_rpc::subxt_client::runtime_types::pallet_revive::{
+    storage::{AccountInfo as ReviveAccountInfo, AccountType, ContractInfo},
+    vm::{BytecodeType, CodeInfo},
 };
-use substrate_runtime::{Balance, Hash};
-
-#[derive(Encode, Decode)]
-pub struct ReviveAccountInfo {
-    pub account_type: AccountType,
-    pub dust: u32,
-}
-
-#[derive(Encode, Decode)]
-pub enum AccountType {
-    Contract(ContractInfo),
-    EOA,
-}
-
-#[derive(Encode, Decode)]
-pub struct ContractInfo {
-    pub trie_id: BoundedVec<u8, ConstU32<128>>,
-    pub code_hash: Hash,
-    pub storage_bytes: u32,
-    pub storage_items: u32,
-    pub storage_byte_deposit: Balance,
-    pub storage_item_deposit: Balance,
-    pub storage_base_deposit: Balance,
-    pub immutable_data_len: u32,
-}
-
-#[derive(Encode, Decode)]
-pub struct CodeInfo {
-    pub owner: AccountId,
-    #[codec(compact)]
-    pub deposit: Balance,
-    #[codec(compact)]
-    pub refcount: u64,
-    pub code_len: u32,
-    pub code_type: ByteCodeType,
-    pub behaviour_version: u32,
-}
-
-#[derive(Encode, Decode)]
-pub enum ByteCodeType {
-    Pvm,
-    Evm,
-}
 
 pub type SystemAccountInfo = frame_system::AccountInfo<Nonce, AccountData<Balance>>;
 
@@ -84,6 +40,12 @@ pub mod well_known_keys {
         38u8, 170u8, 57u8, 78u8, 234u8, 86u8, 48u8, 224u8, 124u8, 72u8, 174u8, 12u8, 149u8, 88u8,
         206u8, 247u8, 2u8, 165u8, 193u8, 177u8, 154u8, 183u8, 160u8, 79u8, 83u8, 108u8, 81u8,
         154u8, 202u8, 73u8, 131u8, 172u8,
+    ];
+
+    //twox_128(b"Aura" + b"Authorities")
+    pub const AURA_AUTHORITIES: [u8; 32] = [
+        87, 248, 220, 47, 90, 176, 148, 103, 137, 111, 71, 48, 15, 4, 36, 56, 94, 6, 33, 196, 134,
+        154, 166, 12, 2, 190, 154, 220, 201, 138, 13, 29,
     ];
 
     pub fn system_account_info(account_id: AccountId) -> Vec<u8> {

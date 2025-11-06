@@ -190,12 +190,11 @@ async fn test_set_balance() {
 
     assert_eq!(
         node.get_balance(alith, None).await,
-        // 1000 dollars
-        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+        U256::from_str_radix("10000000000000000000000", 10).unwrap()
     );
 
     // Test decreasing the balance to 5 dollars.
-    let new_balance = U256::from(5e20);
+    let new_balance = U256::from(5e18);
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::SetBalance(Address::from(ReviveAddress::new(alith)), new_balance))
             .await
@@ -210,11 +209,10 @@ async fn test_set_balance() {
 
     assert_eq!(node.get_balance(alith, None).await, new_balance);
 
-    // Send 2 dollars to another account. We'll actually send 3, to cover for the existential
-    // deposit of 1 dollar.
+    // Send 2 dollars to another account.
     let charleth = Account::from(subxt_signer::eth::dev::charleth());
     let tx = TransactionRequest::default()
-        .value(U256::from(2e20))
+        .value(U256::from(2e18))
         .from(Address::from(ReviveAddress::new(alith)))
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
@@ -228,15 +226,15 @@ async fn test_set_balance() {
     assert_eq!(transaction_receipt.block_number, pallet_revive::U256::from(2));
     assert_eq!(transaction_receipt.transaction_hash, tx_hash);
 
-    let alith_new_balance = U256::from(2e20)
+    let alith_new_balance = U256::from(3e18)
         - AlloyU256::from(transaction_receipt.effective_gas_price * transaction_receipt.gas_used)
             .inner();
     assert_eq!(node.get_balance(alith, None).await, alith_new_balance);
-    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e20));
+    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e18));
 
     // Now try sending more money than we have (5 dollars), should fail.
     let tx = TransactionRequest::default()
-        .value(U256::from(5e20))
+        .value(U256::from(5e18))
         .from(Address::from(ReviveAddress::new(alith)))
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
@@ -248,15 +246,14 @@ async fn test_set_balance() {
         }
     );
     assert_eq!(node.get_balance(alith, None).await, alith_new_balance);
-    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e20));
+    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e18));
 
     // Test increasing the balance of an existing account to 2000 dollars.
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar()).address();
 
     assert_eq!(
         node.get_balance(baltathar, None).await,
-        // 1000 dollars
-        U256::from_str_radix("100000000000000000000000", 10).unwrap()
+        U256::from_str_radix("10000000000000000000000", 10).unwrap()
     );
 
     let new_balance = U256::from_str_radix("200000000000000000000", 10).unwrap();
@@ -597,51 +594,81 @@ async fn test_set_storage() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
     let alith = Account::from(subxt_signer::eth::dev::alith());
 
-    let contract_code = get_contract_code("SimpleStorage");
-    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-    let receipt = node.get_transaction_receipt(tx_hash).await;
-    let contract_address = receipt.contract_address.unwrap();
+    // Set storage of a new random account.
+    {
+        let random_addr = Address::random();
 
-    // Check the default value for slot 0.
-    let result = node
-        .eth_rpc(EthRequest::EthGetStorageAt(
-            Address::from(ReviveAddress::new(contract_address)),
-            U256::from(0),
-            None,
-        ))
-        .await
+        let stored_value =
+            node.get_storage_at(U256::from(0), ReviveAddress::from(random_addr).inner()).await;
+        assert_eq!(stored_value, 0);
+
+        // Set a new value for the slot 0.
+        unwrap_response::<()>(
+            node.eth_rpc(EthRequest::SetStorageAt(
+                random_addr,
+                U256::from(0),
+                B256::from(U256::from(511)),
+            ))
+            .await
+            .unwrap(),
+        )
         .unwrap();
-    let hex_string = unwrap_response::<String>(result).unwrap();
-    let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
-    let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
-    assert_eq!(stored_value, 0);
 
-    // Set a new value for the slot 0.
+        // Check that the value was updated
+        let stored_value =
+            node.get_storage_at(U256::from(0), ReviveAddress::from(random_addr).inner()).await;
+        assert_eq!(stored_value, 511);
+    }
 
-    unwrap_response::<()>(
-        node.eth_rpc(EthRequest::SetStorageAt(
-            Address::from(ReviveAddress::new(contract_address)),
-            U256::from(0),
-            B256::from(U256::from(511)),
-        ))
-        .await
-        .unwrap(),
-    )
-    .unwrap();
+    // Update the storage of an existing account
+    {
+        let contract_code = get_contract_code("SimpleStorage");
+        let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+        unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let receipt = node.get_transaction_receipt(tx_hash).await;
+        let contract_address = receipt.contract_address.unwrap();
 
-    // Check that the value was updated
-    let result = node
-        .eth_rpc(EthRequest::EthGetStorageAt(
-            Address::from(ReviveAddress::new(contract_address)),
-            U256::from(0),
-            None,
-        ))
-        .await
+        // Check the default value for slot 0.
+        let stored_value = node.get_storage_at(U256::from(0), contract_address).await;
+        assert_eq!(stored_value, 0);
+
+        // Set a new value for the slot 0.
+        unwrap_response::<()>(
+            node.eth_rpc(EthRequest::SetStorageAt(
+                Address::from(ReviveAddress::new(contract_address)),
+                U256::from(0),
+                B256::from(U256::from(511)),
+            ))
+            .await
+            .unwrap(),
+        )
         .unwrap();
-    let hex_string = unwrap_response::<String>(result).unwrap();
-    let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
-    let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
-    assert_eq!(stored_value, 511);
+
+        // Check that the value was updated
+        let stored_value = node.get_storage_at(U256::from(0), contract_address).await;
+        assert_eq!(stored_value, 511);
+    }
+
+    // Set storage for a EOA account (Alith).
+    {
+        let stored_value = node.get_storage_at(U256::from(0), alith.address()).await;
+        assert_eq!(stored_value, 0);
+
+        // Set a new value for the slot 0.
+        unwrap_response::<()>(
+            node.eth_rpc(EthRequest::SetStorageAt(
+                Address::from(ReviveAddress::new(alith.address())),
+                U256::from(0),
+                B256::from(U256::from(511)),
+            ))
+            .await
+            .unwrap(),
+        )
+        .unwrap();
+
+        // Check that the value was updated
+        let stored_value = node.get_storage_at(U256::from(0), alith.address()).await;
+        assert_eq!(stored_value, 511);
+    }
 }
