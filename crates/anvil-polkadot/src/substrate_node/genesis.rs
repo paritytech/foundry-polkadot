@@ -185,7 +185,7 @@ impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf>
         )
     }
 
-    pub fn new_with_storage(
+    fn new_with_storage(
         genesis_number: u64,
         genesis_storage: Storage,
         commit_genesis_state: bool,

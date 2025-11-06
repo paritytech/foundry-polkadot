@@ -1,7 +1,4 @@
-use crate::{
-    api_server::revive_conversions::ReviveAddress,
-    substrate_node::chain_spec::keypairs_from_private_keys,
-};
+use crate::api_server::revive_conversions::ReviveAddress;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, U256, hex, map::HashMap, utils::Unit};
 use alloy_signer::Signer;
@@ -925,4 +922,16 @@ impl AccountGenerator {
         }
         Ok(wallets)
     }
+}
+
+fn keypairs_from_private_keys(
+    accounts: &[PrivateKeySigner],
+) -> Result<Vec<Keypair>, subxt_signer::eth::Error> {
+    accounts
+        .iter()
+        .map(|signer| {
+            let key = Keypair::from_secret_key(signer.credential().to_bytes().into())?;
+            Ok(key)
+        })
+        .collect()
 }
