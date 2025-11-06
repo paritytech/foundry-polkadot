@@ -111,6 +111,8 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     /// Runtime backend mode when using pallet-revive (PVM or EVM)
     pub runtime_mode: crate::ReviveRuntimeMode,
     pub remove_recorded_access_at: Option<usize>,
+    /// State snapshot captured before REVM execution (for test contracts)
+    pub revm_state_snapshot: Option<crate::tracing::AccountStateSnapshot>,
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
@@ -126,6 +128,7 @@ impl PvmCheatcodeInspectorStrategyContext {
             dual_compiled_contracts,
             runtime_mode,
             remove_recorded_access_at: None,
+            revm_state_snapshot: None,
         }
     }
 }
@@ -726,6 +729,129 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     });
 }
 
+impl PvmCheatcodeInspectorStrategyRunner {
+    /// Syncs contract bytecode from REVM to pallet-revive after CREATE
+    fn sync_contract_bytecode_to_pallet(
+        &self,
+        state: &mut foundry_cheatcodes::Cheatcodes,
+        ecx: Ecx<'_, '_, '_>,
+        created_address: Address,
+    ) {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        // Load the contract account from REVM
+        if let Ok(acc) = ecx.journaled_state.load_account(created_address) {
+            if let Some(bytecode) = acc.data.info.code.as_ref() {
+                let h160_address = H160::from_slice(created_address.as_slice());
+
+                execute_with_externalities(|externalities| {
+                    externalities.execute_with(|| {
+                        // Skip if contract already exists in pallet-revive
+                        if AccountInfo::<Runtime>::load_contract(&h160_address).is_some() {
+                            tracing::debug!(
+                                "Contract {:?} already exists in pallet-revive, skipping bytecode sync",
+                                created_address
+                            );
+                            return;
+                        }
+
+                        // Find the matching dual-compiled contract by EVM bytecode
+                        if let Some((_, contract)) = ctx.dual_compiled_contracts
+                            .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
+                        {
+                            let nonce = acc.data.info.nonce;
+
+                            // Determine which bytecode to upload based on runtime mode
+                            let (code_bytes, immutable_data, code_type) = match ctx.runtime_mode {
+                                crate::ReviveRuntimeMode::Pvm => {
+                                    let immutable_data = contract.evm_immutable_references
+                                        .as_ref()
+                                        .map(|immutable_refs| {
+                                            let evm_bytecode = bytecode.original_byte_slice();
+
+                                            // Collect all immutable bytes from their scattered offsets
+                                            immutable_refs
+                                                .values()
+                                                .flatten()
+                                                .flat_map(|offset| {
+                                                    let start = offset.start as usize;
+                                                    let end = start + offset.length as usize;
+                                                    evm_bytecode.get(start..end).unwrap_or_else(|| {
+                                                        panic!(
+                                                            "Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
+                                                            created_address, start, end, evm_bytecode.len()
+                                                        )
+                                                    })
+                                                })
+                                                .copied()
+                                                .collect::<Vec<u8>>()
+                                        });
+                                    (
+                                        contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),
+                                        immutable_data,
+                                        BytecodeType::Pvm,
+                                    )
+                                }
+                                crate::ReviveRuntimeMode::Evm => (
+                                    contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec()),
+                                    None,
+                                    BytecodeType::Evm,
+                                ),
+                            };
+
+                            if let Some(code_bytes) = code_bytes {
+                                let upload_result = Pallet::<Runtime>::try_upload_code(
+                                    Pallet::<Runtime>::account_id(),
+                                    code_bytes.clone(),
+                                    code_type,
+                                    u64::MAX.into(),
+                                    &ExecConfig::new_substrate_tx(),
+                                );
+
+                                match upload_result {
+                                    Ok(_) => {
+                                        let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
+                                        let contract_info = ContractInfo::<Runtime>::new(&h160_address, nonce as u32, code_hash)
+                                            .expect("Failed to create contract info");
+                                        AccountInfo::<Runtime>::insert_contract(&h160_address, contract_info);
+
+                                        if let Some(data) = immutable_data.and_then(|immutables| immutables.try_into().ok()) {
+                                            let _ = Pallet::<Runtime>::set_immutables(h160_address, data);
+                                        }
+
+                                        tracing::info!(
+                                            "Synced contract bytecode to pallet-revive: {:?} ({} mode)",
+                                            created_address,
+                                            ctx.runtime_mode
+                                        );
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            "Failed to upload contract bytecode to pallet-revive: address={:?}, error={:?}",
+                                            created_address,
+                                            err
+                                        );
+                                    }
+                                }
+                            } else {
+                                tracing::debug!(
+                                    "No matching bytecode found for contract {:?}",
+                                    created_address
+                                );
+                            }
+                        } else {
+                            tracing::debug!(
+                                "Contract {:?} not found in dual_compiled_contracts",
+                                created_address
+                            );
+                        }
+                    })
+                });
+            }
+        }
+    }
+}
+
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
     /// Try handling the `CREATE` within PVM.
     ///
@@ -741,6 +867,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         if !ctx.using_pvm {
+            // Running in pure EVM mode - capture snapshot before REVM handles this
+            if let Some(CreateScheme::Create) = input.scheme() {
+                let caller = input.caller();
+                let nonce = ecx
+                    .journaled_state
+                    .load_account(input.caller())
+                    .expect("to load caller account")
+                    .info
+                    .nonce;
+                let address = caller.create(nonce);
+                ctx.revm_state_snapshot = Tracer::capture_state_snapshot(ecx, address);
+            }
             return None;
         }
 
@@ -764,6 +902,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     "running create in EVM, instead of PVM (Test Contract) {:#?}",
                     address
                 );
+
+                // Capture state snapshot before REVM execution
+                ctx.revm_state_snapshot = Tracer::capture_state_snapshot(ecx, address);
+
                 return None;
             }
         }
@@ -889,6 +1031,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         if !ctx.using_pvm {
+            // Running in pure EVM mode - capture snapshot before REVM handles this
+            ctx.revm_state_snapshot = Tracer::capture_state_snapshot(ecx, call.target_address);
             return None;
         }
 
@@ -903,6 +1047,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 "running call in EVM, instead of pallet-revive (Test Contract) {:#?}",
                 call.bytecode_address
             );
+
+            // Capture state snapshot before REVM execution
+            ctx.revm_state_snapshot = Tracer::capture_state_snapshot(ecx, call.target_address);
+
             return None;
         }
 
@@ -1004,6 +1152,59 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let _ = last.remove(index);
             } else {
                 warn!(index, len = last.len(), "skipping duplicate access removal: out of bounds");
+            }
+        }
+    }
+
+    fn revive_call_end(
+        &self,
+        state: &mut foundry_cheatcodes::Cheatcodes,
+        ecx: Ecx<'_, '_, '_>,
+        call: &CallInputs,
+    ) {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        // Check if we have a snapshot (meaning this was executed in REVM)
+        if let Some(before_snapshot) = ctx.revm_state_snapshot.take() {
+            // Capture the current state after REVM execution
+            if let Some(after_snapshot) = Tracer::capture_state_snapshot(ecx, call.target_address) {
+                // Compute the diff
+                let diff = Tracer::compute_state_diff(&before_snapshot, &after_snapshot);
+
+                // Apply only the changes to pallet-revive
+                tracing::debug!(
+                    "Applying REVM state diff to pallet-revive for call to {:?}",
+                    call.target_address
+                );
+                Tracer::apply_state_diff_to_pallet(call.target_address, &diff);
+            }
+        }
+    }
+
+    fn revive_create_end(
+        &self,
+        state: &mut foundry_cheatcodes::Cheatcodes,
+        ecx: Ecx<'_, '_, '_>,
+        created_address: Address,
+    ) {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        // Check if we have a snapshot (meaning this was executed in REVM)
+        if let Some(before_snapshot) = ctx.revm_state_snapshot.take() {
+            // Capture the current state after REVM execution
+            if let Some(after_snapshot) = Tracer::capture_state_snapshot(ecx, created_address) {
+                // Compute the diff
+                let diff = Tracer::compute_state_diff(&before_snapshot, &after_snapshot);
+
+                // Apply only the changes to pallet-revive
+                tracing::debug!(
+                    "Applying REVM state diff to pallet-revive for created contract {:?}",
+                    created_address
+                );
+                Tracer::apply_state_diff_to_pallet(created_address, &diff);
+
+                // Sync contract bytecode to pallet-revive
+                self.sync_contract_bytecode_to_pallet(state, ecx, created_address);
             }
         }
     }

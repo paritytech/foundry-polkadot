@@ -593,7 +593,7 @@ impl ApiServer {
             return Ok(None);
         };
         let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
-        Ok(Some(block))
+        Ok(block)
     }
 
     async fn estimate_gas(
@@ -726,7 +726,7 @@ impl ApiServer {
             return Ok(None);
         };
         let block = self.eth_rpc_client.evm_block(block, hydrated_transactions).await;
-        Ok(Some(block))
+        Ok(block)
     }
 
     pub(crate) async fn snapshot(&mut self) -> Result<U256> {

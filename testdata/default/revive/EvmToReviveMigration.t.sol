@@ -170,8 +170,7 @@ contract EvmReviveMigrationTest is DSTest {
 
         vm.pvm(true);
 
-        // TODO: Enable after contract storage migration is on place
-        // assertEq(storageContract.get(), 42);
+        assertEq(storageContract.get(), 42);
 
         storageContract.set(100);
         assertEq(storageContract.get(), 100);
