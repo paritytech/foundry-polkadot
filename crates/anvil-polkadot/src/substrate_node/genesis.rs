@@ -95,7 +95,6 @@ impl GenesisConfig {
             (well_known_keys::BLOCK_NUMBER_KEY.to_vec(), self.number.encode()),
             (well_known_keys::AURA_AUTHORITIES.to_vec(), vec![aura_authority_id].encode()),
         ];
-        // TODO: add other fields
         storage
     }
 
