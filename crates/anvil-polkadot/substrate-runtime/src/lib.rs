@@ -42,6 +42,11 @@ use polkadot_sdk::{
 pub use polkadot_sdk::parachains_common::Balance;
 use sp_weights::ConstantMultiplier;
 
+pub mod constants {
+    /// DOT precision (1e12) to ETH precision (1e18) ratio.
+    pub const NATIVE_TO_ETH_RATIO: u32 = 1_000_000;
+}
+
 pub mod currency {
     use super::Balance;
     pub const DOLLARS: Balance = 1_000_000_000_000;
@@ -310,7 +315,7 @@ impl pallet_revive::Config for Runtime {
     // `forking` feature.
     type FindAuthor = BlockAuthor;
     type Balance = Balance;
-    type NativeToEthRatio = ConstU32<1_000_000>;
+    type NativeToEthRatio = ConstU32<{ constants::NATIVE_TO_ETH_RATIO }>;
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;

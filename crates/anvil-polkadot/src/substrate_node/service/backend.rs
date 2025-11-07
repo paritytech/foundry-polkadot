@@ -1,9 +1,6 @@
-use crate::{
-    config::NATIVE_TO_ETH_RATIO,
-    substrate_node::service::{
-        Backend,
-        storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
-    },
+use crate::substrate_node::service::{
+    Backend,
+    storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
 };
 use alloy_primitives::{Address, Bytes};
 use codec::{Decode, Encode};
@@ -20,7 +17,7 @@ use polkadot_sdk::{
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use substrate_runtime::Balance;
+use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
@@ -95,7 +92,7 @@ impl BackendWithOverlay {
             .ok_or(BackendError::MissingNextFeeMultiplier)?;
         let raw_value =
             FixedU128::decode(&mut &value[..]).map_err(BackendError::DecodeNextFeeMultiplier)?;
-        Ok(raw_value.saturating_mul_int::<u128>(NATIVE_TO_ETH_RATIO).into())
+        Ok(raw_value.saturating_mul_int::<u128>(NATIVE_TO_ETH_RATIO.into()).into())
     }
 
     pub fn read_aura_authority(&self, hash: Hash) -> Result<AccountId> {

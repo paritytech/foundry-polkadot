@@ -12,7 +12,6 @@ use crate::{
             transaction_matches_eth_hash,
         },
     },
-    config::NATIVE_TO_ETH_RATIO,
     logging::LoggingManager,
     macros::node_info,
     substrate_node::{
@@ -72,7 +71,7 @@ use polkadot_sdk::{
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
-use substrate_runtime::Balance;
+use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
     client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,

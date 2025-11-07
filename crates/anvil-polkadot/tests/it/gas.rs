@@ -4,12 +4,11 @@ use crate::utils::{TestNode, unwrap_response};
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::TransactionRequest;
 use anvil_core::eth::EthRequest;
-use anvil_polkadot::config::{
-    AnvilNodeConfig, INITIAL_BASE_FEE, NATIVE_TO_ETH_RATIO, SubstrateNodeConfig,
-};
-use polkadot_sdk::pallet_revive::evm::Account;
+use anvil_polkadot::config::{AnvilNodeConfig, INITIAL_BASE_FEE, SubstrateNodeConfig};
+use polkadot_sdk::{pallet_revive::evm::Account, sp_runtime::FixedU128};
 use rstest::rstest;
 use std::ops::Not;
+use substrate_runtime::constants::NATIVE_TO_ETH_RATIO;
 
 #[tokio::test(flavor = "multi_thread")]
 #[rstest]
@@ -27,10 +26,8 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
         unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
 
     if rpc_driven {
-        use polkadot_sdk::sp_runtime::FixedU128;
-
         assert_eq!(
-            FixedU128::from_rational(gas_price.to::<u128>(), NATIVE_TO_ETH_RATIO),
+            FixedU128::from_rational(gas_price.to::<u128>(), NATIVE_TO_ETH_RATIO.into()),
             INITIAL_BASE_FEE
         );
         unwrap_response::<()>(
