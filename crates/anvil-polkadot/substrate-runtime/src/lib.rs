@@ -7,7 +7,10 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 extern crate alloc;
 
-use crate::{frame_system::limits::BlockLength, sp_runtime::ConsensusEngineId};
+use crate::{
+    constants::runtime_block_weights, frame_system::limits::BlockLength,
+    sp_runtime::ConsensusEngineId,
+};
 use alloc::{vec, vec::Vec};
 use currency::*;
 use frame_support::weights::{
@@ -41,6 +44,65 @@ use polkadot_sdk::{
 pub use polkadot_sdk::parachains_common::Balance;
 use sp_weights::ConstantMultiplier;
 
+/// Gas conversion to weights and customizations types and logic.
+pub mod gas {
+    use crate::{Address, EthExtraImpl, FeeInfo, Signature};
+
+    // Type that exposes eth gas <-> substrate weights helpers.
+    pub type AnvilFeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
+}
+
+pub mod constants {
+
+    use crate::{
+        BlockExecutionWeight, BlockWeights, DispatchClass, ExtrinsicBaseWeight, Perbill,
+        RUNTIME_API_VERSIONS, RuntimeVersion, WEIGHT_REF_TIME_PER_SECOND, Weight, runtime_version,
+    };
+
+    /// The runtime version.
+    #[runtime_version]
+    pub const VERSION: RuntimeVersion = RuntimeVersion {
+        spec_name: alloc::borrow::Cow::Borrowed("revive-dev-runtime"),
+        impl_name: alloc::borrow::Cow::Borrowed("revive-dev-runtime"),
+        authoring_version: 1,
+        spec_version: 0,
+        impl_version: 1,
+        apis: RUNTIME_API_VERSIONS,
+        transaction_version: 1,
+        system_version: 1,
+    };
+    /// We assume that ~10% of the block weight is consumed by `on_initialize` handlers.
+    /// This is used to limit the maximal weight of a single extrinsic.
+    pub const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(10);
+    /// We allow `Normal` extrinsics to fill up the block up to 75%, the rest can be used
+    /// by  Operational  extrinsics.
+    pub const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
+    /// We allow for 2 seconds of compute with a 6 second average block time, with maximum proof
+    /// size.
+    pub const MAXIMUM_BLOCK_WEIGHT: Weight =
+        Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
+
+    pub fn runtime_block_weights(max_total_for_normal_class: Weight) -> BlockWeights {
+        BlockWeights::builder()
+            .base_block(BlockExecutionWeight::get())
+            .for_class(DispatchClass::all(), |weights| {
+                weights.base_extrinsic = ExtrinsicBaseWeight::get();
+            })
+            .for_class(DispatchClass::Normal, |weights| {
+                weights.max_total = Some(NORMAL_DISPATCH_RATIO * max_total_for_normal_class);
+            })
+            .for_class(DispatchClass::Operational, |weights| {
+                weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
+                // Operational transactions have some extra reserved space, so that they
+                // are included even if block reached `MAXIMUM_BLOCK_WEIGHT`.
+                weights.reserved =
+                    Some(MAXIMUM_BLOCK_WEIGHT - NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT);
+            })
+            .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
+            .build_or_panic()
+    }
+}
+
 pub mod currency {
     use super::Balance;
     pub const DOLLARS: Balance = 1_000_000_000_000;
@@ -48,23 +110,10 @@ pub mod currency {
     pub const MILLICENTS: Balance = CENTS / 1_000;
 }
 
-/// The runtime version.
-#[runtime_version]
-pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: alloc::borrow::Cow::Borrowed("revive-dev-runtime"),
-    impl_name: alloc::borrow::Cow::Borrowed("revive-dev-runtime"),
-    authoring_version: 1,
-    spec_version: 0,
-    impl_version: 1,
-    apis: RUNTIME_API_VERSIONS,
-    transaction_version: 1,
-    system_version: 1,
-};
-
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
 pub fn native_version() -> NativeVersion {
-    NativeVersion { runtime_version: VERSION, can_author_with: Default::default() }
+    NativeVersion { runtime_version: constants::VERSION, can_author_with: Default::default() }
 }
 
 /// The address format for describing accounts.
@@ -193,39 +242,12 @@ impl pallet_aura::Config for Runtime {
     type SlotDuration = ConstU64<6000>;
 }
 
-/// We assume that ~10% of the block weight is consumed by `on_initialize` handlers.
-/// This is used to limit the maximal weight of a single extrinsic.
-const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(10);
-/// We allow `Normal` extrinsics to fill up the block up to 75%, the rest can be used
-/// by  Operational  extrinsics.
-const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
-/// We allow for 2 seconds of compute with a 6 second average block time, with maximum proof size.
-const MAXIMUM_BLOCK_WEIGHT: Weight =
-    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
-
 // asset-hub-westend values.
 parameter_types! {
-    pub const Version: RuntimeVersion = VERSION;
+    pub const Version: RuntimeVersion = constants::VERSION;
     pub RuntimeBlockLength: BlockLength =
-        BlockLength::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
-    pub storage RuntimeBlockWeights: BlockWeights = BlockWeights::builder()
-        .base_block(BlockExecutionWeight::get())
-        .for_class(DispatchClass::all(), |weights| {
-            weights.base_extrinsic = ExtrinsicBaseWeight::get();
-        })
-        .for_class(DispatchClass::Normal, |weights| {
-            weights.max_total = Some(NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT);
-        })
-        .for_class(DispatchClass::Operational, |weights| {
-            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
-            // Operational transactions have some extra reserved space, so that they
-            // are included even if block reached `MAXIMUM_BLOCK_WEIGHT`.
-            weights.reserved = Some(
-                MAXIMUM_BLOCK_WEIGHT - NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT
-            );
-        })
-        .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
-        .build_or_panic();
+        BlockLength::max_with_normal_ratio(5 * 1024 * 1024, constants::NORMAL_DISPATCH_RATIO);
+    pub storage RuntimeBlockWeights: BlockWeights = runtime_block_weights(constants::MAXIMUM_BLOCK_WEIGHT);
 }
 
 /// Implements the types required for the system pallet.
@@ -308,7 +330,7 @@ impl pallet_revive::Config for Runtime {
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;
-    type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
+    type FeeInfo = gas::AnvilFeeInfo;
 }
 
 pallet_revive::impl_runtime_apis_plus_revive_traits!(
@@ -319,7 +341,7 @@ pallet_revive::impl_runtime_apis_plus_revive_traits!(
 
     impl apis::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
-            VERSION
+            constants::VERSION
         }
 
         fn execute_block(block: <Block as BlockT>::LazyBlock) {

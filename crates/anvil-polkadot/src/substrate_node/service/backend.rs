@@ -1,6 +1,5 @@
 use crate::substrate_node::service::{
     Backend,
-    constants::runtime_block_weights,
     storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
 };
 use alloy_primitives::{Address, Bytes};
@@ -8,10 +7,8 @@ use codec::{Decode, Encode};
 use lru::LruCache;
 use parking_lot::Mutex;
 use polkadot_sdk::{
-    pallet_revive::{
-        BlockWeights,
-        evm::fees::{Info, InfoT},
-    },
+    frame_system::limits::BlockLength,
+    pallet_revive::{BlockWeights, evm::fees::InfoT},
     parachains_common::{AccountId, Hash, opaque::Block},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
@@ -21,7 +18,7 @@ use polkadot_sdk::{
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use substrate_runtime::Balance;
+use substrate_runtime::{Balance, constants::runtime_block_weights, gas::AnvilFeeInfo};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
@@ -37,6 +34,8 @@ pub enum BackendError {
     MissingTimestamp,
     #[error("Could not find block weights")]
     MissingBlockWeights,
+    #[error("Could not find block length")]
+    MissingBlockLength,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
@@ -55,6 +54,8 @@ pub enum BackendError {
     DecodeAuraAuthorities(codec::Error),
     #[error("Unable to decode block weights: {0}")]
     DecodeBlockWeights(codec::Error),
+    #[error("Unable to decode block length: {0}")]
+    DecodeBlockLength(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -151,9 +152,17 @@ impl BackendWithOverlay {
     pub fn read_runtime_block_weights(&self, hash: Hash) -> Result<BlockWeights> {
         let key = well_known_keys::RUNTIME_BLOCK_WEIGHTS;
 
-        let value: BlockWeights =
+        let value =
             self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingBlockWeights)?;
         BlockWeights::decode(&mut &value[..]).map_err(BackendError::DecodeBlockWeights)
+    }
+
+    pub fn read_runtime_block_length(&self, hash: Hash) -> Result<BlockLength> {
+        let key = well_known_keys::RUNTIME_BLOCK_LENGTH;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingBlockLength)?;
+        BlockLength::decode(&mut &value[..]).map_err(BackendError::DecodeBlockLength)
     }
 
     pub fn inject_system_account_info(
@@ -214,9 +223,17 @@ impl BackendWithOverlay {
 
     pub fn inject_block_gas_limit(&self, at: Hash, block_gas_limit: u128) {
         let mut overrides = self.overrides.lock();
-        let block_weight_limit = Info::fee_to_weight(block_gas_limit);
-        let block_weights = runtime_block_weights(block_weight_limit);
+        // This uses the current BlockWeights.max_block set on the runtime.
+        // It is technically a weak start for computing the next gas limit,
+        // since the inverse is based on the previous max_block.
+        let max_block_weight = AnvilFeeInfo::fee_to_weight(block_gas_limit);
+        let block_weights = runtime_block_weights(max_block_weight);
         overrides.set_runtime_block_weights(at, block_weights);
+
+        // TODO: now compute what is the evm_block_gas_limit and determine how far
+        // we are from it. The other term that can be updated is
+        let storage_block_weights = self.read_runtime_block_weights(at);
+        assert_eq!(block_weights, storage_block_weights);
     }
 
     fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {
