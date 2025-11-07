@@ -25,11 +25,12 @@ use tracing::warn;
 
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, Code, ContractInfo, ExecConfig, Pallet,
-        evm::CallTrace,
+        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, ExecConfig,
+        Pallet, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::{self, H160},
+    sp_core::{self, H160, H256},
+    sp_io,
     sp_weights::Weight,
 };
 
@@ -563,9 +564,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
 
-            let test_contract = data.journaled_state.database.get_test_contract_address();
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
-
             for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;
@@ -581,57 +580,75 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                     a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
                 });
 
-                // TODO handle immutables
-                // Migrate bytecode for deployed contracts (skip test contract)
-                if test_contract != Some(address)
-                    && let Some(bytecode) = acc.data.info.code.as_ref() {
-
+                if let Some(bytecode) = acc.data.info.code.as_ref() {
                     let account_h160 = H160::from_slice(address.as_slice());
 
                     // Skip if contract already exists in pallet-revive
                     if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
-                        // Determine which bytecode to upload based on runtime mode
-                        let bytecode_to_upload = ctx.dual_compiled_contracts
-                                    .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
-                                    .and_then(|(_, contract)| {
-                                        match ctx.runtime_mode {
-                                            crate::ReviveRuntimeMode::Pvm => contract.resolc_bytecode.as_bytes().map(|b| b.to_vec()),
-                                            crate::ReviveRuntimeMode::Evm => None,
-                                            // TODO: We do not have method to upload the EVM bytecode to pallet-revive
-                                            //contract.evm_bytecode.as_bytes().map(|b| b.to_vec())
+                        // Find the matching dual-compiled contract by EVM bytecode
+                        if let Some((_, contract)) = ctx.dual_compiled_contracts
+                            .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
+                        {
+                            let (code_bytes, immutable_data, code_type) = match ctx.runtime_mode {
+                                crate::ReviveRuntimeMode::Pvm => {
+                                    let immutable_data = contract.evm_immutable_references
+                                        .as_ref()
+                                        .map(|immutable_refs| {
+                                            let evm_bytecode = bytecode.original_byte_slice();
+
+                                            // Collect all immutable bytes from their scattered offsets
+                                            immutable_refs
+                                                .values()
+                                                .flatten()
+                                                .flat_map(|offset| {
+                                                    let start = offset.start as usize;
+                                                    let end = start + offset.length as usize;
+                                                    evm_bytecode.get(start..end).unwrap_or_else(|| panic!("Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
+                                                        address, start, end, evm_bytecode.len()))
+                                                })
+                                                .copied()
+                                                .collect::<Vec<u8>>()
+                                        });
+                                    (contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),immutable_data, BytecodeType::Pvm)
+                                },
+                                crate::ReviveRuntimeMode::Evm => (contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec()), None, BytecodeType::Evm),
+                            };
+
+                            if let Some(code_bytes) = code_bytes {
+                                let upload_result = Pallet::<Runtime>::try_upload_code(
+                                    Pallet::<Runtime>::account_id(),
+                                    code_bytes.clone(),
+                                    code_type,
+                                    u64::MAX.into(),
+                                    &ExecConfig::new_substrate_tx(),
+                                );
+                                match upload_result {
+                                    Ok(_) => {
+                                        let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
+                                        let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                            .expect("Failed to create contract info");
+                                        AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
+                                        if let Some(data) = immutable_data.and_then(|immutables| immutables.try_into().ok())
+                                        {
+                                            Pallet::<Runtime>::set_immutables(account_h160, data).expect("Failed to migrate immutables");
                                         }
-                                    });
-
-                        if let Some(code_bytes) = bytecode_to_upload {
-                            let origin = OriginFor::<Runtime>::signed(Pallet::<Runtime>::account_id());
-                            let upload_result = Pallet::<Runtime>::bare_upload_code(
-                                origin,
-                                code_bytes.clone(),
-                                BalanceOf::<Runtime>::MAX,
-                            );
-
-                            match upload_result {
-                                Ok(result) => {
-                                    let code_hash = result.code_hash;
-                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
-                                        .expect("Failed to create contract info");
-                                    AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            address = ?address,
+                                            runtime_mode = ?ctx.runtime_mode,
+                                            bytecode_len = code_bytes.len(),
+                                            error = ?err,
+                                            "Failed to upload bytecode to pallet-revive, skipping migration"
+                                        );
+                                    }
                                 }
-                                Err(err) => {
-                                    tracing::warn!(
-                                        address = ?address,
-                                        runtime_mode = ?ctx.runtime_mode,
-                                        bytecode_len = code_bytes.len(),
-                                        error = ?err,
-                                        "Failed to upload bytecode to pallet-revive, skipping migration"
-                                    );
-                                }
+                            } else {
+                                tracing::info!(
+                                    address = ?address,
+                                    "no PVM equivalent found for EVM bytecode, skipping migration"
+                                );
                             }
-                        } else {
-                            tracing::info!(
-                                address = ?address,
-                                "no PVM equivalent found for EVM bytecode, skipping migration"
-                            );
                         }
                     }
                 }
@@ -846,7 +863,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         match &res.result {
             Ok(result) => {
-                let _ = gas.record_cost(res.gas_required.ref_time());
+                // Only record gas cost if gas metering is not paused.
+                // When paused, the gas counter should remain frozen.
+                if !state.gas_metering.paused {
+                    let _ = gas.record_cost(res.gas_required.ref_time());
+                }
 
                 let outcome = if result.result.did_revert() {
                     CreateOutcome {
@@ -972,7 +993,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
         match res.result {
             Ok(result) => {
-                let _ = gas.record_cost(res.gas_required.ref_time());
+                // Only record gas cost if gas metering is not paused.
+                // When paused, the gas counter should remain frozen.
+                if !state.gas_metering.paused {
+                    let _ = gas.record_cost(res.gas_required.ref_time());
+                }
 
                 let outcome = if result.did_revert() {
                     tracing::info!("Contract call reverted");
