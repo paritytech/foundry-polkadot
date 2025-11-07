@@ -27,11 +27,15 @@ use codec::Decode;
 use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
 use polkadot_sdk::{
-    pallet_revive::evm::{Block, HashesOrTransactionInfos, ReceiptInfo},
+    pallet_revive::{
+        ReviveApi,
+        evm::{Block, HashesOrTransactionInfos, ReceiptInfo},
+    },
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
     sc_service::TaskManager,
+    sp_api::ProvideRuntimeApi,
     sp_core::H256,
     sp_state_machine::StorageKey,
 };
@@ -41,9 +45,6 @@ use subxt::utils::H160;
 use tempfile::TempDir;
 
 use crate::abi::Multicall;
-
-const NATIVE_TO_ETH_RATIO: u128 = 1000000;
-pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
 
 pub struct BlockWaitTimeout {
     pub block_number: u32,
@@ -118,6 +119,12 @@ impl TestNode {
             .block_hash(n)
             .wrap_err("client.block_hash failed")?
             .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
+    }
+
+    pub async fn eth_block_hash_by_number(&self, n: u32) -> eyre::Result<H256> {
+        let substrate_block_hash = self.block_hash_by_number(n).await?;
+
+        self.resolve_ethereum_hash(substrate_block_hash)
     }
 
     /// Execute an ethereum transaction.
@@ -281,8 +288,7 @@ impl TestNode {
                 from_initial_balance
                     - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used)
                         .inner()
-                    - transfer_amount
-                    - U256::from(EXISTENTIAL_DEPOSIT),
+                    - transfer_amount,
                 "signer's balance should have changed"
             );
             assert_eq!(
@@ -323,6 +329,10 @@ impl TestNode {
         let hex_string = unwrap_response::<String>(result).unwrap();
         let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
         U256::from_str_radix(hex_value, 16).unwrap()
+    }
+
+    pub fn resolve_ethereum_hash(&self, substrate_hash: H256) -> eyre::Result<H256> {
+        Ok(self.service.client.runtime_api().eth_block(substrate_hash)?.hash)
     }
 
     async fn wait_for_block_with_number(&self, n: u32) {

@@ -39,8 +39,7 @@ async fn test_revive_bytecode_migration(#[case] runtime_mode: ReviveRuntimeMode)
 
 #[rstest]
 #[case::pvm(ReviveRuntimeMode::Pvm)]
-#[case::pvm(ReviveRuntimeMode::Evm)]
-// TODO: Add Evm test when pallet-revive will allow for Evm bytecode upload
+#[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_revive_bytecode_migration_to_revive(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
@@ -71,8 +70,7 @@ async fn test_revive_timestamp_migration(#[case] runtime_mode: ReviveRuntimeMode
 
 #[rstest]
 #[case::pvm(ReviveRuntimeMode::Pvm)]
-#[case::pvm(ReviveRuntimeMode::Evm)]
-// TODO: Add Evm test when pallet-revive will allow for Evm bytecode upload
+#[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_revive_immutables_migration(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
@@ -82,7 +80,7 @@ async fn test_revive_immutables_migration(#[case] runtime_mode: ReviveRuntimeMod
 
 #[rstest]
 #[case::pvm(ReviveRuntimeMode::Pvm)]
-#[case::pvm(ReviveRuntimeMode::Evm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_revive_callback_from_revive(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);

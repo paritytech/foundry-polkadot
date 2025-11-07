@@ -3,8 +3,7 @@ use std::time::Duration;
 use crate::{
     abi::Multicall,
     utils::{
-        BlockWaitTimeout, EXISTENTIAL_DEPOSIT, TestNode, assert_with_tolerance, get_contract_code,
-        unwrap_response,
+        BlockWaitTimeout, TestNode, assert_with_tolerance, get_contract_code, unwrap_response,
     },
 };
 use alloy_primitives::{Address, Bytes, U256};
@@ -241,8 +240,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
         alith_balance_after_tx0,
         alith_initial_balance
             - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used).inner()
-            - transfer_amount
-            - U256::from(EXISTENTIAL_DEPOSIT),
+            - transfer_amount,
         "alith's balance should have changed"
     );
     assert_eq!(dest_balance, transfer_amount, "dest's balance should have changed");

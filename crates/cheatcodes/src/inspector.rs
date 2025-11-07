@@ -939,6 +939,11 @@ impl Cheatcodes {
         self.strategy.runner.revive_remove_duplicate_account_access(self);
     }
 
+    // Tells whether PVM is enabled or not.
+    pub fn is_pvm_enabled(&mut self) -> bool {
+        self.strategy.runner.is_pvm_enabled(self)
+    }
+
     pub fn call_with_executor(
         &mut self,
         ecx: Ecx,
@@ -1022,40 +1027,51 @@ impl Cheatcodes {
             }
         }
 
-        // Handle mocked calls
-        if let Some(mocks) = self.mocked_calls.get_mut(&call.bytecode_address) {
-            let ctx = MockCallDataContext {
-                calldata: call.input.bytes(ecx),
-                value: call.transfer_value(),
-            };
+        // Do not handle mocked calls if PVM is enabled and let the revive call handle it.
+        // There is literally no problem with handling mocked calls with PVM enabled here as well,
+        // but the downside is that if call a mocked call from the test it will not exercise the
+        // paths in revive that handle mocked calls and only nested mocks will be handle by the
+        // revive specific calls.
+        // This is undesirable because conformity tests could accidentally pass and the revive code
+        // paths be broken.
+        if !self.is_pvm_enabled() {
+            // Handle mocked calls
+            if let Some(mocks) = self.mocked_calls.get_mut(&call.bytecode_address) {
+                let ctx = MockCallDataContext {
+                    calldata: call.input.bytes(ecx),
+                    value: call.transfer_value(),
+                };
 
-            if let Some(return_data_queue) = match mocks.get_mut(&ctx) {
-                Some(queue) => Some(queue),
-                None => mocks
-                    .iter_mut()
-                    .find(|(mock, _)| {
-                        call.input.bytes(ecx).get(..mock.calldata.len()) == Some(&mock.calldata[..])
-                            && mock.value.is_none_or(|value| Some(value) == call.transfer_value())
-                    })
-                    .map(|(_, v)| v),
-            } && let Some(return_data) = if return_data_queue.len() == 1 {
-                // If the mocked calls stack has a single element in it, don't empty it
-                return_data_queue.front().map(|x| x.to_owned())
-            } else {
-                // Else, we pop the front element
-                return_data_queue.pop_front()
-            } {
-                return Some(CallOutcome {
-                    result: InterpreterResult {
-                        result: return_data.ret_type,
-                        output: return_data.data,
-                        gas,
-                    },
-                    memory_offset: call.return_memory_offset.clone(),
-                });
+                if let Some(return_data_queue) = match mocks.get_mut(&ctx) {
+                    Some(queue) => Some(queue),
+                    None => mocks
+                        .iter_mut()
+                        .find(|(mock, _)| {
+                            call.input.bytes(ecx).get(..mock.calldata.len())
+                                == Some(&mock.calldata[..])
+                                && mock
+                                    .value
+                                    .is_none_or(|value| Some(value) == call.transfer_value())
+                        })
+                        .map(|(_, v)| v),
+                } && let Some(return_data) = if return_data_queue.len() == 1 {
+                    // If the mocked calls stack has a single element in it, don't empty it
+                    return_data_queue.front().map(|x| x.to_owned())
+                } else {
+                    // Else, we pop the front element
+                    return_data_queue.pop_front()
+                } {
+                    return Some(CallOutcome {
+                        result: InterpreterResult {
+                            result: return_data.ret_type,
+                            output: return_data.data,
+                            gas,
+                        },
+                        memory_offset: call.return_memory_offset.clone(),
+                    });
+                }
             }
         }
-
         // Apply our prank
         if let Some(prank) = &self.get_prank(curr_depth) {
             // Apply delegate call, `call.caller`` will not equal `prank.prank_caller`
