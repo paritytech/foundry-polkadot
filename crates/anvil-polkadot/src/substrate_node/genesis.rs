@@ -301,7 +301,7 @@ mod tests {
                 well_known_keys::NEXT_FEE_MULTIPLIER.to_vec(),
                 base_fee_per_gas.encode()
             )),
-            "Chain id not found in genesis key-value storage"
+            "NextFeeMultiplier not found in genesis key-value storage"
         );
     }
 }

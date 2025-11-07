@@ -580,7 +580,7 @@ impl AnvilNodeConfig {
 
     /// Returns the base fee to use
     pub fn get_gas_price(&self) -> u128 {
-        self.gas_price.unwrap_or(INITIAL_BASE_FEE.saturating_mul_int(1))
+        self.gas_price.unwrap_or(INITIAL_BASE_FEE.saturating_mul_int(NATIVE_TO_ETH_RATIO as u128))
     }
 
     /// Sets a custom code size limit
