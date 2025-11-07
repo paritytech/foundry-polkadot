@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall, setNonceCall,
-        setNonceUnsafeCall, storeCall, warpCall,
+        dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall,
+        setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -23,10 +23,11 @@ use std::{
 };
 use tracing::warn;
 
+use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, ExecConfig,
-        Pallet, evm::CallTrace,
+        Executable, Pallet, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160, H256},
@@ -41,7 +42,6 @@ use crate::{
 };
 use foundry_cheatcodes::Vm::{AccountAccess as FAccountAccess, ChainInfo};
 
-use alloy_eips::eip7702::SignedAuthorization;
 use revm::{
     bytecode::opcode as op,
     context::{CreateScheme, JournalTr},
@@ -199,6 +199,49 @@ fn set_block_number(new_height: U256, ecx: Ecx<'_, '_, '_>) {
             System::set_block_number(new_height.try_into().expect("Block number exceeds u64"));
         })
     });
+}
+
+// Implements the `etch` cheatcode for PVM.
+fn etch_call(target: &Address, new_runtime_code: &Bytes, ecx: Ecx<'_, '_, '_>) -> Result {
+    let origin_address = H160::from_slice(ecx.tx.caller.as_slice());
+    let origin_account = AccountId::to_fallback_account_id(&origin_address);
+
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let code = new_runtime_code.to_vec();
+            let code_type =
+                if code.starts_with(b"PVM\0") { BytecodeType::Pvm } else { BytecodeType::Evm };
+            let contract_blob = Pallet::<Runtime>::try_upload_code(
+                origin_account.clone(),
+                code,
+                code_type,
+                BalanceOf::<Runtime>::MAX,
+                &ExecConfig::new_substrate_tx(),
+            )
+            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
+            .0;
+
+            let mut contract_info = if let Some(contract_info) =
+                AccountInfo::<Runtime>::load_contract(&H160::from_slice(target.as_slice()))
+            {
+                contract_info
+            } else {
+                ContractInfo::<Runtime>::new(
+                    &origin_address,
+                    System::account_nonce(origin_account),
+                    *contract_blob.code_hash(),
+                )
+                .map_err(|_| <&str as Into<Error>>::into("Could not create contract info"))?
+            };
+            contract_info.code_hash = *contract_blob.code_hash();
+            AccountInfo::<Runtime>::insert_contract(
+                &H160::from_slice(target.as_slice()),
+                contract_info,
+            );
+            Ok::<(), Error>(())
+        })
+    })?;
+    Ok(Default::default())
 }
 
 fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
@@ -392,6 +435,12 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 set_timestamp(newTimestamp, ccx.ecx);
 
+                Ok(Default::default())
+            }
+            t if using_pvm && is::<etchCall>(t) => {
+                let etchCall { target, newRuntimeBytecode } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+                etch_call(target, newRuntimeBytecode, ccx.ecx)?;
                 Ok(Default::default())
             }
             t if using_pvm && is::<loadCall>(t) => {
@@ -802,6 +851,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             }
         };
 
+        let gas_price_pvm =
+            sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(true);
         let res = execute_with_externalities(|externalities| {
             externalities.execute_with(|| {
@@ -822,7 +873,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let exec_config = ExecConfig {
                         bump_nonce: true,
                         collect_deposit_from_hold: None,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                        effective_gas_price: Some(gas_price_pvm),
                         mock_handler: Some(Box::new(mock_handler.clone())),
                         is_dry_run: None,
                     };
@@ -944,6 +995,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
 
+        let gas_price_pvm =
+            sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mock_handler = MockHandlerImpl::new(
             &ecx,
             &call.caller,
@@ -968,7 +1021,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let exec_config = ExecConfig {
                         bump_nonce: true,
                         collect_deposit_from_hold: None,
-                        effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
+                        effective_gas_price: Some(gas_price_pvm),
                         mock_handler: Some(Box::new(mock_handler.clone())),
                         is_dry_run: None,
                     };
