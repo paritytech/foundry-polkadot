@@ -824,7 +824,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         collect_deposit_from_hold: None,
                         effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
                         mock_handler: Some(Box::new(mock_handler.clone())),
-                        is_dry_run: false,
+                        is_dry_run: None,
                     };
                     let code = Code::Upload(code_bytes.clone());
                     let data = constructor_args;
@@ -970,7 +970,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         collect_deposit_from_hold: None,
                         effective_gas_price: Some(<Pallet<Runtime>>::evm_base_fee()),
                         mock_handler: Some(Box::new(mock_handler.clone())),
-                        is_dry_run: false,
+                        is_dry_run: None,
                     };
                     Pallet::<Runtime>::bare_call(
                         origin,
