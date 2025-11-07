@@ -14,14 +14,7 @@ exclude.workspace = true
 [dependencies]
 foundry-evm-core.workspace = true
 foundry-evm-traces.workspace = true
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", features = [
-    "experimental",
-    "runtime",
-    "polkadot-runtime-common",
-    "pallet-revive",
-    "pallet-balances",
-    "pallet-timestamp"
-]}
+polkadot-sdk.workspace = true
 revive-env.workspace = true
 
 alloy-primitives.workspace = true
