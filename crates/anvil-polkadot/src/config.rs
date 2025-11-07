@@ -34,7 +34,6 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
-use substrate_runtime::constants::NATIVE_TO_ETH_RATIO;
 use subxt_signer::eth::Keypair;
 use yansi::Paint;
 
@@ -54,8 +53,8 @@ pub const DEFAULT_IPC_ENDPOINT: &str =
     if cfg!(unix) { "/tmp/anvil.ipc" } else { r"\\.\pipe\anvil.ipc" };
 
 /// In anvil this is `1_000_000_000`, in 1e18 denomination. However,
-/// asset-hub-westend runtime sets it to `1`, so we set it the same.
-pub const INITIAL_BASE_FEE: FixedU128 = FixedU128::from_u32(1);
+/// asset-hub-westend runtime sets it to `1_000_000`.
+pub const INITIAL_BASE_FEE: u128 = 1_000_000;
 
 const BANNER: &str = r"
                              _   _
@@ -275,10 +274,8 @@ pub struct AnvilNodeConfig {
     pub gas_limit: Option<u128>,
     /// If set to `true`, disables the block gas limit
     pub disable_block_gas_limit: bool,
-    /// Default gas price for all txs
-    pub gas_price: Option<u128>,
     /// Default base fee
-    pub base_fee: Option<FixedU128>,
+    pub base_fee: Option<u128>,
     /// If set to `true`, disables the enforcement of a minimum suggested priority fee
     pub disable_min_priority_fee: bool,
     /// Signer accounts that will be initialised with `genesis_balance` in the genesis block
@@ -407,7 +404,7 @@ Base Fee
 
 {}
 "#,
-            self.get_base_fee().saturating_mul_int(NATIVE_TO_ETH_RATIO as u128).green()
+            self.get_base_fee().green()
         );
 
         let _ = write!(
@@ -484,8 +481,7 @@ Genesis Number
           "available_accounts": available_accounts,
           "private_keys": private_keys,
           "wallet": wallet_description,
-          "base_fee": format!("{}", self.get_base_fee().saturating_mul_int(NATIVE_TO_ETH_RATIO as u128)),
-          "gas_price": format!("{}", self.get_gas_price()),
+          "base_fee": format!("{}", self.get_base_fee()),
           "gas_limit": gas_limit,
           "genesis_timestamp": format!("{}", self.get_genesis_timestamp()),
         })
@@ -524,7 +520,6 @@ impl Default for AnvilNodeConfig {
             chain_id: None,
             gas_limit: None,
             disable_block_gas_limit: false,
-            gas_price: None,
             signer_accounts: genesis_accounts.clone(),
             genesis_timestamp: None,
             genesis_block_number: None,
@@ -565,22 +560,17 @@ impl AnvilNodeConfig {
         self.memory_limit = mems_value;
         self
     }
+
     /// Returns the base fee to use
-    pub fn get_base_fee(&self) -> FixedU128 {
+    pub fn get_base_fee(&self) -> u128 {
         self.base_fee
             .or_else(|| {
                 self.genesis.as_ref().and_then(|g| {
                     // The base fee received via CLI will be transformed to 1e-12.
                     g.base_fee_per_gas
-                        .map(|g| FixedU128::from_rational(g, NATIVE_TO_ETH_RATIO.into()))
                 })
             })
             .unwrap_or(INITIAL_BASE_FEE)
-    }
-
-    /// Returns the base fee to use
-    pub fn get_gas_price(&self) -> u128 {
-        self.gas_price.unwrap_or(INITIAL_BASE_FEE.saturating_mul_int(NATIVE_TO_ETH_RATIO as u128))
     }
 
     /// Sets a custom code size limit
@@ -633,18 +623,10 @@ impl AnvilNodeConfig {
         self
     }
 
-    /// Sets the gas price
-    #[must_use]
-    pub fn with_gas_price(mut self, gas_price: Option<u128>) -> Self {
-        self.gas_price = gas_price;
-        self
-    }
-
     /// Sets the base fee
     #[must_use]
     pub fn with_base_fee(mut self, base_fee: Option<u64>) -> Self {
-        self.base_fee =
-            base_fee.map(|bf| FixedU128::from_rational(bf.into(), NATIVE_TO_ETH_RATIO.into()));
+        self.base_fee = base_fee.map(|bf| bf.into());
         self
     }
 

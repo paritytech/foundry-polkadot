@@ -22,6 +22,7 @@ use polkadot_sdk::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
+use substrate_runtime::constants::NATIVE_TO_ETH_RATIO;
 use subxt_signer::eth::Keypair;
 
 /// Genesis settings
@@ -62,7 +63,10 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 .get_genesis_number()
                 .try_into()
                 .expect("Genesis block number overflow"),
-            base_fee_per_gas: anvil_config.get_base_fee(),
+            base_fee_per_gas: FixedU128::from_rational(
+                anvil_config.get_base_fee(),
+                NATIVE_TO_ETH_RATIO.into(),
+            ),
             gas_limit: anvil_config.gas_limit,
             genesis_accounts: anvil_config.genesis_accounts.clone(),
             genesis_balance: anvil_config.genesis_balance,

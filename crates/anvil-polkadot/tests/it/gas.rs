@@ -26,10 +26,7 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
         unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
 
     if rpc_driven {
-        assert_eq!(
-            FixedU128::from_rational(gas_price.to::<u128>(), NATIVE_TO_ETH_RATIO.into()),
-            INITIAL_BASE_FEE
-        );
+        assert_eq!(gas_price.to::<u128>(), INITIAL_BASE_FEE);
         unwrap_response::<()>(
             node.eth_rpc(EthRequest::SetNextBlockBaseFeePerGas(new_base_fee)).await.unwrap(),
         )

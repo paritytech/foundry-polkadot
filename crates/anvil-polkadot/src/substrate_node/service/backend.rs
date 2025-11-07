@@ -84,17 +84,6 @@ impl BackendWithOverlay {
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeChainId)
     }
 
-    pub fn read_next_fee_multiplier(&self, hash: Hash) -> Result<U256> {
-        let key = well_known_keys::NEXT_FEE_MULTIPLIER;
-
-        let value = self
-            .read_top_state(hash, key.to_vec())?
-            .ok_or(BackendError::MissingNextFeeMultiplier)?;
-        let raw_value =
-            FixedU128::decode(&mut &value[..]).map_err(BackendError::DecodeNextFeeMultiplier)?;
-        Ok(raw_value.saturating_mul_int::<u128>(NATIVE_TO_ETH_RATIO.into()).into())
-    }
-
     pub fn read_aura_authority(&self, hash: Hash) -> Result<AccountId> {
         let key = well_known_keys::AURA_AUTHORITIES;
 
