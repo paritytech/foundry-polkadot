@@ -21,7 +21,7 @@ use polkadot_sdk::{
         RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN,
     },
     sc_service,
-    sp_runtime::FixedU128,
+    sp_runtime::{FixedPointNumber, FixedU128},
 };
 use rand_08::thread_rng;
 use serde_json::{Value, json};
@@ -407,7 +407,7 @@ Base Fee
 
 {}
 "#,
-            self.get_base_fee().into_inner().green()
+            self.get_base_fee().saturating_mul_int(NATIVE_TO_ETH_RATIO as u128).green()
         );
 
         let _ = write!(
@@ -484,7 +484,7 @@ Genesis Number
           "available_accounts": available_accounts,
           "private_keys": private_keys,
           "wallet": wallet_description,
-          "base_fee": format!("{}", self.get_base_fee().into_inner()),
+          "base_fee": format!("{}", self.get_base_fee().saturating_mul_int(NATIVE_TO_ETH_RATIO as u128)),
           "gas_price": format!("{}", self.get_gas_price()),
           "gas_limit": gas_limit,
           "genesis_timestamp": format!("{}", self.get_genesis_timestamp()),
@@ -580,7 +580,7 @@ impl AnvilNodeConfig {
 
     /// Returns the base fee to use
     pub fn get_gas_price(&self) -> u128 {
-        self.gas_price.unwrap_or(INITIAL_BASE_FEE.into_inner())
+        self.gas_price.unwrap_or(INITIAL_BASE_FEE.saturating_mul_int(1))
     }
 
     /// Sets a custom code size limit
