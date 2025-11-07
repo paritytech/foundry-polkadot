@@ -87,6 +87,7 @@ impl pallet_revive::Config for Runtime {
     type ChainId = ConstU64<420_420_420>;
     type NativeToEthRatio = ConstU32<1_000_000_000>;
     type FindAuthor = Self;
+    type DebugEnabled = ConstBool<true>;
 }
 
 impl FindAuthor<<Self as frame_system::Config>::AccountId> for Runtime {

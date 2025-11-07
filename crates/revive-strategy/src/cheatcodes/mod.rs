@@ -26,8 +26,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, ExecConfig,
-        Executable, Pallet, evm::CallTrace,
+        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo,
+        DebugSettings, ExecConfig, Executable, Pallet, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160, H256},
@@ -891,6 +891,13 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         _ => None,
                     };
 
+                    // If limits are set to max, enable debug mode to bypass them in revive
+                    if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
+                        || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
+                    {
+                        let debug_settings = DebugSettings::new(true);
+                        debug_settings.write_to_storage::<Runtime>();
+                    }
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
@@ -1025,6 +1032,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         mock_handler: Some(Box::new(mock_handler.clone())),
                         is_dry_run: false,
                     };
+                    // If limits are set to max, enable debug mode to bypass them in revive
+                    if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
+                        || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
+                    {
+                        let debug_settings = DebugSettings::new(true);
+                        debug_settings.write_to_storage::<Runtime>();
+                    }
+
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target,
