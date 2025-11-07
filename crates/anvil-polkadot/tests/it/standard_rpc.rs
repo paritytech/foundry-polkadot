@@ -697,7 +697,7 @@ async fn test_fee_history() {
     assert_eq!(fee_history.gas_used_ratio.len(), 10);
     // The `SlowAdjustingFeeUpdate` logic decreases the base_fee block by block if the
     // activity contained within them is low.
-    let base_fees = vec![
+    let base_fees = [
         999981, 999962, 999944, 999925, 999906, 999888, 999869, 999851, 999832, 999813, 999813,
     ];
     for (idx, base_fee) in fee_history.base_fee_per_gas.into_iter().enumerate() {
