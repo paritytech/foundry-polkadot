@@ -10,9 +10,12 @@ use alloy_primitives::{Address, B256, Bytes, U256};
 use alloy_rpc_types::{BlockId, TransactionInput, TransactionRequest};
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
-use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
+use anvil_polkadot::{
+    api_server::revive_conversions::ReviveAddress,
+    config::{AnvilNodeConfig, SubstrateNodeConfig},
+};
 use polkadot_sdk::pallet_revive::{self, evm::Account};
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 use subxt::utils::H160;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -194,17 +197,7 @@ async fn test_genesis_alloc() {
     assert_eq!(contract_code_result, runtime_bytecode, "Genesis contract code should match");
 
     // Test contract storage
-    let result = node
-        .eth_rpc(EthRequest::EthGetStorageAt(
-            Address::from(test_contract_bytes),
-            U256::from(0),
-            None,
-        ))
-        .await
-        .unwrap();
-    let hex_string = unwrap_response::<String>(result).unwrap();
-    let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
-    let stored_value = U256::from_str_radix(hex_value, 16).unwrap();
+    let stored_value = node.get_storage_at(U256::from(0), test_contract_address).await;
     assert_eq!(stored_value, 511, "Storage slot 0 of genesis contract should contain value 511");
 
     // Test contract functionality by calling getValue()
@@ -252,4 +245,124 @@ async fn test_coinbase_genesis() {
             .unwrap(),
         genesis_coinbase,
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_genesis_json() {
+    // Load genesis.json file from test-data directory
+    let genesis_json_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-data").join("genesis.json");
+    let genesis_file = std::fs::File::open(&genesis_json_path)
+        .unwrap_or_else(|_| panic!("Failed to open genesis.json at {genesis_json_path:?}"));
+    let genesis: Genesis = serde_json::from_reader(genesis_file)
+        .unwrap_or_else(|e| panic!("Failed to parse genesis.json: {e}"));
+
+    // Expected values from genesis.json
+    let expected_chain_id = genesis.config.chain_id;
+    let expected_timestamp = genesis.timestamp;
+    let expected_block_number = genesis.number.unwrap_or_default();
+    let expected_coinbase = genesis.coinbase;
+    let alloc_accounts = genesis.alloc.iter();
+
+    // Create node config with genesis from file
+    let anvil_node_config = AnvilNodeConfig::test_config().with_genesis(Some(genesis.clone()));
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    // Test chain ID
+    let chain_id_hex =
+        unwrap_response::<String>(node.eth_rpc(EthRequest::EthChainId(())).await.unwrap()).unwrap();
+    assert_eq!(
+        chain_id_hex,
+        to_hex_string(expected_chain_id),
+        "Chain ID should match the one in genesis.json"
+    );
+
+    // Test block number
+    let genesis_block_number = node.best_block_number().await;
+    assert_eq!(
+        genesis_block_number as u64, expected_block_number,
+        "Genesis block number should match the one in genesis.json"
+    );
+
+    // Test timestamp
+    let genesis_hash = node.block_hash_by_number(genesis_block_number).await.unwrap();
+    // Anvil genesis timestamp is in seconds, while Substrate timestamp is in milliseconds
+    let expected_timestamp_ms = expected_timestamp.checked_mul(1000).unwrap();
+    let actual_timestamp = node.get_decoded_timestamp(Some(genesis_hash)).await;
+    assert_eq!(
+        actual_timestamp, expected_timestamp_ms,
+        "Genesis timestamp should match the one in genesis.json"
+    );
+
+    // Test coinbase
+    let coinbase =
+        unwrap_response::<Address>(node.eth_rpc(EthRequest::EthCoinbase(())).await.unwrap())
+            .unwrap();
+    assert_eq!(coinbase, expected_coinbase, "Coinbase should match the one in genesis.json");
+
+    // Scan through all accounts in the genesis alloc and test their balances, nonces, codes, and
+    // storage.
+    for (&account_addr, account_info) in alloc_accounts {
+        let account_balance_actual =
+            node.get_balance(H160::from_slice(account_addr.as_slice()), None).await;
+        let expected_balance = account_info.balance;
+        assert_eq!(
+            account_balance_actual, expected_balance,
+            "Account balance should match the one in genesis.json"
+        );
+        let account_nonce_actual = node.get_nonce(account_addr).await;
+        let expected_nonce = account_info.nonce.unwrap_or_default();
+        assert_eq!(
+            account_nonce_actual, expected_nonce,
+            "Account nonce should match the one in genesis.json"
+        );
+        if account_info.code.is_none() {
+            let code_actual = unwrap_response::<Bytes>(
+                node.eth_rpc(EthRequest::EthGetCodeAt(
+                    account_addr,
+                    Some(BlockId::number(genesis_block_number.into())),
+                ))
+                .await
+                .unwrap(),
+            )
+            .unwrap();
+            assert!(
+                code_actual.is_empty(),
+                "Genesis account should have no code as in genesis.json"
+            );
+        } else {
+            let code_actual = unwrap_response::<Bytes>(
+                node.eth_rpc(EthRequest::EthGetCodeAt(
+                    account_addr,
+                    Some(BlockId::number(genesis_block_number.into())),
+                ))
+                .await
+                .unwrap(),
+            )
+            .unwrap();
+            assert!(
+                !code_actual.is_empty(),
+                "Genesis account should have non-empty code as in genesis.json"
+            );
+            assert_eq!(
+                code_actual,
+                account_info.code.clone().unwrap(),
+                "Genesis account code should match the one in genesis.json"
+            );
+            for (storage_key, storage_value) in &account_info.storage.clone().unwrap_or_default() {
+                let storage_value_actual = node
+                    .get_storage_at(
+                        U256::from_be_bytes(storage_key.0),
+                        ReviveAddress::from(account_addr).inner(),
+                    )
+                    .await;
+                let expected_storage_value = U256::from_be_bytes(storage_value.0);
+                assert_eq!(
+                    storage_value_actual, expected_storage_value,
+                    "Genesis account storage value should match the one in genesis.json"
+                );
+            }
+        }
+    }
 }

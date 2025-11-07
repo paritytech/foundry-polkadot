@@ -1425,18 +1425,18 @@ impl ApiServer {
         let mut invalid_txs = IndexMap::new();
 
         for tx in self.tx_pool.ready() {
-            if let Some(sender) = extract_sender(tx.data()) {
-                if sender == address {
-                    invalid_txs.insert(*tx.hash(), None);
-                }
+            if let Some(sender) = extract_sender(tx.data())
+                && sender == address
+            {
+                invalid_txs.insert(*tx.hash(), None);
             }
         }
 
         for tx in self.tx_pool.futures() {
-            if let Some(sender) = extract_sender(tx.data()) {
-                if sender == address {
-                    invalid_txs.insert(*tx.hash(), None);
-                }
+            if let Some(sender) = extract_sender(tx.data())
+                && sender == address
+            {
+                invalid_txs.insert(*tx.hash(), None);
             }
         }
 
