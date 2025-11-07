@@ -44,7 +44,6 @@ pub fn spawn(
             Keypair::from_secret_key(*private_key).ok()
         },
     ));
-    let base_fee_per_gas = config.get_base_fee();
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
         let api_server = ApiServer::new(
             service,
@@ -53,7 +52,6 @@ pub fn spawn(
             snapshot_manager,
             impersonation_manager,
             signers,
-            base_fee_per_gas,
         )
         .await
         .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));

@@ -94,6 +94,7 @@ impl GenesisConfig {
             (well_known_keys::TIMESTAMP.to_vec(), self.timestamp.encode()),
             (well_known_keys::BLOCK_NUMBER_KEY.to_vec(), self.number.encode()),
             (well_known_keys::AURA_AUTHORITIES.to_vec(), vec![aura_authority_id].encode()),
+            (well_known_keys::NEXT_FEE_MULTIPLIER.to_vec(), self.base_fee_per_gas.encode()),
         ];
         // TODO: add other fields
         storage
@@ -253,6 +254,8 @@ impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf> BuildGenesisBlock<Bl
 
 #[cfg(test)]
 mod tests {
+    use substrate_runtime::constants::NATIVE_TO_ETH_RATIO;
+
     use super::*;
 
     #[test]
@@ -261,11 +264,13 @@ mod tests {
         let timestamp: u64 = 10;
         let chain_id: u64 = 42;
         let authority_id: [u8; 32] = [0xEE; 32];
+        let base_fee_per_gas = FixedU128::from_rational(6_000_000, NATIVE_TO_ETH_RATIO.into());
         let genesis_config = GenesisConfig {
             number: block_number,
             timestamp,
             chain_id,
             coinbase: Some(Address::from([0xEE; 20])),
+            base_fee_per_gas,
             ..Default::default()
         };
         let genesis_storage = genesis_config.as_storage_key_value();
@@ -289,6 +294,14 @@ mod tests {
                 vec![authority_id].encode()
             )),
             "Authorities not found in genesis key-value storage"
+        );
+
+        assert!(
+            genesis_storage.contains(&(
+                well_known_keys::NEXT_FEE_MULTIPLIER.to_vec(),
+                base_fee_per_gas.encode()
+            )),
+            "Chain id not found in genesis key-value storage"
         );
     }
 }

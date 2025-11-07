@@ -105,7 +105,6 @@ impl ApiServer {
         snapshot_manager: SnapshotManager,
         impersonation_manager: ImpersonationManager,
         signers: Vec<Keypair>,
-        base_fee_per_gas: FixedU128,
     ) -> Result<Self> {
         let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
         let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
@@ -120,24 +119,14 @@ impl ApiServer {
         )
         .await?;
 
-        // Set up the genesis base_fee_per_gas.
-        let backend = BackendWithOverlay::new(
-            substrate_service.backend.clone(),
-            substrate_service.storage_overrides.clone(),
-        );
-
-        let genesis_hash = backend.blockchain().info().best_hash;
-        backend.inject_next_fee_multiplier(
-            genesis_hash,
-            // Here we expect the base fee in 1e12 (DOT) denomination.
-            base_fee_per_gas,
-        );
-
         Ok(Self {
             block_provider,
             req_receiver,
             logging_manager,
-            backend,
+            backend: BackendWithOverlay::new(
+                substrate_service.backend.clone(),
+                substrate_service.storage_overrides.clone(),
+            ),
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,

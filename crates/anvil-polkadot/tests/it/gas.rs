@@ -103,7 +103,7 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_next_fee_multiplier_minimum() {
     // 1e18 denomination.
-    let new_base_fee = U256::from(50_000);
+    let new_base_fee = U256::from(50_123);
     let anvil_node_config =
         AnvilNodeConfig::test_config().with_base_fee(Some(new_base_fee.to::<u64>()));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
