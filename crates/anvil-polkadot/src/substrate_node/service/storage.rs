@@ -48,6 +48,10 @@ pub mod well_known_keys {
         154, 166, 12, 2, 190, 154, 220, 201, 138, 13, 29,
     ];
 
+    //twox_128(b":RuntimeBlockWeights:")
+    pub const RUNTIME_BLOCK_WEIGHTS: [u8; 16] =
+        [4, 34, 182, 105, 143, 206, 137, 234, 235, 178, 70, 99, 108, 119, 58, 33];
+
     pub fn system_account_info(account_id: AccountId) -> Vec<u8> {
         let mut key = Vec::new();
         key.extend_from_slice(&twox_128("System".as_bytes()));

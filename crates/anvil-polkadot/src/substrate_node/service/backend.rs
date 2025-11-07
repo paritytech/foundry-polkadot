@@ -1,5 +1,6 @@
 use crate::substrate_node::service::{
     Backend,
+    constants::runtime_block_weights,
     storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
 };
 use alloy_primitives::{Address, Bytes};
@@ -7,6 +8,10 @@ use codec::{Decode, Encode};
 use lru::LruCache;
 use parking_lot::Mutex;
 use polkadot_sdk::{
+    pallet_revive::{
+        BlockWeights,
+        evm::fees::{Info, InfoT},
+    },
     parachains_common::{AccountId, Hash, opaque::Block},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
@@ -30,6 +35,8 @@ pub enum BackendError {
     MissingAuraAuthorities,
     #[error("Could not find timestamp in the state")]
     MissingTimestamp,
+    #[error("Could not find block weights")]
+    MissingBlockWeights,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
@@ -46,6 +53,8 @@ pub enum BackendError {
     DecodeTimestamp(codec::Error),
     #[error("Unable to decode aura authorities: {0}")]
     DecodeAuraAuthorities(codec::Error),
+    #[error("Unable to decode block weights: {0}")]
+    DecodeBlockWeights(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -139,6 +148,14 @@ impl BackendWithOverlay {
             .transpose()
     }
 
+    pub fn read_runtime_block_weights(&self, hash: Hash) -> Result<BlockWeights> {
+        let key = well_known_keys::RUNTIME_BLOCK_WEIGHTS;
+
+        let value: BlockWeights =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingBlockWeights)?;
+        BlockWeights::decode(&mut &value[..]).map_err(BackendError::DecodeBlockWeights)
+    }
+
     pub fn inject_system_account_info(
         &self,
         at: Hash,
@@ -193,6 +210,13 @@ impl BackendWithOverlay {
     ) {
         let mut overrides = self.overrides.lock();
         overrides.set_child_storage(at, child_key, key, value);
+    }
+
+    pub fn inject_block_gas_limit(&self, at: Hash, block_gas_limit: u128) {
+        let mut overrides = self.overrides.lock();
+        let block_weight_limit = Info::fee_to_weight(block_gas_limit);
+        let block_weights = runtime_block_weights(block_weight_limit);
+        overrides.set_runtime_block_weights(at, block_weights);
     }
 
     fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {
@@ -259,6 +283,15 @@ impl StorageOverrides {
     fn set_timestamp(&mut self, latest_block: Hash, timestamp: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(timestamp.encode()));
+
+        self.add(latest_block, changeset);
+    }
+
+    fn set_runtime_block_weights(&mut self, latest_block: Hash, block_weights: BlockWeights) {
+        let mut changeset = BlockOverrides::default();
+        changeset
+            .top
+            .insert(well_known_keys::RUNTIME_BLOCK_WEIGHTS.to_vec(), Some(block_weights.encode()));
 
         self.add(latest_block, changeset);
     }

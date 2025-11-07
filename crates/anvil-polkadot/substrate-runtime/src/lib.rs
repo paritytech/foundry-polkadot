@@ -7,7 +7,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 extern crate alloc;
 
-use crate::sp_runtime::ConsensusEngineId;
+use crate::{frame_system::limits::BlockLength, sp_runtime::ConsensusEngineId};
 use alloc::{vec, vec::Vec};
 use currency::*;
 use frame_support::weights::{
@@ -203,9 +203,12 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 const MAXIMUM_BLOCK_WEIGHT: Weight =
     Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
 
+// asset-hub-westend values.
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
-    pub RuntimeBlockWeights: BlockWeights = BlockWeights::builder()
+    pub RuntimeBlockLength: BlockLength =
+        BlockLength::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
+    pub storage RuntimeBlockWeights: BlockWeights = BlockWeights::builder()
         .base_block(BlockExecutionWeight::get())
         .for_class(DispatchClass::all(), |weights| {
             weights.base_extrinsic = ExtrinsicBaseWeight::get();
@@ -228,6 +231,8 @@ parameter_types! {
 /// Implements the types required for the system pallet.
 #[derive_impl(frame_system::config_preludes::SolochainDefaultConfig)]
 impl frame_system::Config for Runtime {
+    type BlockWeights = RuntimeBlockWeights;
+    type BlockLength = RuntimeBlockLength;
     type Block = Block;
     type Version = Version;
     type AccountId = AccountId;
