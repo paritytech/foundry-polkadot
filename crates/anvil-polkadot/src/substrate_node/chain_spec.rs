@@ -8,7 +8,6 @@ use polkadot_sdk::{
     sc_service::{ChainType, GenericChainSpec, Properties},
     sc_telemetry::TelemetryEndpoints,
     sp_core::{
-        self,
         storage::Storage,
         traits::{CallContext, CodeExecutor, Externalities, FetchRuntimeCode, RuntimeCode},
     },
@@ -19,19 +18,17 @@ use polkadot_sdk::{
 };
 use serde_json::Value;
 use std::borrow::Cow;
-use substrate_runtime::WASM_BINARY;
 
 pub fn development_chain_spec(
     genesis_config: GenesisConfig,
 ) -> Result<DevelopmentChainSpec, String> {
-    let code = WASM_BINARY.expect("Development wasm not available");
-    let inner = GenericChainSpec::builder(code, Default::default())
+    let inner = GenericChainSpec::builder(&genesis_config.code, Default::default())
         .with_name("Development")
         .with_id("dev")
         .with_chain_type(ChainType::Development)
         .with_properties(props())
         .build();
-    Ok(DevelopmentChainSpec { inner, genesis_config, code: code.to_vec() })
+    Ok(DevelopmentChainSpec { inner, genesis_config })
 }
 
 /// This is a wrapper around the general Substrate ChainSpec type that allows manual changes to the
@@ -40,7 +37,6 @@ pub fn development_chain_spec(
 pub struct DevelopmentChainSpec<E = Option<()>, EHF = ()> {
     inner: GenericChainSpec<E, EHF>,
     genesis_config: GenesisConfig,
-    code: Vec<u8>,
 }
 
 impl<E, EHF> BuildStorage for DevelopmentChainSpec<E, EHF>
@@ -56,14 +52,12 @@ where
         // seen even in the code that processes the genesis config patch.
         let temp_storage = storage.clone();
 
-        GenesisBuilderRuntimeCaller::<EHF>::new(&self.code[..])
+        GenesisBuilderRuntimeCaller::<EHF>::new(&self.genesis_config.code[..])
             .get_storage_for_patch(
                 self.genesis_config.runtime_genesis_config_patch(),
                 temp_storage,
             )?
             .assimilate_storage(storage)?;
-
-        storage.top.insert(sp_core::storage::well_known_keys::CODE.to_vec(), self.code.clone());
 
         Ok(())
     }
@@ -127,11 +121,7 @@ where
     }
 
     fn cloned_box(&self) -> Box<dyn ChainSpec> {
-        Box::new(Self {
-            inner: self.inner.clone(),
-            genesis_config: self.genesis_config.clone(),
-            code: self.code.clone(),
-        })
+        Box::new(Self { inner: self.inner.clone(), genesis_config: self.genesis_config.clone() })
     }
 
     fn set_storage(&mut self, storage: Storage) {
