@@ -246,7 +246,7 @@ where
 
         BuildResult::decode(&mut &call_result[..])
             .map_err(|e| format!("scale codec error: {e}"))?
-            .map_err(|e| format!("{e} for blob:\n{}", json_pretty_str))?;
+            .map_err(|e| format!("{e} for blob:\n{json_pretty_str}"))?;
 
         Ok(ext.into_storages())
     }
