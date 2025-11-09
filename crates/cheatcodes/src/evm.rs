@@ -39,7 +39,7 @@ use serde::Serialize;
 
 mod fork;
 pub(crate) mod mapping;
-pub(crate) mod mock;
+pub mod mock;
 pub(crate) mod prank;
 
 /// Records storage slots reads and writes.

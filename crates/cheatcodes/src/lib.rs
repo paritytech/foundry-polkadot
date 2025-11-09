@@ -57,6 +57,7 @@ mod script;
 pub use script::{Broadcast, Wallets, WalletsInner};
 
 mod strategy;
+pub use evm::mock::{MockCallDataContext, MockCallReturnData};
 pub use strategy::{
     CheatcodeInspectorStrategy, CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyExt,
     CheatcodeInspectorStrategyRunner, CheatcodesStrategy, EvmCheatcodeInspectorStrategyRunner,
