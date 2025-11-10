@@ -400,7 +400,6 @@ impl ApiServer {
             .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
             .await
             .map_err(Error::Mining)?;
-        // Wait for the transaction to be included in a block if automine is enabled
         self.wait_for_hash(receiver, awaited_hash).await?;
         Ok(())
     }
