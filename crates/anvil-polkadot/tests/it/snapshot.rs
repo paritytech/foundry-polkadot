@@ -88,7 +88,8 @@ async fn revert(
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert_eq!(reverted, assert_success);
-    assert_block_number_is_best_and_finalized(node, assert_best_block, wait_for_block_provider).await;
+    assert_block_number_is_best_and_finalized(node, assert_best_block, wait_for_block_provider)
+        .await;
 }
 
 async fn do_transfer(
@@ -438,7 +439,8 @@ async fn test_rollback() {
 
     // Rollback 1 block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert_block_number_is_best_and_finalized(&mut node, 12, Some(Duration::from_millis(500))).await;
+    assert_block_number_is_best_and_finalized(&mut node, 12, Some(Duration::from_millis(500)))
+        .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
