@@ -11,13 +11,13 @@ use polkadot_sdk::{
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
     sp_blockchain,
-    sp_core::{H160, H256, U256},
+    sp_core::{H160, H256},
     sp_io::hashing::blake2_256,
-    sp_runtime::{FixedPointNumber, FixedU128},
+    sp_runtime::FixedU128,
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
+use substrate_runtime::Balance;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {

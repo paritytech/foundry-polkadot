@@ -18,7 +18,6 @@ use polkadot_sdk::{
         RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN,
     },
     sc_service,
-    sp_runtime::{FixedPointNumber, FixedU128},
 };
 use rand_08::thread_rng;
 use serde_json::{Value, json};
