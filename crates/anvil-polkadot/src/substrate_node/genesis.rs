@@ -101,7 +101,6 @@ impl GenesisConfig {
             (well_known_keys::TIMESTAMP.to_vec(), self.timestamp.encode()),
             (well_known_keys::BLOCK_NUMBER_KEY.to_vec(), self.number.encode()),
             (well_known_keys::AURA_AUTHORITIES.to_vec(), vec![aura_authority_id].encode()),
-            (well_known_keys::NEXT_FEE_MULTIPLIER.to_vec(), self.base_fee_per_gas.encode()),
             (sp_core::storage::well_known_keys::CODE.to_vec(), self.code.clone()),
         ];
         storage
@@ -159,6 +158,9 @@ impl GenesisConfig {
             "revive": {
                 "accounts": revive_genesis_accounts,
             },
+            "transactionPayment": {
+                "multiplier": self.base_fee_per_gas.into_inner().to_string(),
+            }
         })
     }
 }
@@ -299,14 +301,6 @@ mod tests {
                 vec![authority_id].encode()
             )),
             "Authorities not found in genesis key-value storage"
-        );
-
-        assert!(
-            genesis_storage.contains(&(
-                well_known_keys::NEXT_FEE_MULTIPLIER.to_vec(),
-                base_fee_per_gas.encode()
-            )),
-            "NextFeeMultiplier not found in genesis key-value storage"
         );
     }
 }

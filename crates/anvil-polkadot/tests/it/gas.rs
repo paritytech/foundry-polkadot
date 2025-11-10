@@ -105,11 +105,6 @@ async fn test_next_fee_multiplier_minimum() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
-    unwrap_response::<()>(
-        node.eth_rpc(EthRequest::SetNextBlockBaseFeePerGas(new_base_fee)).await.unwrap(),
-    )
-    .unwrap();
-
     // Currently the gas_price returned from evm is equivalent to the base_fee.
     let gas_price =
         unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
