@@ -21,21 +21,6 @@ pub mod storage_tracer;
 use crate::execute_with_externalities;
 use std::collections::HashMap;
 
-/// Represents a snapshot of account state in REVM
-#[derive(Debug, Clone)]
-pub struct AccountStateSnapshot {
-    pub balance: RU256,
-    pub nonce: u64,
-    pub storage: HashMap<RU256, RU256>,
-}
-
-/// Represents the difference between two account states
-#[derive(Debug, Clone)]
-pub struct AccountStateDiff {
-    pub balance_changed: Option<(RU256, RU256)>, // (old, new)
-    pub nonce_changed: Option<(u64, u64)>, // (old, new)
-    pub storage_changes: HashMap<RU256, (RU256, RU256)>, // slot -> (old, new)
-}
 
 pub struct Tracer {
     pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
@@ -138,153 +123,90 @@ impl Tracer {
         };
     }
 
-    /// Captures a snapshot of account state from REVM
-    pub fn capture_state_snapshot(ecx: Ecx<'_, '_, '_>, address: Address) -> Option<AccountStateSnapshot> {
-        // First, capture storage separately to avoid borrow conflicts
-        let mut storage = HashMap::new();
-        if let Some(account_state) = ecx.journaled_state.state.get(&address) {
-            for (slot, value) in &account_state.storage {
-                storage.insert(*slot, value.present_value);
-            }
-        }
+}
 
-        // Then load account info
-        if let Ok(account_load) = ecx.journaled_state.load_account(address) {
-            let account = account_load.data;
+/// Applies REVM storage diffs to pallet-revive (REVM → PVM sync)
+/// This is a standalone function, similar to post_exec()
+///
+/// Uses REVM's built-in journaling as a "diff mode tracer":
+/// - StorageSlot.is_changed() detects changes
+/// - original_value and present_value provide the diff
+///
+/// Note: Balance/nonce are NOT synced here as they're handled by migration in select_revive()
+pub fn apply_revm_storage_diff(ecx: Ecx<'_, '_, '_>, address: Address) {
+    let mut storage_changes = HashMap::new();
 
-            Some(AccountStateSnapshot {
-                balance: account.info.balance,
-                nonce: account.info.nonce,
-                storage,
-            })
-        } else {
-            None
-        }
-    }
-
-    /// Computes the difference between two state snapshots
-    pub fn compute_state_diff(
-        before: &AccountStateSnapshot,
-        after: &AccountStateSnapshot,
-    ) -> AccountStateDiff {
-        let balance_changed = if before.balance != after.balance {
-            Some((before.balance, after.balance))
-        } else {
-            None
-        };
-
-        let nonce_changed = if before.nonce != after.nonce {
-            Some((before.nonce, after.nonce))
-        } else {
-            None
-        };
-
-        let mut storage_changes = HashMap::new();
-
-        // Find all changed slots
-        for (slot, new_value) in &after.storage {
-            let old_value = before.storage.get(slot).copied().unwrap_or(RU256::ZERO);
-            if old_value != *new_value {
-                storage_changes.insert(*slot, (old_value, *new_value));
-            }
-        }
-
-        // Also check for slots that were in before but not in after (deleted)
-        for (slot, old_value) in &before.storage {
-            if !after.storage.contains_key(slot) && !old_value.is_zero() {
-                storage_changes.insert(*slot, (*old_value, RU256::ZERO));
-            }
-        }
-
-        AccountStateDiff {
-            balance_changed,
-            nonce_changed,
-            storage_changes,
-        }
-    }
-
-    /// Applies a state diff to pallet-revive
-    /// Only syncs the actual changes, not the entire state
-    pub fn apply_state_diff_to_pallet(
-        address: Address,
-        diff: &AccountStateDiff,
-    ) {
-        use revive_env::AccountId;
-
-        execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                let h160_address = H160::from_slice(address.as_slice());
-
-                tracing::debug!(
-                    "Applying state diff to pallet-revive for address {:?}",
-                    address
+    // Extract storage changes using REVM's built-in change tracking
+    // This is equivalent to PrestateTracer diff mode for REVM
+    if let Some(account_state) = ecx.journaled_state.state.get(&address) {
+        for (slot, storage_slot) in &account_state.storage {
+            // REVM's StorageSlot tracks original_value and present_value (diff mode!)
+            if storage_slot.is_changed() {
+                tracing::trace!(
+                    "REVM storage diff: slot {:?} changed: {:?} -> {:?}",
+                    slot,
+                    storage_slot.original_value,
+                    storage_slot.present_value
                 );
-
-                // Sync balance if changed
-                if let Some((old_balance, new_balance)) = diff.balance_changed {
-                    let balance_u256 = U256::from_little_endian(&new_balance.as_le_bytes());
-                    if let Ok(balance_native) = BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(balance_u256) {
-                        let account_id = AccountId::to_fallback_account_id(&h160_address);
-                        let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
-                        pallet_balances::Pallet::<Runtime>::set_balance(
-                            &account_id,
-                            balance_native.into_rounded_balance().saturating_add(min_balance),
-                        );
-                        tracing::trace!(
-                            "Balance changed: {:?} -> {:?}",
-                            old_balance,
-                            new_balance
-                        );
-                    }
-                }
-
-                // Sync nonce if changed
-                if let Some((old_nonce, new_nonce)) = diff.nonce_changed {
-                    let account_id = AccountId::to_fallback_account_id(&h160_address);
-                    polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
-                        a.nonce = new_nonce.min(u32::MAX as u64).try_into().unwrap_or(0);
-                    });
-                    tracing::trace!("Nonce changed: {} -> {}", old_nonce, new_nonce);
-                }
-
-                // Sync storage changes
-                for (slot, (old_value, new_value)) in &diff.storage_changes {
-                    // Convert slot to [u8; 32] for set_storage API
-                    let slot_bytes = slot.to_be_bytes::<32>();
-                    let new_value_bytes = new_value.to_be_bytes::<32>();
-
-                    if !new_value.is_zero() {
-                        // Write new value
-                        let _ = Pallet::<Runtime>::set_storage(
-                            h160_address,
-                            slot_bytes,
-                            Some(new_value_bytes.to_vec()),
-                        );
-
-                        tracing::trace!(
-                            "Storage slot {:?} changed: {:?} -> {:?}",
-                            slot,
-                            old_value,
-                            new_value
-                        );
-                    } else {
-                        // Delete slot (value is now zero)
-                        let _ = Pallet::<Runtime>::set_storage(
-                            h160_address,
-                            slot_bytes,
-                            None,
-                        );
-
-                        tracing::trace!(
-                            "Storage slot {:?} deleted (was {:?})",
-                            slot,
-                            old_value
-                        );
-                    }
-                }
-            })
-        });
+                storage_changes.insert(
+                    *slot,
+                    (storage_slot.original_value, storage_slot.present_value),
+                );
+            }
+        }
     }
+
+    if storage_changes.is_empty() {
+        return;
+    }
+
+    // Apply storage diffs to pallet-revive
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let h160_address = H160::from_slice(address.as_slice());
+
+            tracing::debug!(
+                "Applying REVM storage diff to pallet-revive: {} changes for address {:?}",
+                storage_changes.len(),
+                address
+            );
+
+            // Sync storage changes only (balance/nonce handled by migration)
+            for (slot, (old_value, new_value)) in storage_changes {
+                let slot_bytes = slot.to_be_bytes::<32>();
+                let new_value_bytes = new_value.to_be_bytes::<32>();
+
+                if !new_value.is_zero() {
+                    // Write new value
+                    let _ = Pallet::<Runtime>::set_storage(
+                        h160_address,
+                        slot_bytes,
+                        Some(new_value_bytes.to_vec()),
+                    );
+
+                    tracing::trace!(
+                        "Storage slot {:?} updated: {:?} -> {:?}",
+                        slot,
+                        old_value,
+                        new_value
+                    );
+                } else {
+                    // Delete slot (value is now zero)
+                    let _ = Pallet::<Runtime>::set_storage(
+                        h160_address,
+                        slot_bytes,
+                        None,
+                    );
+
+                    tracing::trace!(
+                        "Storage slot {:?} deleted (was {:?})",
+                        slot,
+                        old_value
+                    );
+                }
+            }
+        })
+    });
 }
 
 impl Tracing for Tracer {
