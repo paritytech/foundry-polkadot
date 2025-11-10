@@ -32,11 +32,16 @@ async fn test_genesis_params() {
 
     // Check that block number, timestamp, and chain id are set correctly at genesis
     assert_eq!(node.best_block_number().await, genesis_block_number);
+    assert_eq!(node.eth_best_block().await.number.as_u32(), genesis_block_number);
+
     let genesis_hash = node.block_hash_by_number(genesis_block_number).await.unwrap();
     // Anvil genesis timestamp is in seconds, while Substrate timestamp is in milliseconds.
     let genesis_timestamp = anvil_genesis_timestamp.checked_mul(1000).unwrap();
     let actual_genesis_timestamp = node.get_decoded_timestamp(Some(genesis_hash)).await;
     assert_eq!(actual_genesis_timestamp, genesis_timestamp);
+    let eth_genesis_timestamp = node.get_eth_timestamp(Some(genesis_hash)).await;
+    assert_eq!(anvil_genesis_timestamp, eth_genesis_timestamp);
+
     let current_chain_id_hex =
         unwrap_response::<String>(node.eth_rpc(EthRequest::EthChainId(())).await.unwrap()).unwrap();
     assert_eq!(current_chain_id_hex, to_hex_string(chain_id));
@@ -49,8 +54,14 @@ async fn test_genesis_params() {
 
     let latest_block_number = node.best_block_number().await;
     assert_eq!(latest_block_number, genesis_block_number + 2);
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(node.eth_best_block().await.number.as_u32(), genesis_block_number + 2);
+
     let hash2 = node.block_hash_by_number(genesis_block_number + 2).await.unwrap();
     let timestamp2 = node.get_decoded_timestamp(Some(hash2)).await;
+    let eth_timestamp2 = node.get_eth_timestamp(Some(hash2)).await;
+    assert_eq!(eth_timestamp2, timestamp2 / 1000);
+
     assert_with_tolerance(
         timestamp2.saturating_sub(genesis_timestamp),
         2000,
@@ -285,6 +296,8 @@ async fn test_genesis_json() {
         "Genesis block number should match the one in genesis.json"
     );
 
+    assert_eq!(node.eth_best_block().await.number.as_u64(), expected_block_number);
+
     // Test timestamp
     let genesis_hash = node.block_hash_by_number(genesis_block_number).await.unwrap();
     // Anvil genesis timestamp is in seconds, while Substrate timestamp is in milliseconds
@@ -294,6 +307,9 @@ async fn test_genesis_json() {
         actual_timestamp, expected_timestamp_ms,
         "Genesis timestamp should match the one in genesis.json"
     );
+
+    let eth_genesis_timestamp = node.get_eth_timestamp(Some(genesis_hash)).await;
+    assert_eq!(expected_timestamp, eth_genesis_timestamp);
 
     // Test coinbase
     let coinbase =

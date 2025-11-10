@@ -184,6 +184,16 @@ impl TestNode {
         Decode::decode(&mut input).unwrap()
     }
 
+    pub async fn get_eth_timestamp(&mut self, at: Option<H256>) -> u64 {
+        if let Some(hash) = at {
+            self.get_block_by_hash(hash).await
+        } else {
+            self.eth_best_block().await
+        }
+        .timestamp
+        .as_u64()
+    }
+
     pub async fn get_nonce(&mut self, address: Address) -> U256 {
         unwrap_response::<U256>(
             self.eth_rpc(EthRequest::EthGetTransactionCount(address, None)).await.unwrap(),
@@ -201,6 +211,18 @@ impl TestNode {
             .unwrap()
             .to_owned();
         u32::from_str_radix(num.trim_start_matches("0x"), 16).unwrap()
+    }
+
+    pub async fn eth_best_block(&mut self) -> Block {
+        unwrap_response::<Block>(
+            self.eth_rpc(EthRequest::EthGetBlockByNumber(
+                alloy_eips::BlockNumberOrTag::Latest,
+                false,
+            ))
+            .await
+            .unwrap(),
+        )
+        .unwrap()
     }
 
     pub async fn wait_for_block_with_timeout(

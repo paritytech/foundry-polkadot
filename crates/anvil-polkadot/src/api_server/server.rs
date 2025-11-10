@@ -612,28 +612,37 @@ impl ApiServer {
     async fn estimate_gas(
         &self,
         request: WithOtherFields<TransactionRequest>,
-        block: Option<alloy_rpc_types::BlockId>,
+        block: Option<BlockId>,
     ) -> Result<sp_core::U256> {
         node_info!("eth_estimateGas");
 
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let dry_run =
-            runtime_api.dry_run(convert_to_generic_transaction(request.into_inner())).await?;
+        let dry_run = runtime_api
+            .dry_run(
+                convert_to_generic_transaction(request.into_inner()),
+                ReviveBlockId::from(block).inner(),
+            )
+            .await?;
         Ok(dry_run.eth_gas)
     }
 
     async fn call(
         &self,
         request: WithOtherFields<TransactionRequest>,
-        block: Option<alloy_rpc_types::BlockId>,
+        block: Option<BlockId>,
     ) -> Result<Bytes> {
         node_info!("eth_call");
 
         let hash = self.get_block_hash_for_tag(block).await?;
+
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let dry_run =
-            runtime_api.dry_run(convert_to_generic_transaction(request.into_inner())).await?;
+        let dry_run = runtime_api
+            .dry_run(
+                convert_to_generic_transaction(request.into_inner()),
+                ReviveBlockId::from(block).inner(),
+            )
+            .await?;
 
         Ok(dry_run.data.into())
     }

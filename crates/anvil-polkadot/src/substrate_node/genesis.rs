@@ -13,7 +13,7 @@ use polkadot_sdk::{
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
     sp_blockchain,
-    sp_core::{H160, storage::Storage},
+    sp_core::{self, H160, storage::Storage},
     sp_runtime::{
         BuildStorage,
         traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
@@ -22,6 +22,7 @@ use polkadot_sdk::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
+use substrate_runtime::WASM_BINARY;
 use subxt_signer::eth::Keypair;
 
 /// Genesis settings
@@ -46,6 +47,8 @@ pub struct GenesisConfig {
     pub genesis_balance: U256,
     /// Coinbase address
     pub coinbase: Option<Address>,
+    /// Substrate runtime code
+    pub code: Vec<u8>,
 }
 
 impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
@@ -67,6 +70,7 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
             genesis_accounts: anvil_config.genesis_accounts.clone(),
             genesis_balance: anvil_config.genesis_balance,
             coinbase: anvil_config.genesis.as_ref().map(|g| g.coinbase),
+            code: WASM_BINARY.expect("Development wasm not available").to_vec(),
         }
     }
 }
@@ -94,8 +98,8 @@ impl GenesisConfig {
             (well_known_keys::TIMESTAMP.to_vec(), self.timestamp.encode()),
             (well_known_keys::BLOCK_NUMBER_KEY.to_vec(), self.number.encode()),
             (well_known_keys::AURA_AUTHORITIES.to_vec(), vec![aura_authority_id].encode()),
+            (sp_core::storage::well_known_keys::CODE.to_vec(), self.code.clone()),
         ];
-        // TODO: add other fields
         storage
     }
 
@@ -185,7 +189,7 @@ impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf>
         )
     }
 
-    pub fn new_with_storage(
+    fn new_with_storage(
         genesis_number: u64,
         genesis_storage: Storage,
         commit_genesis_state: bool,
