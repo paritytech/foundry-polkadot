@@ -20,7 +20,7 @@ use polkadot_sdk::pallet_revive::{
 use std::collections::HashSet;
 use subxt::utils::H256;
 
-async fn assert_block_number_is_best(
+async fn assert_block_number_is_best_and_finalized(
     node: &mut TestNode,
     n: u64,
     wait_for_block_provider: Option<Duration>,
@@ -74,7 +74,7 @@ async fn mine_blocks(node: &mut TestNode, blocks: u64, assert_best_block: u64) {
         node.eth_rpc(EthRequest::Mine(Some(U256::from(blocks)), None)).await.unwrap(),
     )
     .unwrap();
-    assert_block_number_is_best(node, assert_best_block, None).await;
+    assert_block_number_is_best_and_finalized(node, assert_best_block, None).await;
 }
 
 async fn revert(
@@ -88,7 +88,7 @@ async fn revert(
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert_eq!(reverted, assert_success);
-    assert_block_number_is_best(node, assert_best_block, wait_for_block_provider).await;
+    assert_block_number_is_best_and_finalized(node, assert_best_block, wait_for_block_provider).await;
 }
 
 async fn do_transfer(
@@ -155,7 +155,7 @@ async fn test_best_block_after_evm_revert() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number_is_best(&mut node, 0, None).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0, None).await;
 
     // Snapshot at genesis.
     let zero = snapshot(&mut node, U256::ZERO).await;
@@ -171,7 +171,7 @@ async fn test_best_block_after_evm_revert() {
 
     // Snapshot again at block number 10.
     let two = snapshot(&mut node, U256::from(2)).await;
-    assert_block_number_is_best(&mut node, 10, None).await;
+    assert_block_number_is_best_and_finalized(&mut node, 10, None).await;
 
     // Mine 5 more blocks.
     mine_blocks(&mut node, 5, 15).await;
@@ -201,7 +201,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number_is_best(&mut node, 0, None).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0, None).await;
 
     // Mine 5 blocks and assert on the new best block.
     mine_blocks(&mut node, 5, 5).await;
@@ -424,21 +424,21 @@ async fn test_rollback() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number_is_best(&mut node, 0, None).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0, None).await;
 
     // Mine 5 blocks and assert on the new best block.
     mine_blocks(&mut node, 5, 5).await;
 
     // Rollback 2 blocks.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap()).unwrap();
-    assert_block_number_is_best(&mut node, 3, Some(Duration::from_millis(500))).await;
+    assert_block_number_is_best_and_finalized(&mut node, 3, Some(Duration::from_millis(500))).await;
 
     // Check mining works fine after reverting.
     mine_blocks(&mut node, 10, 13).await;
 
     // Rollback 1 block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert_block_number_is_best(&mut node, 12, Some(Duration::from_millis(500))).await;
+    assert_block_number_is_best_and_finalized(&mut node, 12, Some(Duration::from_millis(500))).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -448,7 +448,7 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
     // Assert on initial best block number.
-    assert_block_number_is_best(&mut node, 0, None).await;
+    assert_block_number_is_best_and_finalized(&mut node, 0, None).await;
 
     // Mine 5 blocks and assert on the new best block.
     mine_blocks(&mut node, 5, 5).await;
