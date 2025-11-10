@@ -54,7 +54,6 @@ async fn test_genesis_params() {
 
     let latest_block_number = node.best_block_number().await;
     assert_eq!(latest_block_number, genesis_block_number + 2);
-    tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(node.eth_best_block().await.number.as_u32(), genesis_block_number + 2);
 
     let hash2 = node.block_hash_by_number(genesis_block_number + 2).await.unwrap();

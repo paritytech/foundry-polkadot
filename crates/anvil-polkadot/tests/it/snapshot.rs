@@ -2,9 +2,7 @@ use std::time::Duration;
 
 use crate::{
     abi::Multicall,
-    utils::{
-        BlockWaitTimeout, TestNode, assert_with_tolerance, get_contract_code, unwrap_response,
-    },
+    utils::{TestNode, assert_with_tolerance, get_contract_code, unwrap_response},
 };
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
@@ -39,6 +37,23 @@ async fn assert_block_number_is_best(
     .unwrap();
     let n_as_u256 = pallet_revive::U256::from(n);
     assert_eq!(best_block.number, n_as_u256);
+
+    for _ in 0..3 {
+        let finalized_block = unwrap_response::<Block>(
+            node.eth_rpc(EthRequest::EthGetBlockByNumber(
+                alloy_eips::BlockNumberOrTag::Finalized,
+                false,
+            ))
+            .await
+            .unwrap(),
+        )
+        .unwrap();
+        if finalized_block.number == n_as_u256 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(400)).await;
+    }
+    panic!("Finalized block number did not reach 3 after retries");
 }
 
 async fn snapshot(node: &mut TestNode, expected_snapshot_id: U256) -> U256 {
@@ -81,7 +96,7 @@ async fn do_transfer(
     from: Address,
     to: Option<Address>,
     amount: U256,
-    block_wait_timeout: Option<BlockWaitTimeout>,
+    block_number: Option<u64>,
 ) -> (H256, Option<ReceiptInfo>) {
     let tx_hash = if let Some(to) = to {
         let transaction = TransactionRequest::default().value(amount).from(from).to(to);
@@ -92,8 +107,8 @@ async fn do_transfer(
         tx_hash
     };
 
-    if let Some(BlockWaitTimeout { block_number, timeout: _ }) = block_wait_timeout {
-        mine_blocks(node, 1, block_number.into()).await;
+    if let Some(block_number) = block_number {
+        mine_blocks(node, 1, block_number).await;
         return (tx_hash, Some(node.get_transaction_receipt(tx_hash).await));
     }
 
@@ -202,14 +217,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
 
     // Initialize a random account. Assume its initial balance is 0.
     let transfer_amount = U256::from(16e17);
-    let (_, receipt_info) = do_transfer(
-        &mut node,
-        alith_addr,
-        None,
-        transfer_amount,
-        Some(BlockWaitTimeout { block_number: 6, timeout: Duration::from_millis(500) }),
-    )
-    .await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(6)).await;
     let receipt_info = receipt_info.unwrap();
 
     let dest_h160 = receipt_info.to.unwrap();
@@ -228,14 +237,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
 
     // Make another regular transfer between known accounts.
     let transfer_amount = U256::from(1e17);
-    let (_, receipt_info) = do_transfer(
-        &mut node,
-        baltathar_addr,
-        Some(alith_addr),
-        transfer_amount,
-        Some(BlockWaitTimeout { block_number: 7, timeout: Duration::from_millis(500) }),
-    )
-    .await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, baltathar_addr, Some(alith_addr), transfer_amount, Some(7)).await;
     let receipt_info = receipt_info.unwrap();
 
     assert_eq!(receipt_info.block_number, pallet_revive::U256::from(7));
@@ -273,14 +276,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     // Remine the 6th block with same txs above.
     let (tx_hash1, _) =
         do_transfer(&mut node, alith_addr, Some(dest_addr), U256::from(16e17), None).await;
-    let (tx_hash2, receipt_info2) = do_transfer(
-        &mut node,
-        baltathar_addr,
-        Some(alith_addr),
-        U256::from(1e17),
-        Some(BlockWaitTimeout { block_number: 6, timeout: Duration::from_millis(500) }),
-    )
-    .await;
+    let (tx_hash2, receipt_info2) =
+        do_transfer(&mut node, baltathar_addr, Some(alith_addr), U256::from(1e17), Some(6)).await;
     let receipt_info2 = receipt_info2.unwrap();
     let receipt_info = node.get_transaction_receipt(tx_hash1).await;
     let mut tx_indices =
