@@ -5,10 +5,9 @@ use alloy_primitives::{Address, U256};
 use alloy_rpc_types::TransactionRequest;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::config::{AnvilNodeConfig, INITIAL_BASE_FEE, SubstrateNodeConfig};
-use polkadot_sdk::{pallet_revive::evm::Account, sp_runtime::FixedU128};
+use polkadot_sdk::pallet_revive::evm::Account;
 use rstest::rstest;
 use std::ops::Not;
-use substrate_runtime::constants::NATIVE_TO_ETH_RATIO;
 
 #[tokio::test(flavor = "multi_thread")]
 #[rstest]

@@ -22,7 +22,7 @@ use polkadot_sdk::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
-use substrate_runtime::WASM_BINARY;
+use substrate_runtime::{WASM_BINARY, constants::NATIVE_TO_ETH_RATIO};
 use subxt_signer::eth::Keypair;
 
 /// Genesis settings
@@ -261,8 +261,6 @@ impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf> BuildGenesisBlock<Bl
 
 #[cfg(test)]
 mod tests {
-    use substrate_runtime::constants::NATIVE_TO_ETH_RATIO;
-
     use super::*;
 
     #[test]
