@@ -661,8 +661,8 @@ Traces:
     │   └─ ← [Return] [..] bytes of code
     ├─ [..] VM::record()
     │   └─ ← [Return]
-    ├─ [0] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [0] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
+    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
     ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
@@ -680,16 +680,16 @@ Traces:
     │   └─ ← [Return] [..] bytes of code
     ├─ [..] VM::record()
     │   └─ ← [Return]
-    ├─ [0] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [0] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
+    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
     ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
     │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
     ├─ [..] VM::stopRecord()
     │   └─ ← [Return]
-    ├─ [0] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [0] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
+    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
     ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
@@ -1024,8 +1024,8 @@ Traces:
     │   └─ ← [Stop]
     ├─ [0] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
     │   └─ ← [Return] [..] bytes of code
-    ├─ [0] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   ├─ [0] 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
+    │   ├─ [..] 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
     │   │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
@@ -1270,14 +1270,14 @@ Traces:
   [..] StateDiffTest::setUp()
     ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] [..] bytes of code
-    ├─ [329564894] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
     │   └─ ← [Return] [..] bytes of code
     └─ ← [Stop]
 
   [..] StateDiffTest::testCallProxyaccesses()
     ├─ [..] VM::startStateDiffRecording()
     │   └─ ← [Return]
-    ├─ [828016270] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::proxyCall(55)
+    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::proxyCall(55)
     │   ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setter(55)
     │   │   └─ ← [Return]
     │   └─ ← [Stop]
@@ -1290,7 +1290,7 @@ Traces:
   [..] StateDiffTest::setUp()
     ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] [..] bytes of code
-    ├─ [329564894] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
     │   └─ ← [Return] [..] bytes of code
     └─ ← [Stop]
 
@@ -1308,14 +1308,14 @@ Traces:
   [..] StateDiffTest::setUp()
     ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] [..] bytes of code
-    ├─ [329564894] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
     │   └─ ← [Return] [..] bytes of code
     └─ ← [Stop]
 
   [..] StateDiffTest::testCreateaccesses()
     ├─ [..] VM::startStateDiffRecording()
     │   └─ ← [Return]
-    ├─ [327766219] → new <unknown>@0xc7183455a4C133Ae270771860664b6B7ec320bB1
+    ├─ [..] → new <unknown>@0xc7183455a4C133Ae270771860664b6B7ec320bB1
     │   └─ ← [Return] [..] bytes of code
     ├─ [..] VM::stopAndReturnStateDiff()
     │   └─ ← [Return] [((0, 31337 [3.133e4]), 4, 0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 1000000000000000000 [1e18], 0x0000000000000000000000000000000000000000000000000000000000000064, false, [(0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000000, false), (0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000064, false)], 1)]
