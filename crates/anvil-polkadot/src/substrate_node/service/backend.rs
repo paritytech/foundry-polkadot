@@ -33,6 +33,8 @@ pub enum BackendError {
     MissingTimestamp,
     #[error("Could not find the next fee multiplier in the state")]
     MissingNextFeeMultiplier,
+    #[error("Could not find block number in the state")]
+    MissingBlockNumber,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
@@ -47,6 +49,8 @@ pub enum BackendError {
     DecodeCodeInfo(codec::Error),
     #[error("Unable to decode timestamp: {0}")]
     DecodeTimestamp(codec::Error),
+    #[error("Unable to decode blockNumber: {0}")]
+    DecodeBlockNumber(codec::Error),
     #[error("Unable to decode aura authorities: {0}")]
     DecodeAuraAuthorities(codec::Error),
     #[error("Unable to decode the next fee multiplier: {0}")]
@@ -75,6 +79,13 @@ impl BackendWithOverlay {
         let value =
             self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingTimestamp)?;
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)
+    }
+
+    pub fn read_block_number(&self, hash: Hash) -> Result<u32> {
+        let key = well_known_keys::BLOCK_NUMBER_KEY;
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingBlockNumber)?;
+        u32::decode(&mut &value[..]).map_err(BackendError::DecodeBlockNumber)
     }
 
     pub fn read_chain_id(&self, hash: Hash) -> Result<u64> {

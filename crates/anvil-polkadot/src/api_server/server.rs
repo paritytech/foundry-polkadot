@@ -41,6 +41,7 @@ use alloy_serde::WithOtherFields;
 use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
 use anvil_core::eth::{EthRequest, Params as MineParams};
 use anvil_rpc::response::ResponseResult;
+use chrono::{DateTime, Datelike, Utc};
 use codec::{Decode, Encode};
 use futures::{StreamExt, channel::mpsc};
 use indexmap::IndexMap;
@@ -402,10 +403,17 @@ impl ApiServer {
                 "The interval between blocks is too large".to_string(),
             ));
         }
-        self.mining_engine
+
+        // Subscribe to new best blocks.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+
+        let awaited_hash = self
+            .mining_engine
             .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
             .await
-            .map_err(Error::Mining)
+            .map_err(Error::Mining)?;
+        self.wait_for_hash(receiver, awaited_hash).await?;
+        Ok(())
     }
 
     fn set_interval_mining(&self, interval: u64) -> Result<()> {
@@ -437,7 +445,10 @@ impl ApiServer {
     async fn evm_mine(&self, mine: Option<MineParams<Option<MineOptions>>>) -> Result<String> {
         node_info!("evm_mine");
 
-        self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        // Subscribe to new best blocks.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+        let awaited_hash = self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        self.wait_for_hash(receiver, awaited_hash).await?;
         Ok("0x0".to_string())
     }
 
@@ -446,7 +457,15 @@ impl ApiServer {
         mine: Option<MineParams<Option<MineOptions>>>,
     ) -> Result<Vec<Block>> {
         node_info!("evm_mine_detailed");
-        let mined_blocks = self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+
+        // Subscribe to new best blocks.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+
+        let (mined_blocks, awaited_hash) =
+            self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+
+        self.wait_for_hash(receiver, awaited_hash).await?;
+
         let mut blocks = Vec::with_capacity(mined_blocks as usize);
         let last_block = self.client.info().best_number as u64;
         let starting = last_block - mined_blocks + 1;
@@ -1469,6 +1488,59 @@ impl ApiServer {
 
         Ok(())
     }
+
+    async fn wait_for_hash(
+        &self,
+        receiver: Option<tokio::sync::broadcast::Receiver<H256>>,
+        awaited_hash: H256,
+    ) -> Result<()> {
+        if let Some(mut receiver) = receiver {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                loop {
+                    if let Ok(block_hash) = receiver.recv().await {
+                        if let Err(e) = self.log_mined_block(block_hash).await {
+                            node_info!("Failed to log mined block {block_hash:?}: {e:?}");
+                        }
+                        if block_hash == awaited_hash {
+                            break;
+                        }
+                    }
+                }
+            })
+            .await
+            .map_err(|e| {
+                Error::InternalError(format!(
+                    "Was not notified about the new best block in time {e:?}."
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    async fn log_mined_block(&self, block_hash: H256) -> Result<()> {
+        let block_timestamp = self.backend.read_timestamp(block_hash)?;
+        let block_number = self.backend.read_block_number(block_hash)?;
+        let timestamp = utc_from_millis(block_timestamp)?;
+        node_info!("    Block Number: {}", block_number);
+        node_info!("    Block Hash: {:?}", block_hash);
+        if timestamp.year() > 9999 {
+            // rf2822 panics with more than 4 digits
+            node_info!("    Block Time: {:?}\n", timestamp.to_rfc3339());
+        } else {
+            node_info!("    Block Time: {:?}\n", timestamp.to_rfc2822());
+        }
+        Ok(())
+    }
+}
+
+/// Returns the `Utc` datetime for the given seconds since unix epoch
+fn utc_from_millis(millis: u64) -> Result<DateTime<Utc>> {
+    DateTime::from_timestamp_millis(
+        millis.try_into().map_err(|err| {
+            Error::InvalidParams(format!("Could not convert the timestamp: {err:?}"))
+        })?,
+    )
+    .ok_or(Error::InvalidParams("Could not get the utc datetime 😭".to_string()))
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
@@ -1595,9 +1667,12 @@ async fn create_revive_rpc_client(
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
 
-    let eth_rpc_client = EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
-        .await
-        .map_err(Error::from)?;
+    let mut eth_rpc_client =
+        EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
+            .await
+            .map_err(Error::from)?;
+
+    eth_rpc_client.create_block_notifier();
     let eth_rpc_client_clone = eth_rpc_client.clone();
     task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;

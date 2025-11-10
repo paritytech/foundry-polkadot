@@ -12,7 +12,6 @@ use polkadot_sdk::{
     pallet_revive::evm::{Account, TransactionSigned},
     sp_core::{H256, U256},
 };
-use std::time::Duration;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn can_sign_transaction() {
@@ -78,7 +77,6 @@ async fn can_sign_transaction() {
     )
     .unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     assert_eq!(transaction_receipt.from, alith.address());

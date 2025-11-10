@@ -11,7 +11,7 @@ use parking_lot::RwLock;
 use polkadot_sdk::{
     sc_consensus_manual_seal::{CreatedBlock, EngineCommand, Error as BlockProducingError},
     sc_service::TransactionPool,
-    sp_core,
+    sp_core::{self, H256},
 };
 use std::{pin::Pin, sync::Arc};
 use substrate_runtime::Hash;
@@ -134,21 +134,22 @@ impl MiningEngine {
     /// * `interval` - Optional time to advance between blocks (in seconds)
     ///
     /// # Returns
-    /// * `Ok(())` - All blocks were mined successfully
+    /// * `Ok(H256)` - The hash of the last block mined successfully.
     /// * `Err(MiningError)` - Block production failed
     pub async fn mine(
         &self,
         num_blocks: Option<u64>,
         interval: Option<Duration>,
-    ) -> Result<(), MiningError> {
+    ) -> Result<H256, MiningError> {
         let blocks = num_blocks.unwrap_or(1);
+        let mut last_hash = H256::zero();
         for _ in 0..blocks {
             if let Some(interval) = interval {
                 self.time_manager.increase_time(interval.as_secs());
             }
-            seal_now(&self.seal_command_sender).await?;
+            last_hash = seal_now(&self.seal_command_sender).await?.hash;
         }
-        Ok(())
+        Ok(last_hash)
     }
 
     /// Ethereum-compatible block mining RPC method.
@@ -161,10 +162,10 @@ impl MiningEngine {
     /// * `opts` - Optional mining parameters including timestamp and block count
     ///
     /// # Returns
-    /// * `Ok(())` - Success response
+    /// * `Ok(H256)` - The hash of the last block mined successfully.
     /// * `Err(MiningError)` - Mining operation failed
-    pub async fn evm_mine(&self, opts: Option<MineOptions>) -> Result<(), MiningError> {
-        self.do_evm_mine(opts).await.map(|_| ())
+    pub async fn evm_mine(&self, opts: Option<MineOptions>) -> Result<H256, MiningError> {
+        self.do_evm_mine(opts).await.map(|res| res.1)
     }
 
     /// Configure interval-based mining mode.
@@ -311,8 +312,9 @@ impl MiningEngine {
         self.waker.wake();
     }
 
-    pub async fn do_evm_mine(&self, opts: Option<MineOptions>) -> Result<u64, MiningError> {
+    pub async fn do_evm_mine(&self, opts: Option<MineOptions>) -> Result<(u64, H256), MiningError> {
         let mut blocks_to_mine = 1u64;
+        let mut last_hash = H256::zero();
 
         if let Some(opts) = opts {
             let timestamp = match opts {
@@ -333,10 +335,10 @@ impl MiningEngine {
         }
 
         for _ in 0..blocks_to_mine {
-            seal_now(&self.seal_command_sender).await?;
+            last_hash = seal_now(&self.seal_command_sender).await?.hash;
         }
 
-        Ok(blocks_to_mine)
+        Ok((blocks_to_mine, last_hash))
     }
 }
 
