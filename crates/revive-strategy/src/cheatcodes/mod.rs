@@ -443,6 +443,16 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 etch_call(target, newRuntimeBytecode, ccx.ecx)?;
                 Ok(Default::default())
             }
+
+            t if is::<etchCall>(t) => {
+                let etchCall { target, newRuntimeBytecode: _ } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+                // Etch could be called from the test contract constructor, so we allow it
+                // even if we're not yet using revive yet and mark the target as persistent, so
+                // the bytecode gets persisted.
+                ccx.ecx.journaled_state.database.add_persistent_account(*target);
+                cheatcode.dyn_apply(ccx, executor)
+            }
             t if using_pvm && is::<loadCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
@@ -697,6 +707,34 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     address = ?address,
                                     "no PVM equivalent found for EVM bytecode, skipping migration"
                                 );
+                            }
+                        } else {
+                            tracing::info!("Setting evm bytecode stored in account {:?} balance: {:?}", address, amount);
+                            // Even if no dual-compiled contract is found, we still upload the existing bytecode because it might be some EVM bytecode that got etched earlier.
+                            let code_bytes = bytecode.original_byte_slice().to_vec();
+                            let upload_result = Pallet::<Runtime>::try_upload_code(
+                                Pallet::<Runtime>::account_id(),
+                                code_bytes.clone(),
+                                BytecodeType::Evm,
+                                u64::MAX.into(),
+                                &ExecConfig::new_substrate_tx(),
+                            );
+                            match upload_result {
+                                Ok(_) => {
+                                    let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
+                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                        .expect("Failed to create contract info");
+                                    AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
+                                }
+                                Err(err) => {
+                                    tracing::warn!(
+                                        address = ?address,
+                                        runtime_mode = ?ctx.runtime_mode,
+                                        bytecode_len = code_bytes.len(),
+                                        error = ?err,
+                                        "Failed to upload bytecode to pallet-revive, skipping migration"
+                                    );
+                                }
                             }
                         }
                     }
