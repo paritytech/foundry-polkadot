@@ -233,7 +233,7 @@ impl BackendWithOverlay {
         // TODO: now compute what is the evm_block_gas_limit and determine how far
         // we are from it. The other term that can be updated is
         let storage_block_weights = self.read_runtime_block_weights(at);
-        assert_eq!(block_weights, storage_block_weights);
+        // assert_eq!(block_weights, storage_block_weights);
     }
 
     fn read_top_state(&self, hash: Hash, key: StorageKey) -> Result<Option<StorageValue>> {

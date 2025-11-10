@@ -48,7 +48,8 @@ use pallet_revive_eth_rpc::{
     BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
     client::{Client as EthRpcClient, ClientError, SubscriptionType},
     subxt_client::{
-        self, SrcChainConfig, runtime_types::bounded_collections::bounded_vec::BoundedVec,
+        self, SrcChainConfig, runtime_apis::revive_api::types::block_gas_limit,
+        runtime_types::bounded_collections::bounded_vec::BoundedVec,
     },
 };
 use polkadot_sdk::{
@@ -148,6 +149,14 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         let res = match req.clone() {
             EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
+
+            //------- Gas -----------
+            EthRequest::EvmSetBlockGasLimit(block_gas_limit) => {
+                node_info!("evm_SetBlockGasLimit");
+                let at = self.latest_block();
+                self.backend.inject_block_gas_limit(at, block_gas_limit.to::<u128>());
+                Ok(()).to_rpc_result()
+            }
 
             //------- Mining---------
             EthRequest::Mine(blocks, interval) => self.mine(blocks, interval).await.to_rpc_result(),
