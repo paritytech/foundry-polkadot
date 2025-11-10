@@ -1819,8 +1819,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
         }
 
         // Sync REVM state back to pallet-revive if this call was executed in REVM
-        // (i.e., when revive_try_call returned None)
-        if !cheatcode_call && outcome.result.is_ok() {
+        if outcome.result.is_ok() {
             self.strategy.runner.revive_call_end(self, ecx, call);
         }
     }
@@ -1947,11 +1946,10 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
         self.create_end_common(ecx, Some(call), outcome);
 
         // Sync REVM state back to pallet-revive if this create was executed in REVM
-        // (i.e., when revive_try_create returned None)
-        if outcome.result.is_ok() {
-            if let Some(created_address) = outcome.address {
-                self.strategy.runner.revive_create_end(self, ecx, created_address);
-            }
+        if outcome.result.is_ok()
+            && let Some(created_address) = outcome.address
+        {
+            self.strategy.runner.revive_create_end(self, ecx, created_address);
         }
     }
 }

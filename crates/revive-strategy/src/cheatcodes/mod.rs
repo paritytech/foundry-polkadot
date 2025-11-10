@@ -38,7 +38,7 @@ use polkadot_sdk::{
 use crate::{
     cheatcodes::mock_handler::MockHandlerImpl,
     execute_with_externalities,
-    tracing::{Tracer, storage_tracer::AccountAccess, apply_revm_storage_diff},
+    tracing::{Tracer, storage_tracer::AccountAccess},
 };
 use foundry_cheatcodes::Vm::{AccountAccess as FAccountAccess, ChainInfo};
 
@@ -49,6 +49,7 @@ use revm::{
         CallInputs, CallOutcome, CallScheme, CreateOutcome, Gas, InstructionResult, Interpreter,
         InterpreterResult, interpreter_types::Jumps,
     },
+    primitives::HashMap,
     state::Bytecode,
 };
 pub trait PvmCheatcodeInspectorStrategyBuilder {
@@ -699,6 +700,19 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 );
                             }
                         }
+                        // Migrate complete account state (storage) for newly created contract
+                        for (slot, storage_slot) in &acc.data.storage {
+                            let slot_bytes = slot.to_be_bytes::<32>();
+                            let value_bytes = storage_slot.present_value.to_be_bytes::<32>();
+
+                            if !storage_slot.present_value.is_zero() {
+                                let _ = Pallet::<Runtime>::set_storage(
+                                    account_h160,
+                                    slot_bytes,
+                                    Some(value_bytes.to_vec()),
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -778,8 +792,6 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     });
 }
 
-impl PvmCheatcodeInspectorStrategyRunner {}
-
 impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspectorStrategyRunner {
     fn is_pvm_enabled(&self, state: &mut foundry_cheatcodes::Cheatcodes) -> bool {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
@@ -804,7 +816,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             get_context_ref_mut(state.strategy.context.as_mut());
 
         if !ctx.using_pvm {
-            // Running in pure EVM mode - REVM will execute this
             return None;
         }
 
@@ -828,8 +839,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     "running create in EVM, instead of PVM (Test Contract) {:#?}",
                     address
                 );
-
-                // REVM will execute this (test contract)
                 return None;
             }
         }
@@ -988,7 +997,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         };
 
         if !ctx.using_pvm {
-            // Running in pure EVM mode - REVM will execute this
             return None;
         }
 
@@ -1003,8 +1011,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 "running call in EVM, instead of pallet-revive (Test Contract) {:#?}",
                 call.bytecode_address
             );
-
-            // REVM will execute this (test contract)
             return None;
         }
 
@@ -1148,48 +1154,19 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
     ) {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
-        // Optimization: Skip sync if using_pvm = true AND this is not a test contract
-        // When using_pvm = true, only test contracts execute in REVM
-        // For all PVM executions, there are no REVM storage changes to sync
-        if ctx.using_pvm {
-            // After migration: check if this is test contract
-            let is_test_contract = ecx
+        // Skip storage sync if: in PVM mode AND (no test contract OR not the test contract)
+        if ctx.using_pvm
+            && ecx
                 .journaled_state
                 .database
                 .get_test_contract_address()
-                .map(|addr| call.bytecode_address == addr || call.target_address == addr)
-                .unwrap_or(false);
-
-            if !is_test_contract {
-                // PVM executed, no REVM changes, skip expensive iteration
-                return;
-            }
-        }
-
-        // Before migration (using_pvm = false): All calls in REVM, sync needed
-        // After migration (using_pvm = true) with test contract: Sync needed
-        apply_revm_storage_diff(ecx, call.target_address);
-    }
-
-    fn revive_create_end(
-        &self,
-        state: &mut foundry_cheatcodes::Cheatcodes,
-        ecx: Ecx<'_, '_, '_>,
-        created_address: Address,
-    ) {
-        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
-
-        // Optimization: After migration (using_pvm = true), creates execute in PVM
-        // No REVM storage changes, skip expensive iteration
-        if ctx.using_pvm {
+                .map(|addr| call.bytecode_address != addr && call.target_address != addr)
+                .unwrap_or(true)
+        {
             return;
         }
 
-        // Before migration (using_pvm = false): Test contract deployed in REVM
-        // Constructor may have set storage, sync needed
-        //
-        // Note: Bytecode sync not needed - migrated in select_revive()
-        apply_revm_storage_diff(ecx, created_address);
+        apply_revm_storage_diff(ecx, call.target_address);
     }
 }
 
@@ -1200,8 +1177,6 @@ fn post_exec(
     tracer: &mut Tracer,
     is_static_call: bool,
 ) {
-    // Apply PVM storage diffs to REVM (PVM → REVM sync)
-    // Uses PrestateTracer in diff mode to sync pallet-revive changes back to REVM
     tracer.apply_prestate_trace(ecx);
     if let Some(traces) = tracer.collect_call_traces()
         && !is_static_call
@@ -1249,4 +1224,45 @@ fn get_context_ref_mut(
     ctx: &mut dyn CheatcodeInspectorStrategyContext,
 ) -> &mut PvmCheatcodeInspectorStrategyContext {
     ctx.as_any_mut().downcast_mut().expect("expected PvmCheatcodeInspectorStrategyContext")
+}
+
+/// Applies REVM storage diffs to pallet-revive (REVM → PVM sync)
+/// Note: Balance/nonce are NOT synced here as they're handled by migration in select_revive()
+fn apply_revm_storage_diff(ecx: Ecx<'_, '_, '_>, address: Address) {
+    let Some(account_state) = ecx.journaled_state.state.get(&address) else {
+        return;
+    };
+
+    let h160_address = H160::from_slice(address.as_slice());
+
+    // Check if contract exists in pallet-revive before applying storage diffs
+    let contract_exists = execute_with_externalities(|externalities| {
+        externalities
+            .execute_with(|| AccountInfo::<Runtime>::load_contract(&h160_address).is_some())
+    });
+
+    if !contract_exists {
+        return;
+    }
+
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            for (slot, storage_slot) in &account_state.storage {
+                if storage_slot.is_changed() {
+                    let slot_bytes = slot.to_be_bytes::<32>();
+                    let new_value = storage_slot.present_value;
+
+                    if !new_value.is_zero() {
+                        let _ = Pallet::<Runtime>::set_storage(
+                            h160_address,
+                            slot_bytes,
+                            Some(new_value.to_be_bytes::<32>().to_vec()),
+                        );
+                    } else {
+                        let _ = Pallet::<Runtime>::set_storage(h160_address, slot_bytes, None);
+                    }
+                }
+            }
+        })
+    });
 }

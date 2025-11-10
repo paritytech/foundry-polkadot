@@ -1,26 +1,18 @@
 use alloy_primitives::{Address, Bytes, U256 as RU256};
 use foundry_cheatcodes::Ecx;
-use polkadot_sdk::{
-    frame_support::traits::{Currency, fungible::Mutate},
-    pallet_balances,
-    pallet_revive::{
-        Pallet, U256, Weight, AddressMapper,
-        evm::{
-            CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
-            PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
-        },
-        tracing::{Tracing, trace as trace_revive},
-        BalanceOf, BalanceWithDust,
+use polkadot_sdk::pallet_revive::{
+    Pallet, U256, Weight,
+    evm::{
+        CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
+        PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
     },
-    sp_core::H160,
+    tracing::{Tracing, trace as trace_revive},
 };
 use revive_env::Runtime;
 use revm::{context::JournalTr, database::states::StorageSlot, state::Bytecode};
 use storage_tracer::{AccountAccess, StorageTracer};
 pub mod storage_tracer;
 use crate::execute_with_externalities;
-use std::collections::HashMap;
-
 
 pub struct Tracer {
     pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
@@ -122,91 +114,6 @@ impl Tracer {
             _ => panic!("Can't happen"),
         };
     }
-
-}
-
-/// Applies REVM storage diffs to pallet-revive (REVM → PVM sync)
-/// This is a standalone function, similar to post_exec()
-///
-/// Uses REVM's built-in journaling as a "diff mode tracer":
-/// - StorageSlot.is_changed() detects changes
-/// - original_value and present_value provide the diff
-///
-/// Note: Balance/nonce are NOT synced here as they're handled by migration in select_revive()
-pub fn apply_revm_storage_diff(ecx: Ecx<'_, '_, '_>, address: Address) {
-    let mut storage_changes = HashMap::new();
-
-    // Extract storage changes using REVM's built-in change tracking
-    // This is equivalent to PrestateTracer diff mode for REVM
-    if let Some(account_state) = ecx.journaled_state.state.get(&address) {
-        for (slot, storage_slot) in &account_state.storage {
-            // REVM's StorageSlot tracks original_value and present_value (diff mode!)
-            if storage_slot.is_changed() {
-                tracing::trace!(
-                    "REVM storage diff: slot {:?} changed: {:?} -> {:?}",
-                    slot,
-                    storage_slot.original_value,
-                    storage_slot.present_value
-                );
-                storage_changes.insert(
-                    *slot,
-                    (storage_slot.original_value, storage_slot.present_value),
-                );
-            }
-        }
-    }
-
-    if storage_changes.is_empty() {
-        return;
-    }
-
-    // Apply storage diffs to pallet-revive
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            let h160_address = H160::from_slice(address.as_slice());
-
-            tracing::debug!(
-                "Applying REVM storage diff to pallet-revive: {} changes for address {:?}",
-                storage_changes.len(),
-                address
-            );
-
-            // Sync storage changes only (balance/nonce handled by migration)
-            for (slot, (old_value, new_value)) in storage_changes {
-                let slot_bytes = slot.to_be_bytes::<32>();
-                let new_value_bytes = new_value.to_be_bytes::<32>();
-
-                if !new_value.is_zero() {
-                    // Write new value
-                    let _ = Pallet::<Runtime>::set_storage(
-                        h160_address,
-                        slot_bytes,
-                        Some(new_value_bytes.to_vec()),
-                    );
-
-                    tracing::trace!(
-                        "Storage slot {:?} updated: {:?} -> {:?}",
-                        slot,
-                        old_value,
-                        new_value
-                    );
-                } else {
-                    // Delete slot (value is now zero)
-                    let _ = Pallet::<Runtime>::set_storage(
-                        h160_address,
-                        slot_bytes,
-                        None,
-                    );
-
-                    tracing::trace!(
-                        "Storage slot {:?} deleted (was {:?})",
-                        slot,
-                        old_value
-                    );
-                }
-            }
-        })
-    });
 }
 
 impl Tracing for Tracer {

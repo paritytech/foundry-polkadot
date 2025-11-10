@@ -262,18 +262,8 @@ pub trait CheatcodeInspectorStrategyExt {
         None
     }
 
-    /// Hook called after REVM successfully executes a call that returned None from revive_try_call
-    /// This allows syncing REVM state changes back to pallet-revive
-    fn revive_call_end(
-        &self,
-        _state: &mut crate::Cheatcodes,
-        _ecx: Ecx,
-        _call: &CallInputs,
-    ) {
-    }
+    fn revive_call_end(&self, _state: &mut crate::Cheatcodes, _ecx: Ecx, _call: &CallInputs) {}
 
-    /// Hook called after REVM successfully executes a create that returned None from revive_try_create
-    /// This allows syncing REVM state changes back to pallet-revive
     fn revive_create_end(
         &self,
         _state: &mut crate::Cheatcodes,
