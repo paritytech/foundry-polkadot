@@ -134,7 +134,7 @@ impl MiningEngine {
     /// * `interval` - Optional time to advance between blocks (in seconds)
     ///
     /// # Returns
-    /// * `Ok(())` - All blocks were mined successfully
+    /// * `Ok(H256)` - The hash of the last block mined successfully.
     /// * `Err(MiningError)` - Block production failed
     pub async fn mine(
         &self,
@@ -162,7 +162,7 @@ impl MiningEngine {
     /// * `opts` - Optional mining parameters including timestamp and block count
     ///
     /// # Returns
-    /// * `Ok(())` - Success response
+    /// * `Ok(H256)` - The hash of the last block mined successfully.
     /// * `Err(MiningError)` - Mining operation failed
     pub async fn evm_mine(&self, opts: Option<MineOptions>) -> Result<H256, MiningError> {
         self.do_evm_mine(opts).await.map(|res| res.1)

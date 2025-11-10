@@ -1481,7 +1481,7 @@ impl ApiServer {
         awaited_hash: H256,
     ) -> Result<()> {
         if let Some(mut receiver) = receiver {
-            tokio::time::timeout(Duration::from_millis(500), async {
+            tokio::time::timeout(Duration::from_secs(3), async {
                 loop {
                     if let Ok(block_hash) = receiver.recv().await {
                         if let Err(e) = self.log_mined_block(block_hash).await {

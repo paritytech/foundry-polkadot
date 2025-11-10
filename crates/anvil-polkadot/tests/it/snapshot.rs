@@ -53,7 +53,7 @@ async fn assert_block_number_is_best(
         }
         tokio::time::sleep(Duration::from_millis(400)).await;
     }
-    panic!("Finalized block number did not reach 3 after retries");
+    panic!("Could not reach the desired finalized block number after 3 retries.");
 }
 
 async fn snapshot(node: &mut TestNode, expected_snapshot_id: U256) -> U256 {
