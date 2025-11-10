@@ -20,10 +20,7 @@ use polkadot_sdk::pallet_revive::{
 use std::collections::HashSet;
 use subxt::utils::H256;
 
-async fn assert_block_number_is_best_and_finalized(
-    node: &mut TestNode,
-    n: u64,
-) {
+async fn assert_block_number_is_best_and_finalized(node: &mut TestNode, n: u64) {
     assert_eq!(std::convert::Into::<u64>::into(node.best_block_number().await), n);
     let best_block = unwrap_response::<Block>(
         node.eth_rpc(EthRequest::EthGetBlockByNumber(alloy_eips::BlockNumberOrTag::Latest, false))
@@ -83,8 +80,7 @@ async fn revert(
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert_eq!(reverted, assert_success);
-    assert_block_number_is_best_and_finalized(node, assert_best_block)
-        .await;
+    assert_block_number_is_best_and_finalized(node, assert_best_block).await;
 }
 
 async fn do_transfer(
@@ -440,8 +436,7 @@ async fn test_rollback() {
 
     // Rollback 1 block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert_block_number_is_best_and_finalized(&mut node, 12)
-        .await;
+    assert_block_number_is_best_and_finalized(&mut node, 12).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

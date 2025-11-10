@@ -1262,13 +1262,22 @@ impl ApiServer {
     }
     // ----- Helpers
     async fn update_block_provider_on_revert(&self, info: &Info<OpaqueBlock>) -> Result<()> {
-        if let Some(block) = self.block_provider.block_by_number(info.best_number).await? {
-            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
-        }
+        let best_block = self.block_provider.block_by_number(info.best_number).await?.ok_or(
+            Error::InternalError(format!(
+                "Could not find best block with number {}",
+                info.best_number
+            )),
+        )?;
+        self.block_provider.update_latest(best_block, SubscriptionType::BestBlocks).await;
 
-        if let Some(block) = self.block_provider.block_by_number(info.finalized_number).await? {
-            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
-        }
+        let finalized_block =
+            self.block_provider.block_by_number(info.finalized_number).await?.ok_or(
+                Error::InternalError(format!(
+                    "Could not find finalized block with number {}",
+                    info.best_number
+                )),
+            )?;
+        self.block_provider.update_latest(finalized_block, SubscriptionType::FinalizedBlocks).await;
 
         Ok(())
     }
