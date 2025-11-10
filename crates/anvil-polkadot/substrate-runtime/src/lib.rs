@@ -22,12 +22,13 @@ use pallet_revive::{
         runtime::EthExtra,
     },
 };
-use pallet_transaction_payment::{ConstFeeMultiplier, FeeDetails, Multiplier, RuntimeDispatchInfo};
+use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
     parachains_common::{
         AccountId, AssetHubPolkadotAuraId as AuraId, BlockNumber, Hash as CommonHash, Header,
         Nonce, Signature,
     },
+    polkadot_runtime_common::SlowAdjustingFeeUpdate,
     polkadot_sdk_frame::{
         deps::sp_genesis_builder,
         runtime::{apis, prelude::*},
@@ -40,6 +41,11 @@ use polkadot_sdk::{
 
 pub use polkadot_sdk::parachains_common::Balance;
 use sp_weights::ConstantMultiplier;
+
+pub mod constants {
+    /// DOT precision (1e12) to ETH precision (1e18) ratio.
+    pub const NATIVE_TO_ETH_RATIO: u32 = 1_000_000;
+}
 
 pub mod currency {
     use super::Balance;
@@ -257,17 +263,27 @@ impl pallet_sudo::Config for Runtime {}
 impl pallet_timestamp::Config for Runtime {}
 
 parameter_types! {
-    pub const TransactionByteFee: Balance = 10 * MILLICENTS;
-    pub FeeMultiplier: Multiplier = Multiplier::one();
+    // That's how asset-hub-westend sets this.
+    pub const TransactionByteFee: Balance = MILLICENTS;
 }
+
+// That's how asset-hub-westend sets this.
+pub type WeightToFee = BlockRatioFee<
+    // p
+    CENTS,
+    // q
+    { 100 * ExtrinsicBaseWeight::get().ref_time() as u128 },
+    Runtime,
+>;
 
 // Implements the types required for the transaction payment pallet.
 #[derive_impl(pallet_transaction_payment::config_preludes::TestDefaultConfig)]
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
-    type WeightToFee = BlockRatioFee<1, 1, Self>;
+    type WeightToFee = WeightToFee;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
+    // That's how asset-hub-westend sets this.
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
 }
 
 parameter_types! {
@@ -299,7 +315,7 @@ impl pallet_revive::Config for Runtime {
     // `forking` feature.
     type FindAuthor = BlockAuthor;
     type Balance = Balance;
-    type NativeToEthRatio = ConstU32<1_000_000>;
+    type NativeToEthRatio = ConstU32<{ constants::NATIVE_TO_ETH_RATIO }>;
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;

@@ -13,6 +13,7 @@ use polkadot_sdk::{
     sp_blockchain,
     sp_core::{H160, H256},
     sp_io::hashing::blake2_256,
+    sp_runtime::FixedU128,
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
@@ -30,6 +31,8 @@ pub enum BackendError {
     MissingAuraAuthorities,
     #[error("Could not find timestamp in the state")]
     MissingTimestamp,
+    #[error("Could not find the next fee multiplier in the state")]
+    MissingNextFeeMultiplier,
     #[error("Could not find block number in the state")]
     MissingBlockNumber,
     #[error("Unable to decode total issuance {0}")]
@@ -50,6 +53,8 @@ pub enum BackendError {
     DecodeBlockNumber(codec::Error),
     #[error("Unable to decode aura authorities: {0}")]
     DecodeAuraAuthorities(codec::Error),
+    #[error("Unable to decode the next fee multiplier: {0}")]
+    DecodeNextFeeMultiplier(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -175,6 +180,11 @@ impl BackendWithOverlay {
         overrides.set_coinbase(at, aura_authority);
     }
 
+    pub fn inject_next_fee_multiplier(&self, at: Hash, next_fee_multiplier: FixedU128) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_next_fee_multiplier(at, next_fee_multiplier);
+    }
+
     pub fn inject_total_issuance(&self, at: Hash, value: Balance) {
         let mut overrides = self.overrides.lock();
         overrides.set_total_issuance(at, value);
@@ -270,6 +280,16 @@ impl StorageOverrides {
     fn set_timestamp(&mut self, latest_block: Hash, timestamp: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(timestamp.encode()));
+
+        self.add(latest_block, changeset);
+    }
+
+    fn set_next_fee_multiplier(&mut self, latest_block: Hash, next_fee_multiplier: FixedU128) {
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(
+            well_known_keys::NEXT_FEE_MULTIPLIER.to_vec(),
+            Some(next_fee_multiplier.encode()),
+        );
 
         self.add(latest_block, changeset);
     }

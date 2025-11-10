@@ -15,14 +15,14 @@ use polkadot_sdk::{
     sp_blockchain,
     sp_core::{self, H160, storage::Storage},
     sp_runtime::{
-        BuildStorage,
+        BuildStorage, FixedU128,
         traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
     },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
-use substrate_runtime::WASM_BINARY;
+use substrate_runtime::{WASM_BINARY, constants::NATIVE_TO_ETH_RATIO};
 use subxt_signer::eth::Keypair;
 
 /// Genesis settings
@@ -38,7 +38,7 @@ pub struct GenesisConfig {
     /// The initial number for the genesis block
     pub number: u32,
     /// The genesis header base fee
-    pub base_fee_per_gas: u64,
+    pub base_fee_per_gas: FixedU128,
     /// The genesis header gas limit.
     pub gas_limit: Option<u128>,
     /// Signer accounts from account_generator
@@ -65,7 +65,10 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 .get_genesis_number()
                 .try_into()
                 .expect("Genesis block number overflow"),
-            base_fee_per_gas: anvil_config.get_base_fee(),
+            base_fee_per_gas: FixedU128::from_rational(
+                anvil_config.get_base_fee(),
+                NATIVE_TO_ETH_RATIO.into(),
+            ),
             gas_limit: anvil_config.gas_limit,
             genesis_accounts: anvil_config.genesis_accounts.clone(),
             genesis_balance: anvil_config.genesis_balance,
@@ -155,6 +158,9 @@ impl GenesisConfig {
             "revive": {
                 "accounts": revive_genesis_accounts,
             },
+            "transactionPayment": {
+                "multiplier": self.base_fee_per_gas.into_inner().to_string(),
+            }
         })
     }
 }
@@ -265,11 +271,13 @@ mod tests {
         let timestamp: u64 = 10;
         let chain_id: u64 = 42;
         let authority_id: [u8; 32] = [0xEE; 32];
+        let base_fee_per_gas = FixedU128::from_rational(6_000_000, NATIVE_TO_ETH_RATIO.into());
         let genesis_config = GenesisConfig {
             number: block_number,
             timestamp,
             chain_id,
             coinbase: Some(Address::from([0xEE; 20])),
+            base_fee_per_gas,
             ..Default::default()
         };
         let genesis_storage = genesis_config.as_storage_key_value();

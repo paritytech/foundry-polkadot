@@ -67,12 +67,12 @@ use polkadot_sdk::{
     sp_api::{Metadata as _, ProvideRuntimeApi},
     sp_blockchain::Info,
     sp_core::{self, Hasher, keccak_256},
-    sp_runtime::traits::BlakeTwo256,
+    sp_runtime::{FixedU128, traits::BlakeTwo256},
 };
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::HashSet, sync::Arc, time::Duration};
-use substrate_runtime::Balance;
+use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
     client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
@@ -119,6 +119,7 @@ impl ApiServer {
             substrate_service.spawn_handle.clone(),
         )
         .await?;
+
         Ok(Self {
             block_provider,
             req_receiver,
@@ -149,6 +150,17 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         let res = match req.clone() {
             EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
+            //------- Gas -----------
+            EthRequest::SetNextBlockBaseFeePerGas(base_fee) => {
+                let latest_block = self.latest_block();
+                // We inject in substrate storage an 1e18 denominated value after transforming it
+                // to a 1e12.
+                self.backend.inject_next_fee_multiplier(
+                    latest_block,
+                    FixedU128::from_rational(base_fee.to::<u128>(), NATIVE_TO_ETH_RATIO.into()),
+                );
+                Ok(()).to_rpc_result()
+            }
 
             //------- Mining---------
             EthRequest::Mine(blocks, interval) => self.mine(blocks, interval).await.to_rpc_result(),
@@ -727,9 +739,11 @@ impl ApiServer {
         if transaction.gas_price.is_none() {
             transaction.gas_price = Some(self.gas_price().await?);
         }
+
         if transaction.nonce.is_none() {
             transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
         }
+
         if transaction.chain_id.is_none() {
             transaction.chain_id =
                 Some(sp_core::U256::from_big_endian(&self.chain_id(latest_block).to_be_bytes()));

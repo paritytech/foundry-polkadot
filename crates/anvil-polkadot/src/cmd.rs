@@ -109,7 +109,6 @@ impl NodeArgs {
         let anvil_config = AnvilNodeConfig::default()
             .with_gas_limit(self.evm.gas_limit)
             .disable_block_gas_limit(self.evm.disable_block_gas_limit)
-            .with_gas_price(self.evm.gas_price)
             .with_blocktime(self.block_time)
             .with_no_mining(self.no_mining)
             .with_mixed_mining(self.mixed_mining, self.block_time)
@@ -197,10 +196,6 @@ pub struct AnvilEvmArgs {
         help_heading = "Environment config"
     )]
     pub disable_code_size_limit: bool,
-
-    /// The gas price.
-    #[arg(long, help_heading = "Environment config")]
-    pub gas_price: Option<u128>,
 
     /// The base fee in a block.
     #[arg(

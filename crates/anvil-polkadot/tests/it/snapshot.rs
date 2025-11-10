@@ -5,7 +5,7 @@ use crate::{
     utils::{TestNode, assert_with_tolerance, get_contract_code, unwrap_response},
 };
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_rpc_types::{TransactionInput, TransactionRequest};
+use alloy_rpc_types::{TransactionInput, TransactionRequest, txpool::TxpoolInspect};
 use alloy_serde::WithOtherFields;
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
@@ -204,6 +204,8 @@ async fn test_balances_and_txs_index_after_evm_revert() {
 
     // Snapshot at block number 5.
     let zero = snapshot(&mut node, U256::ZERO).await;
+    let initial_gas_price =
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
 
     // Get known accounts initial balances.
     let (alith_addr, alith_account) = alith();
@@ -254,8 +256,12 @@ async fn test_balances_and_txs_index_after_evm_revert() {
         "Alith's balance should have changed"
     );
 
-    // Revert to a block before the transactions have been mined.
+    // Revert to a block before the transactions have been included.
     revert(&mut node, zero, 5, true).await;
+
+    let after_revert_gas_price =
+        unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
+    assert_eq!(initial_gas_price, after_revert_gas_price);
 
     // Assert on accounts balances to be the initial balances.
     let dest_addr = Address::from(dest_h160.to_fixed_bytes());
@@ -269,7 +275,7 @@ async fn test_balances_and_txs_index_after_evm_revert() {
     assert_eq!(node.get_nonce(baltathar_addr).await, U256::ZERO);
     assert_eq!(node.get_nonce(dest_addr).await, U256::ZERO);
 
-    // Remine the 6th block with same txs above.
+    // Remine the 6th block with the same txs but included in a single block.
     let (tx_hash1, _) =
         do_transfer(&mut node, alith_addr, Some(dest_addr), U256::from(16e17), None).await;
     let (tx_hash2, receipt_info2) =
@@ -460,7 +466,7 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
 
     // Initialize a random account.
     let transfer_amount = U256::from(16e17);
-    let (dest_addr, _) =
+    let _ =
         node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount, None).await;
 
     // Make another regular transfer between known accounts.
@@ -471,10 +477,30 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
 
     // Revert to a block before the transactions have been sent.
     revert(&mut node, zero, 5, true).await;
-    let one = snapshot(&mut node, U256::ONE).await;
+    let inspect: TxpoolInspect =
+        unwrap_response(node.eth_rpc(EthRequest::TxPoolInspect(())).await.unwrap()).unwrap();
+    assert_eq!(inspect.pending.len(), 2);
 
     mine_blocks(&mut node, 1, 6).await;
 
+    // Get current block to verify gas_price < base_fee_per_gas
+    let block_number = node.best_block_number().await;
+    let block_hash = node.block_hash_by_number(block_number).await.unwrap();
+    let block = node.get_block_by_hash(block_hash).await;
+    let base_fee = block.base_fee_per_gas.as_u128();
+
+    let pending_alith_txs = inspect.pending.get(&alith_addr).unwrap();
+    let pending_baltathar_txs = inspect.pending.get(&baltathar_addr).unwrap();
+
+    assert_eq!(pending_alith_txs.len(), 1);
+    assert_eq!(pending_baltathar_txs.len(), 1);
+
+    let summary_alith = pending_alith_txs.get("0").unwrap();
+    assert!(summary_alith.gas_price < base_fee);
+
+    let summary_baltathar = pending_baltathar_txs.get("0").unwrap();
+    assert!(summary_baltathar.gas_price < base_fee);
+
     let txs_in_block = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
             alloy_eips::BlockNumberOrTag::Latest,
@@ -483,23 +509,8 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
         .unwrap(),
     )
     .unwrap();
-    assert_eq!(txs_in_block, U256::from(2));
-
-    // Now make two more txs again with same senders, with different nonces than the actual
-    // accounts nonces at block 5.
-    let transfer_amount = U256::from(1e15);
-    do_transfer(&mut node, baltathar_addr, Some(alith_addr), transfer_amount, None).await;
-    do_transfer(&mut node, alith_addr, Some(dest_addr), transfer_amount, None).await;
-    revert(&mut node, one, 5, true).await;
-
-    let txs_in_block = unwrap_response::<U256>(
-        node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
-            alloy_eips::BlockNumberOrTag::Latest,
-        ))
-        .await
-        .unwrap(),
-    )
-    .unwrap();
+    // Previous txs are not included in the block because they have
+    // a gas_price smaller than the current block's base_fee_per_gas.
     assert_eq!(txs_in_block, U256::ZERO);
 }
 

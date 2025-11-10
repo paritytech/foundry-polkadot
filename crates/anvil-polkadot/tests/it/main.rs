@@ -1,4 +1,5 @@
 mod abi;
+mod gas;
 mod genesis;
 mod impersonation;
 mod mining;
