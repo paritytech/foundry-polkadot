@@ -1944,13 +1944,6 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
 
     fn create_end(&mut self, ecx: Ecx, call: &CreateInputs, outcome: &mut CreateOutcome) {
         self.create_end_common(ecx, Some(call), outcome);
-
-        // Sync REVM state back to pallet-revive if this create was executed in REVM
-        if outcome.result.is_ok()
-            && let Some(created_address) = outcome.address
-        {
-            self.strategy.runner.revive_create_end(self, ecx, created_address);
-        }
     }
 }
 

@@ -49,7 +49,6 @@ use revm::{
         CallInputs, CallOutcome, CallScheme, CreateOutcome, Gas, InstructionResult, Interpreter,
         InterpreterResult, interpreter_types::Jumps,
     },
-    primitives::HashMap,
     state::Bytecode,
 };
 pub trait PvmCheatcodeInspectorStrategyBuilder {
