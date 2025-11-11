@@ -217,7 +217,7 @@ revive-strategy = { path = "crates/revive-strategy" }
 revive-utils = { path = "crates/revive-utils" }
 
 # polkadot-sdk
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "pg/finalized-block-dev-node", features = [
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", features = [
     "experimental",
     "runtime",
     "polkadot-runtime-common",
