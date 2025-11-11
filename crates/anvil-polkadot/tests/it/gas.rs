@@ -82,7 +82,7 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
     // This will fail ideally once we update to a polkadot-sdk version that includes a fix for
     // https://github.com/paritytech/polkadot-sdk/issues/10177. The reported base_fer_per_gas
     // should be the previously set `new_base_fee`.
-    assert_eq!(U256::from_be_bytes(block1.base_fee_per_gas.to_big_endian()), U256::from(5999888));
+    assert_eq!(U256::from_be_bytes(block1.base_fee_per_gas.to_big_endian()), new_base_fee);
 
     // Mining a second block should update the base fee according to the logic that determines
     // the base_fee in relation to how congested the network is.
@@ -91,8 +91,6 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
     let block2_hash = node.block_hash_by_number(2).await.unwrap();
     let block2 = node.get_block_by_hash(block2_hash).await;
 
-    // This will fail ideally once we update to a polkadot-sdk version that includes a fix for
-    // https://github.com/paritytech/polkadot-sdk/issues/10177.
     assert_eq!(U256::from_be_bytes(block2.base_fee_per_gas.to_big_endian()), 5999775);
 }
 
@@ -130,11 +128,13 @@ async fn test_next_fee_multiplier_minimum() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     node.wait_for_block_with_timeout(1, Duration::from_millis(400)).await.unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
+    let block_hash = node.block_hash_by_number(1).await.unwrap();
+    let block = node.get_block_by_hash(block_hash).await;
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let effective_gas_price =
         U256::from_be_bytes(transaction_receipt.effective_gas_price.to_big_endian());
     let gas_used = U256::from_be_bytes(transaction_receipt.gas_used.to_big_endian());
-    assert_eq!(effective_gas_price, new_base_fee);
+    assert_eq!(U256::from_be_bytes(block.base_fee_per_gas.to_big_endian()), new_base_fee);
     let alith_final_balance = node.get_balance(alith.address(), None).await;
     let baltathar_final_balance = node.get_balance(baltathar.address(), None).await;
     assert_eq!(
@@ -150,13 +150,7 @@ async fn test_next_fee_multiplier_minimum() {
 
     let block1_hash = node.block_hash_by_number(1).await.unwrap();
     let block1 = node.get_block_by_hash(block1_hash).await;
-
-    // The anvil-polkadot substrate-runtime is configured similarly to the assethub runtimes in
-    // terms of the minimum NextFeeMultiplier value that can be reached. The minimum is the one
-    // configured in the runtime, which in our case is the same as for asset-hub-westend. This
-    // assert should fail once https://github.com/paritytech/polkadot-sdk/issues/10177 is fixed.
-    // The actual value should be the previously set base_fee.
-    assert_eq!(U256::from_be_bytes(block1.base_fee_per_gas.to_big_endian()), U256::from(100_000));
+    assert_eq!(U256::from_be_bytes(block1.base_fee_per_gas.to_big_endian()), new_base_fee);
 
     // Mining a second block should update the base fee according to the logic that determines
     // the base_fee in relation to how congested the network is.
@@ -164,8 +158,5 @@ async fn test_next_fee_multiplier_minimum() {
     node.wait_for_block_with_timeout(2, Duration::from_millis(500)).await.unwrap();
     let block2_hash = node.block_hash_by_number(2).await.unwrap();
     let block2 = node.get_block_by_hash(block2_hash).await;
-
-    // However, since the previously set base_fee is lower than the minimum, this should be set
-    // right away to the minimum.
     assert_eq!(U256::from_be_bytes(block2.base_fee_per_gas.to_big_endian()), U256::from(100_000));
 }
