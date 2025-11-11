@@ -59,6 +59,7 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     node.wait_for_block_with_timeout(1, Duration::from_millis(400)).await.unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
+
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let effective_gas_price =
         U256::from_be_bytes(transaction_receipt.effective_gas_price.to_big_endian());
@@ -84,9 +85,6 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
 
     let block1_hash = node.block_hash_by_number(1).await.unwrap();
     let block1 = node.get_block_by_hash(block1_hash).await;
-    // This will fail ideally once we update to a polkadot-sdk version that includes a fix for
-    // https://github.com/paritytech/polkadot-sdk/issues/10177. The reported base_fer_per_gas
-    // should be the previously set `new_base_fee`.
     assert_eq!(U256::from_be_bytes(block1.base_fee_per_gas.to_big_endian()), new_base_fee);
 
     // Mining a second block should update the base fee according to the logic that determines
@@ -117,9 +115,6 @@ async fn test_next_fee_multiplier_minimum() {
     // transaction, after it will be included in a next block. We're interested especially in
     // the tx effective gas price to validate that the base_fee_per_gas set previously is also
     // considered when computing the fees for the tx execution.
-    // We could have checked the `base_fee_per_gas` after querying the latest eth block mined
-    // (which could have been empty too) after setting a new base fee, but it will not report the
-    // correct base fee because of: https://github.com/paritytech/polkadot-sdk/issues/10177.
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
     let alith_initial_balance = node.get_balance(alith.address(), None).await;
