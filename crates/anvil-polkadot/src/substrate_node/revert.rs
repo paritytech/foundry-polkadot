@@ -1,5 +1,6 @@
 use crate::substrate_node::service::{Backend, Client};
 use alloy_primitives::{B256, U256};
+use alloy_rpc_types::anvil::Forking;
 use polkadot_sdk::{
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::Backend as BackendT,
@@ -15,20 +16,20 @@ pub struct RevertInfo {
     pub reverted: u64,
 }
 
-pub struct SnapshotManager {
+pub struct RevertManager {
     client: Arc<Client>,
     backend: Arc<Backend>,
     next_snapshot_id: U256,
     snapshots: BTreeMap<U256, Snapshot>,
 }
 
-impl SnapshotManager {
+impl RevertManager {
     pub fn new(client: Arc<Client>, backend: Arc<Backend>) -> Self {
         Self { client, backend, next_snapshot_id: U256::ZERO, snapshots: BTreeMap::new() }
     }
 }
 
-impl SnapshotManager {
+impl RevertManager {
     /// Create a snapshot id corresponding to the best block number.
     pub fn snapshot(&mut self) -> U256 {
         let current_snapshot_id = self.next_snapshot_id;
@@ -61,6 +62,25 @@ impl SnapshotManager {
     pub fn rollback(&self, depth: Option<u64>) -> Result<RevertInfo> {
         let (reverted, _) =
             self.backend.revert(depth.unwrap_or(1).try_into().unwrap_or(u32::MAX), true)?;
+        Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
+    }
+
+    /// Will revert to the fork state or to genesis
+    ///
+    /// TODO: currently reverting to forking is not supported, and it is pending
+    /// for forking feature completion. This logic should be updated at that time.
+    pub fn reset(&self, forking: Option<Forking>) -> Result<RevertInfo> {
+        if forking.is_some() {
+            // TODO: implement support to reset to fork initial state.
+            return Ok(RevertInfo { reverted: 0, info: self.client.info() });
+        }
+
+        let current_block_number = self.client.info().best_number;
+        let (reverted, _) =
+            self.backend.revert(current_block_number.try_into().unwrap_or(u32::MAX), true)?;
+
+        // The chain info can refer to a genesis block with a number different than 0, based on how
+        // the node was started, so we will query the state once more to return accurate info.
         Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
     }
 
