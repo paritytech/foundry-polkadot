@@ -1154,7 +1154,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
     ) {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
-        // Skip storage sync if: in PVM mode AND (no test contract OR not the test contract)
+        // Skip storage sync if: in PVM mode AND no test contract
         if ctx.using_pvm
             && ecx
                 .journaled_state
@@ -1226,7 +1226,7 @@ fn get_context_ref_mut(
     ctx.as_any_mut().downcast_mut().expect("expected PvmCheatcodeInspectorStrategyContext")
 }
 
-/// Applies REVM storage diffs to pallet-revive (REVM → PVM sync)
+/// Applies REVM storage diffs to pallet-revive (REVM → pallet-revive sync)
 /// Note: Balance/nonce are NOT synced here as they're handled by migration in select_revive()
 fn apply_revm_storage_diff(ecx: Ecx<'_, '_, '_>, address: Address) {
     let Some(account_state) = ecx.journaled_state.state.get(&address) else {
