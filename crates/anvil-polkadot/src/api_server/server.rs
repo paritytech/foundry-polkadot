@@ -2,6 +2,10 @@ use crate::{
     api_server::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
+        filters::{
+            filter::{EthFilter, Filters},
+            notifications::BlockNotifications,
+        },
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
             ReviveFilter, SubstrateU256, convert_to_generic_transaction,
@@ -96,6 +100,8 @@ pub struct ApiServer {
     impersonation_manager: ImpersonationManager,
     tx_pool: Arc<TransactionPoolHandle>,
     instance_id: B256,
+    /// Tracks all active filters
+    filters: Filters,
 }
 
 impl ApiServer {
@@ -120,6 +126,17 @@ impl ApiServer {
         )
         .await?;
 
+        let filters = Filters::default();
+        let filters_clone = filters.clone();
+        substrate_service.spawn_handle.spawn("filter-eviction-task", "None", async move {
+            let start = tokio::time::Instant::now() + filters_clone.keep_alive();
+            let mut interval = tokio::time::interval_at(start, filters_clone.keep_alive());
+            loop {
+                interval.tick().await;
+                filters_clone.evict().await;
+            }
+        });
+
         Ok(Self {
             block_provider,
             req_receiver,
@@ -136,6 +153,7 @@ impl ApiServer {
             tx_pool: substrate_service.tx_pool.clone(),
             wallet: DevSigner::new(signers)?,
             instance_id: B256::random(),
+            filters,
         })
     }
 
@@ -372,6 +390,19 @@ impl ApiServer {
             // --- Metadata ---
             EthRequest::NodeInfo(_) => self.anvil_node_info().await.to_rpc_result(),
             EthRequest::AnvilMetadata(_) => self.anvil_metadata().await.to_rpc_result(),
+            // --- Filters ---
+            EthRequest::EthNewFilter(_filter) => {
+                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            }
+            EthRequest::EthGetFilterChanges(id) => self.get_filter_changes(&id).await,
+            EthRequest::EthNewBlockFilter(_) => self.new_block_filter().await.to_rpc_result(),
+            EthRequest::EthNewPendingTransactionFilter(_) => {
+                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            }
+            EthRequest::EthGetFilterLogs(_id) => {
+                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            }
+            EthRequest::EthUninstallFilter(id) => self.uninstall_filter(&id).await.to_rpc_result(),
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -1260,6 +1291,28 @@ impl ApiServer {
             code: alloy_primitives::Bytes::from(code.0),
         })
     }
+
+    // ----- Filter RPCs
+
+    /// Creates a filter to notify about new blocks
+    async fn new_block_filter(&self) -> Result<String> {
+        node_info!("eth_newBlockFilter");
+        let filter = EthFilter::Blocks(BlockNotifications::new(self.new_block_notifications()?));
+        Ok(self.filters.add_filter(filter).await)
+    }
+
+    /// Remove filter
+    async fn uninstall_filter(&self, id: &str) -> Result<bool> {
+        node_info!("eth_uninstallFilter");
+        Ok(self.filters.uninstall_filter(id).await.is_some())
+    }
+
+    /// Polls a filter and returns all events that happened since the last poll.
+    async fn get_filter_changes(&self, id: &str) -> ResponseResult {
+        node_info!("eth_getFilterChanges");
+        self.filters.get_filter_changes(id).await
+    }
+
     // ----- Helpers
     async fn update_block_provider_on_revert(&self, info: &Info<OpaqueBlock>) -> Result<()> {
         let best_block = self.block_provider.block_by_number(info.best_number).await?.ok_or(
@@ -1494,6 +1547,8 @@ impl ApiServer {
         Ok(())
     }
 
+    // ----- Helpers -----
+
     async fn wait_for_hash(
         &self,
         receiver: Option<tokio::sync::broadcast::Receiver<H256>>,
@@ -1520,6 +1575,13 @@ impl ApiServer {
             })?;
         }
         Ok(())
+    }
+
+    fn new_block_notifications(&self) -> Result<tokio::sync::broadcast::Receiver<H256>> {
+        self.eth_rpc_client
+            .block_notifier()
+            .map(|sender| sender.subscribe())
+            .ok_or(Error::InternalError("Could not subscribe to new blocks. 😢".to_string()))
     }
 
     async fn log_mined_block(&self, block_hash: H256) -> Result<()> {
