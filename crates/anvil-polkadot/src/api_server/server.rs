@@ -1266,13 +1266,17 @@ impl ApiServer {
         let new_finalized_block =
             self.block_provider.block_by_number(info.finalized_number).await?;
 
-        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
-        }
+        let block = new_best_block.ok_or(Error::InternalError(format!(
+            "Could not find best block with number {}",
+            info.best_number
+        )))?;
 
-        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
-        }
+        self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
+        let block = new_finalized_block.ok_or(Error::InternalError(format!(
+            "Could not find finalized block with number {}",
+            info.finalized_number
+        )))?;
+        self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
 
         Ok(())
     }
