@@ -62,10 +62,15 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let effective_gas_price =
         U256::from_be_bytes(transaction_receipt.effective_gas_price.to_big_endian());
-    let gas_used = U256::from_be_bytes(transaction_receipt.gas_used.to_big_endian());
     assert_eq!(effective_gas_price, new_base_fee);
+
+    let block_hash = node.block_hash_by_number(1).await.unwrap();
+    let block = node.get_block_by_hash(block_hash).await;
+    assert_eq!(U256::from_be_bytes(block.base_fee_per_gas.to_big_endian()), new_base_fee);
+
     let alith_final_balance = node.get_balance(alith.address(), None).await;
     let baltathar_final_balance = node.get_balance(baltathar.address(), None).await;
+    let gas_used = U256::from_be_bytes(transaction_receipt.gas_used.to_big_endian());
     assert_eq!(
         baltathar_final_balance,
         baltathar_initial_balance + transfer_amount,
@@ -128,13 +133,15 @@ async fn test_next_fee_multiplier_minimum() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     node.wait_for_block_with_timeout(1, Duration::from_millis(400)).await.unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;
+
     let block_hash = node.block_hash_by_number(1).await.unwrap();
     let block = node.get_block_by_hash(block_hash).await;
+    assert_eq!(U256::from_be_bytes(block.base_fee_per_gas.to_big_endian()), new_base_fee);
+
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let effective_gas_price =
         U256::from_be_bytes(transaction_receipt.effective_gas_price.to_big_endian());
     let gas_used = U256::from_be_bytes(transaction_receipt.gas_used.to_big_endian());
-    assert_eq!(U256::from_be_bytes(block.base_fee_per_gas.to_big_endian()), new_base_fee);
     let alith_final_balance = node.get_balance(alith.address(), None).await;
     let baltathar_final_balance = node.get_balance(baltathar.address(), None).await;
     assert_eq!(
