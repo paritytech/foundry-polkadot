@@ -1,5 +1,4 @@
 mod abi;
-mod filters;
 mod gas;
 mod genesis;
 mod impersonation;

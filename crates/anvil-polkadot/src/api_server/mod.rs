@@ -12,7 +12,6 @@ use server::ApiServer;
 use subxt_signer::eth::Keypair;
 
 pub mod error;
-mod filters;
 pub mod revive_conversions;
 mod server;
 mod signer;
