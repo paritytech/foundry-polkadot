@@ -1,6 +1,5 @@
 use crate::substrate_node::service::{Backend, Client};
 use alloy_primitives::{B256, U256};
-use alloy_rpc_types::anvil::Forking;
 use polkadot_sdk::{
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::Backend as BackendT,
