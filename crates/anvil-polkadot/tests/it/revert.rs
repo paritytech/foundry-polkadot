@@ -653,7 +653,7 @@ async fn test_reset() {
     );
 
     // Now check we got back to timestamp at genesis when reverting.
-    reset(&mut node, None, genesis_block_number.try_into().unwrap()).await;
+    reset(&mut node, None, genesis_block_number).await;
     let timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
         genesis_timestamp,

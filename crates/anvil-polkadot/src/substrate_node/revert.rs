@@ -67,7 +67,7 @@ impl RevertManager {
     /// Will revert to genesis.
     pub fn reset_to_genesis(&self) -> Result<RevertInfo> {
         let current_block_number = self.client.info().best_number;
-        let (reverted, _) = self.backend.revert(current_block_number.unwrap_or(u32::MAX), true)?;
+        let (reverted, _) = self.backend.revert(current_block_number, true)?;
 
         // The chain info can refer to a genesis block with a number different than 0, based on how
         // the node was started, so we will query the state once more to return accurate info.
