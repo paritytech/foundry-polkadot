@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::utils::{TestNode, unwrap_response};
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::TransactionRequest;
@@ -57,8 +55,6 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
         .to(Address::from(baltathar.address().to_fixed_bytes()));
     let tx_hash = node.send_transaction(transaction, None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    node.wait_for_block_with_timeout(1, Duration::from_millis(400)).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
     let effective_gas_price =
@@ -90,7 +86,6 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
     // Mining a second block should update the base fee according to the logic that determines
     // the base_fee in relation to how congested the network is.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    node.wait_for_block_with_timeout(2, Duration::from_millis(500)).await.unwrap();
     let block2_hash = node.block_hash_by_number(2).await.unwrap();
     let block2 = node.get_block_by_hash(block2_hash).await;
 
@@ -126,8 +121,6 @@ async fn test_next_fee_multiplier_minimum() {
         .to(Address::from(baltathar.address().to_fixed_bytes()));
     let tx_hash = node.send_transaction(transaction, None).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    node.wait_for_block_with_timeout(1, Duration::from_millis(400)).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(400)).await;
 
     let block_hash = node.block_hash_by_number(1).await.unwrap();
     let block = node.get_block_by_hash(block_hash).await;
@@ -157,7 +150,6 @@ async fn test_next_fee_multiplier_minimum() {
     // Mining a second block should update the base fee according to the logic that determines
     // the base_fee in relation to how congested the network is.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    node.wait_for_block_with_timeout(2, Duration::from_millis(500)).await.unwrap();
     let block2_hash = node.block_hash_by_number(2).await.unwrap();
     let block2 = node.get_block_by_hash(block2_hash).await;
     assert_eq!(U256::from_be_bytes(block2.base_fee_per_gas.to_big_endian()), U256::from(100_000));
