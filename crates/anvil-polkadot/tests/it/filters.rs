@@ -1,5 +1,5 @@
 use crate::{
-    snapshot::{revert, snapshot},
+    revert::{revert, snapshot},
     utils::{TestNode, unwrap_response},
 };
 use alloy_primitives::U256;

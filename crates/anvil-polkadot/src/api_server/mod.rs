@@ -3,7 +3,7 @@ use crate::{
     api_server::filters::Filters,
     logging::LoggingManager,
     substrate_node::{
-        impersonation::ImpersonationManager, service::Service, snapshot::SnapshotManager,
+        impersonation::ImpersonationManager, revert::RevertManager, service::Service,
     },
 };
 use anvil_core::eth::EthRequest;
@@ -32,7 +32,7 @@ pub fn spawn(
     config: &AnvilNodeConfig,
     substrate_service: &Service,
     logging_manager: LoggingManager,
-    snapshot_manager: SnapshotManager,
+    revert_manager: RevertManager,
     filters: Filters,
 ) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
@@ -52,7 +52,7 @@ pub fn spawn(
             service,
             receiver,
             logging_manager,
-            snapshot_manager,
+            revert_manager,
             impersonation_manager,
             signers,
             filters,
