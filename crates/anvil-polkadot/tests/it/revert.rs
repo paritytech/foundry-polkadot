@@ -85,20 +85,14 @@ async fn revert(
     assert_block_number_is_best_and_finalized(node, assert_best_block).await;
 }
 
-async fn reset(
-    node: &mut TestNode,
-    forking: Option<Forking>,
-    assert_best_block: u64,
-    wait_for_block_provider: Option<Duration>,
-) {
+async fn reset(node: &mut TestNode, forking: Option<Forking>, assert_best_block: u64) {
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::Reset(Some(anvil_core::eth::Params { params: forking })))
             .await
             .unwrap(),
     )
     .unwrap();
-    assert_block_number_is_best_and_finalized(node, assert_best_block, wait_for_block_provider)
-        .await;
+    assert_block_number_is_best_and_finalized(node, assert_best_block).await;
 }
 
 async fn do_transfer(
@@ -659,7 +653,7 @@ async fn test_reset() {
     );
 
     // Now check we got back to timestamp at genesis when reverting.
-    reset(&mut node, None, genesis_block_number.try_into().unwrap(), None).await;
+    reset(&mut node, None, genesis_block_number.try_into().unwrap()).await;
     let timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
         genesis_timestamp,
