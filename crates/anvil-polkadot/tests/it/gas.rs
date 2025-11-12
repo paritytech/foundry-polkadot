@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::utils::{TestNode, unwrap_response};
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::TransactionRequest;

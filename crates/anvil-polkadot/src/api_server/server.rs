@@ -1274,7 +1274,7 @@ impl ApiServer {
             self.block_provider.block_by_number(info.finalized_number).await?.ok_or(
                 Error::InternalError(format!(
                     "Could not find finalized block with number {}",
-                    info.best_number
+                    info.finalized_number
                 )),
             )?;
         self.block_provider.update_latest(finalized_block, SubscriptionType::FinalizedBlocks).await;
