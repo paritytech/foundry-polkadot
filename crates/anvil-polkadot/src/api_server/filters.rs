@@ -1,4 +1,4 @@
-use crate::api_server::{error::ToRpcResponseResult, filters::notifications::BlockNotifications};
+use crate::api_server::error::ToRpcResponseResult;
 use anvil_core::eth::subscription::SubscriptionId;
 use anvil_rpc::response::ResponseResult;
 use futures::{Stream, StreamExt};
@@ -8,10 +8,13 @@ use std::{
     task::Poll,
     time::{Duration, Instant},
 };
+use subxt::utils::H256;
 use tokio::sync::Mutex;
+use tokio_stream::wrappers::BroadcastStream;
 
 pub const ACTIVE_FILTER_TIMEOUT_SECS: u64 = 60 * 5;
 type FilterMap = Arc<Mutex<HashMap<String, (EthFilter, Instant)>>>;
+pub type BlockNotifications = BroadcastStream<H256>;
 
 #[derive(Clone, Debug)]
 pub struct Filters {
@@ -111,8 +114,16 @@ impl Stream for EthFilter {
         match pin {
             Self::Blocks(block_notifications) => {
                 let mut new_blocks = Vec::new();
-                while let Poll::Ready(Some(block_hash)) = block_notifications.poll_next_unpin(cx) {
-                    new_blocks.push(block_hash);
+                while let Poll::Ready(Some(result)) = block_notifications.poll_next_unpin(cx) {
+                    match result {
+                        Ok(block_hash) => new_blocks.push(block_hash),
+                        Err(_lagged) => {
+                            // BroadcastStream handles lagging for us
+                            // Just log and continue
+                            warn!(target: "node::filter", "Block filter lagged, skipped messages");
+                            continue;
+                        }
+                    }
                 }
                 Poll::Ready(Some(Ok(new_blocks).to_rpc_result()))
             }

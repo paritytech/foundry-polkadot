@@ -1,6 +1,6 @@
 use crate::{
     AnvilNodeConfig,
-    api_server::filters::filter::Filters,
+    api_server::filters::Filters,
     logging::LoggingManager,
     substrate_node::{
         impersonation::ImpersonationManager, service::Service, snapshot::SnapshotManager,

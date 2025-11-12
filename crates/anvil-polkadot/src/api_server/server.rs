@@ -2,10 +2,7 @@ use crate::{
     api_server::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
-        filters::{
-            filter::{EthFilter, Filters},
-            notifications::BlockNotifications,
-        },
+        filters::{BlockNotifications, EthFilter, Filters},
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
             ReviveFilter, SubstrateU256, convert_to_generic_transaction,

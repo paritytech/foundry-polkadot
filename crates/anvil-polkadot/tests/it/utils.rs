@@ -7,7 +7,7 @@ use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{
         self, ApiHandle,
-        filters::filter::Filters,
+        filters::Filters,
         revive_conversions::{AlloyU256, ReviveAddress},
     },
     config::{AnvilNodeConfig, SubstrateNodeConfig},

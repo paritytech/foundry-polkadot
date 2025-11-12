@@ -3,7 +3,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 use crate::{
-    api_server::{ApiHandle, filters::filter::Filters},
+    api_server::{ApiHandle, filters::Filters},
     config::AnvilNodeConfig,
     logging::{LoggingManager, NodeLogLayer},
     substrate_node::{genesis::GenesisConfig, service::Service, snapshot::SnapshotManager},
