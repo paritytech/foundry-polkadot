@@ -65,16 +65,8 @@ impl RevertManager {
         Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
     }
 
-    /// Will revert to the fork state or to genesis
-    ///
-    /// TODO: currently reverting to forking is not supported, and it is pending
-    /// for forking feature completion. This logic should be updated at that time.
-    pub fn reset(&self, forking: Option<Forking>) -> Result<RevertInfo> {
-        if forking.is_some() {
-            // TODO: implement support to reset to fork initial state.
-            return Ok(RevertInfo { reverted: 0, info: self.client.info() });
-        }
-
+    /// Will revert to genesis.
+    pub fn reset_to_genesis(&self) -> Result<RevertInfo> {
         let current_block_number = self.client.info().best_number;
         let (reverted, _) =
             self.backend.revert(current_block_number.try_into().unwrap_or(u32::MAX), true)?;

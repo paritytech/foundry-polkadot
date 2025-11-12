@@ -821,7 +821,7 @@ impl ApiServer {
 
         let res = self
             .revert_manager
-            .reset(forking)
+            .reset_to_genesis()
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
 
         self.on_revert_update(res).await
