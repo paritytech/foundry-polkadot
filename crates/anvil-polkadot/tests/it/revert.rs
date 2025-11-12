@@ -5,7 +5,9 @@ use crate::{
     utils::{TestNode, assert_with_tolerance, get_contract_code, unwrap_response},
 };
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_rpc_types::{TransactionInput, TransactionRequest, txpool::TxpoolInspect};
+use alloy_rpc_types::{
+    TransactionInput, TransactionRequest, anvil::Forking, txpool::TxpoolInspect,
+};
 use alloy_serde::WithOtherFields;
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
@@ -80,6 +82,16 @@ async fn revert(
         unwrap_response::<bool>(node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap())
             .unwrap();
     assert_eq!(reverted, assert_success);
+    assert_block_number_is_best_and_finalized(node, assert_best_block).await;
+}
+
+async fn reset(node: &mut TestNode, forking: Option<Forking>, assert_best_block: u64) {
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::Reset(Some(anvil_core::eth::Params { params: forking })))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_block_number_is_best_and_finalized(node, assert_best_block).await;
 }
 
@@ -592,4 +604,64 @@ async fn test_timestmap_in_contract_after_revert() {
         U256::ZERO,
         "wrong timestamp after reverting to first block",
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_reset() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    // Generate the current timestamp and pass it to anvil config.
+    let genesis_timestamp = anvil_node_config.get_genesis_timestamp();
+    let genesis_block_number = 42u64;
+    let anvil_node_config = anvil_node_config
+        .with_genesis_timestamp(Some(genesis_timestamp))
+        .with_genesis_block_number(Some(genesis_block_number));
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    // Deploy multicall contract
+    mine_blocks(&mut node, 1, genesis_block_number + 1).await;
+
+    let first_timestamp = node.get_decoded_timestamp(None).await;
+    assert_with_tolerance(
+        first_timestamp.saturating_div(1000),
+        genesis_timestamp,
+        1,
+        "wrong timestamp at first block",
+    );
+
+    let second_timestamp = first_timestamp.saturating_add(3000);
+    assert_with_tolerance(
+        unwrap_response::<u64>(
+            node.eth_rpc(EthRequest::EvmSetTime(U256::from(second_timestamp.saturating_div(1000))))
+                .await
+                .unwrap(),
+        )
+        .unwrap(),
+        3,
+        1,
+        "Wrong offset 1",
+    );
+
+    // Mine 1 block again and expect on the set timestamp.
+    mine_blocks(&mut node, 1, genesis_block_number + 2).await;
+    let second_timestamp = node.get_decoded_timestamp(None).await;
+    assert_with_tolerance(
+        second_timestamp.saturating_sub(first_timestamp),
+        3000,
+        350,
+        "wrong timestamp at second block",
+    );
+
+    // Now check we got back to timestamp at genesis when reverting.
+    reset(&mut node, None, genesis_block_number).await;
+    let timestamp = node.get_decoded_timestamp(None).await;
+    assert_with_tolerance(
+        genesis_timestamp,
+        timestamp.saturating_div(1000),
+        0,
+        "wrong timestamp after reverting to genesis",
+    );
+
+    // Assert we can still mine blocks after the reset.
+    mine_blocks(&mut node, 2, genesis_block_number + 2).await;
 }

@@ -19,6 +19,7 @@ use crate::{
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
+        revert::{RevertInfo, RevertManager},
         service::{
             BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
             storage::{
@@ -26,7 +27,6 @@ use crate::{
                 SystemAccountInfo,
             },
         },
-        snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_dyn_abi::TypedData;
@@ -34,12 +34,12 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{
     Filter, TransactionRequest,
-    anvil::{Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
+    anvil::{Forking, Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
 };
 use alloy_serde::WithOtherFields;
 use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
-use anvil_core::eth::{EthRequest, Params as MineParams};
+use anvil_core::eth::{EthRequest, Params as AnvilCoreParams};
 use anvil_rpc::response::ResponseResult;
 use chrono::{DateTime, Datelike, Utc};
 use codec::{Decode, Encode};
@@ -92,7 +92,7 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     wallet: DevSigner,
     block_provider: SubxtBlockInfoProvider,
-    snapshot_manager: SnapshotManager,
+    revert_manager: RevertManager,
     impersonation_manager: ImpersonationManager,
     tx_pool: Arc<TransactionPoolHandle>,
     instance_id: B256,
@@ -103,7 +103,7 @@ impl ApiServer {
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
-        snapshot_manager: SnapshotManager,
+        revert_manager: RevertManager,
         impersonation_manager: ImpersonationManager,
         signers: Vec<Keypair>,
     ) -> Result<Self> {
@@ -131,7 +131,7 @@ impl ApiServer {
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
-            snapshot_manager,
+            revert_manager,
             impersonation_manager,
             tx_pool: substrate_service.tx_pool.clone(),
             wallet: DevSigner::new(signers)?,
@@ -329,10 +329,13 @@ impl ApiServer {
                 self.set_storage_at(address, key, value).to_rpc_result()
             }
             EthRequest::SetChainId(chain_id) => self.set_chain_id(chain_id).to_rpc_result(),
-            // --- Snapshot ---
+            // --- Revert ---
             EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
             EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
+            EthRequest::Reset(params) => {
+                self.reset(params.and_then(|p| p.params)).await.to_rpc_result()
+            }
             // ------- Wallet ---------
             EthRequest::EthSign(addr, content) => self.sign(addr, content).await.to_rpc_result(),
             EthRequest::EthSignTypedDataV4(addr, data) => {
@@ -442,7 +445,7 @@ impl ApiServer {
         Ok(())
     }
 
-    async fn evm_mine(&self, mine: Option<MineParams<Option<MineOptions>>>) -> Result<String> {
+    async fn evm_mine(&self, mine: Option<AnvilCoreParams<Option<MineOptions>>>) -> Result<String> {
         node_info!("evm_mine");
 
         // Subscribe to new best blocks.
@@ -454,7 +457,7 @@ impl ApiServer {
 
     async fn evm_mine_detailed(
         &self,
-        mine: Option<MineParams<Option<MineOptions>>>,
+        mine: Option<AnvilCoreParams<Option<MineOptions>>>,
     ) -> Result<Vec<Block>> {
         node_info!("evm_mine_detailed");
 
@@ -786,13 +789,13 @@ impl ApiServer {
 
     pub(crate) async fn snapshot(&mut self) -> Result<U256> {
         node_info!("evm_snapshot");
-        Ok(self.snapshot_manager.snapshot())
+        Ok(self.revert_manager.snapshot())
     }
 
     pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
         node_info!("evm_revert");
         let res = self
-            .snapshot_manager
+            .revert_manager
             .revert(id)
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
         let Some(res) = res else { return Ok(false) };
@@ -802,10 +805,32 @@ impl ApiServer {
         Ok(true)
     }
 
+    /// Reset to genesis if no forking information is set.
+    ///
+    /// TODO: currently the forking information is not consider at the
+    /// RPC level, but it will need to be considered once forking feature
+    /// is functional.
+    pub(crate) async fn reset(&mut self, forking: Option<Forking>) -> Result<()> {
+        self.instance_id = B256::random();
+        node_info!("anvil_reset");
+        // TODO: should be removed once forking feature is implemented and support is added in
+        // revert manager to handle it
+        if forking.is_some() {
+            return Err(Error::RpcUnimplemented);
+        }
+
+        let res = self
+            .revert_manager
+            .reset_to_genesis()
+            .map_err(|err| Error::Backend(BackendError::Client(err)))?;
+
+        self.on_revert_update(res).await
+    }
+
     pub(crate) async fn rollback(&mut self, depth: Option<u64>) -> Result<()> {
         node_info!("anvil_rollback");
         let res = self
-            .snapshot_manager
+            .revert_manager
             .rollback(depth)
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
 
@@ -873,7 +898,7 @@ impl ApiServer {
             instance_id: self.instance_id,
             // Forking is not supported yet in anvil-polkadot
             forked_network: None,
-            snapshots: self.snapshot_manager.list_snapshots(),
+            snapshots: self.revert_manager.list_snapshots(),
         })
     }
 
