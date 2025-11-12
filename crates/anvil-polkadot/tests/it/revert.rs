@@ -668,7 +668,7 @@ async fn test_reset() {
         "wrong timestamp at second block",
     );
 
-    // Now check we got back to timestamp after the first block when reverting.
+    // Now check we got back to timestamp at genesis when reverting.
     reset(&mut node, None, genesis_block_number.try_into().unwrap(), None).await;
     let timestamp = node.get_decoded_timestamp(None).await;
     assert_with_tolerance(
@@ -677,4 +677,7 @@ async fn test_reset() {
         0,
         "wrong timestamp after reverting to genesis",
     );
+
+    // Assert we can still mine blocks after the reset.
+    mine_blocks(&mut node, 2, genesis_block_number + 2).await;
 }
