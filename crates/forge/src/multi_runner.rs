@@ -253,6 +253,7 @@ impl MultiContractRunner {
         let span_local = span.clone();
         let _guard = span_local.enter();
 
+        revive_strategy::reset_externalities();
         debug!("start executing all tests in contract");
 
         let executor = self.tcfg.executor(
