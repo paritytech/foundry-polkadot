@@ -74,6 +74,10 @@ jobs:
           path: ~/.cargo/bin/eth-rpc${{ matrix.os == 'windows' && '.exe' || '' }}
           key: eth-rpc-${{ matrix.runner }}-${{ env.ETH_RPC_VERSION }}
 
+      - name: Set up Homebrew (for mac)
+        if: matrix.os == 'macos'
+        uses: Homebrew/actions/setup-homebrew@1ccc07ccd54b6048295516a3eb89b192c35057dc
+
       # Install dependencies for building
       - name: Install clang on ubuntu
         if: matrix.os == 'ubuntu'
