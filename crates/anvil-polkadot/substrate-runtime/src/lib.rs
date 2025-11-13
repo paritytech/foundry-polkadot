@@ -298,7 +298,7 @@ impl FindAuthor<AccountId> for BlockAuthor {
         I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
     {
         let authorities = Runtime::authorities();
-        authorities.get(0).map(|inner| inner.clone().into_inner().into())
+        authorities.first().map(|inner| inner.clone().into_inner().into())
     }
 }
 
