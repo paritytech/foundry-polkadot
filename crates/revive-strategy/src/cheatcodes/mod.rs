@@ -206,6 +206,9 @@ fn etch_call(target: &Address, new_runtime_code: &Bytes, ecx: Ecx<'_, '_, '_>) -
     let origin_address = H160::from_slice(ecx.tx.caller.as_slice());
     let origin_account = AccountId::to_fallback_account_id(&origin_address);
 
+    let target_address = H160::from_slice(target.as_slice());
+    let target_account = AccountId::to_fallback_account_id(&target_address);
+
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
             let code = new_runtime_code.to_vec();
@@ -222,16 +225,21 @@ fn etch_call(target: &Address, new_runtime_code: &Bytes, ecx: Ecx<'_, '_, '_>) -
             .0;
 
             let mut contract_info = if let Some(contract_info) =
-                AccountInfo::<Runtime>::load_contract(&H160::from_slice(target.as_slice()))
+                AccountInfo::<Runtime>::load_contract(&target_address)
             {
                 contract_info
             } else {
-                ContractInfo::<Runtime>::new(
-                    &origin_address,
-                    System::account_nonce(origin_account),
+                let contract_info = ContractInfo::<Runtime>::new(
+                    &target_address,
+                    System::account_nonce(target_account),
                     *contract_blob.code_hash(),
                 )
-                .map_err(|_| <&str as Into<Error>>::into("Could not create contract info"))?
+                .map_err(|err| {
+                    tracing::error!("Could not create contract info: {:?}", err);
+                    <&str as Into<Error>>::into("Could not create contract info")
+                })?;
+                System::inc_account_nonce(AccountId::to_fallback_account_id(&target_address));
+                contract_info
             };
             contract_info.code_hash = *contract_blob.code_hash();
             AccountInfo::<Runtime>::insert_contract(
