@@ -1,9 +1,10 @@
 mod abi;
+mod gas;
 mod genesis;
 mod impersonation;
 mod mining;
+mod revert;
 mod sign;
-mod snapshot;
 mod standard_rpc;
 mod state_injector;
 mod time_machine;
