@@ -722,6 +722,16 @@ async fn test_get_accounts() {
         unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
             .unwrap();
     assert_eq!(accounts.len(), 12);
+
+    // Test that retrieving the accounts multiple times will yield them in the same order.
+    for _ in 0..3 {
+        let res =
+            unwrap_response::<Vec<H160>>(node.eth_rpc(EthRequest::EthAccounts(())).await.unwrap())
+                .unwrap();
+
+        assert_eq!(res, accounts);
+    }
+
     node.eth_rpc(EthRequest::ImpersonateAccount(Address::from(ReviveAddress::new(accounts[0]))))
         .await
         .unwrap();

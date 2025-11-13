@@ -71,7 +71,7 @@ use polkadot_sdk::{
 };
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
@@ -1004,7 +1004,8 @@ impl ApiServer {
 
     pub fn accounts(&self) -> Result<Vec<H160>> {
         node_info!("eth_accounts");
-        let mut accounts = HashSet::new();
+        // Use an ordered set, so that the order is maintained between calls.
+        let mut accounts = BTreeSet::new();
 
         accounts.extend(self.wallet.accounts());
         accounts.extend(self.impersonation_manager.impersonated_accounts.clone());
