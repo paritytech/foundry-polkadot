@@ -4,7 +4,10 @@ use crate::{
 };
 use alloy_primitives::U256;
 use anvil_core::eth::EthRequest;
-use anvil_polkadot::config::{AnvilNodeConfig, SubstrateNodeConfig};
+use anvil_polkadot::{
+    api_server::filters::Filters,
+    config::{AnvilNodeConfig, SubstrateNodeConfig},
+};
 use subxt::utils::H256;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -68,8 +71,9 @@ async fn test_filter_only_returns_new_blocks_since_last_poll() {
         node.eth_rpc(EthRequest::EthGetFilterChanges(id.clone())).await.unwrap(),
     )
     .unwrap();
-    // TODO: check why len is two
     assert_eq!(block_hashes_notified.len(), 2);
+    assert!(block_hashes_notified.contains(&node.block_hash_by_number(0).await.unwrap()));
+    assert!(block_hashes_notified.contains(&node.block_hash_by_number(1).await.unwrap()));
     // Mine a new block
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
@@ -125,7 +129,7 @@ async fn test_multiple_filters_receive_same_blocks() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
-    // Create a block filter
+    // Create two block filters
     let id1 =
         unwrap_response::<String>(node.eth_rpc(EthRequest::EthNewBlockFilter(())).await.unwrap())
             .unwrap();
@@ -146,6 +150,7 @@ async fn test_multiple_filters_receive_same_blocks() {
         node.eth_rpc(EthRequest::EthGetFilterChanges(id2.clone())).await.unwrap(),
     )
     .unwrap();
+    assert!(!block_hashes_notified1.is_empty());
     assert_eq!(block_hashes_notified1, block_hashes_notified2);
 }
 
@@ -164,7 +169,7 @@ async fn test_filter_after_snapshot() {
         .unwrap();
     // Create a snapshot
     let zero = snapshot(&mut node, U256::ZERO).await;
-    // Mine two more blocks (bn4 and bn5)
+    // Mine two more blocks (bn3 and bn4)
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(2)), None)).await.unwrap())
         .unwrap();
     // Get the hashes of the mined blocks
@@ -197,10 +202,13 @@ async fn test_filter_after_snapshot() {
 async fn test_filter_is_evicted() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let mut node =
-        TestNode::new_with_filters_timeout(anvil_node_config.clone(), substrate_node_config)
-            .await
-            .unwrap();
+    let mut node = TestNode::new_inner(
+        anvil_node_config.clone(),
+        substrate_node_config,
+        Filters::with_keepalive(std::time::Duration::from_secs(2)),
+    )
+    .await
+    .unwrap();
 
     // Create a block filter
     let id =
@@ -215,7 +223,7 @@ async fn test_filter_is_evicted() {
     .unwrap();
     assert!(!block_hashes_notified.is_empty());
     // Wait for the filter to expire
-    tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
     // Mine five blocks
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
@@ -224,4 +232,34 @@ async fn test_filter_is_evicted() {
     )
     .unwrap();
     assert_eq!(block_hashes_notified.len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_filter_overload() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    // Create a block filter
+    let id =
+        unwrap_response::<String>(node.eth_rpc(EthRequest::EthNewBlockFilter(())).await.unwrap())
+            .unwrap();
+    // Consume genesis
+    let _ = unwrap_response::<Vec<H256>>(
+        node.eth_rpc(EthRequest::EthGetFilterChanges(id.clone())).await.unwrap(),
+    )
+    .unwrap();
+    // Spam the receiver
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::Mine(Some(U256::from(52)), None)).await.unwrap(),
+    )
+    .unwrap();
+    // Give the notifier some time to be full.
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    // Get some blocks but not all 52
+    let block_hashes_notified = unwrap_response::<Vec<H256>>(
+        node.eth_rpc(EthRequest::EthGetFilterChanges(id.clone())).await.unwrap(),
+    )
+    .unwrap();
+    assert!(block_hashes_notified.len() != 52);
 }

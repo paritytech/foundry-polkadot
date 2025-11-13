@@ -73,19 +73,7 @@ impl TestNode {
         Self::new_inner(anvil_config, substrate_config, Filters::default()).await
     }
 
-    pub async fn new_with_filters_timeout(
-        anvil_config: AnvilNodeConfig,
-        substrate_config: SubstrateNodeConfig,
-    ) -> Result<Self> {
-        Self::new_inner(
-            anvil_config,
-            substrate_config,
-            Filters::with_keepalive(std::time::Duration::from_secs(2)),
-        )
-        .await
-    }
-
-    async fn new_inner(
+    pub async fn new_inner(
         anvil_config: AnvilNodeConfig,
         mut substrate_config: SubstrateNodeConfig,
         filters: Filters,

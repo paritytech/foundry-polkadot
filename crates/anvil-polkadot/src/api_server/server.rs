@@ -2,7 +2,7 @@ use crate::{
     api_server::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
-        filters::{BlockNotifications, EthFilter, Filters},
+        filters::{BlockNotifications, EthFilter, Filters, eviction_task},
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
             ReviveFilter, SubstrateU256, convert_to_generic_transaction,
@@ -126,12 +126,7 @@ impl ApiServer {
 
         let filters_clone = filters.clone();
         substrate_service.spawn_handle.spawn("filter-eviction-task", "None", async move {
-            let start = tokio::time::Instant::now() + filters_clone.keep_alive();
-            let mut interval = tokio::time::interval_at(start, filters_clone.keep_alive());
-            loop {
-                interval.tick().await;
-                filters_clone.evict().await;
-            }
+            eviction_task(filters_clone).await;
         });
         Ok(Self {
             block_provider,

@@ -98,6 +98,15 @@ fn new_id() -> String {
     SubscriptionId::random_hex().to_string()
 }
 
+pub async fn eviction_task(filters: Filters) {
+    let start = tokio::time::Instant::now() + filters.keep_alive();
+    let mut interval = tokio::time::interval_at(start, filters.keep_alive());
+    loop {
+        interval.tick().await;
+        filters.evict().await;
+    }
+}
+
 #[derive(Debug)]
 pub enum EthFilter {
     Blocks(BlockNotifications),
