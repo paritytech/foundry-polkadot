@@ -68,7 +68,7 @@ async fn test_set_chain_id() {
     assert_matches!(
         node.send_transaction(tx, None).await,
         Err(RpcError {code, message, ..}) => {
-            assert_eq!(code, ErrorCode::InternalError);
+            assert_eq!(code, ErrorCode::ServerError(-32000));
             message.contains("Invalid Transaction")
         }
     );
@@ -231,7 +231,7 @@ async fn test_set_balance() {
     assert_matches!(
         node.send_transaction(tx, None).await,
         Err(RpcError {code, message, ..}) => {
-            assert_eq!(code, ErrorCode::InternalError);
+            assert_eq!(code, ErrorCode::ServerError(-32000));
             message.contains("Invalid Transaction")
         }
     );

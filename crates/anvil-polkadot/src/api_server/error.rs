@@ -1,7 +1,14 @@
 use crate::substrate_node::{mining_engine::MiningError, service::BackendError};
-use anvil_rpc::{error::RpcError, response::ResponseResult};
+use alloy_primitives::hex;
+use anvil_rpc::{
+    error::{ErrorCode, RpcError},
+    response::ResponseResult,
+};
 use pallet_revive_eth_rpc::{EthRpcError, client::ClientError};
-use polkadot_sdk::sp_api;
+use polkadot_sdk::{
+    pallet_revive::{EthTransactError, evm::decode_revert_reason},
+    sp_api,
+};
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -26,6 +33,8 @@ pub enum Error {
     InternalError(String),
     #[error("No signer available")]
     NoSignerAvailable,
+    #[error("Contract reverted: {0:?}")]
+    EthTransact(EthTransactError),
 }
 
 impl From<subxt::Error> for Error {
@@ -36,7 +45,10 @@ impl From<subxt::Error> for Error {
 
 impl From<ClientError> for Error {
     fn from(err: ClientError) -> Self {
-        Self::ReviveRpc(EthRpcError::ClientError(err))
+        match err {
+            ClientError::TransactError(err) => Self::EthTransact(err),
+            err => Self::ReviveRpc(EthRpcError::ClientError(err)),
+        }
     }
 }
 
@@ -82,6 +94,31 @@ impl<T: Serialize> ToRpcResponseResult for Result<T> {
                 Error::RpcUnimplemented => RpcError::internal_error_with("Not implemented").into(),
                 Error::InvalidParams(error_message) => {
                     RpcError::invalid_params(error_message).into()
+                }
+                Error::EthTransact(EthTransactError::Data(data)) => {
+                    let message = match decode_revert_reason(&data) {
+                        Some(reason) => format!("execution reverted: {reason}"),
+                        None => "execution reverted".to_string(),
+                    };
+
+                    let data = format!("0x{}", hex::encode(data));
+                    RpcError {
+                        code: ErrorCode::ExecutionError,
+                        message: message.into(),
+                        data: Some(data.into()),
+                    }
+                    .into()
+                }
+                Error::EthTransact(EthTransactError::Message(message)) => {
+                    let message = format!("execution reverted: {message}");
+
+                    RpcError {
+                        // This is the error code that revive eth rpc uses for this error.
+                        code: ErrorCode::ServerError(-32000),
+                        message: message.into(),
+                        data: None,
+                    }
+                    .into()
                 }
                 err => RpcError::internal_error_with(format!("{err}")).into(),
             },
