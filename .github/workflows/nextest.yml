@@ -52,7 +52,7 @@ jobs:
           - os: ubuntu
             runner: parity-large-new
           - os: macos
-            runner: macos-latest
+            runner: parity-macos
           - os: windows
             runner: windows-latest
     steps:
