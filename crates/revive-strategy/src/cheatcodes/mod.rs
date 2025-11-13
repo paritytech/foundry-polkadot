@@ -391,7 +391,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 let &setNonceCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, newNonce, ccx.ecx, true);
+                set_nonce(account, newNonce, ccx.ecx, false);
 
                 Ok(Default::default())
             }
