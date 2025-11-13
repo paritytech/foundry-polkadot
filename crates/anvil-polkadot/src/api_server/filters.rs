@@ -2,14 +2,9 @@ use crate::api_server::error::ToRpcResponseResult;
 use anvil_core::eth::subscription::SubscriptionId;
 use anvil_rpc::response::ResponseResult;
 use futures::{Stream, StreamExt};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    task::Poll,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, task::Poll, time::Duration};
 use subxt::utils::H256;
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::Instant};
 use tokio_stream::wrappers::BroadcastStream;
 
 pub const ACTIVE_FILTER_TIMEOUT_SECS: u64 = 60 * 5;
@@ -99,7 +94,7 @@ fn new_id() -> String {
 }
 
 pub async fn eviction_task(filters: Filters) {
-    let start = tokio::time::Instant::now() + filters.keep_alive();
+    let start = filters.next_deadline();
     let mut interval = tokio::time::interval_at(start, filters.keep_alive());
     loop {
         interval.tick().await;
@@ -126,10 +121,10 @@ impl Stream for EthFilter {
                 while let Poll::Ready(Some(result)) = block_notifications.poll_next_unpin(cx) {
                     match result {
                         Ok(block_hash) => new_blocks.push(block_hash),
-                        Err(_lagged) => {
+                        Err(lagged) => {
                             // BroadcastStream handles lagging for us
                             // Just log and continue
-                            warn!(target: "node::filter", "Block filter lagged, skipped messages");
+                            warn!(target: "node::filter", "Block filter lagged, skipped messages {:?}", lagged);
                             continue;
                         }
                     }

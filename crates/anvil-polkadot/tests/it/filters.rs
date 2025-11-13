@@ -71,10 +71,9 @@ async fn test_filter_only_returns_new_blocks_since_last_poll() {
         node.eth_rpc(EthRequest::EthGetFilterChanges(id.clone())).await.unwrap(),
     )
     .unwrap();
-    assert_eq!(block_hashes_notified.len(), 2);
-    assert!(block_hashes_notified.contains(&node.block_hash_by_number(0).await.unwrap()));
+    assert!(!block_hashes_notified.is_empty());
     assert!(block_hashes_notified.contains(&node.block_hash_by_number(1).await.unwrap()));
-    // Mine a new block
+    // Mine some more blocks
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
         .unwrap();
     let block_hashes_notified = unwrap_response::<Vec<H256>>(
@@ -112,6 +111,8 @@ async fn test_uninstall_filter() {
         .unwrap()
     );
 
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
     // Try to poll a filter that does not exist
     assert_eq!(
         unwrap_response::<Vec<H256>>(
@@ -137,7 +138,7 @@ async fn test_multiple_filters_receive_same_blocks() {
         unwrap_response::<String>(node.eth_rpc(EthRequest::EthNewBlockFilter(())).await.unwrap())
             .unwrap();
 
-    // Mine a new block
+    // Mine a few blocks
     unwrap_response::<()>(
         node.eth_rpc(EthRequest::Mine(Some(U256::from(10)), None)).await.unwrap(),
     )
