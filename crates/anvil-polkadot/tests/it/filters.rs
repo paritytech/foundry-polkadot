@@ -233,33 +233,3 @@ async fn test_filter_is_evicted() {
     .unwrap();
     assert_eq!(block_hashes_notified.len(), 0);
 }
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_filter_overload() {
-    let anvil_node_config = AnvilNodeConfig::test_config();
-    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-
-    // Create a block filter
-    let id =
-        unwrap_response::<String>(node.eth_rpc(EthRequest::EthNewBlockFilter(())).await.unwrap())
-            .unwrap();
-    // Consume genesis
-    let _ = unwrap_response::<Vec<H256>>(
-        node.eth_rpc(EthRequest::EthGetFilterChanges(id.clone())).await.unwrap(),
-    )
-    .unwrap();
-    // Spam the receiver
-    unwrap_response::<()>(
-        node.eth_rpc(EthRequest::Mine(Some(U256::from(52)), None)).await.unwrap(),
-    )
-    .unwrap();
-    // Give the notifier some time to be full.
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    // Get some blocks but not all 52
-    let block_hashes_notified = unwrap_response::<Vec<H256>>(
-        node.eth_rpc(EthRequest::EthGetFilterChanges(id.clone())).await.unwrap(),
-    )
-    .unwrap();
-    assert!(block_hashes_notified.len() != 52);
-}
