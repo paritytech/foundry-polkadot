@@ -202,14 +202,12 @@ impl MockHandlerInner<Runtime> {
             )))
         });
 
-        let state_inject = Self {
+        Self {
             caller: pranked_caller,
             delegated_caller,
             mocked_calls: state.mocked_calls.clone(),
             callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
             mocked_functions: state.mocked_functions.clone(),
-        };
-
-        state_inject
+        }
     }
 }
