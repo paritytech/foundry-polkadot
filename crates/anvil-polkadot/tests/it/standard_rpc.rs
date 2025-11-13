@@ -690,7 +690,7 @@ async fn test_fee_history() {
     // The `SlowAdjustingFeeUpdate` logic decreases the base_fee block by block if the
     // activity contained within them is low.
     let base_fees =
-        [999981, 999962, 999944, 999925, 999907, 999888, 999869, 999851, 999832, 999814, 999814];
+        [1_000_000, 999981, 999962, 999944, 999925, 999907, 999888, 999869, 999851, 999832, 999832];
     for (idx, base_fee) in fee_history.base_fee_per_gas.into_iter().enumerate() {
         assert_eq!(base_fee, pallet_revive::U256::from(base_fees[idx]));
     }
