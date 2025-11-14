@@ -102,6 +102,7 @@ pub struct ApiServer {
 }
 
 impl ApiServer {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
