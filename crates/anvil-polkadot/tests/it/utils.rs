@@ -7,6 +7,7 @@ use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{
         self, ApiHandle,
+        filters::Filters,
         revive_conversions::{AlloyU256, ReviveAddress},
     },
     config::{AnvilNodeConfig, SubstrateNodeConfig},
@@ -67,7 +68,15 @@ pub struct TestNode {
 impl TestNode {
     pub async fn new(
         anvil_config: AnvilNodeConfig,
+        substrate_config: SubstrateNodeConfig,
+    ) -> Result<Self> {
+        Self::new_inner(anvil_config, substrate_config, Filters::default()).await
+    }
+
+    pub async fn new_inner(
+        anvil_config: AnvilNodeConfig,
         mut substrate_config: SubstrateNodeConfig,
+        filters: Filters,
     ) -> Result<Self> {
         let handle = tokio::runtime::Handle::current();
 
@@ -99,7 +108,8 @@ impl TestNode {
             LoggingManager::default()
         };
 
-        let (service, task_manager, api) = spawn(anvil_config, config, logging_manager).await?;
+        let (service, task_manager, api) =
+            spawn(anvil_config, config, logging_manager, filters).await?;
 
         Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }

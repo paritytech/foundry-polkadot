@@ -17,7 +17,7 @@ use polkadot_sdk::{
 };
 use revive_env::{AccountId, Runtime};
 
-use revm::{context::JournalTr, interpreter::InstructionResult};
+use revm::interpreter::InstructionResult;
 
 // Implementation object that holds the mock state and implements the MockHandler trait for Revive.
 // It is only purpose is to make transferring the mock state into the Revive EVM easier and then
@@ -25,7 +25,7 @@ use revm::{context::JournalTr, interpreter::InstructionResult};
 #[derive(Clone)]
 pub(crate) struct MockHandlerImpl {
     inner: Rc<RefCell<MockHandlerInner<Runtime>>>,
-    pub _prank_enabled: bool,
+    pub origin: ExecOrigin<Runtime>,
 }
 
 impl MockHandlerImpl {
@@ -33,13 +33,19 @@ impl MockHandlerImpl {
     pub(crate) fn new(
         ecx: &Ecx<'_, '_, '_>,
         caller: &Address,
+        origin: &Address,
         target_address: Option<&Address>,
         callee: Option<&Address>,
         state: &mut foundry_cheatcodes::Cheatcodes,
     ) -> Self {
-        let (inject_env, prank_enabled) =
-            MockHandlerInner::new(ecx, caller, target_address, callee, state);
-        Self { inner: Rc::new(RefCell::new(inject_env)), _prank_enabled: prank_enabled }
+        let inject_env = MockHandlerInner::new(ecx, caller, target_address, callee, state);
+        Self {
+            inner: Rc::new(RefCell::new(inject_env)),
+            origin: ExecOrigin::<Runtime>::from_runtime_origin(OriginFor::<Runtime>::signed(
+                AccountId::to_fallback_account_id(&H160::from_slice(origin.as_slice())),
+            ))
+            .expect("Could not create tx origin"),
+        }
     }
 
     /// Updates the given Cheatcodes state with the current mock state.
@@ -122,6 +128,10 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         None
     }
 
+    fn mock_origin(&self) -> Option<&ExecOrigin<Runtime>> {
+        Some(&self.origin)
+    }
+
     fn mock_delegated_caller(
         &self,
         dest: H160,
@@ -163,7 +173,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
 // to make it easier to transfer the state into Revive and back and be able to mutate it from the
 // MockHandler trait methods.
 #[derive(Clone)]
-struct MockHandlerInner<T: frame_system::Config> {
+struct MockHandlerInner<T: frame_system::Config + pallet_revive::Config> {
     pub caller: OriginFor<T>,
     pub delegated_caller: Option<OriginFor<T>>,
     pub callee: H160,
@@ -176,14 +186,12 @@ impl MockHandlerInner<Runtime> {
     /// Creates a new MockHandlerInner from the given Ecx and Cheatcodes state.
     /// Also returns whether a prank is currently enabled.
     fn new(
-        ecx: &Ecx<'_, '_, '_>,
+        _ecx: &Ecx<'_, '_, '_>,
         caller: &Address,
         target_address: Option<&Address>,
         callee: Option<&Address>,
         state: &mut foundry_cheatcodes::Cheatcodes,
-    ) -> (Self, bool) {
-        let curr_depth = ecx.journaled_state.depth();
-        let mut prank_enabled = false;
+    ) -> Self {
         let pranked_caller = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
             &H160::from_slice(caller.as_slice()),
         ));
@@ -194,18 +202,12 @@ impl MockHandlerInner<Runtime> {
             )))
         });
 
-        let state_inject = Self {
+        Self {
             caller: pranked_caller,
             delegated_caller,
             mocked_calls: state.mocked_calls.clone(),
             callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
             mocked_functions: state.mocked_functions.clone(),
-        };
-        if let Some(prank) = &state.get_prank(curr_depth) {
-            if curr_depth >= prank.depth {
-                prank_enabled = true;
-            }
         }
-        (state_inject, prank_enabled)
     }
 }
