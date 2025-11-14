@@ -38,6 +38,7 @@ jobs:
           PROFILE: ${{ inputs.profile }}
         run: |
           output=$(python3 .github/scripts/matrices.py)
+          echo $output
           echo "::debug::test-matrix=$output"
           echo "test-matrix=$output" >> $GITHUB_OUTPUT
 
