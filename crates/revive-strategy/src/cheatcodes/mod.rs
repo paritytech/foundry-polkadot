@@ -842,7 +842,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         input: &dyn CommonCreateInput,
         executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
     ) -> Option<CreateOutcome> {
-        let mock_handler = MockHandlerImpl::new(&ecx, &input.caller(), None, None, state);
+        let mock_handler =
+            MockHandlerImpl::new(&ecx, &input.caller(), &ecx.tx.caller, None, None, state);
 
         let ctx: &mut PvmCheatcodeInspectorStrategyContext =
             get_context_ref_mut(state.strategy.context.as_mut());
@@ -904,16 +905,16 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                        &H160::from_slice(input.caller().as_slice()),
                     ));
                     let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
 
-                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
+                    mock_handler.fund_pranked_accounts(input.caller());
 
                     // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
                     // that here too to replicate the same address generation.
                     System::inc_account_nonce(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                        &H160::from_slice(input.caller().as_slice()),
                     ));
 
                     let exec_config = ExecConfig {
@@ -1053,6 +1054,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let mock_handler = MockHandlerImpl::new(
             &ecx,
             &call.caller,
+            &ecx.tx.caller,
             target_address.as_ref(),
             Some(&call.bytecode_address),
             state,
@@ -1063,10 +1065,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             externalities.execute_with(|| {
                 tracer.trace(|| {
                     let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                        &H160::from_slice(ecx.tx.caller.as_slice()),
+                        &H160::from_slice(call.caller.as_slice()),
                     ));
 
-                    mock_handler.fund_pranked_accounts(ecx.tx.caller);
+                    mock_handler.fund_pranked_accounts(call.caller);
 
                     let evm_value =
                         sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
