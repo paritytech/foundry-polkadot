@@ -1,5 +1,6 @@
 use crate::{
     AnvilNodeConfig,
+    api_server::filters::Filters,
     logging::LoggingManager,
     substrate_node::{
         impersonation::ImpersonationManager, revert::RevertManager, service::Service,
@@ -12,6 +13,7 @@ use server::ApiServer;
 use subxt_signer::eth::Keypair;
 
 pub mod error;
+pub mod filters;
 pub mod revive_conversions;
 mod server;
 mod signer;
@@ -31,6 +33,7 @@ pub fn spawn(
     substrate_service: &Service,
     logging_manager: LoggingManager,
     revert_manager: RevertManager,
+    filters: Filters,
 ) -> ApiHandle {
     let (api_handle, receiver) = mpsc::channel(100);
 
@@ -52,6 +55,7 @@ pub fn spawn(
             revert_manager,
             impersonation_manager,
             signers,
+            filters,
         )
         .await
         .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));

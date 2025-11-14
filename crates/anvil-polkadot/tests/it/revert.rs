@@ -51,7 +51,7 @@ async fn assert_block_number_is_best_and_finalized(node: &mut TestNode, n: u64) 
     panic!("Could not reach the desired finalized block number after 3 retries.");
 }
 
-async fn snapshot(node: &mut TestNode, expected_snapshot_id: U256) -> U256 {
+pub async fn snapshot(node: &mut TestNode, expected_snapshot_id: U256) -> U256 {
     let id = U256::from_str_radix(
         unwrap_response::<String>(node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
             .unwrap()
@@ -72,7 +72,7 @@ async fn mine_blocks(node: &mut TestNode, blocks: u64, assert_best_block: u64) {
     assert_block_number_is_best_and_finalized(node, assert_best_block).await;
 }
 
-async fn revert(
+pub async fn revert(
     node: &mut TestNode,
     snapshot_id: U256,
     assert_best_block: u64,
