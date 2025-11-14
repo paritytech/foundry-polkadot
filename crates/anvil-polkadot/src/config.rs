@@ -316,6 +316,8 @@ pub struct AnvilNodeConfig {
     pub print_traces: bool,
     /// Enable auto impersonation of accounts on startup
     pub enable_auto_impersonate: bool,
+    /// Max number of blocks to keep in memory for the eth revive rpc
+    pub revive_rpc_block_limit: Option<usize>,
     /// Configure the code size limit
     pub code_size_limit: Option<usize>,
     /// Disable the default CREATE2 deployer
@@ -536,6 +538,7 @@ impl Default for AnvilNodeConfig {
             print_logs: true,
             print_traces: false,
             enable_auto_impersonate: false,
+            revive_rpc_block_limit: None,
             server_config: Default::default(),
             host: vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
             config_out: None,
@@ -616,6 +619,16 @@ impl AnvilNodeConfig {
     #[must_use]
     pub fn disable_block_gas_limit(mut self, disable_block_gas_limit: bool) -> Self {
         self.disable_block_gas_limit = disable_block_gas_limit;
+        self
+    }
+
+    /// Sets max number of blocks to keep in memory for the eth revive rpc
+    #[must_use]
+    pub fn with_revive_rpc_block_limit<U: Into<usize>>(
+        mut self,
+        revive_rpc_block_limit: Option<U>,
+    ) -> Self {
+        self.revive_rpc_block_limit = revive_rpc_block_limit.map(Into::into);
         self
     }
 

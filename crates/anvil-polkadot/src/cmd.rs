@@ -92,6 +92,10 @@ pub struct NodeArgs {
     #[arg(long, help = IPC_HELP, value_name = "PATH", visible_alias = "ipcpath")]
     pub ipc: Option<Option<String>>,
 
+    /// Max number of blocks to keep in memory for the eth revive rpc
+    #[arg(long, visible_alias = "transaction-block-keeper")]
+    pub revive_rpc_block_limit: Option<usize>,
+
     #[command(flatten)]
     pub evm: AnvilEvmArgs,
 
@@ -133,7 +137,8 @@ impl NodeArgs {
             .with_code_size_limit(self.evm.code_size_limit)
             .disable_code_size_limit(self.evm.disable_code_size_limit)
             .with_disable_default_create2_deployer(self.evm.disable_default_create2_deployer)
-            .with_memory_limit(self.evm.memory_limit);
+            .with_memory_limit(self.evm.memory_limit)
+            .with_revive_rpc_block_limit(self.revive_rpc_block_limit);
 
         let substrate_node_config = SubstrateNodeConfig::new(&anvil_config);
 
