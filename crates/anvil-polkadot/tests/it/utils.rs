@@ -141,9 +141,8 @@ impl TestNode {
     pub async fn send_transaction(
         &mut self,
         transaction: TransactionRequest,
-        timeout: Option<BlockWaitTimeout>,
     ) -> Result<H256, RpcError> {
-        self.send_transaction_inner(transaction, timeout, false).await
+        self.send_transaction_inner(transaction, None, false).await
     }
 
     /// Execute an impersonated ethereum transaction.
@@ -170,13 +169,28 @@ impl TestNode {
                 .unwrap(),
             )?
         } else {
-            unwrap_response::<H256>(
-                self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
-                    transaction,
-                ))))
-                .await
-                .unwrap(),
-            )?
+            let is_automine =
+                unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
+                    .unwrap();
+
+            if is_automine {
+                unwrap_response::<ReceiptInfo>(
+                    self.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(
+                        WithOtherFields::new(transaction),
+                    )))
+                    .await
+                    .unwrap(),
+                )?
+                .transaction_hash
+            } else {
+                unwrap_response(
+                    self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
+                        transaction,
+                    ))))
+                    .await
+                    .unwrap(),
+                )?
+            }
         };
 
         if let Some(BlockWaitTimeout { block_number, timeout }) = timeout {
@@ -290,7 +304,6 @@ impl TestNode {
         &mut self,
         from: Address,
         transfer_amount: U256,
-        block_wait_timeout: Option<BlockWaitTimeout>,
     ) -> (Address, H256) {
         let dest_addr = Address::random();
         let dest_h160 = H160::from_slice(dest_addr.as_slice());
@@ -303,13 +316,12 @@ impl TestNode {
 
         let transaction =
             TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
-        let tx_hash = self.send_transaction(transaction, block_wait_timeout).await.unwrap();
+        let tx_hash = self.send_transaction(transaction).await.unwrap();
 
         let is_automine =
             unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
                 .unwrap();
         if is_automine {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             let receipt_info = self.get_transaction_receipt(tx_hash).await;
 
             // Assert on balances after first transfer.
@@ -333,20 +345,11 @@ impl TestNode {
         (dest_addr, tx_hash)
     }
 
-    pub async fn deploy_contract(
-        &mut self,
-        code: &[u8],
-        deployer: H160,
-        block_number: Option<u32>,
-    ) -> H256 {
+    pub async fn deploy_contract(&mut self, code: &[u8], deployer: H160) -> H256 {
         let deploy_contract_tx = TransactionRequest::default()
             .from(Address::from(ReviveAddress::new(deployer)))
             .input(TransactionInput::both(Bytes::copy_from_slice(code)));
-        let block_wait = block_number.map(|bn| BlockWaitTimeout {
-            block_number: bn,
-            timeout: std::time::Duration::from_millis(1000),
-        });
-        self.send_transaction(deploy_contract_tx, block_wait).await.unwrap()
+        self.send_transaction(deploy_contract_tx).await.unwrap()
     }
 
     pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {

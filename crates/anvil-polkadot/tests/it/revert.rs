@@ -104,10 +104,9 @@ async fn do_transfer(
 ) -> (H256, Option<ReceiptInfo>) {
     let tx_hash = if let Some(to) = to {
         let transaction = TransactionRequest::default().value(amount).from(from).to(to);
-        node.send_transaction(transaction, None).await.unwrap()
+        node.send_transaction(transaction).await.unwrap()
     } else {
-        let (_, tx_hash) =
-            node.eth_transfer_to_unitialized_random_account(from, amount, None).await;
+        let (_, tx_hash) = node.eth_transfer_to_unitialized_random_account(from, amount).await;
         tx_hash
     };
 
@@ -473,14 +472,13 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
 
     // Initialize a random account.
     let transfer_amount = U256::from(16e17);
-    let _ =
-        node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount, None).await;
+    let _ = node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount).await;
 
     // Make another regular transfer between known accounts.
     let transfer_amount = U256::from(1e17);
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(baltathar_addr).to(alith_addr);
-    let _ = node.send_transaction(transaction, None).await.unwrap();
+    let _ = node.send_transaction(transaction).await.unwrap();
 
     // Revert to a block before the transactions have been sent.
     revert(&mut node, zero, 5, true).await;
@@ -533,7 +531,7 @@ async fn test_timestmap_in_contract_after_revert() {
     // Deploy multicall contract
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let contract_code = get_contract_code("Multicall");
-    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address()).await;
     mine_blocks(&mut node, 1, 1).await;
 
     let first_timestamp = node.get_decoded_timestamp(None).await;

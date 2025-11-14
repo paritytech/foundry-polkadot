@@ -32,7 +32,7 @@ async fn test_txpool_status() {
             .to(recipient_addr)
             .value(U256::from(1000 * (i + 1)))
             .nonce(i);
-        node.send_transaction(tx, None).await.unwrap();
+        node.send_transaction(tx).await.unwrap();
     }
 
     let status: TxpoolStatus =
@@ -45,7 +45,7 @@ async fn test_txpool_status() {
         .to(recipient_addr)
         .value(U256::from(5000))
         .nonce(5);
-    node.send_transaction(tx_future, None).await.unwrap();
+    node.send_transaction(tx_future).await.unwrap();
 
     let status: TxpoolStatus =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
@@ -65,21 +65,21 @@ async fn test_drop_transaction() {
 
     let tx1 =
         TransactionRequest::default().from(alith_addr).to(recipient_addr).value(U256::from(1000));
-    node.send_transaction(tx1, None).await.unwrap();
+    node.send_transaction(tx1).await.unwrap();
 
     let tx2 = TransactionRequest::default()
         .from(alith_addr)
         .to(recipient_addr)
         .value(U256::from(2000))
         .nonce(1);
-    let tx2_hash = node.send_transaction(tx2, None).await.unwrap();
+    let tx2_hash = node.send_transaction(tx2).await.unwrap();
 
     let tx_future = TransactionRequest::default()
         .from(alith_addr)
         .to(recipient_addr)
         .value(U256::from(5000))
         .nonce(5);
-    let tx_future_hash = node.send_transaction(tx_future, None).await.unwrap();
+    let tx_future_hash = node.send_transaction(tx_future).await.unwrap();
 
     let status: TxpoolStatus =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
@@ -127,7 +127,7 @@ async fn test_drop_all_transactions() {
             .to(recipient_addr)
             .value(U256::from(1000 * (i + 1)))
             .nonce(i);
-        node.send_transaction(tx, None).await.unwrap();
+        node.send_transaction(tx).await.unwrap();
     }
 
     let tx_future = TransactionRequest::default()
@@ -135,7 +135,7 @@ async fn test_drop_all_transactions() {
         .to(recipient_addr)
         .value(U256::from(5000))
         .nonce(5);
-    node.send_transaction(tx_future, None).await.unwrap();
+    node.send_transaction(tx_future).await.unwrap();
 
     let status: TxpoolStatus =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolStatus(())).await.unwrap()).unwrap();
@@ -171,7 +171,7 @@ async fn test_txpool_inspect() {
             .to(recipient_addr)
             .value(U256::from(1000 * (i + 1)))
             .nonce(i);
-        node.send_transaction(tx, None).await.unwrap();
+        node.send_transaction(tx).await.unwrap();
     }
 
     let tx_future = TransactionRequest::default()
@@ -179,7 +179,7 @@ async fn test_txpool_inspect() {
         .to(recipient_addr)
         .value(U256::from(5000))
         .nonce(5);
-    node.send_transaction(tx_future, None).await.unwrap();
+    node.send_transaction(tx_future).await.unwrap();
 
     let inspect: TxpoolInspect =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolInspect(())).await.unwrap()).unwrap();
@@ -236,7 +236,7 @@ async fn test_txpool_content() {
             .to(recipient_addr)
             .value(U256::from(1000 * (i + 1)))
             .nonce(i);
-        let hash = node.send_transaction(tx, None).await.unwrap();
+        let hash = node.send_transaction(tx).await.unwrap();
         pending_hashes.push(hash);
     }
 
@@ -245,7 +245,7 @@ async fn test_txpool_content() {
         .to(recipient_addr)
         .value(U256::from(5000))
         .nonce(5);
-    let queued_hash = node.send_transaction(tx_future, None).await.unwrap();
+    let queued_hash = node.send_transaction(tx_future).await.unwrap();
 
     let content: TxpoolContent<TxpoolTransactionInfo> =
         unwrap_response(node.eth_rpc(EthRequest::TxPoolContent(())).await.unwrap()).unwrap();
@@ -309,7 +309,7 @@ async fn test_remove_pool_transactions() {
             .to(recipient_addr)
             .value(U256::from(1000 * (i + 1)))
             .nonce(i);
-        node.send_transaction(tx, None).await.unwrap();
+        node.send_transaction(tx).await.unwrap();
     }
 
     // Send 2 transactions from Baltathar
@@ -319,7 +319,7 @@ async fn test_remove_pool_transactions() {
             .to(recipient_addr)
             .value(U256::from(2000 * (i + 1)))
             .nonce(i);
-        node.send_transaction(tx, None).await.unwrap();
+        node.send_transaction(tx).await.unwrap();
     }
 
     let status: TxpoolStatus =
@@ -368,7 +368,7 @@ async fn test_txpool_with_impersonated_transactions() {
         .from(alith_addr)
         .to(impersonated_addr)
         .value(U256::from(10000000000000000000u64));
-    node.send_transaction(fund_tx, None).await.unwrap();
+    node.send_transaction(fund_tx).await.unwrap();
 
     // Mine the funding transaction
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
