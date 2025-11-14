@@ -1599,9 +1599,20 @@ impl ApiServer {
     ) -> Result<ReceiptInfo> {
         // If no receiver, check immediately and return
         let Some(mut receiver) = receiver else {
-            return self.transaction_receipt(hash).await?.ok_or(
-                Error::TransactionConfirmationTimeout { hash, duration: Duration::from_secs(0) },
-            );
+            return tokio::time::timeout(TIMEOUT_DURATION, async {
+                let mut interval = tokio::time::interval(Duration::from_secs(2));
+                interval.tick().await;
+                loop {
+                    if let Some(receipt) = self.transaction_receipt(hash).await? {
+                        return Ok(receipt);
+                    }
+                    interval.tick().await;
+                }
+            })
+            .await
+            .unwrap_or_else(|_| {
+                Err(Error::TransactionConfirmationTimeout { hash, duration: TIMEOUT_DURATION })
+            });
         };
         tokio::time::timeout(TIMEOUT_DURATION, async {
             while let Ok(_block_hash) = receiver.recv().await {
