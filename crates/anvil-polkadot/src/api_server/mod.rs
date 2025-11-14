@@ -17,6 +17,7 @@ pub mod filters;
 pub mod revive_conversions;
 mod server;
 mod signer;
+pub mod trace_helpers;
 mod txpool_helpers;
 
 pub use txpool_helpers::TxpoolTransactionInfo;

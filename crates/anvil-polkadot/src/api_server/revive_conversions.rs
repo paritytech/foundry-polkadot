@@ -2,11 +2,16 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::Address;
 use alloy_rpc_types::{
     AccessList, FilterBlockOption, FilterSet, SignedAuthorization, Topic, TransactionRequest,
+    trace::geth::{
+        GethDebugBuiltInTracerType, GethDebugTracerType, GethDebugTracingCallOptions,
+        GethDebugTracingOptions,
+    },
 };
 use polkadot_sdk::{
     pallet_revive::evm::{
         self, AccessListEntry, AddressOrAddresses, AuthorizationListEntry, BlockNumberOrTagOrHash,
-        BlockTag, Byte, Bytes, Filter, FilterTopic, FilterTopics, GenericTransaction, InputOrData,
+        BlockTag, Byte, Bytes, CallTracerConfig, Filter, FilterTopic, FilterTopics,
+        GenericTransaction, InputOrData, PrestateTracerConfig, TracerType,
     },
     sp_core,
 };
@@ -310,5 +315,49 @@ impl From<alloy_rpc_types::Filter> for ReviveFilter {
             }
         };
         Self(Filter { address, from_block, to_block, block_hash, topics })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReviveTracerOptions(TracerType);
+
+impl ReviveTracerOptions {
+    pub fn new(tracer_type: TracerType) -> Self {
+        Self(tracer_type)
+    }
+
+    pub fn inner(self) -> TracerType {
+        self.0
+    }
+}
+
+impl From<GethDebugTracingOptions> for ReviveTracerOptions {
+    fn from(tracing_options: GethDebugTracingOptions) -> Self {
+        let tracer_type = if let Some(GethDebugTracerType::BuiltInTracer(geth_tracer_type)) =
+            tracing_options.tracer
+        {
+            match geth_tracer_type {
+                GethDebugBuiltInTracerType::CallTracer => {
+                    TracerType::CallTracer(Some(CallTracerConfig::default()))
+                }
+                GethDebugBuiltInTracerType::PreStateTracer => {
+                    let mut prestate_config = PrestateTracerConfig::default();
+                    if tracing_options.config.disable_storage.unwrap_or(false) {
+                        prestate_config.disable_storage = true;
+                    }
+                    TracerType::PrestateTracer(Some(prestate_config))
+                }
+                _ => Default::default(),
+            }
+        } else {
+            Default::default()
+        };
+        Self(tracer_type)
+    }
+}
+
+impl From<GethDebugTracingCallOptions> for ReviveTracerOptions {
+    fn from(tracing_call_options: GethDebugTracingCallOptions) -> Self {
+        Self::from(tracing_call_options.tracing_options)
     }
 }
