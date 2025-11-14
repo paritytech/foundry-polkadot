@@ -382,3 +382,52 @@ async fn test_evm_mine_detailed() {
     }
     assert_eq!(tx_hashes.len(), 0);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mining_with_eth_rpc_block_limit() {
+    let anvil_node_config = AnvilNodeConfig::test_config()
+        .with_revive_rpc_block_limit(Some(10usize))
+        .set_silent(false)
+        .with_tracing(true);
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    assert_eq!(node.best_block_number().await, 0);
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let transfer_amount = U256::from_str_radix("10000000000000000", 10).unwrap();
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(baltathar.address())));
+    node.send_transaction(transaction, None).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    assert_eq!(node.best_block_number().await, 6);
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::Mine(Some(U256::from(10)), None)).await.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(node.best_block_number().await, 16);
+
+    // Retrieving the transaction count will fail, as this queries the DB, which was pruned for
+    // block 6 already
+    assert_eq!(
+        unwrap_response::<U256>(
+            node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
+                alloy_rpc_types::BlockNumberOrTag::Number(6),
+            ))
+            .await
+            .unwrap(),
+        )
+        .unwrap(),
+        U256::from(0)
+    );
+}
