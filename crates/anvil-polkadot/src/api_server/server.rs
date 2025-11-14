@@ -741,7 +741,13 @@ impl ApiServer {
     pub async fn send_raw_transaction_sync(&self, tx: Bytes) -> Result<ReceiptInfo> {
         node_info!("eth_sendRawTransactionSync");
         // Subscribe to new best blocks.
-        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+        let receiver = self
+            .eth_rpc_client
+            .block_notifier()
+            .ok_or_else(|| {
+                Error::InternalError("Invalid receiver. Unable to wait for receipt".to_string())
+            })?
+            .subscribe();
         let hash = B256::from_slice(self.send_raw_transaction(tx).await?.as_ref());
         self.wait_for_receipt(hash, receiver).await
     }
@@ -814,7 +820,13 @@ impl ApiServer {
     ) -> Result<ReceiptInfo> {
         node_info!("eth_sendTransactionSync");
         // Subscribe to new best blocks.
-        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+        let receiver = self
+            .eth_rpc_client
+            .block_notifier()
+            .ok_or_else(|| {
+                Error::InternalError("Invalid receiver. Unable to wait for receipt".to_string())
+            })?
+            .subscribe();
         let hash = B256::from_slice(self.send_transaction(request, false).await?.as_ref());
         self.wait_for_receipt(hash, receiver).await
     }
@@ -1595,25 +1607,8 @@ impl ApiServer {
     async fn wait_for_receipt(
         &self,
         hash: B256,
-        receiver: Option<tokio::sync::broadcast::Receiver<H256>>,
+        mut receiver: tokio::sync::broadcast::Receiver<H256>,
     ) -> Result<ReceiptInfo> {
-        // If no receiver, check immediately and return
-        let Some(mut receiver) = receiver else {
-            return tokio::time::timeout(TIMEOUT_DURATION, async {
-                let mut interval = tokio::time::interval(Duration::from_secs(2));
-                interval.tick().await;
-                loop {
-                    if let Some(receipt) = self.transaction_receipt(hash).await? {
-                        return Ok(receipt);
-                    }
-                    interval.tick().await;
-                }
-            })
-            .await
-            .unwrap_or_else(|_| {
-                Err(Error::TransactionConfirmationTimeout { hash, duration: TIMEOUT_DURATION })
-            });
-        };
         tokio::time::timeout(TIMEOUT_DURATION, async {
             while let Ok(_block_hash) = receiver.recv().await {
                 if let Some(receipt) = self.transaction_receipt(hash).await? {
