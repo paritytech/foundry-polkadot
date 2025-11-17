@@ -39,7 +39,7 @@ async fn test_revive_bytecode_migration(#[case] runtime_mode: ReviveRuntimeMode)
 
 #[rstest]
 #[case::pvm(ReviveRuntimeMode::Pvm)]
-// TODO: Add Evm test when pallet-revive will allow for Evm bytecode upload
+#[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_revive_bytecode_migration_to_revive(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
@@ -65,5 +65,25 @@ async fn test_revive_precision_preservation(#[case] runtime_mode: ReviveRuntimeM
 async fn test_revive_timestamp_migration(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
     let filter = Filter::new("testTimestampMigration", "EvmReviveMigrationTest", ".*/revive/.*");
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}
+
+#[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_revive_immutables_migration(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testImmutablesMigration", "EvmReviveMigrationTest", ".*/revive/.*");
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}
+
+#[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_revive_callback_from_revive(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new("testCallbackFromRevive", "EvmReviveMigrationTest", ".*/revive/.*");
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }

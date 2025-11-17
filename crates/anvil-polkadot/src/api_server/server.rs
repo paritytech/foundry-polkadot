@@ -2,6 +2,7 @@ use crate::{
     api_server::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
+        filters::{BlockNotifications, EthFilter, Filters, eviction_task},
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
             ReviveFilter, SubstrateU256, convert_to_generic_transaction,
@@ -19,6 +20,7 @@ use crate::{
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
         mining_engine::MiningEngine,
+        revert::{RevertInfo, RevertManager},
         service::{
             BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
             storage::{
@@ -26,7 +28,6 @@ use crate::{
                 SystemAccountInfo,
             },
         },
-        snapshot::{RevertInfo, SnapshotManager},
     },
 };
 use alloy_dyn_abi::TypedData;
@@ -34,13 +35,14 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{
     Filter, TransactionRequest,
-    anvil::{Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
+    anvil::{Forking, Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
 };
 use alloy_serde::WithOtherFields;
 use alloy_trie::{EMPTY_ROOT_HASH, KECCAK_EMPTY, TrieAccount};
-use anvil_core::eth::{EthRequest, Params as MineParams};
+use anvil_core::eth::{EthRequest, Params as AnvilCoreParams};
 use anvil_rpc::response::ResponseResult;
+use chrono::{DateTime, Datelike, Utc};
 use codec::{Decode, Encode};
 use futures::{StreamExt, channel::mpsc};
 use indexmap::IndexMap;
@@ -66,12 +68,12 @@ use polkadot_sdk::{
     sp_api::{Metadata as _, ProvideRuntimeApi},
     sp_blockchain::Info,
     sp_core::{self, Hasher, keccak_256},
-    sp_runtime::traits::BlakeTwo256,
+    sp_runtime::{FixedU128, traits::BlakeTwo256},
 };
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{collections::HashSet, sync::Arc, time::Duration};
-use substrate_runtime::Balance;
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
     client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
@@ -81,6 +83,7 @@ use subxt_signer::eth::Keypair;
 use tokio::try_join;
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
+const TIMEOUT_DURATION: Duration = Duration::from_secs(30);
 
 pub struct ApiServer {
     eth_rpc_client: EthRpcClient,
@@ -91,20 +94,25 @@ pub struct ApiServer {
     mining_engine: Arc<MiningEngine>,
     wallet: DevSigner,
     block_provider: SubxtBlockInfoProvider,
-    snapshot_manager: SnapshotManager,
+    revert_manager: RevertManager,
     impersonation_manager: ImpersonationManager,
     tx_pool: Arc<TransactionPoolHandle>,
     instance_id: B256,
+    /// Tracks all active filters
+    filters: Filters,
 }
 
 impl ApiServer {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
         logging_manager: LoggingManager,
-        snapshot_manager: SnapshotManager,
+        revert_manager: RevertManager,
         impersonation_manager: ImpersonationManager,
         signers: Vec<Keypair>,
+        filters: Filters,
+        revive_rpc_block_limit: Option<usize>,
     ) -> Result<Self> {
         let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
         let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
@@ -116,8 +124,14 @@ impl ApiServer {
             rpc,
             block_provider.clone(),
             substrate_service.spawn_handle.clone(),
+            revive_rpc_block_limit,
         )
         .await?;
+
+        let filters_clone = filters.clone();
+        substrate_service.spawn_handle.spawn("filter-eviction-task", "None", async move {
+            eviction_task(filters_clone).await;
+        });
         Ok(Self {
             block_provider,
             req_receiver,
@@ -129,11 +143,12 @@ impl ApiServer {
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
-            snapshot_manager,
+            revert_manager,
             impersonation_manager,
             tx_pool: substrate_service.tx_pool.clone(),
             wallet: DevSigner::new(signers)?,
             instance_id: B256::random(),
+            filters,
         })
     }
 
@@ -148,6 +163,17 @@ impl ApiServer {
     pub async fn execute(&mut self, req: EthRequest) -> ResponseResult {
         let res = match req.clone() {
             EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
+            //------- Gas -----------
+            EthRequest::SetNextBlockBaseFeePerGas(base_fee) => {
+                let latest_block = self.latest_block();
+                // We inject in substrate storage an 1e18 denominated value after transforming it
+                // to a 1e12.
+                self.backend.inject_next_fee_multiplier(
+                    latest_block,
+                    FixedU128::from_rational(base_fee.to::<u128>(), NATIVE_TO_ETH_RATIO.into()),
+                );
+                Ok(()).to_rpc_result()
+            }
 
             //------- Mining---------
             EthRequest::Mine(blocks, interval) => self.mine(blocks, interval).await.to_rpc_result(),
@@ -244,6 +270,9 @@ impl ApiServer {
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request.clone(), false).await.to_rpc_result()
             }
+            EthRequest::EthSendTransactionSync(request) => {
+                self.send_transaction_sync(*request).await.to_rpc_result()
+            }
             EthRequest::EthGasPrice(()) => self.gas_price().await.to_rpc_result(),
             EthRequest::EthGetBlockByNumber(num, hydrated) => {
                 node_info!("eth_getBlockByNumber");
@@ -298,6 +327,9 @@ impl ApiServer {
                 node_info!("eth_sendRawTransaction");
                 self.send_raw_transaction(ReviveBytes::from(tx).inner()).await.to_rpc_result()
             }
+            EthRequest::EthSendRawTransactionSync(tx) => {
+                self.send_raw_transaction_sync(ReviveBytes::from(tx).inner()).await.to_rpc_result()
+            }
             EthRequest::EthGetLogs(filter) => {
                 node_info!("eth_getLogs");
                 self.get_logs(filter).await.to_rpc_result()
@@ -316,10 +348,13 @@ impl ApiServer {
                 self.set_storage_at(address, key, value).to_rpc_result()
             }
             EthRequest::SetChainId(chain_id) => self.set_chain_id(chain_id).to_rpc_result(),
-            // --- Snapshot ---
+            // --- Revert ---
             EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
             EthRequest::Rollback(depth) => self.rollback(depth).await.to_rpc_result(),
             EthRequest::EvmRevert(id) => self.revert(id).await.to_rpc_result(),
+            EthRequest::Reset(params) => {
+                self.reset(params.and_then(|p| p.params)).await.to_rpc_result()
+            }
             // ------- Wallet ---------
             EthRequest::EthSign(addr, content) => self.sign(addr, content).await.to_rpc_result(),
             EthRequest::EthSignTypedDataV4(addr, data) => {
@@ -359,6 +394,19 @@ impl ApiServer {
             // --- Metadata ---
             EthRequest::NodeInfo(_) => self.anvil_node_info().await.to_rpc_result(),
             EthRequest::AnvilMetadata(_) => self.anvil_metadata().await.to_rpc_result(),
+            // --- Filters ---
+            EthRequest::EthNewFilter(_filter) => {
+                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            }
+            EthRequest::EthGetFilterChanges(id) => self.get_filter_changes(&id).await,
+            EthRequest::EthNewBlockFilter(_) => self.new_block_filter().await.to_rpc_result(),
+            EthRequest::EthNewPendingTransactionFilter(_) => {
+                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            }
+            EthRequest::EthGetFilterLogs(_id) => {
+                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            }
+            EthRequest::EthUninstallFilter(id) => self.uninstall_filter(&id).await.to_rpc_result(),
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
         };
 
@@ -390,10 +438,17 @@ impl ApiServer {
                 "The interval between blocks is too large".to_string(),
             ));
         }
-        self.mining_engine
+
+        // Subscribe to new best blocks.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+
+        let awaited_hash = self
+            .mining_engine
             .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
             .await
-            .map_err(Error::Mining)
+            .map_err(Error::Mining)?;
+        self.wait_for_hash(receiver, awaited_hash).await?;
+        Ok(())
     }
 
     fn set_interval_mining(&self, interval: u64) -> Result<()> {
@@ -422,19 +477,30 @@ impl ApiServer {
         Ok(())
     }
 
-    async fn evm_mine(&self, mine: Option<MineParams<Option<MineOptions>>>) -> Result<String> {
+    async fn evm_mine(&self, mine: Option<AnvilCoreParams<Option<MineOptions>>>) -> Result<String> {
         node_info!("evm_mine");
 
-        self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        // Subscribe to new best blocks.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+        let awaited_hash = self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        self.wait_for_hash(receiver, awaited_hash).await?;
         Ok("0x0".to_string())
     }
 
     async fn evm_mine_detailed(
         &self,
-        mine: Option<MineParams<Option<MineOptions>>>,
+        mine: Option<AnvilCoreParams<Option<MineOptions>>>,
     ) -> Result<Vec<Block>> {
         node_info!("evm_mine_detailed");
-        let mined_blocks = self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+
+        // Subscribe to new best blocks.
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+
+        let (mined_blocks, awaited_hash) =
+            self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+
+        self.wait_for_hash(receiver, awaited_hash).await?;
+
         let mut blocks = Vec::with_capacity(mined_blocks as usize);
         let last_block = self.client.info().best_number as u64;
         let starting = last_block - mined_blocks + 1;
@@ -612,28 +678,37 @@ impl ApiServer {
     async fn estimate_gas(
         &self,
         request: WithOtherFields<TransactionRequest>,
-        block: Option<alloy_rpc_types::BlockId>,
+        block: Option<BlockId>,
     ) -> Result<sp_core::U256> {
         node_info!("eth_estimateGas");
 
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let dry_run =
-            runtime_api.dry_run(convert_to_generic_transaction(request.into_inner())).await?;
+        let dry_run = runtime_api
+            .dry_run(
+                convert_to_generic_transaction(request.into_inner()),
+                ReviveBlockId::from(block).inner(),
+            )
+            .await?;
         Ok(dry_run.eth_gas)
     }
 
     async fn call(
         &self,
         request: WithOtherFields<TransactionRequest>,
-        block: Option<alloy_rpc_types::BlockId>,
+        block: Option<BlockId>,
     ) -> Result<Bytes> {
         node_info!("eth_call");
 
         let hash = self.get_block_hash_for_tag(block).await?;
+
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let dry_run =
-            runtime_api.dry_run(convert_to_generic_transaction(request.into_inner())).await?;
+        let dry_run = runtime_api
+            .dry_run(
+                convert_to_generic_transaction(request.into_inner()),
+                ReviveBlockId::from(block).inner(),
+            )
+            .await?;
 
         Ok(dry_run.data.into())
     }
@@ -664,6 +739,20 @@ impl ApiServer {
         let call = subxt_client::tx().revive().eth_transact(transaction.0);
         self.eth_rpc_client.submit(call).await?;
         Ok(hash)
+    }
+
+    pub async fn send_raw_transaction_sync(&self, tx: Bytes) -> Result<ReceiptInfo> {
+        node_info!("eth_sendRawTransactionSync");
+        // Subscribe to new best blocks.
+        let receiver = self
+            .eth_rpc_client
+            .block_notifier()
+            .ok_or_else(|| {
+                Error::InternalError("Invalid receiver. Unable to wait for receipt".to_string())
+            })?
+            .subscribe();
+        let hash = B256::from_slice(self.send_raw_transaction(tx).await?.as_ref());
+        self.wait_for_receipt(hash, receiver).await
     }
 
     async fn send_transaction(
@@ -699,9 +788,11 @@ impl ApiServer {
         if transaction.gas_price.is_none() {
             transaction.gas_price = Some(self.gas_price().await?);
         }
+
         if transaction.nonce.is_none() {
             transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
         }
+
         if transaction.chain_id.is_none() {
             transaction.chain_id =
                 Some(sp_core::U256::from_big_endian(&self.chain_id(latest_block).to_be_bytes()));
@@ -726,6 +817,23 @@ impl ApiServer {
         self.send_raw_transaction(Bytes(payload)).await
     }
 
+    async fn send_transaction_sync(
+        &self,
+        request: WithOtherFields<TransactionRequest>,
+    ) -> Result<ReceiptInfo> {
+        node_info!("eth_sendTransactionSync");
+        // Subscribe to new best blocks.
+        let receiver = self
+            .eth_rpc_client
+            .block_notifier()
+            .ok_or_else(|| {
+                Error::InternalError("Invalid receiver. Unable to wait for receipt".to_string())
+            })?
+            .subscribe();
+        let hash = B256::from_slice(self.send_transaction(request, false).await?.as_ref());
+        self.wait_for_receipt(hash, receiver).await
+    }
+
     async fn get_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -744,13 +852,13 @@ impl ApiServer {
 
     pub(crate) async fn snapshot(&mut self) -> Result<U256> {
         node_info!("evm_snapshot");
-        Ok(self.snapshot_manager.snapshot())
+        Ok(self.revert_manager.snapshot())
     }
 
     pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
         node_info!("evm_revert");
         let res = self
-            .snapshot_manager
+            .revert_manager
             .revert(id)
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
         let Some(res) = res else { return Ok(false) };
@@ -760,10 +868,32 @@ impl ApiServer {
         Ok(true)
     }
 
+    /// Reset to genesis if no forking information is set.
+    ///
+    /// TODO: currently the forking information is not consider at the
+    /// RPC level, but it will need to be considered once forking feature
+    /// is functional.
+    pub(crate) async fn reset(&mut self, forking: Option<Forking>) -> Result<()> {
+        self.instance_id = B256::random();
+        node_info!("anvil_reset");
+        // TODO: should be removed once forking feature is implemented and support is added in
+        // revert manager to handle it
+        if forking.is_some() {
+            return Err(Error::RpcUnimplemented);
+        }
+
+        let res = self
+            .revert_manager
+            .reset_to_genesis()
+            .map_err(|err| Error::Backend(BackendError::Client(err)))?;
+
+        self.on_revert_update(res).await
+    }
+
     pub(crate) async fn rollback(&mut self, depth: Option<u64>) -> Result<()> {
         node_info!("anvil_rollback");
         let res = self
-            .snapshot_manager
+            .revert_manager
             .rollback(depth)
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
 
@@ -831,7 +961,7 @@ impl ApiServer {
             instance_id: self.instance_id,
             // Forking is not supported yet in anvil-polkadot
             forked_network: None,
-            snapshots: self.snapshot_manager.list_snapshots(),
+            snapshots: self.revert_manager.list_snapshots(),
         })
     }
 
@@ -937,7 +1067,8 @@ impl ApiServer {
 
     pub fn accounts(&self) -> Result<Vec<H160>> {
         node_info!("eth_accounts");
-        let mut accounts = HashSet::new();
+        // Use an ordered set, so that the order is maintained between calls.
+        let mut accounts = BTreeSet::new();
 
         accounts.extend(self.wallet.accounts());
         accounts.extend(self.impersonation_manager.impersonated_accounts.clone());
@@ -1218,19 +1349,46 @@ impl ApiServer {
             code: alloy_primitives::Bytes::from(code.0),
         })
     }
+
+    // ----- Filter RPCs
+
+    /// Creates a filter to notify about new blocks
+    async fn new_block_filter(&self) -> Result<String> {
+        node_info!("eth_newBlockFilter");
+        let filter = EthFilter::Blocks(BlockNotifications::new(self.new_block_notifications()?));
+        Ok(self.filters.add_filter(filter).await)
+    }
+
+    /// Remove filter
+    async fn uninstall_filter(&self, id: &str) -> Result<bool> {
+        node_info!("eth_uninstallFilter");
+        Ok(self.filters.uninstall_filter(id).await.is_some())
+    }
+
+    /// Polls a filter and returns all events that happened since the last poll.
+    async fn get_filter_changes(&self, id: &str) -> ResponseResult {
+        node_info!("eth_getFilterChanges");
+        self.filters.get_filter_changes(id).await
+    }
+
     // ----- Helpers
     async fn update_block_provider_on_revert(&self, info: &Info<OpaqueBlock>) -> Result<()> {
-        let new_best_block = self.block_provider.block_by_number(info.best_number).await?;
-        let new_finalized_block =
-            self.block_provider.block_by_number(info.finalized_number).await?;
+        let best_block = self.block_provider.block_by_number(info.best_number).await?.ok_or(
+            Error::InternalError(format!(
+                "Could not find best block with number {}",
+                info.best_number
+            )),
+        )?;
+        self.block_provider.update_latest(best_block, SubscriptionType::BestBlocks).await;
 
-        if let Some(block) = new_best_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::BestBlocks).await;
-        }
-
-        if let Some(block) = new_finalized_block.and_then(Arc::into_inner) {
-            self.block_provider.update_latest(block, SubscriptionType::FinalizedBlocks).await;
-        }
+        let finalized_block =
+            self.block_provider.block_by_number(info.finalized_number).await?.ok_or(
+                Error::InternalError(format!(
+                    "Could not find finalized block with number {}",
+                    info.finalized_number
+                )),
+            )?;
+        self.block_provider.update_latest(finalized_block, SubscriptionType::FinalizedBlocks).await;
 
         Ok(())
     }
@@ -1425,18 +1583,18 @@ impl ApiServer {
         let mut invalid_txs = IndexMap::new();
 
         for tx in self.tx_pool.ready() {
-            if let Some(sender) = extract_sender(tx.data()) {
-                if sender == address {
-                    invalid_txs.insert(*tx.hash(), None);
-                }
+            if let Some(sender) = extract_sender(tx.data())
+                && sender == address
+            {
+                invalid_txs.insert(*tx.hash(), None);
             }
         }
 
         for tx in self.tx_pool.futures() {
-            if let Some(sender) = extract_sender(tx.data()) {
-                if sender == address {
-                    invalid_txs.insert(*tx.hash(), None);
-                }
+            if let Some(sender) = extract_sender(tx.data())
+                && sender == address
+            {
+                invalid_txs.insert(*tx.hash(), None);
             }
         }
 
@@ -1446,6 +1604,87 @@ impl ApiServer {
 
         Ok(())
     }
+
+    // ----- Helpers -----
+
+    async fn wait_for_receipt(
+        &self,
+        hash: B256,
+        mut receiver: tokio::sync::broadcast::Receiver<H256>,
+    ) -> Result<ReceiptInfo> {
+        tokio::time::timeout(TIMEOUT_DURATION, async {
+            while let Ok(_block_hash) = receiver.recv().await {
+                if let Some(receipt) = self.transaction_receipt(hash).await? {
+                    return Ok(receipt);
+                }
+            }
+            Err(Error::TransactionConfirmationTimeout { hash, duration: TIMEOUT_DURATION })
+        })
+        .await
+        .unwrap_or_else(|_| {
+            Err(Error::TransactionConfirmationTimeout { hash, duration: TIMEOUT_DURATION })
+        })
+    }
+
+    async fn wait_for_hash(
+        &self,
+        receiver: Option<tokio::sync::broadcast::Receiver<H256>>,
+        awaited_hash: H256,
+    ) -> Result<()> {
+        if let Some(mut receiver) = receiver {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                loop {
+                    if let Ok(block_hash) = receiver.recv().await {
+                        if let Err(e) = self.log_mined_block(block_hash).await {
+                            node_info!("Failed to log mined block {block_hash:?}: {e:?}");
+                        }
+                        if block_hash == awaited_hash {
+                            break;
+                        }
+                    }
+                }
+            })
+            .await
+            .map_err(|e| {
+                Error::InternalError(format!(
+                    "Was not notified about the new best block in time {e:?}."
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    fn new_block_notifications(&self) -> Result<tokio::sync::broadcast::Receiver<H256>> {
+        self.eth_rpc_client
+            .block_notifier()
+            .map(|sender| sender.subscribe())
+            .ok_or(Error::InternalError("Could not subscribe to new blocks. 😢".to_string()))
+    }
+
+    async fn log_mined_block(&self, block_hash: H256) -> Result<()> {
+        let block_timestamp = self.backend.read_timestamp(block_hash)?;
+        let block_number = self.backend.read_block_number(block_hash)?;
+        let timestamp = utc_from_millis(block_timestamp)?;
+        node_info!("    Block Number: {}", block_number);
+        node_info!("    Block Hash: {:?}", block_hash);
+        if timestamp.year() > 9999 {
+            // rf2822 panics with more than 4 digits
+            node_info!("    Block Time: {:?}\n", timestamp.to_rfc3339());
+        } else {
+            node_info!("    Block Time: {:?}\n", timestamp.to_rfc2822());
+        }
+        Ok(())
+    }
+}
+
+/// Returns the `Utc` datetime for the given seconds since unix epoch
+fn utc_from_millis(millis: u64) -> Result<DateTime<Utc>> {
+    DateTime::from_timestamp_millis(
+        millis.try_into().map_err(|err| {
+            Error::InvalidParams(format!("Could not convert the timestamp: {err:?}"))
+        })?,
+    )
+    .ok_or(Error::InvalidParams("Could not get the utc datetime 😭".to_string()))
 }
 
 fn new_contract_info(address: &Address, code_hash: H256, nonce: Nonce) -> ContractInfo {
@@ -1539,21 +1778,16 @@ async fn create_revive_rpc_client(
     rpc: LegacyRpcMethods<SrcChainConfig>,
     block_provider: SubxtBlockInfoProvider,
     task_spawn_handle: SpawnTaskHandle,
+    keep_latest_n_blocks: Option<usize>,
 ) -> Result<EthRpcClient> {
-    let (pool, keep_latest_n_blocks) = {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
         // see sqlite in-memory issue: https://github.com/launchbadge/sqlx/issues/2510
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .idle_timeout(None)
-            .max_lifetime(None)
-            .connect("sqlite::memory:")
-            .await
-            .map_err(|err| {
-                Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err)))
-            })?;
-
-        (pool, Some(100))
-    };
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect("sqlite::memory:")
+        .await
+        .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
 
     let receipt_extractor = ReceiptExtractor::new_with_custom_address_recovery(
         api.clone(),
@@ -1563,18 +1797,19 @@ async fn create_revive_rpc_client(
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
 
-    let receipt_provider = ReceiptProvider::new(
-        pool,
-        block_provider.clone(),
-        receipt_extractor.clone(),
-        keep_latest_n_blocks,
-    )
-    .await
-    .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
+    let receipt_provider =
+        ReceiptProvider::new(pool, block_provider.clone(), receipt_extractor, keep_latest_n_blocks)
+            .await
+            .map_err(|err| {
+                Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err)))
+            })?;
 
-    let eth_rpc_client = EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
-        .await
-        .map_err(Error::from)?;
+    let mut eth_rpc_client =
+        EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
+            .await
+            .map_err(Error::from)?;
+
+    eth_rpc_client.create_block_notifier();
     let eth_rpc_client_clone = eth_rpc_client.clone();
     task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;

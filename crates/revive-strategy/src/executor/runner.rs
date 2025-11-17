@@ -84,7 +84,7 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
     ) -> foundry_evm::backend::BackendResult<()> {
         EvmExecutorStrategyRunner.set_nonce(executor, address, nonce)?;
         let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
-        ctx.externalties.set_nonce(address, nonce, false);
+        ctx.externalties.set_nonce(address, nonce);
         Ok(())
     }
 

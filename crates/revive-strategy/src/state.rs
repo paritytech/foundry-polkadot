@@ -1,7 +1,10 @@
-use alloy_primitives::{Address, FixedBytes, U256};
-use foundry_cheatcodes::Error;
+use alloy_primitives::{Address, Bytes, FixedBytes, U256};
+use foundry_cheatcodes::{Ecx, Error, Result};
 use polkadot_sdk::{
-    pallet_revive::{self, AddressMapper},
+    pallet_revive::{
+        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
+        Executable, Pallet,
+    },
     sp_core::{self, H160},
     sp_io::TestExternalities,
 };
@@ -44,17 +47,10 @@ impl TestEnv {
         })
     }
 
-    pub fn set_nonce(&mut self, address: Address, nonce: u64, check_nonce: bool) {
+    pub fn set_nonce(&mut self, address: Address, nonce: u64) {
         self.0.lock().unwrap().execute_with(|| {
             let account_id =
                 AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-            let current_nonce = System::account_nonce(&account_id);
-            if check_nonce {
-                assert!(
-                    current_nonce as u64 <= nonce,
-                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-                );
-            }
 
             polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
                 a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
@@ -75,6 +71,59 @@ impl TestEnv {
             let timestamp_ms = new_timestamp.saturating_to::<u64>().saturating_mul(1000);
             Timestamp::set_timestamp(timestamp_ms);
         });
+    }
+
+    pub fn etch_call(
+        &mut self,
+        target: &Address,
+        new_runtime_code: &Bytes,
+        ecx: Ecx<'_, '_, '_>,
+    ) -> Result {
+        self.0.lock().unwrap().execute_with(|| {
+            let origin_address = H160::from_slice(ecx.tx.caller.as_slice());
+            let origin_account = AccountId::to_fallback_account_id(&origin_address);
+
+            let target_address = H160::from_slice(target.as_slice());
+            let target_account = AccountId::to_fallback_account_id(&target_address);
+
+            let code = new_runtime_code.to_vec();
+            let code_type =
+                if code.starts_with(b"PVM\0") { BytecodeType::Pvm } else { BytecodeType::Evm };
+            let contract_blob = Pallet::<Runtime>::try_upload_code(
+                origin_account.clone(),
+                code,
+                code_type,
+                BalanceOf::<Runtime>::MAX,
+                &ExecConfig::new_substrate_tx(),
+            )
+            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
+            .0;
+
+            let mut contract_info = if let Some(contract_info) =
+                AccountInfo::<Runtime>::load_contract(&target_address)
+            {
+                contract_info
+            } else {
+                let contract_info = ContractInfo::<Runtime>::new(
+                    &target_address,
+                    System::account_nonce(target_account),
+                    *contract_blob.code_hash(),
+                )
+                .map_err(|err| {
+                    tracing::error!("Could not create contract info: {:?}", err);
+                    <&str as Into<Error>>::into("Could not create contract info")
+                })?;
+                System::inc_account_nonce(AccountId::to_fallback_account_id(&target_address));
+                contract_info
+            };
+            contract_info.code_hash = *contract_blob.code_hash();
+            AccountInfo::<Runtime>::insert_contract(
+                &H160::from_slice(target.as_slice()),
+                contract_info,
+            );
+            Ok::<(), Error>(())
+        })?;
+        Ok(Default::default())
     }
 
     pub fn get_storage(

@@ -216,6 +216,17 @@ revive-env = { path = "crates/revive-env" }
 revive-strategy = { path = "crates/revive-strategy" }
 revive-utils = { path = "crates/revive-utils" }
 
+# polkadot-sdk
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", features = [
+    "experimental",
+    "runtime",
+    "polkadot-runtime-common",
+    "pallet-revive",
+    "pallet-balances",
+    "pallet-timestamp",
+    "pallet-revive-uapi",
+]}
+
 # solc & compilation utilities
 foundry-block-explorers = { version = "0.20.0", default-features = false }
 foundry-compilers = { version = "0.18.2", default-features = false }
