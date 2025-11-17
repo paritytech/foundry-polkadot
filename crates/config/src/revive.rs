@@ -20,8 +20,8 @@ pub struct ResolcConfig {
     /// Enable compilation using resolc
     pub resolc_compile: bool,
 
-    /// Enable PVM mode at startup (independent of compilation)
-    pub resolc_startup: bool,
+    /// Use pallet-revive runtime backend
+    pub polkadot: bool,
 
     /// The resolc compiler
     pub resolc: Option<SolcReq>,

@@ -28,8 +28,25 @@ use sp_runtime_interface::{
 
 // The host functions in this module expect transactions
 // with fake signatures conforming the format checked in this function.
-fn is_impersonated(sig: &[u8]) -> bool {
+pub fn is_impersonated(sig: &[u8]) -> bool {
     sig[..12] == [0; 12] && sig[32..64] == [0; 32]
+}
+
+/// Recover sender address from signed transaction, handling impersonated transactions.
+/// For impersonated transactions (fake signatures), extracts the address embedded in the signature.
+/// For normal transactions, performs standard ECDSA recovery.
+#[allow(clippy::result_unit_err)]
+pub fn recover_maybe_impersonated_address(
+    signed_tx: &polkadot_sdk::pallet_revive::evm::TransactionSigned,
+) -> Result<polkadot_sdk::sp_core::H160, ()> {
+    let sig = signed_tx.raw_signature()?;
+    if is_impersonated(&sig) {
+        let mut res = [0; 20];
+        res.copy_from_slice(&sig[12..32]);
+        Ok(polkadot_sdk::sp_core::H160::from(res))
+    } else {
+        signed_tx.recover_eth_address()
+    }
 }
 
 #[runtime_interface]

@@ -425,6 +425,10 @@ pub enum EthRequest {
     #[serde(rename = "anvil_setCoinbase", alias = "hardhat_setCoinbase", with = "sequence")]
     SetCoinbase(Address),
 
+    /// Returns the client coinbase address.
+    #[serde(rename = "eth_coinbase", with = "empty_params")]
+    EthCoinbase(()),
+
     /// Sets the chain id
     #[serde(rename = "anvil_setChainId", with = "sequence")]
     SetChainId(u64),

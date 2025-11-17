@@ -13,6 +13,7 @@ use polkadot_sdk::{
     sp_blockchain,
     sp_core::{H160, H256},
     sp_io::hashing::blake2_256,
+    sp_runtime::FixedU128,
     sp_state_machine::{StorageKey, StorageValue},
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
@@ -26,8 +27,14 @@ pub enum BackendError {
     MissingTotalIssuance,
     #[error("Could not find chain id in the state")]
     MissingChainId,
+    #[error("Could not find aura authorities in the state")]
+    MissingAuraAuthorities,
     #[error("Could not find timestamp in the state")]
     MissingTimestamp,
+    #[error("Could not find the next fee multiplier in the state")]
+    MissingNextFeeMultiplier,
+    #[error("Could not find block number in the state")]
+    MissingBlockNumber,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
@@ -42,6 +49,12 @@ pub enum BackendError {
     DecodeCodeInfo(codec::Error),
     #[error("Unable to decode timestamp: {0}")]
     DecodeTimestamp(codec::Error),
+    #[error("Unable to decode blockNumber: {0}")]
+    DecodeBlockNumber(codec::Error),
+    #[error("Unable to decode aura authorities: {0}")]
+    DecodeAuraAuthorities(codec::Error),
+    #[error("Unable to decode the next fee multiplier: {0}")]
+    DecodeNextFeeMultiplier(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -68,11 +81,32 @@ impl BackendWithOverlay {
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)
     }
 
+    pub fn read_block_number(&self, hash: Hash) -> Result<u32> {
+        let key = well_known_keys::BLOCK_NUMBER_KEY;
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingBlockNumber)?;
+        u32::decode(&mut &value[..]).map_err(BackendError::DecodeBlockNumber)
+    }
+
     pub fn read_chain_id(&self, hash: Hash) -> Result<u64> {
         let key = well_known_keys::CHAIN_ID;
 
         let value = self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingChainId)?;
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeChainId)
+    }
+
+    pub fn read_aura_authority(&self, hash: Hash) -> Result<AccountId> {
+        let key = well_known_keys::AURA_AUTHORITIES;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingAuraAuthorities)?;
+        let authorities = <Vec<[u8; 32]>>::decode(&mut &value[..])
+            .map_err(BackendError::DecodeAuraAuthorities)?;
+        // Read the first authority, since that's what we modify via RPC, or at genesis,
+        // and instruct the runtime to pick via the consensus data provider, whenever it
+        // needs the block author.
+        let authority = *authorities.first().ok_or(BackendError::MissingAuraAuthorities)?;
+        Ok(authority.into())
     }
 
     pub fn read_total_issuance(&self, hash: Hash) -> Result<Balance> {
@@ -131,9 +165,24 @@ impl BackendWithOverlay {
         overrides.set_system_account_info(at, account_id, value);
     }
 
+    pub fn inject_timestamp(&self, at: Hash, timestamp: u64) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_timestamp(at, timestamp);
+    }
+
     pub fn inject_chain_id(&self, at: Hash, chain_id: u64) {
         let mut overrides = self.overrides.lock();
         overrides.set_chain_id(at, chain_id);
+    }
+
+    pub fn inject_aura_authority(&self, at: Hash, aura_authority: AccountId) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_coinbase(at, aura_authority);
+    }
+
+    pub fn inject_next_fee_multiplier(&self, at: Hash, next_fee_multiplier: FixedU128) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_next_fee_multiplier(at, next_fee_multiplier);
     }
 
     pub fn inject_total_issuance(&self, at: Hash, value: Balance) {
@@ -218,10 +267,29 @@ impl StorageOverrides {
         self.add(latest_block, changeset);
     }
 
-    #[allow(unused)]
+    fn set_coinbase(&mut self, latest_block: Hash, aura_authority: AccountId) {
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(
+            well_known_keys::AURA_AUTHORITIES.to_vec(),
+            Some(vec![aura_authority].encode()),
+        );
+
+        self.add(latest_block, changeset);
+    }
+
     fn set_timestamp(&mut self, latest_block: Hash, timestamp: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(timestamp.encode()));
+
+        self.add(latest_block, changeset);
+    }
+
+    fn set_next_fee_multiplier(&mut self, latest_block: Hash, next_fee_multiplier: FixedU128) {
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(
+            well_known_keys::NEXT_FEE_MULTIPLIER.to_vec(),
+            Some(next_fee_multiplier.encode()),
+        );
 
         self.add(latest_block, changeset);
     }

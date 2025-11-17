@@ -26,13 +26,8 @@ async fn test_impersonate_account() {
     let alith_account = Account::from(subxt_signer::eth::dev::alith());
     let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
     let transfer_amount = U256::from(16e17);
-    let (dest_addr, _) = node
-        .eth_transfer_to_unitialized_random_account(
-            alith_addr,
-            transfer_amount,
-            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
-        )
-        .await;
+    let (dest_addr, _) =
+        node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount).await;
     let dest_h160 = H160::from_slice(dest_addr.as_slice());
 
     // Impersonate destination
@@ -43,11 +38,7 @@ async fn test_impersonate_account() {
     let dest_balance = node.get_balance(dest_h160, None).await;
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
-        .await
-        .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let tx_hash = node.send_transaction(transaction).await.unwrap();
     let receipt_info = node.get_transaction_receipt(tx_hash).await;
 
     // Assert on balances after second transfer.
@@ -68,7 +59,7 @@ async fn test_impersonate_account() {
     .unwrap();
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let err = node.send_transaction(transaction.clone(), None).await.unwrap_err();
+    let err = node.send_transaction(transaction.clone()).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
     assert!(err.message.contains(
         format!("Account not found for address {}", dest_addr.to_string().to_lowercase()).as_str()
@@ -95,13 +86,8 @@ async fn test_auto_impersonate(#[case] rpc_driven: bool) {
     let alith_account = Account::from(subxt_signer::eth::dev::alith());
     let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
     let transfer_amount = U256::from(16e17);
-    let (dest_addr, _) = node
-        .eth_transfer_to_unitialized_random_account(
-            alith_addr,
-            transfer_amount,
-            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
-        )
-        .await;
+    let (dest_addr, _) =
+        node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount).await;
 
     // Start impersonating any address now
     if rpc_driven {
@@ -118,11 +104,7 @@ async fn test_auto_impersonate(#[case] rpc_driven: bool) {
     let transfer_amount = U256::from(1e11);
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let tx_hash = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(2, Duration::from_secs(1))))
-        .await
-        .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let tx_hash = node.send_transaction(transaction).await.unwrap();
     let receipt_info = node.get_transaction_receipt(tx_hash).await;
 
     // Assert on balances after third transfer.
@@ -141,7 +123,7 @@ async fn test_auto_impersonate(#[case] rpc_driven: bool) {
         .unwrap();
     let transaction =
         TransactionRequest::default().value(transfer_amount).from(dest_addr).to(alith_addr);
-    let err = node.send_transaction(transaction.clone(), None).await.unwrap_err();
+    let err = node.send_transaction(transaction.clone()).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InternalError);
     assert!(err.message.contains(
         format!("Account not found for address {}", dest_addr.to_string().to_lowercase()).as_str()
@@ -161,13 +143,8 @@ async fn test_send_unsigned_tx() {
     let alith_account = Account::from(subxt_signer::eth::dev::alith());
     let alith_addr = Address::from(ReviveAddress::new(alith_account.address()));
     let transfer_amount = U256::from(16e17);
-    let (dest_addr, _) = node
-        .eth_transfer_to_unitialized_random_account(
-            alith_addr,
-            transfer_amount,
-            Some(BlockWaitTimeout::new(1, Duration::from_secs(1))),
-        )
-        .await;
+    let (dest_addr, _) =
+        node.eth_transfer_to_unitialized_random_account(alith_addr, transfer_amount).await;
     let dest_h160 = H160::from_slice(dest_addr.as_slice());
 
     // Impersonate destination

@@ -92,6 +92,10 @@ pub struct NodeArgs {
     #[arg(long, help = IPC_HELP, value_name = "PATH", visible_alias = "ipcpath")]
     pub ipc: Option<Option<String>>,
 
+    /// Max number of blocks to keep in memory for the eth revive rpc
+    #[arg(long, visible_alias = "transaction-block-keeper")]
+    pub revive_rpc_block_limit: Option<usize>,
+
     #[command(flatten)]
     pub evm: AnvilEvmArgs,
 
@@ -109,7 +113,6 @@ impl NodeArgs {
         let anvil_config = AnvilNodeConfig::default()
             .with_gas_limit(self.evm.gas_limit)
             .disable_block_gas_limit(self.evm.disable_block_gas_limit)
-            .with_gas_price(self.evm.gas_price)
             .with_blocktime(self.block_time)
             .with_no_mining(self.no_mining)
             .with_mixed_mining(self.mixed_mining, self.block_time)
@@ -134,7 +137,8 @@ impl NodeArgs {
             .with_code_size_limit(self.evm.code_size_limit)
             .disable_code_size_limit(self.evm.disable_code_size_limit)
             .with_disable_default_create2_deployer(self.evm.disable_default_create2_deployer)
-            .with_memory_limit(self.evm.memory_limit);
+            .with_memory_limit(self.evm.memory_limit)
+            .with_revive_rpc_block_limit(self.revive_rpc_block_limit);
 
         let substrate_node_config = SubstrateNodeConfig::new(&anvil_config);
 
@@ -197,10 +201,6 @@ pub struct AnvilEvmArgs {
         help_heading = "Environment config"
     )]
     pub disable_code_size_limit: bool,
-
-    /// The gas price.
-    #[arg(long, help_heading = "Environment config")]
-    pub gas_price: Option<u128>,
 
     /// The base fee in a block.
     #[arg(

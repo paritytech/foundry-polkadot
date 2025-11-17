@@ -45,7 +45,7 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         ctx: &dyn ExecutorStrategyContext,
     ) -> foundry_cheatcodes::CheatcodesStrategy {
         let ctx = get_context_ref(ctx);
-        CheatcodeInspectorStrategy::new_pvm(ctx.dual_compiled_contracts.clone(), ctx.resolc_startup)
+        CheatcodeInspectorStrategy::new_pvm(ctx.dual_compiled_contracts.clone(), ctx.runtime_mode)
     }
 
     /// Sets the balance of an account.
@@ -99,16 +99,10 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
             externalities.execute_with(|| {
                 let account_id =
                     AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-                let current_nonce = System::account_nonce(&account_id);
 
-                assert!(
-                    current_nonce as u64 <= nonce,
-                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-                );
-
-                while (System::account_nonce(&account_id) as u64) < nonce {
-                    System::inc_account_nonce(&account_id);
-                }
+                polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
+                    a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+                });
             })
         });
         Ok(())

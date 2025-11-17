@@ -2,10 +2,12 @@ use alloy_eips::BlockId;
 use alloy_primitives::{Address, B256, Bytes, U256, hex};
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
+use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
     api_server::{
         self, ApiHandle,
+        filters::Filters,
         revive_conversions::{AlloyU256, ReviveAddress},
     },
     config::{AnvilNodeConfig, SubstrateNodeConfig},
@@ -26,11 +28,15 @@ use codec::Decode;
 use eyre::{Result, WrapErr};
 use futures::{StreamExt, channel::oneshot};
 use polkadot_sdk::{
-    pallet_revive::evm::{Block, HashesOrTransactionInfos, ReceiptInfo},
+    pallet_revive::{
+        ReviveApi,
+        evm::{Block, HashesOrTransactionInfos, ReceiptInfo},
+    },
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
     sc_service::TaskManager,
+    sp_api::ProvideRuntimeApi,
     sp_core::H256,
     sp_state_machine::StorageKey,
 };
@@ -39,8 +45,7 @@ use std::{fmt::Debug, time::Duration};
 use subxt::utils::H160;
 use tempfile::TempDir;
 
-const NATIVE_TO_ETH_RATIO: u128 = 1000000;
-pub const EXISTENTIAL_DEPOSIT: u128 = substrate_runtime::currency::DOLLARS * NATIVE_TO_ETH_RATIO;
+use crate::abi::Multicall;
 
 pub struct BlockWaitTimeout {
     pub block_number: u32,
@@ -63,7 +68,15 @@ pub struct TestNode {
 impl TestNode {
     pub async fn new(
         anvil_config: AnvilNodeConfig,
+        substrate_config: SubstrateNodeConfig,
+    ) -> Result<Self> {
+        Self::new_inner(anvil_config, substrate_config, Filters::default()).await
+    }
+
+    pub async fn new_inner(
+        anvil_config: AnvilNodeConfig,
         mut substrate_config: SubstrateNodeConfig,
+        filters: Filters,
     ) -> Result<Self> {
         let handle = tokio::runtime::Handle::current();
 
@@ -87,7 +100,7 @@ impl TestNode {
             Some(_) => {}
         }
 
-        let substrate_client = SubstrateCli { genesis_config: GenesisConfig::from(&anvil_config) };
+        let substrate_client = SubstrateCli::new(GenesisConfig::from(&anvil_config));
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
         let logging_manager = if anvil_config.enable_tracing {
             init_tracing(anvil_config.silent)
@@ -95,7 +108,8 @@ impl TestNode {
             LoggingManager::default()
         };
 
-        let (service, task_manager, api) = spawn(anvil_config, config, logging_manager).await?;
+        let (service, task_manager, api) =
+            spawn(anvil_config, config, logging_manager, filters).await?;
 
         Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }
@@ -117,13 +131,18 @@ impl TestNode {
             .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
     }
 
+    pub async fn eth_block_hash_by_number(&self, n: u32) -> eyre::Result<H256> {
+        let substrate_block_hash = self.block_hash_by_number(n).await?;
+
+        self.resolve_ethereum_hash(substrate_block_hash)
+    }
+
     /// Execute an ethereum transaction.
     pub async fn send_transaction(
         &mut self,
         transaction: TransactionRequest,
-        timeout: Option<BlockWaitTimeout>,
     ) -> Result<H256, RpcError> {
-        self.send_transaction_inner(transaction, timeout, false).await
+        self.send_transaction_inner(transaction, None, false).await
     }
 
     /// Execute an impersonated ethereum transaction.
@@ -150,13 +169,28 @@ impl TestNode {
                 .unwrap(),
             )?
         } else {
-            unwrap_response::<H256>(
-                self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
-                    transaction,
-                ))))
-                .await
-                .unwrap(),
-            )?
+            let is_automine =
+                unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
+                    .unwrap();
+
+            if is_automine {
+                unwrap_response::<ReceiptInfo>(
+                    self.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(
+                        WithOtherFields::new(transaction),
+                    )))
+                    .await
+                    .unwrap(),
+                )?
+                .transaction_hash
+            } else {
+                unwrap_response(
+                    self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
+                        transaction,
+                    ))))
+                    .await
+                    .unwrap(),
+                )?
+            }
         };
 
         if let Some(BlockWaitTimeout { block_number, timeout }) = timeout {
@@ -172,6 +206,16 @@ impl TestNode {
             hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
         let mut input = &bytes[..];
         Decode::decode(&mut input).unwrap()
+    }
+
+    pub async fn get_eth_timestamp(&mut self, at: Option<H256>) -> u64 {
+        if let Some(hash) = at {
+            self.get_block_by_hash(hash).await
+        } else {
+            self.eth_best_block().await
+        }
+        .timestamp
+        .as_u64()
     }
 
     pub async fn get_nonce(&mut self, address: Address) -> U256 {
@@ -191,6 +235,18 @@ impl TestNode {
             .unwrap()
             .to_owned();
         u32::from_str_radix(num.trim_start_matches("0x"), 16).unwrap()
+    }
+
+    pub async fn eth_best_block(&mut self) -> Block {
+        unwrap_response::<Block>(
+            self.eth_rpc(EthRequest::EthGetBlockByNumber(
+                alloy_eips::BlockNumberOrTag::Latest,
+                false,
+            ))
+            .await
+            .unwrap(),
+        )
+        .unwrap()
     }
 
     pub async fn wait_for_block_with_timeout(
@@ -248,7 +304,6 @@ impl TestNode {
         &mut self,
         from: Address,
         transfer_amount: U256,
-        block_wait_timeout: Option<BlockWaitTimeout>,
     ) -> (Address, H256) {
         let dest_addr = Address::random();
         let dest_h160 = H160::from_slice(dest_addr.as_slice());
@@ -261,13 +316,12 @@ impl TestNode {
 
         let transaction =
             TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
-        let tx_hash = self.send_transaction(transaction, block_wait_timeout).await.unwrap();
+        let tx_hash = self.send_transaction(transaction).await.unwrap();
 
         let is_automine =
             unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
                 .unwrap();
         if is_automine {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             let receipt_info = self.get_transaction_receipt(tx_hash).await;
 
             // Assert on balances after first transfer.
@@ -278,8 +332,7 @@ impl TestNode {
                 from_initial_balance
                     - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used)
                         .inner()
-                    - transfer_amount
-                    - U256::from(EXISTENTIAL_DEPOSIT),
+                    - transfer_amount,
                 "signer's balance should have changed"
             );
             assert_eq!(
@@ -292,20 +345,11 @@ impl TestNode {
         (dest_addr, tx_hash)
     }
 
-    pub async fn deploy_contract(
-        &mut self,
-        code: &[u8],
-        deployer: H160,
-        block_number: Option<u32>,
-    ) -> H256 {
+    pub async fn deploy_contract(&mut self, code: &[u8], deployer: H160) -> H256 {
         let deploy_contract_tx = TransactionRequest::default()
             .from(Address::from(ReviveAddress::new(deployer)))
             .input(TransactionInput::both(Bytes::copy_from_slice(code)));
-        let block_wait = block_number.map(|bn| BlockWaitTimeout {
-            block_number: bn,
-            timeout: std::time::Duration::from_millis(1000),
-        });
-        self.send_transaction(deploy_contract_tx, block_wait).await.unwrap()
+        self.send_transaction(deploy_contract_tx).await.unwrap()
     }
 
     pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {
@@ -320,6 +364,10 @@ impl TestNode {
         let hex_string = unwrap_response::<String>(result).unwrap();
         let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
         U256::from_str_radix(hex_value, 16).unwrap()
+    }
+
+    pub fn resolve_ethereum_hash(&self, substrate_hash: H256) -> eyre::Result<H256> {
+        Ok(self.service.client.runtime_api().eth_block(substrate_hash)?.hash)
     }
 
     async fn wait_for_block_with_number(&self, n: u32) {
@@ -428,4 +476,24 @@ pub fn to_hex_string(value: u64) -> String {
     let trimmed = hex.trim_start_matches('0');
     let result = if trimmed.is_empty() { "0" } else { trimmed };
     format!("0x{result}")
+}
+
+pub async fn multicall_get_coinbase(
+    node: &mut TestNode,
+    from: Address,
+    contract_address: Address,
+) -> Address {
+    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(from)
+        .to(contract_address)
+        .input(TransactionInput::both(get_coinbase.into()));
+
+    let res: Bytes = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap()
 }

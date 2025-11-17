@@ -31,7 +31,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
@@ -41,7 +41,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang libclang-dev
       - name: Build documentation
-        run: cargo doc --workspace --all-features --no-deps --document-private-items
+        run: cargo +nightly doc --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: --cfg docsrs -D warnings --show-type-layout --generate-link-to-definition --enable-index-page -Zunstable-options
       - name: Deploy documentation
@@ -53,20 +53,20 @@ jobs:
           force_orphan: true
 
   doctest:
-    runs-on: ubuntu-latest
+    runs-on: parity-large-new
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev unzip build-essential
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install clang on ubuntu
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
@@ -82,10 +82,13 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@clippy
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.88.0
+          components: clippy
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
@@ -94,7 +97,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang libclang-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
@@ -118,7 +121,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
@@ -143,7 +146,7 @@ jobs:
       - name: Install build-essential for tikv-jemalloc-sys
         run: |
           sudo apt-get install -y build-essential
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -152,7 +155,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
