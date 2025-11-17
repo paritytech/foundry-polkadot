@@ -447,8 +447,7 @@ impl<'a> ContractRunner<'a> {
             f()
         };
 
-        let test_results =
-            functions.into_par_iter().map(|item| f(item)).collect::<BTreeMap<_, _>>();
+        let test_results = functions.into_par_iter().map(f).collect::<BTreeMap<_, _>>();
 
         let duration = start.elapsed();
         SuiteResult::new(duration, test_results, warnings)
@@ -547,12 +546,13 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and unit test function call are discarded after
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
+        let mut binding = self.executor.clone().into_owned();
+
         // Prepare unit test execution.
-        if self.prepare_test(func).is_err() {
+        if self.prepare_test(func, &mut binding).is_err() {
             return self.result;
         }
-        let mut binding = self.executor.clone();
-        let executor = binding.to_mut();
+        let executor = binding;
         // Run current unit test.
         let (mut raw_call_result, reason) = match executor.call(
             self.sender,
@@ -576,8 +576,7 @@ impl<'a> FunctionRunner<'a> {
             }
         };
 
-        let success =
-            self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
+        let success = executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
         self.result.single_result(success, reason, raw_call_result);
 
         self.result
@@ -592,8 +591,10 @@ impl<'a> FunctionRunner<'a> {
     /// - `bool[] public fixtureSwap = [true, false]` The `table_test` is then called with the pair
     ///   of args `(2, true)` and `(5, false)`.
     fn run_table_test(mut self, func: &Function) -> TestResult {
+        let mut executor = self.executor.clone().into_owned();
+
         // Prepare unit test execution.
-        if self.prepare_test(func).is_err() {
+        if self.prepare_test(func, &mut executor).is_err() {
             return self.result;
         }
 
@@ -653,7 +654,7 @@ impl<'a> FunctionRunner<'a> {
             }
 
             let args = table_fixtures.iter().map(|row| row[i].clone()).collect_vec();
-            let (mut raw_call_result, reason) = match self.executor.call(
+            let (mut raw_call_result, reason) = match executor.call(
                 self.sender,
                 self.address,
                 func,
@@ -674,7 +675,7 @@ impl<'a> FunctionRunner<'a> {
             };
 
             let is_success =
-                self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
+                executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
             // Record counterexample if test fails.
             if !is_success {
                 self.result.counterexample =
@@ -931,8 +932,9 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and fuzz test are discarded after test ends,
     /// similar to `eth_call`.
     fn run_fuzz_test(mut self, func: &Function) -> TestResult {
+        let mut executor = self.executor.clone().into_owned();
         // Prepare fuzz test execution.
-        if self.prepare_test(func).is_err() {
+        if self.prepare_test(func, &mut executor).is_err() {
             return self.result;
         }
 
@@ -948,8 +950,7 @@ impl<'a> FunctionRunner<'a> {
         );
 
         // Run fuzz test.
-        let fuzzed_executor =
-            FuzzedExecutor::new(self.executor.into_owned(), runner, self.tcfg.sender, fuzz_config);
+        let fuzzed_executor = FuzzedExecutor::new(executor, runner, self.tcfg.sender, fuzz_config);
         let result = fuzzed_executor.fuzz(
             func,
             &self.setup.fuzz_fixtures,
@@ -971,24 +972,19 @@ impl<'a> FunctionRunner<'a> {
     ///
     /// Unit tests within same contract (or even current test) are valid options for before test tx
     /// configuration. Test execution stops if any of before test txes fails.
-    fn prepare_test(&mut self, func: &Function) -> Result<(), ()> {
+    fn prepare_test(&mut self, func: &Function, executor: &mut Executor) -> Result<(), ()> {
         let address = self.setup.address;
 
         // Apply before test configured functions (if any).
         if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count()
             == 1
         {
-            for calldata in self.executor.call_sol_default(
+            for calldata in executor.call_sol_default(
                 address,
                 &ITest::beforeTestSetupCall { testSelector: func.selector() },
             ) {
                 // Apply before test configured calldata.
-                match self.executor.to_mut().transact_raw(
-                    self.tcfg.sender,
-                    address,
-                    calldata,
-                    U256::ZERO,
-                ) {
+                match executor.transact_raw(self.tcfg.sender, address, calldata, U256::ZERO) {
                     Ok(call_result) => {
                         let reverted = call_result.reverted;
 

@@ -407,7 +407,7 @@ async fn test_mining_with_eth_rpc_block_limit() {
         .value(transfer_amount)
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
-    node.send_transaction(transaction, None).await.unwrap();
+    node.send_transaction(transaction).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 

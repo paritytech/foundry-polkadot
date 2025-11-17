@@ -88,8 +88,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         // them. https://github.com/paritytech/foundry-polkadot/blob/26eda0de53ac03f7ac9b6a6023d8243101cffaf1/crates/cheatcodes/src/inspector.rs#L1013
         if let Some(mock_data) =
             mock_inner.mocked_calls.get_mut(&Address::from_slice(callee.as_bytes()))
-        {
-            if let Some(return_data_queue) = match mock_data.get_mut(&ctx) {
+            && let Some(return_data_queue) = match mock_data.get_mut(&ctx) {
                 Some(found) => Some(found),
                 None => mock_data
                     .iter_mut()
@@ -100,23 +99,25 @@ impl MockHandler<Runtime> for MockHandlerImpl {
                                 || (ctx.value == Some(U256::ZERO) && key.value.is_none()))
                     })
                     .map(|(_, v)| v),
-            } && let Some(return_data) = if return_data_queue.len() == 1 {
+            }
+            && let Some(return_data) = if return_data_queue.len() == 1 {
                 // If the mocked calls stack has a single element in it, don't empty it
                 return_data_queue.front().map(|x| x.to_owned())
             } else {
                 // Else, we pop the front element
                 return_data_queue.pop_front()
-            } {
-                return Some(ExecReturnValue {
-                    flags: if matches!(return_data.ret_type, InstructionResult::Revert) {
-                        ReturnFlags::REVERT
-                    } else {
-                        ReturnFlags::default()
-                    },
-                    data: return_data.data.0.to_vec(),
-                });
             }
-        };
+        {
+            return Some(ExecReturnValue {
+                flags: if matches!(return_data.ret_type, InstructionResult::Revert) {
+                    ReturnFlags::REVERT
+                } else {
+                    ReturnFlags::default()
+                },
+                data: return_data.data.0.to_vec(),
+            });
+        }
+
         None
     }
 

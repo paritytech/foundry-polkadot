@@ -767,7 +767,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let res = ctx.externalities.execute_with(|| {
             tracer.trace(|| {
                 let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                    &H160::from_slice(ecx.tx.caller.as_slice()),
+                    &H160::from_slice(input.caller().as_slice()),
                 ));
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());

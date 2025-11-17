@@ -25,8 +25,8 @@ impl Default for TestEnv {
 impl Clone for TestEnv {
     fn clone(&self) -> Self {
         let mut externalities = ExtBuilder::default().build();
-        externalities.backend = self.0.lock().unwrap().as_backend().clone();
-        TestEnv(Arc::new(Mutex::new(externalities)))
+        externalities.backend = self.0.lock().unwrap().as_backend();
+        Self(Arc::new(Mutex::new(externalities)))
     }
 }
 
@@ -90,7 +90,7 @@ impl TestEnv {
             let code_type =
                 if code.starts_with(b"PVM\0") { BytecodeType::Pvm } else { BytecodeType::Evm };
             let contract_blob = Pallet::<Runtime>::try_upload_code(
-                origin_account.clone(),
+                origin_account,
                 code,
                 code_type,
                 BalanceOf::<Runtime>::MAX,
