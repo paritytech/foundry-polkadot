@@ -330,8 +330,11 @@ impl ForgeTestData {
         self.runner_revive_with(runtime_mode, |_| {})
     }
 
-    pub fn runner_revive_with(&self, runtime_mode: ReviveRuntimeMode, modify: impl FnOnce(&mut Config) -> MultiContractRunner
-    {
+    pub fn runner_revive_with(
+        &self,
+        runtime_mode: ReviveRuntimeMode,
+        modify: impl FnOnce(&mut Config),
+    ) -> MultiContractRunner {
         let mut config = (*self.config).clone();
         modify(&mut config);
         config.rpc_endpoints = rpc_endpoints();

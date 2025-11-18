@@ -28,7 +28,7 @@ async fn test_revive_cheats_local(#[case] runtime_mode: ReviveRuntimeMode) {
     }
 
     let runner = TEST_DATA_REVIVE.runner_revive_with(runtime_mode, |config| {
-        use foundry_config::{fs_permissions::PathPermission, FsPermissions};
+        use foundry_config::{FsPermissions, fs_permissions::PathPermission};
 
         config.fs_permissions = FsPermissions::new(vec![PathPermission::read_write("./")]);
     });
