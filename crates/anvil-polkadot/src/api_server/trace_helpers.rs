@@ -10,6 +10,10 @@ use polkadot_sdk::pallet_revive::evm::{
     TransactionTrace as ReviveTransactionTrace,
 };
 
+/// Builds a Parity block trace from a vector of TransactionTrace objects returned by the
+/// debug_traceBlockByNumber endpoint of pallet revive and a Block object recovered from pallet
+/// revive. The block must be "hydrated" with all the transactions details.
+/// This is used to build the output for Parity client's RPC method `trace_block`.
 pub fn parity_block_trace_builder(
     traces: Vec<ReviveTransactionTrace>,
     block: Block,
@@ -34,6 +38,9 @@ pub fn parity_block_trace_builder(
     Ok(parity_block_traces)
 }
 
+/// Builds a Parity transaction trace from a Trace object returned by the debug_traceTransaction
+/// endpoint of pallet revive and a TransactionInfo object recovered from pallet revive.
+/// This is used to build the output for Parity client's RPC method `trace_transaction`.
 pub fn parity_transaction_trace_builder(
     trace: Trace,
     tx_info: Option<TransactionInfo>,
@@ -74,8 +81,9 @@ pub fn parity_transaction_trace_builder(
     Ok(parity_tx_traces)
 }
 
-/// Builds a Parity transaction trace from a call trace and a trace address, ignoring the child
-/// calls.
+/// Builds a Parity TransactionTrace from a CallTrace from pallet revive and a trace address,
+/// which is built with the indices of the path from the transaction root callto the specific call
+/// in the call tree.
 fn parity_transaction_trace_from_call_trace(
     trace: CallTrace,
     trace_address: Vec<usize>,

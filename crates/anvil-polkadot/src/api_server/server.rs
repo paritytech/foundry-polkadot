@@ -5,7 +5,8 @@ use crate::{
         filters::{BlockNotifications, EthFilter, Filters, eviction_task},
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
-            ReviveFilter, ReviveTracerOptions, SubstrateU256, convert_to_generic_transaction,
+            ReviveFilter, ReviveTrace, ReviveTracerType, SubstrateU256,
+            convert_to_generic_transaction,
         },
         signer::DevSigner,
         trace_helpers::{parity_block_trace_builder, parity_transaction_trace_builder},
@@ -38,7 +39,7 @@ use alloy_rpc_types::{
     Filter, TransactionRequest,
     anvil::{Forking, Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
     trace::{
-        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions},
+        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace},
         parity::LocalizedTransactionTrace,
     },
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
@@ -63,7 +64,7 @@ use polkadot_sdk::{
         ReviveApi,
         evm::{
             Block, BlockNumberOrTagOrHash, BlockTag, Bytes, CallTracerConfig, FeeHistoryResult,
-            FilterResults, ReceiptInfo, Trace, TracerType, TransactionInfo, TransactionSigned,
+            FilterResults, ReceiptInfo, TracerType, TransactionInfo, TransactionSigned,
         },
     },
     parachains_common::{AccountId, Hash, Nonce},
@@ -1587,16 +1588,16 @@ impl ApiServer {
         &self,
         tx_hash: B256,
         geth_tracer_options: GethDebugTracingOptions,
-    ) -> Result<Trace> {
+    ) -> Result<GethTrace> {
         node_info!("debug_traceTransaction");
         let trace = self
             .eth_rpc_client
             .trace_transaction(
                 H256::from_slice(tx_hash.as_ref()),
-                ReviveTracerOptions::from(geth_tracer_options).inner(),
+                ReviveTracerType::from(geth_tracer_options).inner(),
             )
             .await?;
-        Ok(trace)
+        Ok(ReviveTrace::new(trace).into())
     }
 
     async fn debug_trace_call(
@@ -1604,15 +1605,15 @@ impl ApiServer {
         request: WithOtherFields<TransactionRequest>,
         block_number: Option<BlockId>,
         geth_tracer_options: GethDebugTracingCallOptions,
-    ) -> Result<Trace> {
+    ) -> Result<GethTrace> {
         node_info!("debug_traceCall");
         let hash = self.get_block_hash_for_tag(block_number).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
         let transaction = convert_to_generic_transaction(request.into_inner());
         let trace = runtime_api
-            .trace_call(transaction, ReviveTracerOptions::from(geth_tracer_options).inner())
+            .trace_call(transaction, ReviveTracerType::from(geth_tracer_options).inner())
             .await?;
-        Ok(trace)
+        Ok(ReviveTrace::new(trace).into())
     }
 
     async fn trace_transaction(&self, tx_hash: B256) -> Result<Vec<LocalizedTransactionTrace>> {
