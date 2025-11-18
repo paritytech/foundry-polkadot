@@ -9,7 +9,10 @@ use polkadot_sdk::{
     sp_io::TestExternalities,
 };
 use revive_env::{AccountId, ExtBuilder, Runtime, System, Timestamp};
-use std::sync::{Arc, Mutex};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Mutex},
+};
 pub struct TestEnv(pub Arc<Mutex<TestExternalities>>);
 
 impl Default for TestEnv {
@@ -19,6 +22,12 @@ impl Default for TestEnv {
                 .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
                 .build(),
         )))
+    }
+}
+
+impl Debug for TestEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<Externalities>")
     }
 }
 

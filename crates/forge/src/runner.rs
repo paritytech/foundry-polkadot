@@ -130,8 +130,6 @@ impl<'a> ContractRunner<'a> {
 
         // Deploy libraries.
         self.executor.set_balance(LIBRARY_DEPLOYER, U256::MAX)?;
-        let nonce = self.executor.get_nonce(self.sender)?;
-        let address = self.sender.create(nonce);
 
         let mut result = TestSetup::default();
         for code in &self.mcr.libs_to_deploy {
@@ -154,7 +152,8 @@ impl<'a> ContractRunner<'a> {
                 return Ok(result);
             }
         }
-
+        let nonce = self.executor.get_nonce(self.sender)?;
+        let address = self.sender.create(nonce);
         result.address = address;
         // NOTE(revive): the test contract is set here instead of where upstream does it as
         // the test contract address needs to be retrieved in order to skip

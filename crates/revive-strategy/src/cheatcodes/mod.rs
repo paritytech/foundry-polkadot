@@ -18,7 +18,6 @@ use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
-    fmt::Debug,
     sync::Arc,
 };
 use tracing::warn;
@@ -119,12 +118,6 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     pub runtime_mode: crate::ReviveRuntimeMode,
     pub remove_recorded_access_at: Option<usize>,
     pub externalities: TestEnv,
-}
-
-impl Debug for TestEnv {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("<Externalities>")
-    }
 }
 
 impl PvmCheatcodeInspectorStrategyContext {
@@ -626,7 +619,7 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
     tracing::info!("switching from pallet-revive back to REVM");
     ctx.using_pvm = false;
 
-    ctx.externalities.0.lock().unwrap().execute_with(|| {
+    ctx.externalities.execute_with(|| {
         let block_number = System::block_number();
         let timestamp = Timestamp::get();
 
@@ -926,7 +919,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let res = ctx.externalities.execute_with(|| {
             tracer.trace(|| {
                 let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                    &H160::from_slice(ecx.tx.caller.as_slice()),
+                    &H160::from_slice(call.caller.as_slice()),
                 ));
                 mock_handler.fund_pranked_accounts(call.caller);
 
