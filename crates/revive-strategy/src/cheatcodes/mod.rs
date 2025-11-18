@@ -15,6 +15,7 @@ use foundry_cheatcodes::{
 };
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
+use foundry_evm::constants::CHEATCODE_ADDRESS;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
@@ -360,7 +361,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     return Err(precompile_error(&target));
                 }
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                ctx.externalities.store(target, slot, value)?;
+                if target != CHEATCODE_ADDRESS {
+                    ctx.externalities.store(target, slot, value)?;
+                }
                 cheatcode.dyn_apply(ccx, executor)
             }
             // Not custom, just invoke the default behavior
