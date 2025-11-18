@@ -13,7 +13,6 @@ use foundry_cheatcodes::{
     },
     journaled_account,
 };
-use foundry_evm_core::constants::CHEATCODE_ADDRESS;
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use foundry_evm::constants::CHEATCODE_ADDRESS;
