@@ -8,11 +8,12 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall,
-        setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        dealCall, etchCall, getNonce_0Call, pvmCall, resetNonceCall, rollCall, setNonceCall,
+        setNonceUnsafeCall, warpCall,
     },
-    journaled_account, precompile_error,
+    journaled_account,
 };
+use foundry_evm_core::constants::CHEATCODE_ADDRESS;
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use revive_env::{AccountId, Runtime, System, Timestamp};
@@ -441,42 +442,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
                 etch_call(target, newRuntimeBytecode, ccx.ecx)?;
-                Ok(Default::default())
-            }
-            t if using_pvm && is::<loadCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
-                let target_address_h160 = H160::from_slice(target.as_slice());
-                let storage_value = execute_with_externalities(|externalities| {
-                    externalities.execute_with(|| {
-                        Pallet::<Runtime>::get_storage(target_address_h160, slot.into())
-                    })
-                });
-                let result = storage_value
-                    .ok()
-                    .flatten()
-                    .map(|b| B256::from_slice(&b))
-                    .unwrap_or(B256::ZERO);
-                Ok(result.abi_encode())
-            }
-            t if using_pvm && is::<storeCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let &storeCall { target, slot, value } = cheatcode.as_any().downcast_ref().unwrap();
-                if ccx.is_precompile(&target) {
-                    return Err(precompile_error(&target));
-                }
-
-                let target_address_h160 = H160::from_slice(target.as_slice());
-                let _ = execute_with_externalities(|externalities| {
-                    externalities.execute_with(|| {
-                        Pallet::<Runtime>::set_storage(
-                            target_address_h160,
-                            slot.into(),
-                            Some(value.to_vec()),
-                        )
-                    })
-                })
-                .map_err(|_| <&str as Into<Error>>::into("Could not set storage"))?;
                 Ok(Default::default())
             }
             // Not custom, just invoke the default behavior
@@ -1153,6 +1118,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
     ) {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
+        // If this was a cheatcode call, sync all touched addresses
+        if call.target_address == CHEATCODE_ADDRESS {
+            let addresses_to_sync: Vec<Address> =
+                ecx.journaled_state.state.keys().copied().collect();
+
+            for address in addresses_to_sync {
+                tracing::info!(address = ?address, "syncing cheatcode changes to pallet-revive");
+                apply_revm_storage_diff(ecx, address);
+            }
+            return;
+        }
+
         // Skip storage sync if: in PVM mode AND no test contract
         if ctx.using_pvm
             && ecx
@@ -1226,13 +1203,29 @@ fn get_context_ref_mut(
 }
 
 /// Applies REVM storage diffs to pallet-revive (REVM → pallet-revive sync)
-/// Note: Balance/nonce are NOT synced here as they're handled by migration in select_revive()
 fn apply_revm_storage_diff(ecx: Ecx<'_, '_, '_>, address: Address) {
     let Some(account_state) = ecx.journaled_state.state.get(&address) else {
         return;
     };
 
     let h160_address = H160::from_slice(address.as_slice());
+
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let nonce = account_state.info.nonce;
+            let balance = account_state.info.balance;
+
+            let balance_revive =
+                sp_core::U256::from_little_endian(&balance.as_le_bytes()).min(u128::MAX.into());
+            Pallet::<Runtime>::set_evm_balance(&h160_address, balance_revive)
+                .expect("failed to set evm balance");
+
+            let account_id = AccountId::to_fallback_account_id(&h160_address);
+            polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
+                a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+            });
+        })
+    });
 
     // Check if contract exists in pallet-revive before applying storage diffs
     let contract_exists = execute_with_externalities(|externalities| {

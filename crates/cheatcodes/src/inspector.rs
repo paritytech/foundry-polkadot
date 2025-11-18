@@ -1566,6 +1566,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
         // Exit early for calls to cheatcodes as other logic is not relevant for cheatcode
         // invocations
         if cheatcode_call {
+            self.strategy.runner.revive_call_end(self, ecx, call);
             return;
         }
 
