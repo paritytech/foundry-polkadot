@@ -1,6 +1,7 @@
-use crate::utils::{BlockWaitTimeout, TestNode, assert_with_tolerance, unwrap_response};
+use crate::utils::{TestNode, assert_with_tolerance, unwrap_response};
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types::{TransactionRequest, anvil::MineOptions};
+use alloy_serde::WithOtherFields;
 use anvil::eth::backend::time::duration_since_unix_epoch;
 use anvil_core::eth::{EthRequest, Params};
 use anvil_polkadot::{
@@ -10,7 +11,7 @@ use anvil_polkadot::{
 };
 use anvil_rpc::error::ErrorCode;
 use polkadot_sdk::{
-    pallet_revive::evm::{Account, Block, HashesOrTransactionInfos},
+    pallet_revive::evm::{Account, Block, HashesOrTransactionInfos, ReceiptInfo},
     sc_cli::clap::Parser,
     sp_core,
 };
@@ -196,10 +197,7 @@ async fn test_auto_mine() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
-    let _tx_hash0 = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
-        .await
-        .unwrap();
+    let _tx_hash0 = node.send_transaction(transaction).await.unwrap();
     assert_eq!(node.best_block_number().await, 1);
 }
 
@@ -220,10 +218,15 @@ async fn test_mixed_mining() {
         .to(Address::from(ReviveAddress::new(
             Account::from(subxt_signer::eth::dev::baltathar()).address(),
         )));
-    let _tx_hash0 = node
-        .send_transaction(transaction, Some(BlockWaitTimeout::new(1, Duration::from_secs(1))))
+    let _tx_hash0 = unwrap_response::<ReceiptInfo>(
+        node.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(WithOtherFields::new(
+            transaction,
+        ))))
         .await
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap()
+    .transaction_hash;
     assert_eq!(node.best_block_number().await, 1);
 
     // Wait for second block mined through interval mining.
@@ -357,7 +360,7 @@ async fn test_evm_mine_detailed() {
         .from(Address::from(ReviveAddress::new(alith.address())))
         .to(Address::from(ReviveAddress::new(baltathar.address())));
     for i in 0..3 {
-        let tx_hash = node.send_transaction(transaction.clone().nonce(i), None).await.unwrap();
+        let tx_hash = node.send_transaction(transaction.clone().nonce(i)).await.unwrap();
         tx_hashes.insert(tx_hash);
     }
     let mine_detailed = unwrap_response::<Vec<Block>>(
@@ -381,4 +384,53 @@ async fn test_evm_mine_detailed() {
         assert_eq!(tx.block_number, sp_core::U256::from(1));
     }
     assert_eq!(tx_hashes.len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mining_with_eth_rpc_block_limit() {
+    let anvil_node_config = AnvilNodeConfig::test_config()
+        .with_revive_rpc_block_limit(Some(10usize))
+        .set_silent(false)
+        .with_tracing(true);
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    assert_eq!(node.best_block_number().await, 0);
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap())
+        .unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let transfer_amount = U256::from_str_radix("10000000000000000", 10).unwrap();
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(baltathar.address())));
+    node.send_transaction(transaction).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    assert_eq!(node.best_block_number().await, 6);
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::Mine(Some(U256::from(10)), None)).await.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(node.best_block_number().await, 16);
+
+    // Retrieving the transaction count will fail, as this queries the DB, which was pruned for
+    // block 6 already
+    assert_eq!(
+        unwrap_response::<U256>(
+            node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
+                alloy_rpc_types::BlockNumberOrTag::Number(6),
+            ))
+            .await
+            .unwrap(),
+        )
+        .unwrap(),
+        U256::from(0)
+    );
 }

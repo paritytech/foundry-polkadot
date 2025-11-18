@@ -21,6 +21,7 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"pallet-transaction-payment",
 	"pallet-transaction-payment-rpc-runtime-api",
 	"parachains-common",
+	"polkadot-runtime-common",
 	"runtime",
 	"sp-consensus-aura",
 	"with-tracing",

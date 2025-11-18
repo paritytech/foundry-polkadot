@@ -15,20 +15,20 @@ pub struct RevertInfo {
     pub reverted: u64,
 }
 
-pub struct SnapshotManager {
+pub struct RevertManager {
     client: Arc<Client>,
     backend: Arc<Backend>,
     next_snapshot_id: U256,
     snapshots: BTreeMap<U256, Snapshot>,
 }
 
-impl SnapshotManager {
+impl RevertManager {
     pub fn new(client: Arc<Client>, backend: Arc<Backend>) -> Self {
         Self { client, backend, next_snapshot_id: U256::ZERO, snapshots: BTreeMap::new() }
     }
 }
 
-impl SnapshotManager {
+impl RevertManager {
     /// Create a snapshot id corresponding to the best block number.
     pub fn snapshot(&mut self) -> U256 {
         let current_snapshot_id = self.next_snapshot_id;
@@ -61,6 +61,16 @@ impl SnapshotManager {
     pub fn rollback(&self, depth: Option<u64>) -> Result<RevertInfo> {
         let (reverted, _) =
             self.backend.revert(depth.unwrap_or(1).try_into().unwrap_or(u32::MAX), true)?;
+        Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
+    }
+
+    /// Will revert to genesis.
+    pub fn reset_to_genesis(&self) -> Result<RevertInfo> {
+        let current_block_number = self.client.info().best_number;
+        let (reverted, _) = self.backend.revert(current_block_number, true)?;
+
+        // The chain info can refer to a genesis block with a number different than 0, based on how
+        // the node was started, so we will query the state once more to return accurate info.
         Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
     }
 

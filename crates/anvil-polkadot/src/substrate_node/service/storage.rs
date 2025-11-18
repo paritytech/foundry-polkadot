@@ -48,6 +48,12 @@ pub mod well_known_keys {
         154, 166, 12, 2, 190, 154, 220, 201, 138, 13, 29,
     ];
 
+    //twox_128(b"TransactionPayment" + b"NextFeeMultiplier")
+    pub const NEXT_FEE_MULTIPLIER: [u8; 32] = [
+        63, 20, 103, 160, 150, 188, 215, 26, 91, 106, 12, 129, 85, 226, 8, 16, 63, 46, 223, 59,
+        223, 56, 29, 235, 227, 49, 171, 116, 70, 173, 223, 220,
+    ];
+
     pub fn system_account_info(account_id: AccountId) -> Vec<u8> {
         let mut key = Vec::new();
         key.extend_from_slice(&twox_128("System".as_bytes()));
