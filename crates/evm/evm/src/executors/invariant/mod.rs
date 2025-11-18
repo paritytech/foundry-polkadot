@@ -391,20 +391,17 @@ impl<'a> InvariantExecutor<'a> {
                     .inputs
                     .last()
                     .ok_or_else(|| eyre!("no input generated to call fuzzed target."))?;
-
+                let executor = current_run.executor.clone();
                 // Execute call from the randomly generated sequence without committing state.
                 // State is committed only if call is not a magic assume.
-                let call_result = current_run
-                    .executor
+                let mut call_result = executor
                     .call_raw(
                         tx.sender,
                         tx.call_details.target,
                         tx.call_details.calldata.clone(),
                         U256::ZERO,
                     )
-                    .map_err(|e| eyre!(format!("Could not make raw evm call: {e}")));
-
-                let mut call_result = call_result?;
+                    .map_err(|e| eyre!(format!("Could not make raw evm call: {e}")))?;
 
                 let discarded = call_result.result.as_ref() == MAGIC_ASSUME;
                 if self.config.show_metrics {
