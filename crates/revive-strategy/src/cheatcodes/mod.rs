@@ -1067,8 +1067,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         {
             return;
         }
-
-        apply_revm_storage_diff(ecx, call.target_address);
+        ctx.externalities.execute_with(|| {
+            apply_revm_storage_diff(ecx, call.target_address);
+        });
     }
 }
 
@@ -1143,33 +1144,26 @@ fn apply_revm_storage_diff(ecx: Ecx<'_, '_, '_>, address: Address) {
     let h160_address = H160::from_slice(address.as_slice());
 
     // Check if contract exists in pallet-revive before applying storage diffs
-    let contract_exists = execute_with_externalities(|externalities| {
-        externalities
-            .execute_with(|| AccountInfo::<Runtime>::load_contract(&h160_address).is_some())
-    });
+    let contract_exists = AccountInfo::<Runtime>::load_contract(&h160_address).is_some();
 
     if !contract_exists {
         return;
     }
 
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            for (slot, storage_slot) in &account_state.storage {
-                if storage_slot.is_changed() {
-                    let slot_bytes = slot.to_be_bytes::<32>();
-                    let new_value = storage_slot.present_value;
+    for (slot, storage_slot) in &account_state.storage {
+        if storage_slot.is_changed() {
+            let slot_bytes = slot.to_be_bytes::<32>();
+            let new_value = storage_slot.present_value;
 
-                    if !new_value.is_zero() {
-                        let _ = Pallet::<Runtime>::set_storage(
-                            h160_address,
-                            slot_bytes,
-                            Some(new_value.to_be_bytes::<32>().to_vec()),
-                        );
-                    } else {
-                        let _ = Pallet::<Runtime>::set_storage(h160_address, slot_bytes, None);
-                    }
-                }
+            if !new_value.is_zero() {
+                let _ = Pallet::<Runtime>::set_storage(
+                    h160_address,
+                    slot_bytes,
+                    Some(new_value.to_be_bytes::<32>().to_vec()),
+                );
+            } else {
+                let _ = Pallet::<Runtime>::set_storage(h160_address, slot_bytes, None);
             }
-        })
-    });
+        }
+    }
 }
