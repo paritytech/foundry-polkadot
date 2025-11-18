@@ -89,6 +89,7 @@ use subxt_signer::eth::Keypair;
 use tokio::try_join;
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
+const TIMEOUT_DURATION: Duration = Duration::from_secs(30);
 
 pub struct ApiServer {
     eth_rpc_client: EthRpcClient,
@@ -108,6 +109,7 @@ pub struct ApiServer {
 }
 
 impl ApiServer {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         substrate_service: Service,
         req_receiver: mpsc::Receiver<ApiRequest>,
@@ -116,6 +118,7 @@ impl ApiServer {
         impersonation_manager: ImpersonationManager,
         signers: Vec<Keypair>,
         filters: Filters,
+        revive_rpc_block_limit: Option<usize>,
     ) -> Result<Self> {
         let rpc_client = RpcClient::new(InMemoryRpcClient(substrate_service.rpc_handlers.clone()));
         let api = create_online_client(&substrate_service, rpc_client.clone()).await?;
@@ -127,6 +130,7 @@ impl ApiServer {
             rpc,
             block_provider.clone(),
             substrate_service.spawn_handle.clone(),
+            revive_rpc_block_limit,
         )
         .await?;
 
@@ -272,6 +276,9 @@ impl ApiServer {
             EthRequest::EthSendTransaction(request) => {
                 self.send_transaction(*request.clone(), false).await.to_rpc_result()
             }
+            EthRequest::EthSendTransactionSync(request) => {
+                self.send_transaction_sync(*request).await.to_rpc_result()
+            }
             EthRequest::EthGasPrice(()) => self.gas_price().await.to_rpc_result(),
             EthRequest::EthGetBlockByNumber(num, hydrated) => {
                 node_info!("eth_getBlockByNumber");
@@ -325,6 +332,9 @@ impl ApiServer {
             EthRequest::EthSendRawTransaction(tx) => {
                 node_info!("eth_sendRawTransaction");
                 self.send_raw_transaction(ReviveBytes::from(tx).inner()).await.to_rpc_result()
+            }
+            EthRequest::EthSendRawTransactionSync(tx) => {
+                self.send_raw_transaction_sync(ReviveBytes::from(tx).inner()).await.to_rpc_result()
             }
             EthRequest::EthGetLogs(filter) => {
                 node_info!("eth_getLogs");
@@ -751,6 +761,20 @@ impl ApiServer {
         Ok(hash)
     }
 
+    pub async fn send_raw_transaction_sync(&self, tx: Bytes) -> Result<ReceiptInfo> {
+        node_info!("eth_sendRawTransactionSync");
+        // Subscribe to new best blocks.
+        let receiver = self
+            .eth_rpc_client
+            .block_notifier()
+            .ok_or_else(|| {
+                Error::InternalError("Invalid receiver. Unable to wait for receipt".to_string())
+            })?
+            .subscribe();
+        let hash = B256::from_slice(self.send_raw_transaction(tx).await?.as_ref());
+        self.wait_for_receipt(hash, receiver).await
+    }
+
     async fn send_transaction(
         &self,
         transaction_req: WithOtherFields<TransactionRequest>,
@@ -811,6 +835,23 @@ impl ApiServer {
         };
 
         self.send_raw_transaction(Bytes(payload)).await
+    }
+
+    async fn send_transaction_sync(
+        &self,
+        request: WithOtherFields<TransactionRequest>,
+    ) -> Result<ReceiptInfo> {
+        node_info!("eth_sendTransactionSync");
+        // Subscribe to new best blocks.
+        let receiver = self
+            .eth_rpc_client
+            .block_notifier()
+            .ok_or_else(|| {
+                Error::InternalError("Invalid receiver. Unable to wait for receipt".to_string())
+            })?
+            .subscribe();
+        let hash = B256::from_slice(self.send_transaction(request, false).await?.as_ref());
+        self.wait_for_receipt(hash, receiver).await
     }
 
     async fn get_block_by_number(
@@ -1651,6 +1692,25 @@ impl ApiServer {
 
     // ----- Helpers -----
 
+    async fn wait_for_receipt(
+        &self,
+        hash: B256,
+        mut receiver: tokio::sync::broadcast::Receiver<H256>,
+    ) -> Result<ReceiptInfo> {
+        tokio::time::timeout(TIMEOUT_DURATION, async {
+            while let Ok(_block_hash) = receiver.recv().await {
+                if let Some(receipt) = self.transaction_receipt(hash).await? {
+                    return Ok(receipt);
+                }
+            }
+            Err(Error::TransactionConfirmationTimeout { hash, duration: TIMEOUT_DURATION })
+        })
+        .await
+        .unwrap_or_else(|_| {
+            Err(Error::TransactionConfirmationTimeout { hash, duration: TIMEOUT_DURATION })
+        })
+    }
+
     async fn wait_for_hash(
         &self,
         receiver: Option<tokio::sync::broadcast::Receiver<H256>>,
@@ -1803,21 +1863,16 @@ async fn create_revive_rpc_client(
     rpc: LegacyRpcMethods<SrcChainConfig>,
     block_provider: SubxtBlockInfoProvider,
     task_spawn_handle: SpawnTaskHandle,
+    keep_latest_n_blocks: Option<usize>,
 ) -> Result<EthRpcClient> {
-    let (pool, keep_latest_n_blocks) = {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
         // see sqlite in-memory issue: https://github.com/launchbadge/sqlx/issues/2510
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .idle_timeout(None)
-            .max_lifetime(None)
-            .connect("sqlite::memory:")
-            .await
-            .map_err(|err| {
-                Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err)))
-            })?;
-
-        (pool, Some(100))
-    };
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect("sqlite::memory:")
+        .await
+        .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
 
     let receipt_extractor = ReceiptExtractor::new_with_custom_address_recovery(
         api.clone(),
@@ -1827,14 +1882,12 @@ async fn create_revive_rpc_client(
     .await
     .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(err)))?;
 
-    let receipt_provider = ReceiptProvider::new(
-        pool,
-        block_provider.clone(),
-        receipt_extractor.clone(),
-        keep_latest_n_blocks,
-    )
-    .await
-    .map_err(|err| Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err))))?;
+    let receipt_provider =
+        ReceiptProvider::new(pool, block_provider.clone(), receipt_extractor, keep_latest_n_blocks)
+            .await
+            .map_err(|err| {
+                Error::ReviveRpc(EthRpcError::ClientError(ClientError::SqlxError(err)))
+            })?;
 
     let mut eth_rpc_client =
         EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)

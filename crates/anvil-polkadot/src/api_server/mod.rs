@@ -48,6 +48,7 @@ pub fn spawn(
             Keypair::from_secret_key(*private_key).ok()
         },
     ));
+    let revive_rpc_block_limit = config.revive_rpc_block_limit;
     substrate_service.spawn_handle.spawn("anvil-api-server", "anvil", async move {
         let api_server = ApiServer::new(
             service,
@@ -57,6 +58,7 @@ pub fn spawn(
             impersonation_manager,
             signers,
             filters,
+            revive_rpc_block_limit,
         )
         .await
         .unwrap_or_else(|err| panic!("Failed to spawn the API server: {err}"));

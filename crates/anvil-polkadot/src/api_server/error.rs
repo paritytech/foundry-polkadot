@@ -1,5 +1,7 @@
+use std::time::Duration;
+
 use crate::substrate_node::{mining_engine::MiningError, service::BackendError};
-use alloy_primitives::hex;
+use alloy_primitives::{B256, hex};
 use anvil_rpc::{
     error::{ErrorCode, RpcError},
     response::ResponseResult,
@@ -35,6 +37,8 @@ pub enum Error {
     NoSignerAvailable,
     #[error("Contract reverted: {0:?}")]
     EthTransact(EthTransactError),
+    #[error("Transaction {hash} was added to the mempool but wasn't confirmed within {duration:?}")]
+    TransactionConfirmationTimeout { hash: B256, duration: Duration },
 }
 
 impl From<subxt::Error> for Error {

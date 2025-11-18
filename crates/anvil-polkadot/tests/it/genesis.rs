@@ -237,7 +237,7 @@ async fn test_coinbase_genesis() {
     // Deploy multicall contract
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let contract_code = get_contract_code("Multicall");
-    let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+    let tx_hash = node.deploy_contract(&contract_code.init, alith.address()).await;
     let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
 
     // Get contract address.

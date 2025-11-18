@@ -66,7 +66,7 @@ async fn test_set_chain_id() {
     tx.chain_id = Some(default_chain_id);
 
     assert_matches!(
-        node.send_transaction(tx, None).await,
+        node.send_transaction(tx).await,
         Err(RpcError {code, message, ..}) => {
             assert_eq!(code, ErrorCode::ServerError(-32000));
             message.contains("Invalid Transaction")
@@ -75,7 +75,7 @@ async fn test_set_chain_id() {
 
     let tx = TransactionRequest::default().value(U256::from(100)).from(fr).to(to);
 
-    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+    let tx_hash = node.send_transaction(tx).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
@@ -115,7 +115,7 @@ async fn test_set_nonce() {
 
     // Send a transaction with the wrong nonce, it will be invalid.
     assert_matches!(
-        node.send_transaction(tx.clone().nonce(5), None).await,
+        node.send_transaction(tx.clone().nonce(5)).await,
         Err(RpcError {code, message, ..}) => {
             assert_eq!(code, ErrorCode::InternalError);
             message.contains("Invalid Transaction")
@@ -123,7 +123,7 @@ async fn test_set_nonce() {
     );
 
     // Send a transaction with the right nonce and mine a block.
-    let tx_hash = node.send_transaction(tx.clone().nonce(10), None).await.unwrap();
+    let tx_hash = node.send_transaction(tx.clone().nonce(10)).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
@@ -140,7 +140,7 @@ async fn test_set_nonce() {
 
     assert_eq!(node.get_nonce(address).await, U256::from(5));
 
-    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+    let tx_hash = node.send_transaction(tx).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
@@ -207,7 +207,7 @@ async fn test_set_balance() {
         .from(Address::from(ReviveAddress::new(alith)))
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
-    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+    let tx_hash = node.send_transaction(tx).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
@@ -229,7 +229,7 @@ async fn test_set_balance() {
         .to(Address::from(ReviveAddress::new(charleth.address())));
 
     assert_matches!(
-        node.send_transaction(tx, None).await,
+        node.send_transaction(tx).await,
         Err(RpcError {code, message, ..}) => {
             assert_eq!(code, ErrorCode::ServerError(-32000));
             message.contains("Invalid Transaction")
@@ -298,7 +298,7 @@ async fn test_set_code_existing_contract() {
     };
 
     let tx_hash = node
-        .deploy_contract(&bytecode, Account::from(subxt_signer::eth::dev::alith()).address(), None)
+        .deploy_contract(&bytecode, Account::from(subxt_signer::eth::dev::alith()).address())
         .await;
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
@@ -327,7 +327,7 @@ async fn test_set_code_existing_contract() {
         .to(contract_address)
         .input(TransactionInput::both(set_value_data.into()));
 
-    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+    let tx_hash = node.send_transaction(tx).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
@@ -373,7 +373,7 @@ async fn test_set_code_existing_contract() {
         .to(contract_address)
         .input(TransactionInput::both(set_value_data.into()));
 
-    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+    let tx_hash = node.send_transaction(tx).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
@@ -459,7 +459,7 @@ async fn test_set_code_new() {
         .to(contract_address)
         .input(TransactionInput::both(set_value_data.into()));
 
-    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+    let tx_hash = node.send_transaction(tx).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
@@ -546,7 +546,7 @@ async fn test_set_code_of_regular_account() {
         .to(contract_address)
         .input(TransactionInput::both(set_value_data.into()));
 
-    let tx_hash = node.send_transaction(tx, None).await.unwrap();
+    let tx_hash = node.send_transaction(tx).await.unwrap();
 
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
@@ -604,7 +604,7 @@ async fn test_set_storage() {
     // Update the storage of an existing account
     {
         let contract_code = get_contract_code("SimpleStorage");
-        let tx_hash = node.deploy_contract(&contract_code.init, alith.address(), None).await;
+        let tx_hash = node.deploy_contract(&contract_code.init, alith.address()).await;
         unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
         let receipt = node.get_transaction_receipt(tx_hash).await;
         let contract_address = receipt.contract_address.unwrap();

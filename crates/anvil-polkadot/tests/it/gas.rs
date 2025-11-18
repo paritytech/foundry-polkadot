@@ -53,7 +53,7 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
         .value(transfer_amount)
         .from(Address::from(alith.address().to_fixed_bytes()))
         .to(Address::from(baltathar.address().to_fixed_bytes()));
-    let tx_hash = node.send_transaction(transaction, None).await.unwrap();
+    let tx_hash = node.send_transaction(transaction).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
@@ -119,7 +119,7 @@ async fn test_next_fee_multiplier_minimum() {
         .value(transfer_amount)
         .from(Address::from(alith.address().to_fixed_bytes()))
         .to(Address::from(baltathar.address().to_fixed_bytes()));
-    let tx_hash = node.send_transaction(transaction, None).await.unwrap();
+    let tx_hash = node.send_transaction(transaction).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     let block_hash = node.block_hash_by_number(1).await.unwrap();
