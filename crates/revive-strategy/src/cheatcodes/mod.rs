@@ -723,19 +723,6 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 );
                             }
                         }
-                        // Migrate complete account state (storage) for newly created contract
-                        for (slot, storage_slot) in &acc.data.storage {
-                            let slot_bytes = slot.to_be_bytes::<32>();
-                            let value_bytes = storage_slot.present_value.to_be_bytes::<32>();
-
-                            if !storage_slot.present_value.is_zero() {
-                                let _ = Pallet::<Runtime>::set_storage(
-                                    account_h160,
-                                    slot_bytes,
-                                    Some(value_bytes.to_vec()),
-                                );
-                            }
-                        }
                     }
                 }
             }
