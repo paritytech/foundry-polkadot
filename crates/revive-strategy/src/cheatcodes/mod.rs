@@ -15,6 +15,7 @@ use foundry_cheatcodes::{
 };
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
+use foundry_evm::constants::CHEATCODE_ADDRESS;
 use revive_env::{AccountId, Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
@@ -483,19 +484,22 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 if ccx.is_precompile(&target) {
                     return Err(precompile_error(&target));
                 }
-
-                let target_address_h160 = H160::from_slice(target.as_slice());
-                let _ = execute_with_externalities(|externalities| {
-                    externalities.execute_with(|| {
-                        Pallet::<Runtime>::set_storage(
-                            target_address_h160,
-                            slot.into(),
-                            Some(value.to_vec()),
-                        )
+                if target == CHEATCODE_ADDRESS {
+                    cheatcode.dyn_apply(ccx, executor)
+                } else {
+                    let target_address_h160 = H160::from_slice(target.as_slice());
+                    let _ = execute_with_externalities(|externalities| {
+                        externalities.execute_with(|| {
+                            Pallet::<Runtime>::set_storage(
+                                target_address_h160,
+                                slot.into(),
+                                Some(value.to_vec()),
+                            )
+                        })
                     })
-                })
-                .map_err(|_| <&str as Into<Error>>::into("Could not set storage"))?;
-                Ok(Default::default())
+                    .map_err(|_| <&str as Into<Error>>::into("Could not set storage"))?;
+                    Ok(Default::default())
+                }
             }
             // Not custom, just invoke the default behavior
             _ => cheatcode.dyn_apply(ccx, executor),
