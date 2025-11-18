@@ -32,8 +32,6 @@ async fn test_revive_cheats_local(#[case] runtime_mode: ReviveRuntimeMode) {
 
         config.fs_permissions = FsPermissions::new(vec![PathPermission::read_write("./")]);
     });
-
-    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
 
