@@ -1191,7 +1191,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return;
         }
 
-
         // Skip storage sync if: in PVM mode AND no test contract
         if ctx.using_pvm
             && ecx
