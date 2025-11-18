@@ -85,7 +85,7 @@ impl pallet_revive::Config for Runtime {
     type InstantiateOrigin = EnsureSigned<AccountId32>;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type ChainId = ConstU64<420_420_420>;
-    type NativeToEthRatio = ConstU32<1_000_000_000>;
+    type NativeToEthRatio = NativeToEthRatio;
     type FindAuthor = Self;
     type DebugEnabled = ConstBool<true>;
 }
