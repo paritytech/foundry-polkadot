@@ -26,7 +26,8 @@ secp256k1 = { version = "0.28.0", default-features = false }
 libsecp256k1 = { version = "0.7.0", default-features = false }
 sp-runtime-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false }
 polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = [
-    "sc-allocator",
+    "parachains-common",
+	"sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
 	"sc-chain-spec",
@@ -60,6 +61,7 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"sp-core-hashing",
 	"sp-core-hashing-proc-macro",
 	"sp-database",
+	"sp-keyring",
 	"sp-panic-handler",
 	"sp-rpc",
 	"std",
@@ -118,6 +120,7 @@ async-trait.workspace = true
 futures-timer = { version = "3.0.3" }
 
 # misc
+array-bytes = "6.2.2"
 flate2 = "1.0"
 serde_json.workspace = true
 serde.workspace = true

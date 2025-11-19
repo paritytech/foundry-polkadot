@@ -9,11 +9,13 @@ use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
     pallet_revive::{evm::Account, genesis::ContractData},
+    parachains_common::Balance,
     sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
     sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
     sp_blockchain,
     sp_core::{self, H160, storage::Storage},
+    sp_keyring::Sr25519Keyring,
     sp_runtime::{
         BuildStorage, FixedU128,
         traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
@@ -24,6 +26,8 @@ use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 use substrate_runtime::{WASM_BINARY, constants::NATIVE_TO_ETH_RATIO};
 use subxt_signer::eth::Keypair;
+
+pub const DOLLARS: Balance = 1_000_000_000_000;
 
 /// Genesis settings
 #[derive(Clone, Debug, Default)]
@@ -91,6 +95,8 @@ pub struct ReviveGenesisAccount {
 }
 
 impl GenesisConfig {
+    pub const ENDOWMENT: Balance = 1_000_000_000_000_001 * DOLLARS;
+
     pub fn as_storage_key_value(&self) -> Vec<(Vec<u8>, Vec<u8>)> {
         let mut aura_authority_id = [0xEE; 32];
         aura_authority_id[..20].copy_from_slice(
@@ -154,7 +160,25 @@ impl GenesisConfig {
                 })
                 .collect::<Vec<_>>(),
         );
+
+        let well_known_accounts = || {
+            Sr25519Keyring::well_known()
+                .map(|k| k.to_account_id())
+                .chain([
+                    // subxt_signer::eth::dev::alith()
+                    array_bytes::hex_n_into_unchecked(
+                    "f24ff3a9cf04c71dbc94d0b566f7a27b94566caceeeeeeeeeeeeeeeeeeeeeeee",
+                )])
+                .collect::<Vec<_>>()
+        };
+
         json!({
+            "balances": {
+                "balances": well_known_accounts()
+                    .into_iter()
+                    .map(|id| (id, Self::ENDOWMENT))
+                    .collect::<Vec<_>>()
+            },
             "revive": {
                 "accounts": revive_genesis_accounts,
             },
