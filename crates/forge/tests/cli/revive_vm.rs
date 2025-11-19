@@ -553,13 +553,15 @@ Compiler run successful!
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
-Ran 2 tests for src/CounterTest.t.sol:CounterTest
+Ran 3 tests for src/CounterTest.t.sol:CounterTest
 [PASS] test_Increment() ([GAS])
 Traces:
   [..] CounterTest::setUp()
     ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit()
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
     │   └─ ← [Return]
     ├─ emit SetNumber(result: 5)
     ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
@@ -584,12 +586,48 @@ Traces:
     │   └─ ← [Return] 56
     └─ ← [Stop]
 
+[PASS] test_Seq() ([GAS])
+Traces:
+  [..] CounterTest::setUp()
+    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
+    │   └─ ← [Return]
+    ├─ emit SetNumber(result: 5)
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
+    │   ├─ emit SetNumber(result: 5)
+    │   └─ ← [Stop]
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
+    │   └─ ← [Return] 5
+    └─ ← [Stop]
+
+  [..] CounterTest::test_Seq()
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
+    │   └─ ← [Return]
+    ├─ emit SetNumber(result: 5)
+    ├─ [..] VM::expectEmit(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
+    │   └─ ← [Return]
+    ├─ emit Increment(result: 6)
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setAndIncrementProxy(5, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
+    │   ├─ emit SetNumber(result: 5)
+    │   ├─ emit Increment(result: 6)
+    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::setAndIncrement(5)
+    │   │   ├─ emit SetNumber(result: 5)
+    │   │   ├─ emit Increment(result: 6)
+    │   │   └─ ← [Return]
+    │   └─ ← [Stop]
+    └─ ← [Stop]
+
 [PASS] test_expectRevert() ([GAS])
 Traces:
   [..] CounterTest::setUp()
     ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit()
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
     │   └─ ← [Return]
     ├─ emit SetNumber(result: 5)
     ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
@@ -606,9 +644,9 @@ Traces:
     │   └─ ← [Revert] Revert("failure")
     └─ ← [Stop]
 
-Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
+Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
 
-Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
+Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 
 "#]]);
 });

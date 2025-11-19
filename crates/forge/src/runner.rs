@@ -518,7 +518,7 @@ impl<'a> FunctionRunner<'a> {
             self.result.single_fail(Some(e.to_string()));
             return self.result;
         }
-        let result = match kind {
+        match kind {
             TestFunctionKind::UnitTest { .. } => self.run_unit_test(func),
             TestFunctionKind::FuzzTest { .. } => self.run_fuzz_test(func),
             TestFunctionKind::TableTest => self.run_table_test(func),
@@ -532,8 +532,7 @@ impl<'a> FunctionRunner<'a> {
                 )
             }
             _ => unreachable!(),
-        };
-        result
+        }
     }
 
     /// Runs a single unit test.
@@ -545,7 +544,7 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and unit test function call are discarded after
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
-        let executor = self.executor.into_owned().clone();
+        let executor = self.executor.into_owned();
         self.executor = Cow::Owned(executor);
         self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         // Prepare unit test execution.
@@ -738,8 +737,8 @@ impl<'a> FunctionRunner<'a> {
         identified_contracts: &ContractsByAddress,
         test_bytecode: &Bytes,
     ) -> TestResult {
-        let mut binding = self.executor.clone();
-        let executor = binding.to_mut();
+        let binding = self.executor.clone().into_owned();
+        let executor = binding;
         // First, run the test normally to see if it needs to be skipped.
         if let Err(EvmError::Skip(reason)) = executor.call(
             self.sender,
@@ -981,12 +980,8 @@ impl<'a> FunctionRunner<'a> {
         );
 
         // Run fuzz test.
-        let fuzzed_executor = FuzzedExecutor::new(
-            self.executor.into_owned().clone(),
-            runner,
-            self.tcfg.sender,
-            fuzz_config,
-        );
+        let fuzzed_executor =
+            FuzzedExecutor::new(self.executor.into_owned(), runner, self.tcfg.sender, fuzz_config);
         let result = fuzzed_executor.fuzz(
             func,
             &self.setup.fuzz_fixtures,
