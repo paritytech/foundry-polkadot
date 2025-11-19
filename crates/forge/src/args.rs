@@ -107,9 +107,17 @@ pub fn run_command(args: Forge) -> Result<()> {
             Ok(())
         }
         ForgeSubcommand::Clean { root } => {
-            let config = utils::load_config_with_root(root.as_deref())?;
+            let mut config = utils::load_config_with_root(root.as_deref())?;
             let project = config.project()?;
             config.cleanup(&project)?;
+
+            // cleanup cache inverse to the one currently used
+            // e.g. when `resolc` is used it's `solc` cache.
+            {
+                config.resolc.resolc_compile = !config.resolc.resolc_compile;
+                let project = config.project()?;
+                config.cleanup(&project)?;
+            }
 
             Ok(())
         }
