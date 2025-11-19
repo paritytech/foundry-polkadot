@@ -2,15 +2,11 @@ mod mock_handler;
 
 use alloy_primitives::{Address, B256, Bytes, Log, hex, ruint::aliases::U256};
 use alloy_rpc_types::BlobTransactionSidecar;
-use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
-    Vm::{
-        dealCall, etchCall, getNonce_0Call, pvmCall, resetNonceCall, rollCall, setNonceCall,
-        setNonceUnsafeCall, warpCall,
-    },
+    CommonCreateInput, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
+    Vm::{etchCall, pvmCall, rollCall, warpCall},
     journaled_account,
 };
 
@@ -27,8 +23,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo,
-        DebugSettings, ExecConfig, Executable, Pallet, evm::CallTrace,
+        AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, DebugSettings,
+        ExecConfig, Executable, Pallet, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160, H256},
@@ -147,47 +143,6 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
     fn as_any_ref(&self) -> &dyn Any {
         self
     }
-}
-
-fn set_nonce(address: Address, nonce: u64, ecx: Ecx<'_, '_, '_>, check_nonce: bool) {
-    execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            let account_id =
-                AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-            let current_nonce = System::account_nonce(&account_id);
-            if check_nonce {
-                assert!(
-                    current_nonce as u64 <= nonce,
-                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-                );
-            }
-
-            polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
-                a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
-            });
-        })
-    });
-    let account = ecx.journaled_state.load_account(address).expect("account loaded").data;
-    account.mark_touch();
-    account.info.nonce = nonce;
-}
-
-fn set_balance(address: Address, amount: U256, ecx: Ecx<'_, '_, '_>) -> U256 {
-    let account = ecx.journaled_state.load_account(address).expect("account loaded").data;
-    account.mark_touch();
-    account.info.balance = amount;
-    let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-
-    let old_balance = execute_with_externalities(|externalities| {
-        externalities.execute_with(|| {
-            let h160_addr = H160::from_slice(address.as_slice());
-            let old_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&h160_addr);
-            pallet_revive::Pallet::<Runtime>::set_evm_balance(&h160_addr, amount_pvm)
-                .expect("failed to set evm balance");
-            old_balance
-        })
-    });
-    U256::from_limbs(old_balance.0)
 }
 
 fn set_block_number(new_height: U256, ecx: Ecx<'_, '_, '_>) {
