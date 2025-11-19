@@ -84,10 +84,14 @@ impl pallet_revive::Config for Runtime {
     type UploadOrigin = EnsureSigned<AccountId32>;
     type InstantiateOrigin = EnsureSigned<AccountId32>;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
-    type ChainId = ConstU64<420_420_420>;
+    type ChainId = ChainId;
     type NativeToEthRatio = ConstU32<1_000_000_000>;
     type FindAuthor = Self;
     type DebugEnabled = ConstBool<true>;
+}
+
+parameter_types! {
+    pub storage ChainId: u64 = 420_420_420;
 }
 
 impl FindAuthor<<Self as frame_system::Config>::AccountId> for Runtime {
