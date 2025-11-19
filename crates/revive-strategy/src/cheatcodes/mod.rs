@@ -385,52 +385,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 }
                 Ok(Default::default())
             }
-            t if using_pvm && is::<dealCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-
-                let &dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
-
-                let old_balance = set_balance(account, newBalance, ccx.ecx);
-                let record = DealRecord { address: account, old_balance, new_balance: newBalance };
-                ccx.state.eth_deals.push(record);
-                Ok(Default::default())
-            }
-            t if using_pvm && is::<setNonceCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-
-                let &setNonceCall { account, newNonce } =
-                    cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, newNonce, ccx.ecx, false);
-
-                Ok(Default::default())
-            }
-            t if using_pvm && is::<setNonceUnsafeCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-
-                let &setNonceUnsafeCall { account, newNonce } =
-                    cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, newNonce, ccx.ecx, false);
-
-                Ok(Default::default())
-            }
-            t if using_pvm && is::<resetNonceCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let &resetNonceCall { account } = cheatcode.as_any().downcast_ref().unwrap();
-                set_nonce(account, 0, ccx.ecx, false);
-                Ok(Default::default())
-            }
-            t if using_pvm && is::<getNonce_0Call>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let &getNonce_0Call { account } = cheatcode.as_any().downcast_ref().unwrap();
-                let nonce = execute_with_externalities(|externalities| {
-                    externalities.execute_with(|| {
-                        System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                            account.as_slice(),
-                        )))
-                    })
-                });
-                Ok(u64::from(nonce).abi_encode())
-            }
             t if using_pvm && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
 
