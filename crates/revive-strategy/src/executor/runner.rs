@@ -11,6 +11,7 @@ use foundry_evm::{
         strategy::ExecutorStrategyExt,
     },
 };
+use polkadot_sdk::sp_externalities::Externalities;
 use revm::context::result::ResultAndState;
 
 use crate::{
@@ -152,5 +153,16 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
     ) {
         let ctx = get_context_ref_mut(ctx);
         ctx.compilation_output.replace(output);
+    }
+    fn start_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
+        let ctx = get_context_ref(ctx);
+        let mut externalities = ctx.externalties.0.lock().unwrap();
+        externalities.ext().storage_start_transaction();
+    }
+
+    fn rollback_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
+        let ctx = get_context_ref(ctx);
+        let mut externalities = ctx.externalties.0.lock().unwrap();
+        externalities.ext().storage_rollback_transaction().unwrap();
     }
 }

@@ -417,6 +417,15 @@ forgetest!(trace_counter_test, |prj, cmd| {
           emit Increment(number);
 
       }
+      function setAndIncrement(uint256 newNumber) public {
+        setNumber(newNumber);
+        increment();
+      }
+      function setAndIncrementProxy(uint256 newNumber, Counter target) public {
+        setNumber(newNumber);
+        increment();
+        target.setAndIncrement(newNumber);
+      }
   }
   "#,
     )
@@ -432,12 +441,13 @@ import {console} from "./console.sol";
 contract CounterTest is DSTest {
 Vm constant vm = Vm(HEVM_ADDRESS);
 Counter public counter;
+Counter target;
 
 function setUp() public {
   counter = new Counter(); 
-  vm.expectEmit();
+  target = new Counter(); 
+  vm.expectEmit(address(counter));
   emit Counter.SetNumber(5);
-
   counter.setNumber(5);
   assertEq(counter.number(), 5);
 }
@@ -448,6 +458,14 @@ function test_Increment() public {
     assertEq(counter.number(), 55);
     counter.increment(); 
     assertEq(counter.number(), 56);
+}
+
+function test_Seq() public {
+  vm.expectEmit(address(counter));
+  emit Counter.SetNumber(5);
+  vm.expectEmit(address(target));
+  emit Counter.Increment(6);
+  counter.setAndIncrementProxy(5, target);
 }
 
 function test_expectRevert() public {
@@ -1442,7 +1460,7 @@ function testC() public {
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
-    res.stdout_eq(str![[r#"
+    res.stderr_eq("").stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!

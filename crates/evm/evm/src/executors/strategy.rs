@@ -110,6 +110,9 @@ pub trait ExecutorStrategyExt {
         _output: ProjectCompileOutput,
     ) {
     }
+
+    fn start_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
+    fn rollback_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
 }
 
 /// Implements [ExecutorStrategyRunner] for EVM.

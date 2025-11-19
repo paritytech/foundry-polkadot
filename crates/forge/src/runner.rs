@@ -518,8 +518,7 @@ impl<'a> FunctionRunner<'a> {
             self.result.single_fail(Some(e.to_string()));
             return self.result;
         }
-
-        match kind {
+        let result = match kind {
             TestFunctionKind::UnitTest { .. } => self.run_unit_test(func),
             TestFunctionKind::FuzzTest { .. } => self.run_fuzz_test(func),
             TestFunctionKind::TableTest => self.run_table_test(func),
@@ -533,7 +532,8 @@ impl<'a> FunctionRunner<'a> {
                 )
             }
             _ => unreachable!(),
-        }
+        };
+        result
     }
 
     /// Runs a single unit test.
@@ -545,15 +545,20 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and unit test function call are discarded after
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
-        let mut binding = self.executor.clone().into_owned();
-
+        let executor = self.executor.into_owned().clone();
+        self.executor = Cow::Owned(executor);
+        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         // Prepare unit test execution.
-        if self.prepare_test(func, &mut binding).is_err() {
+        if self.prepare_test(func).is_err() {
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
+
             return self.result;
         }
-        let executor = binding;
         // Run current unit test.
-        let (mut raw_call_result, reason) = match executor.call(
+        let (mut raw_call_result, reason) = match self.executor.call(
             self.sender,
             self.address,
             func,
@@ -565,17 +570,25 @@ impl<'a> FunctionRunner<'a> {
             Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
             Err(EvmError::Skip(reason)) => {
                 self.result.single_skip(reason);
-
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
             Err(err) => {
                 self.result.single_fail(Some(err.to_string()));
-
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
         };
+        self.executor.strategy.runner.rollback_transaction(self.executor.strategy.context.as_ref());
 
-        let success = executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
+        let success =
+            self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
         self.result.single_result(success, reason, raw_call_result);
 
         self.result
@@ -590,10 +603,13 @@ impl<'a> FunctionRunner<'a> {
     /// - `bool[] public fixtureSwap = [true, false]` The `table_test` is then called with the pair
     ///   of args `(2, true)` and `(5, false)`.
     fn run_table_test(mut self, func: &Function) -> TestResult {
-        let mut executor = self.executor.clone().into_owned();
-
+        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         // Prepare unit test execution.
-        if self.prepare_test(func, &mut executor).is_err() {
+        if self.prepare_test(func).is_err() {
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
             return self.result;
         }
 
@@ -653,7 +669,12 @@ impl<'a> FunctionRunner<'a> {
             }
 
             let args = table_fixtures.iter().map(|row| row[i].clone()).collect_vec();
-            let (mut raw_call_result, reason) = match executor.call(
+            self.executor
+                .strategy
+                .runner
+                .start_transaction(self.executor.strategy.context.as_ref());
+
+            let (mut raw_call_result, reason) = match self.executor.call(
                 self.sender,
                 self.address,
                 func,
@@ -665,16 +686,28 @@ impl<'a> FunctionRunner<'a> {
                 Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
                 Err(EvmError::Skip(reason)) => {
                     self.result.single_skip(reason);
+                    self.executor
+                        .strategy
+                        .runner
+                        .rollback_transaction(self.executor.strategy.context.as_ref());
                     return self.result;
                 }
                 Err(err) => {
                     self.result.single_fail(Some(err.to_string()));
+                    self.executor
+                        .strategy
+                        .runner
+                        .rollback_transaction(self.executor.strategy.context.as_ref());
                     return self.result;
                 }
             };
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
 
             let is_success =
-                executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
+                self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
             // Record counterexample if test fails.
             if !is_success {
                 self.result.counterexample =
@@ -931,9 +964,8 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and fuzz test are discarded after test ends,
     /// similar to `eth_call`.
     fn run_fuzz_test(mut self, func: &Function) -> TestResult {
-        let mut executor = self.executor.clone().into_owned();
         // Prepare fuzz test execution.
-        if self.prepare_test(func, &mut executor).is_err() {
+        if self.prepare_test(func).is_err() {
             return self.result;
         }
 
@@ -949,7 +981,12 @@ impl<'a> FunctionRunner<'a> {
         );
 
         // Run fuzz test.
-        let fuzzed_executor = FuzzedExecutor::new(executor, runner, self.tcfg.sender, fuzz_config);
+        let fuzzed_executor = FuzzedExecutor::new(
+            self.executor.into_owned().clone(),
+            runner,
+            self.tcfg.sender,
+            fuzz_config,
+        );
         let result = fuzzed_executor.fuzz(
             func,
             &self.setup.fuzz_fixtures,
@@ -959,6 +996,7 @@ impl<'a> FunctionRunner<'a> {
             progress.as_ref(),
         );
         self.result.fuzz_result(result);
+
         self.result
     }
 
@@ -971,19 +1009,24 @@ impl<'a> FunctionRunner<'a> {
     ///
     /// Unit tests within same contract (or even current test) are valid options for before test tx
     /// configuration. Test execution stops if any of before test txes fails.
-    fn prepare_test(&mut self, func: &Function, executor: &mut Executor) -> Result<(), ()> {
+    fn prepare_test(&mut self, func: &Function) -> Result<(), ()> {
         let address = self.setup.address;
 
         // Apply before test configured functions (if any).
         if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count()
             == 1
         {
-            for calldata in executor.call_sol_default(
+            for calldata in self.executor.call_sol_default(
                 address,
                 &ITest::beforeTestSetupCall { testSelector: func.selector() },
             ) {
                 // Apply before test configured calldata.
-                match executor.transact_raw(self.tcfg.sender, address, calldata, U256::ZERO) {
+                match self.executor.to_mut().transact_raw(
+                    self.tcfg.sender,
+                    address,
+                    calldata,
+                    U256::ZERO,
+                ) {
                     Ok(call_result) => {
                         let reverted = call_result.reverted;
 
