@@ -67,6 +67,15 @@ impl TestEnv {
         });
     }
 
+    pub fn set_chain_id(&mut self, new_chain_id: u64) {
+        // Set chain id in pallet-revive runtime.
+        self.0.lock().unwrap().execute_with(|| {
+            <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
+                &new_chain_id,
+            );
+        });
+    }
+
     pub fn set_block_number(&mut self, new_height: U256) {
         // Set block number in pallet-revive runtime.
         self.0.lock().unwrap().execute_with(|| {

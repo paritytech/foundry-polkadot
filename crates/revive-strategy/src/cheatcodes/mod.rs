@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall,
-        setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall,
+        rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -153,7 +153,6 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
         self
     }
 }
-
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
@@ -327,6 +326,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 cheatcode.dyn_apply(ccx, executor)
             }
+
+            t if using_pvm && is::<chainIdCall>(t) => {
+                let &chainIdCall { newChainId } = cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                ctx.externalities.set_chain_id(newChainId.to());
+
+                cheatcode.dyn_apply(ccx, executor)
+            }
             t if using_pvm && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
@@ -493,6 +501,9 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
     ctx.externalities.execute_with(||{
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
+            <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
+                &data.cfg.chain_id,
+            );
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
             for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
@@ -786,7 +797,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
                     input.caller().as_slice(),
                 )));
-
                 let exec_config = ExecConfig {
                     bump_nonce: true,
                     collect_deposit_from_hold: None,
@@ -815,6 +825,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let debug_settings = DebugSettings::new(true);
                     debug_settings.write_to_storage::<Runtime>();
                 }
+
                 Pallet::<Runtime>::bare_instantiate(
                     origin,
                     evm_value,
@@ -955,7 +966,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     let debug_settings = DebugSettings::new(true);
                     debug_settings.write_to_storage::<Runtime>();
                 }
-
                 Pallet::<Runtime>::bare_call(
                     origin,
                     target,
@@ -1089,17 +1099,18 @@ fn post_exec(
     if let Some(traces) = call_traces
         && !is_static_call
     {
-        let mut logs = vec![];
+        let mut logs: Vec<(u32, Log)> = vec![];
+        logs.sort_by(|a, b| a.0.cmp(&b.0));
         if !state.expected_emits.is_empty() || state.recorded_logs.is_some() {
-            collect_logs(&mut logs, &traces);
+            logs = collect_logs(&traces);
         }
         if !state.expected_emits.is_empty() {
-            logs.clone().into_iter().for_each(|log| {
+            logs.clone().into_iter().for_each(|(_, log)| {
                 foundry_cheatcodes::handle_expect_emit(state, &log, &mut Default::default());
             })
         }
         if let Some(records) = &mut state.recorded_logs {
-            records.extend(logs.iter().map(|log| foundry_cheatcodes::Vm::Log {
+            records.extend(logs.iter().map(|(_, log)| foundry_cheatcodes::Vm::Log {
                 data: log.data.data.clone(),
                 emitter: log.address,
                 topics: log.topics().to_owned(),
@@ -1114,18 +1125,52 @@ fn post_exec(
     }
 }
 
-fn collect_logs(accumulator: &mut Vec<Log>, trace: &CallTrace) {
-    accumulator.extend(trace.logs.iter().map(|log| {
-        let log = log.clone();
-        Log::new_unchecked(
-            Address::from(log.address.0),
-            log.topics.iter().map(|x| U256::from_be_slice(x.as_bytes()).into()).collect(),
-            Bytes::from(log.data.0),
-        )
-    }));
-    for call in &trace.calls {
-        collect_logs(accumulator, call);
+struct LogWithIndex {
+    log: CallTrace,
+    index: Vec<(Log, u32)>,
+}
+
+impl From<CallTrace> for LogWithIndex {
+    fn from(value: CallTrace) -> Self {
+        Self { log: value, index: vec![] }
     }
+}
+
+fn assign_indexes(trace: &mut LogWithIndex, mut index: u32) -> (u32, Vec<(Log, u32)>) {
+    let mut sub_call_index = 0;
+    for (i, _) in trace.log.logs.clone().iter().enumerate() {
+        while sub_call_index < trace.log.logs[i].position {
+            let (new_index, logs) =
+                assign_indexes(&mut trace.log.calls[sub_call_index as usize].clone().into(), index);
+            index = new_index;
+            trace.index.extend(logs.into_iter());
+            sub_call_index += 1;
+        }
+        let log = trace.log.logs[i].clone();
+        trace.index.push((
+            Log::new_unchecked(
+                Address::from(log.address.0),
+                log.topics.iter().map(|x| U256::from_be_slice(x.as_bytes()).into()).collect(),
+                Bytes::from(log.data.0),
+            ),
+            index,
+        ));
+        index += 1;
+    }
+    while (sub_call_index as usize) < trace.log.calls.len() {
+        let (new_index, logs) =
+            assign_indexes(&mut trace.log.calls[sub_call_index as usize].clone().into(), index);
+        index = new_index;
+        trace.index.extend(logs.into_iter());
+        sub_call_index += 1;
+    }
+    (index, trace.index.clone())
+}
+
+fn collect_logs(trace: &CallTrace) -> Vec<(u32, Log)> {
+    let (_, mut l) = assign_indexes(&mut trace.clone().into(), 0);
+    l.sort_by(|a, b| a.1.cmp(&b.1));
+    l.into_iter().map(|x| (x.1, x.0)).collect()
 }
 
 fn get_context_ref_mut(

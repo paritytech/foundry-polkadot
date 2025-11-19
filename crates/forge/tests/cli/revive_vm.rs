@@ -279,6 +279,72 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 "#]]);
 });
 
+forgetest!(chainid, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+    prj.add_source(
+        "ChainId.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {console} from "./console.sol";
+
+contract ChainIdRevive {
+    function chain_id() public view returns (uint256) {
+        return block.chainid;
+    }
+}
+
+
+contract ChainIdTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function testChainIdRevive() public {
+        ChainIdRevive chainIdRevive = new ChainIdRevive();
+
+        assertEq(chainIdRevive.chain_id(), block.chainid);
+
+        uint256 newChainId = 99;
+        vm.chainId(newChainId);
+        assertEq(newChainId, block.chainid);
+        assertEq(chainIdRevive.chain_id(), newChainId);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let res = cmd.args(["test", "--resolc", "-vvvv", "--polkadot"]).assert_success();
+    res.stderr_eq(str![""]).stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/ChainId.t.sol:ChainIdTest
+[PASS] testChainIdRevive() ([GAS])
+Traces:
+  [..] ChainIdTest::testChainIdRevive()
+    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 2357 bytes of code
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::chain_id() [staticcall]
+    │   └─ ← [Return] 31337 [3.133e4]
+    ├─ [0] VM::chainId(99)
+    │   └─ ← [Return]
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::chain_id() [staticcall]
+    │   └─ ← [Return] 99
+    └─ ← [Stop]
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
 forgetest!(vm_load, |prj, cmd| {
     prj.insert_ds_test();
     prj.insert_vm();
