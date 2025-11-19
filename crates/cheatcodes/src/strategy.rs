@@ -262,8 +262,6 @@ pub trait CheatcodeInspectorStrategyExt {
         None
     }
 
-    fn revive_call_end(&self, _state: &mut crate::Cheatcodes, _ecx: Ecx, _call: &CallInputs) {}
-
     // Remove duplicate accesses in storage_recorder
     fn revive_remove_duplicate_account_access(&self, _state: &mut crate::Cheatcodes) {}
 }
