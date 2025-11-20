@@ -592,14 +592,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
         if ctx.pvm_startup_migration.is_allowed() && !ctx.using_pvm {
             tracing::info!("startup pallet-revive migration initiated");
-            
+
             execute_with_externalities(|externalities| {
                 externalities.execute_with(|| {
                     let debug_settings = DebugSettings::new(true);
                     debug_settings.write_to_storage::<Runtime>();
                 })
             });
-            
+
             select_revive(ctx, ecx);
             ctx.pvm_startup_migration.done();
             tracing::info!("startup pallet-revive migration completed");

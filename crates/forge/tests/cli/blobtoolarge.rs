@@ -11,7 +11,7 @@
 
 forgetest!(blobtoolarge_callback_morpho_repro, |prj, cmd| {
     prj.insert_ds_test();
-    
+
     // Simple callback contract (small enough to migrate to PVM)
     prj.add_source(
         "CallbackContract.sol",
@@ -40,7 +40,7 @@ contract CallbackContract {
         "#,
     )
     .unwrap();
-    
+
     // Generate a bloated test contract with many dummy functions to exceed 24KB limit
     let mut bloat_functions = String::new();
     for i in 1..=280 {
@@ -49,7 +49,7 @@ contract CallbackContract {
             i, i
         ));
     }
-    
+
     let test_contract = format!(
         r#"
 // SPDX-License-Identifier: MIT
@@ -75,7 +75,7 @@ contract BloatTest is DSTest, ICallback {{
         "#,
         bloat_functions
     );
-    
+
     prj.add_source("BloatTest.t.sol", &test_contract).unwrap();
 
     // Without --polkadot, test runs in pure EVM and passes

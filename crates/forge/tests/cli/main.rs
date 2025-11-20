@@ -5,6 +5,7 @@ pub mod constants;
 pub mod utils;
 
 mod bind_json;
+mod blobtoolarge;
 mod build;
 mod cache;
 mod cmd;
@@ -34,7 +35,6 @@ mod script;
 mod soldeer;
 mod svm;
 mod test_cmd;
-mod blobtoolarge;
 mod verify;
 mod verify_bytecode;
 mod version;
