@@ -1185,7 +1185,7 @@ async fn test_trace_block() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_traces_nested_calls() {
+async fn test_trace_nested_calls() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
