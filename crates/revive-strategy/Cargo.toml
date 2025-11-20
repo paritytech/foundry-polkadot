@@ -18,7 +18,7 @@ foundry-evm-core.workspace = true
 foundry-cheatcodes.workspace = true
 foundry-linking.workspace = true
 revive-env.workspace = true
-
+revive-utils.workspace = true
 alloy-sol-types.workspace = true
 alloy-primitives.workspace = true
 alloy-rpc-types.workspace = true

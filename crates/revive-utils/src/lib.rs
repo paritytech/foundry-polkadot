@@ -14,6 +14,7 @@ use revm::{
     },
 };
 
+pub mod snapshots;
 /// A Wrapper around [TracingInspector] to allow adding zkEVM traces.
 #[derive(Clone, Debug, Default)]
 pub struct TraceCollector {

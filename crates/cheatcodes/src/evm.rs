@@ -957,7 +957,12 @@ pub(super) fn get_nonce(ccx: &mut CheatsCtxt, address: &Address) -> Result {
 
 fn inner_snapshot_state(ccx: &mut CheatsCtxt) -> Result {
     let (db, journal, mut env) = ccx.ecx.as_db_env_and_journal();
-    Ok(db.snapshot_state(journal, &mut env).abi_encode())
+    let snapshot_id = db.snapshot_state(journal, &mut env);
+
+    // Also snapshot the Polkadot Revive state
+    revive_utils::snapshots::save_revive_snapshot(snapshot_id);
+
+    Ok(snapshot_id.abi_encode())
 }
 
 fn inner_revert_to_state(ccx: &mut CheatsCtxt, snapshot_id: U256) -> Result {
@@ -967,6 +972,10 @@ fn inner_revert_to_state(ccx: &mut CheatsCtxt, snapshot_id: U256) -> Result {
     {
         // we reset the evm's journaled_state to the state of the snapshot previous state
         ccx.ecx.journaled_state.inner = journaled_state;
+
+        // Also revert the Polkadot Revive state
+        revive_utils::snapshots::revert_revive_snapshot(snapshot_id);
+
         true
     } else {
         false
@@ -982,6 +991,11 @@ fn inner_revert_to_state_and_delete(ccx: &mut CheatsCtxt, snapshot_id: U256) -> 
     {
         // we reset the evm's journaled_state to the state of the snapshot previous state
         ccx.ecx.journaled_state.inner = journaled_state;
+
+        // Also revert and delete the Polkadot Revive state
+        revive_utils::snapshots::revert_revive_snapshot(snapshot_id);
+        revive_utils::snapshots::delete_revive_snapshot(snapshot_id);
+
         true
     } else {
         false
@@ -991,11 +1005,19 @@ fn inner_revert_to_state_and_delete(ccx: &mut CheatsCtxt, snapshot_id: U256) -> 
 
 fn inner_delete_state_snapshot(ccx: &mut CheatsCtxt, snapshot_id: U256) -> Result {
     let result = ccx.ecx.journaled_state.database.delete_state_snapshot(snapshot_id);
+
+    // Also delete the Polkadot Revive snapshot
+    revive_utils::snapshots::delete_revive_snapshot(snapshot_id);
+
     Ok(result.abi_encode())
 }
 
 fn inner_delete_state_snapshots(ccx: &mut CheatsCtxt) -> Result {
     ccx.ecx.journaled_state.database.delete_state_snapshots();
+
+    // Also delete all Polkadot Revive snapshots
+    revive_utils::snapshots::delete_all_revive_snapshots();
+
     Ok(Default::default())
 }
 

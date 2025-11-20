@@ -15749,6 +15749,7 @@ dependencies = [
  "parity-scale-codec",
  "polkadot-sdk",
  "revive-env",
+ "revive-utils",
  "revm",
  "scale-info",
  "semver 1.0.26",

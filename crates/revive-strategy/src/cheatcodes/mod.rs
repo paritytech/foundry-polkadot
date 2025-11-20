@@ -1027,13 +1027,42 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         address: None,
                     }
                 } else {
+                    let created_address = Address::from_slice(result.addr.as_bytes());
+                    // let deployed_code = result.result.data.clone();
+                    // tracing::warn!(
+                    //     "CREATE succeeded in EVM mode: address={:?}, code_size={},
+                    // gas_consumed={}",     created_address,
+                    //     deployed_code.len(),
+                    //     res.gas_consumed.ref_time()
+                    // );
+
+                    // // CRITICAL: Update Foundry's journal with the deployed code
+                    // // Without this, EXTCODESIZE and code checks will return 0/empty
+                    // // even though the contract exists in pallet-revive
+                    // if let Some(account) = ecx.journaled_state.state.get_mut(&created_address) {
+                    //     let bytecode = Bytecode::new_raw(deployed_code.clone().into());
+                    //     account.info.code_hash = bytecode.hash_slow();
+                    //     account.info.code = Some(bytecode);
+                    //     tracing::warn!(
+                    //         "Updated Foundry journal with deployed code for address={:?},
+                    // code_len={}, code_hash={:?}",         created_address,
+                    //         deployed_code.len(),
+                    //         account.info.code_hash
+                    //     );
+                    // } else {
+                    //     tracing::error!(
+                    //         "Failed to find account in state for address={:?} to update with
+                    // deployed code",         created_address
+                    //     );
+                    // }
+
                     CreateOutcome {
                         result: InterpreterResult {
                             result: InstructionResult::Return,
                             output: code_bytes.into(),
                             gas,
                         },
-                        address: Some(Address::from_slice(result.addr.as_bytes())),
+                        address: Some(created_address),
                     }
                 };
 
