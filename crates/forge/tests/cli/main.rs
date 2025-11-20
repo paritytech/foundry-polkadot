@@ -34,6 +34,7 @@ mod script;
 mod soldeer;
 mod svm;
 mod test_cmd;
+mod blobtoolarge;
 mod verify;
 mod verify_bytecode;
 mod version;
