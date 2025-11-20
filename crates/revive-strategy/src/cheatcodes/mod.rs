@@ -257,9 +257,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         fn is<T: std::any::Any>(t: TypeId) -> bool {
             TypeId::of::<T>() == t
         }
-        let using_pvm = get_context_ref_mut(ccx.state.strategy.context.as_mut()).using_pvm;
         let ctx: &mut PvmCheatcodeInspectorStrategyContext =
             get_context_ref_mut(ccx.state.strategy.context.as_mut());
+        let using_pvm = ctx.using_pvm;
         match cheatcode.as_any().type_id() {
             t if is::<pvmCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
