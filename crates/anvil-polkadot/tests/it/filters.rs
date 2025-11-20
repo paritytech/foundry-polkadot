@@ -13,8 +13,8 @@ use anvil_polkadot::{
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
 use polkadot_sdk::{
-    pallet_revive::evm::{Account, Bytes, Log},
-    sp_core::{H160, keccak_256},
+    pallet_revive::evm::{Account, Log},
+    sp_core::keccak_256,
 };
 use std::collections::HashSet;
 use subxt::utils::H256;
@@ -246,12 +246,20 @@ async fn test_filter_is_evicted() {
 
 // ======= Logs filter
 
-fn assert_decoded_simple_storage_data(data: &Bytes, old: U256, new: U256) {
-    let decoded_data = SimpleStorage::ValueChanged::abi_decode_data(&data.0).unwrap();
-    // Assert the old value
-    assert_eq!(decoded_data.0, old);
-    // Assert the new value
-    assert_eq!(decoded_data.1, new);
+fn assert_decoded_simple_storage_data(log: &Log, old: U256, new: U256) {
+    let alloy_topics: Vec<_> =
+        log.topics.iter().map(|t| alloy_primitives::B256::from_slice(t.as_bytes())).collect();
+
+    let decoded =
+        SimpleStorage::ValueChanged::decode_raw_log(alloy_topics, &log.data.as_ref().unwrap().0)
+            .unwrap();
+
+    assert_eq!(decoded.oldValue, old);
+    assert_eq!(decoded.newValue, new);
+    assert_eq!(
+        decoded.changer,
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()))
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -308,58 +316,7 @@ async fn test_logs_filter_receives_new_logs() {
     let event_hash = keccak_256(b"ValueChanged(address,uint256,uint256)");
     assert_eq!(logs[0].topics[0], H256::from(event_hash));
 
-    assert_decoded_simple_storage_data(
-        logs[0].data.as_ref().unwrap(),
-        U256::from(0),
-        U256::from(511),
-    );
-
-    // Assert the changer address
-    let changer_topic = logs[0].topics[1].as_bytes();
-    let mut changer = [0u8; 20];
-    changer.copy_from_slice(&changer_topic[12..32]);
-    assert_eq!(alith_address, H160(changer));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_logs_filter_only_returns_new_logs() {
-    let anvil_node_config = AnvilNodeConfig::test_config();
-    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
-    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
-
-    let alith = Account::from(subxt_signer::eth::dev::alith());
-    let alith_address = alith.address();
-
-    // Deploy contract
-    let contract_code = get_contract_code("SimpleStorage");
-    let tx_hash = node.deploy_contract(&contract_code.init, alith.address()).await;
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    let receipt = node.get_transaction_receipt(tx_hash).await;
-    let contract_address = receipt.contract_address.unwrap();
-
-    // Create a new logs filter for the contract_address
-    let filter_id = unwrap_response::<String>(
-        node.eth_rpc(EthRequest::EthNewFilter(
-            Filter::new().address(Address::from(ReviveAddress::new(contract_address))),
-        ))
-        .await
-        .unwrap(),
-    )
-    .unwrap();
-    // Emit an event
-    let set_value_data = SimpleStorage::setValueCall::new((U256::from(100),)).abi_encode();
-    let call_tx = TransactionRequest::default()
-        .from(Address::from(ReviveAddress::new(alith_address)))
-        .to(Address::from(ReviveAddress::new(contract_address)))
-        .input(TransactionInput::both(set_value_data.into()))
-        .nonce(1);
-    node.send_transaction(call_tx).await.unwrap();
-    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-    let logs1 = unwrap_response::<Vec<Log>>(
-        node.eth_rpc(EthRequest::EthGetFilterChanges(filter_id.clone())).await.unwrap(),
-    )
-    .unwrap();
-    assert_eq!(logs1.len(), 1);
+    assert_decoded_simple_storage_data(&logs[0], U256::from(0), U256::from(511));
 
     // Emit the second event
     let set_value_data = SimpleStorage::setValueCall::new((U256::from(200),)).abi_encode();
@@ -377,11 +334,7 @@ async fn test_logs_filter_only_returns_new_logs() {
     )
     .unwrap();
     assert_eq!(logs2.len(), 1);
-    assert_decoded_simple_storage_data(
-        logs2[0].data.as_ref().unwrap(),
-        U256::from(100),
-        U256::from(200),
-    );
+    assert_decoded_simple_storage_data(&logs2[0], U256::from(511), U256::from(200));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -431,11 +384,7 @@ async fn test_logs_filter_returns_historic_logs_on_creation() {
     .unwrap();
     for (i, log) in from_block_logs.iter().enumerate().skip(1) {
         let old_value = if i == 1 { 0 } else { 511 + (i - 2) };
-        assert_decoded_simple_storage_data(
-            log.data.as_ref().unwrap(),
-            U256::from(old_value),
-            U256::from(511 + (i - 1)),
-        );
+        assert_decoded_simple_storage_data(log, U256::from(old_value), U256::from(511 + (i - 1)));
     }
 
     let set_value_data = SimpleStorage::setValueCall::new((U256::from(514),)).abi_encode();
@@ -450,14 +399,9 @@ async fn test_logs_filter_returns_historic_logs_on_creation() {
         node.eth_rpc(EthRequest::EthGetFilterChanges(from_block_filter_id.clone())).await.unwrap(),
     )
     .unwrap();
-    assert_decoded_simple_storage_data(
-        from_block_logs[0].data.as_ref().unwrap(),
-        U256::from(513),
-        U256::from(514),
-    );
+    assert_eq!(from_block_logs.len(), 1);
+    assert_decoded_simple_storage_data(&from_block_logs[0], U256::from(513), U256::from(514));
 }
-
-// TODO: Add tests with to_block and block_hash as well
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_logs_filter_with_block_range() {
@@ -775,11 +719,7 @@ async fn test_logs_filter_after_snapshot_and_revert() {
     // Should get the new log from the alternate timeline
     assert_eq!(logs_after_revert.len(), 1);
 
-    assert_decoded_simple_storage_data(
-        logs_after_revert[0].data.as_ref().unwrap(),
-        U256::from(100),
-        U256::from(300),
-    );
+    assert_decoded_simple_storage_data(&logs_after_revert[0], U256::from(100), U256::from(300));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -913,11 +853,7 @@ async fn test_logs_filter_future_block_number() {
     )
     .unwrap();
     assert_eq!(logs.len(), 1);
-    assert_decoded_simple_storage_data(
-        logs[0].data.as_ref().unwrap(),
-        U256::from(100),
-        U256::from(511),
-    );
+    assert_decoded_simple_storage_data(&logs[0], U256::from(100), U256::from(511));
 }
 
 #[tokio::test(flavor = "multi_thread")]
