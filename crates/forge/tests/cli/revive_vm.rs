@@ -1513,6 +1513,14 @@ contract CounterTest is DSTest {
         beforeTestCalldata = new bytes[](1);
         beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 15, 4);
     }
+    if (testSelector == this.testFuzz_SetNumber.selector) {
+      beforeTestCalldata = new bytes[](1);
+      beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 15, 4);
+  }
+  if (testSelector == this.testFuzz_SetNumber2.selector) {
+    beforeTestCalldata = new bytes[](1);
+    beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 1, 4);
+}
   }
 
   function testA() public {
@@ -1541,13 +1549,13 @@ function testC() public {
 }
 
   function testFuzz_SetNumber(uint256 x) public {
-      assertEq(counter.number(), 5);
+      assertEq(counter.number(), 15);
       counter.setNumber(x); 
       assertEq(counter.number(), x);
   }
   
   function testFuzz_SetNumber2(uint256 x) public {
-    assertEq(counter.number(), 5);
+    assertEq(counter.number(), 1);
     counter.setNumber(x); 
     assertEq(counter.number(), x);
   }

@@ -544,18 +544,12 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and unit test function call are discarded after
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
-        let executor = self.executor.into_owned();
-        self.executor = Cow::Owned(executor);
-        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         // Prepare unit test execution.
         if self.prepare_test(func).is_err() {
-            self.executor
-                .strategy
-                .runner
-                .rollback_transaction(self.executor.strategy.context.as_ref());
-
             return self.result;
         }
+        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
+
         // Run current unit test.
         let (mut raw_call_result, reason) = match self.executor.call(
             self.sender,
@@ -602,13 +596,8 @@ impl<'a> FunctionRunner<'a> {
     /// - `bool[] public fixtureSwap = [true, false]` The `table_test` is then called with the pair
     ///   of args `(2, true)` and `(5, false)`.
     fn run_table_test(mut self, func: &Function) -> TestResult {
-        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         // Prepare unit test execution.
         if self.prepare_test(func).is_err() {
-            self.executor
-                .strategy
-                .runner
-                .rollback_transaction(self.executor.strategy.context.as_ref());
             return self.result;
         }
 
