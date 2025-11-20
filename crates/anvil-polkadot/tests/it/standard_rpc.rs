@@ -1087,6 +1087,104 @@ async fn test_traces() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_trace_block() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+
+    // Disable automining so we can pack multiple transactions into the same block.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(false)).await.unwrap()).unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let dorothy = Account::from(subxt_signer::eth::dev::dorothy());
+
+    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
+    let baltathar_addr = Address::from(ReviveAddress::new(baltathar.address()));
+    let dorothy_addr = Address::from(ReviveAddress::new(dorothy.address()));
+
+    let value_0 = U256::from(1_000_000_000_000_000_000u64);
+    let value_1 = U256::from(2_000_000_000_000_000_000u64);
+    let value_2 = U256::from(3_000_000_000_000_000_000u64);
+
+    // Queue three different transfer transactions in the same block:
+    //  - alith -> baltathar
+    //  - alith -> dorothy
+    //  - baltathar -> alith
+    let tx_0 = TransactionRequest::default().from(alith_addr).to(baltathar_addr).value(value_0);
+    let tx_1 = TransactionRequest::default().from(alith_addr).to(dorothy_addr).value(value_1);
+    let tx_2 = TransactionRequest::default().from(baltathar_addr).to(alith_addr).value(value_2);
+
+    let tx_hash_0 = node.send_transaction(tx_0).await.unwrap();
+    let tx_hash_1 = node.send_transaction(tx_1.nonce(1)).await.unwrap();
+    let tx_hash_2 = node.send_transaction(tx_2).await.unwrap();
+
+    // Mine a single block including all three transactions.
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    // Sanity check: all three transactions should be mined in block 1.
+    let block1 = node.get_block_by_hash(node.block_hash_by_number(1).await.unwrap()).await;
+    assert!(is_transaction_in_block(&block1.transactions, tx_hash_0));
+    assert!(is_transaction_in_block(&block1.transactions, tx_hash_1));
+    assert!(is_transaction_in_block(&block1.transactions, tx_hash_2));
+
+    // trace_block for block 1 should return three traces, one per transaction.
+    let block_traces: Vec<LocalizedTransactionTrace> = unwrap_response(
+        node.eth_rpc(EthRequest::TraceBlock(alloy_eips::BlockNumberOrTag::Number(1)))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(block_traces.len(), 3, "expected three traces for the three transfers in block 1");
+
+    // Collect the transaction hashes present in the block traces.
+    let mut traced_hashes: Vec<B256> =
+        block_traces.iter().filter_map(|t| t.transaction_hash).collect();
+    traced_hashes.sort();
+
+    let mut expected_hashes = vec![
+        B256::from_slice(tx_hash_0.as_ref()),
+        B256::from_slice(tx_hash_1.as_ref()),
+        B256::from_slice(tx_hash_2.as_ref()),
+    ];
+    expected_hashes.sort();
+    assert_eq!(traced_hashes, expected_hashes);
+
+    // Each trace should be a simple top-level CALL with no subtraces and expected (from, to,
+    // value).
+    let mut expected_calls = vec![
+        (alith_addr, baltathar_addr, value_0),
+        (alith_addr, dorothy_addr, value_1),
+        (baltathar_addr, alith_addr, value_2),
+    ];
+
+    for localized_trace in &block_traces {
+        let trace = &localized_trace.trace;
+        assert!(trace.trace_address.is_empty(), "top-level trace should have empty trace_address");
+        assert_eq!(trace.subtraces, 0, "simple transfers should not have nested subtraces");
+        match &trace.action {
+            ParityAction::Call(ParityCallAction {
+                from: act_from,
+                to: act_to,
+                value: act_value,
+                ..
+            }) => {
+                let triple = (*act_from, *act_to, *act_value);
+                if let Some(pos) =
+                    expected_calls.iter().position(|(f, t, v)| (*f, *t, *v) == triple)
+                {
+                    expected_calls.remove(pos);
+                } else {
+                    panic!("unexpected (from, to, value) in trace_block: {:?}", triple);
+                }
+            }
+            other => panic!("expected parity Call action for simple transfer, got {other:?}"),
+        }
+    }
+    assert!(expected_calls.is_empty(), "not all expected transfers were seen in trace_block");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_traces_nested_calls() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
