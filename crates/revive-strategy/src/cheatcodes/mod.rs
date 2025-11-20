@@ -592,14 +592,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
         if ctx.pvm_startup_migration.is_allowed() && !ctx.using_pvm {
             tracing::info!("startup pallet-revive migration initiated");
-
-            execute_with_externalities(|externalities| {
-                externalities.execute_with(|| {
-                    let debug_settings = DebugSettings::new(true);
-                    debug_settings.write_to_storage::<Runtime>();
-                })
-            });
-
             select_revive(ctx, ecx);
             ctx.pvm_startup_migration.done();
             tracing::info!("startup pallet-revive migration completed");
@@ -663,6 +655,10 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
+            // Enable debug mode to bypass size checks during migration
+            let debug_settings = DebugSettings::new(true);
+            debug_settings.write_to_storage::<Runtime>();
+
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
