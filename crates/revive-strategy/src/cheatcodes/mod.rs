@@ -370,7 +370,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 }
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 if target != CHEATCODE_ADDRESS {
-                    ctx.externalities.store(target, slot, value)?;
+                    ctx.externalities.set_storage(target, slot, value)?;
                 }
                 cheatcode.dyn_apply(ccx, executor)
             }

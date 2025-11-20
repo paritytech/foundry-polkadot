@@ -159,7 +159,7 @@ impl TestEnv {
             .map_err(|_| <&str as Into<Error>>::into("Could not set storage"))
     }
 
-    pub fn store(
+    pub fn set_storage(
         &mut self,
         target: Address,
         slot: FixedBytes<32>,
