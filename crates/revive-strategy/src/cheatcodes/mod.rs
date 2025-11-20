@@ -592,6 +592,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
         if ctx.pvm_startup_migration.is_allowed() && !ctx.using_pvm {
             tracing::info!("startup pallet-revive migration initiated");
+            
+            execute_with_externalities(|externalities| {
+                externalities.execute_with(|| {
+                    let debug_settings = DebugSettings::new(true);
+                    debug_settings.write_to_storage::<Runtime>();
+                })
+            });
+            
             select_revive(ctx, ecx);
             ctx.pvm_startup_migration.done();
             tracing::info!("startup pallet-revive migration completed");
@@ -980,14 +988,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         _ => None,
                     };
 
-                    // If limits are set to max, enable debug mode to bypass them in revive
-                    if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
-                        || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
-                    {
-                        let debug_settings = DebugSettings::new(true);
-                        debug_settings.write_to_storage::<Runtime>();
-                    }
-
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
@@ -1123,13 +1123,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         mock_handler: Some(Box::new(mock_handler.clone())),
                         is_dry_run: None,
                     };
-                    // If limits are set to max, enable debug mode to bypass them in revive
-                    if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
-                        || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
-                    {
-                        let debug_settings = DebugSettings::new(true);
-                        debug_settings.write_to_storage::<Runtime>();
-                    }
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target,

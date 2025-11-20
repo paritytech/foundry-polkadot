@@ -1,12 +1,13 @@
-//! Test demonstrating the BlobTooLarge issue that affects Morpho's callback tests.
+//! Test demonstrating large test contracts work with pallet-revive.
 //!
-//! When running `forge test --polkadot` without `--resolc`, test contracts larger than ~24KB
-//! cannot be migrated to pallet-revive, causing callback tests to fail.
+//! Previously, test contracts larger than ~24KB would fail with BlobTooLarge when running
+//! `forge test --polkadot`. This was fixed by enabling debug mode in pallet-revive at startup,
+//! which bypasses EIP-170 size checks.
 //!
 //! This test verifies:
 //! 1. Test passes in pure EVM (without --polkadot)
-//! 2. Test fails with --polkadot (BlobTooLarge error, ~28KB EVM bytecode)
-//! 3. Test passes with --polkadot --resolc (PVM bytecode fits within limit)
+//! 2. Test now passes with --polkadot (debug mode enabled, ~28KB test contract)
+//! 3. Test passes with --polkadot --resolc (PVM bytecode)
 
 forgetest!(blobtoolarge_callback_morpho_repro, |prj, cmd| {
     prj.insert_ds_test();
@@ -80,12 +81,11 @@ contract BloatTest is DSTest, ICallback {{
     // Without --polkadot, test runs in pure EVM and passes
     cmd.forge_fuse().args(["test", "--match-test", "testCallback"]).assert_success();
 
-    // With --polkadot, test contract is ~28KB which exceeds pallet-revive's limit
-    // This causes BlobTooLarge error and test failure, matching Morpho's scenario
-    cmd.forge_fuse().args(["test", "--polkadot", "--match-test", "testCallback"]).assert_failure();
+    // With --polkadot, test now passes with large test contract (~28KB)
+    // Debug mode is enabled at startup to bypass EIP-170 size checks
+    cmd.forge_fuse().args(["test", "--polkadot", "--match-test", "testCallback"]).assert_success();
 
-    // With --resolc, test is compiled to PVM bytecode which has different size characteristics
-    // and passes the pallet-revive size limit
+    // Also works with --resolc (compiles to PVM bytecode)
     cmd.forge_fuse()
         .args(["test", "--polkadot", "--resolc", "--match-test", "testCallback"])
         .assert_success();
