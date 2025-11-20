@@ -1045,16 +1045,17 @@ async fn test_traces() {
         .unwrap();
     let parity_traces: Vec<LocalizedTransactionTrace> = unwrap_response(trace_resp).unwrap();
     assert_eq!(parity_traces.len(), 1);
-    let localized = &parity_traces[0];
+    let localized_trace = &parity_traces[0];
 
     // Basic metadata
-    assert_eq!(localized.transaction_hash, Some(B256::from_slice(tx_hash.as_ref())));
-    assert_eq!(localized.block_number, Some(1u64));
+    assert_eq!(localized_trace.transaction_hash, Some(B256::from_slice(tx_hash.as_ref())));
+    assert_eq!(localized_trace.block_number, Some(1u64));
     let block_hash = node.block_hash_by_number(1).await.unwrap();
-    assert_eq!(localized.block_hash, Some(B256::from_slice(block_hash.as_ref())));
-    assert_eq!(localized.transaction_position, Some(0u64));
+    let block = node.get_block_by_hash(block_hash).await;
+    assert_eq!(localized_trace.block_hash, Some(B256::from_slice(block.hash.as_ref())));
+    assert_eq!(localized_trace.transaction_position, Some(1u64));
 
-    let transaction_trace = localized.trace.clone();
+    let transaction_trace = localized_trace.trace.clone();
 
     // Inner TransactionTrace action & result
     match &transaction_trace.action {
