@@ -18,7 +18,7 @@ contract SimpleStorageCaller {
         simpleStorageInstance.setValue(_newValue);
     }
 
-    // A function that calls getValye() on the SimpleStorage contract (Sub-call 2)
+    // A function that calls getValue() on the SimpleStorage contract (Sub-call 2)
     function callGetValue() public view returns (uint) {
         return simpleStorageInstance.getValue();
     }
