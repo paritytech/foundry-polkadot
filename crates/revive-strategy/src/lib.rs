@@ -91,12 +91,6 @@ fn return_to_checkpoint() {
     TEST_EXTERNALITIES.set(test_externalities)
 }
 
-pub fn reset_externalities() {
-    TEST_EXTERNALITIES.set(ExtBuilder::default()
-    .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
-    .build());
-}
-
 #[derive(Clone)]
 pub struct Backend(InMemoryBackend<sp_core::Blake2Hasher>);
 
