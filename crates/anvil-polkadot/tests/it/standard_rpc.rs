@@ -1092,9 +1092,6 @@ async fn test_trace_block() {
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
 
-    // Disable automining so we can pack multiple transactions into the same block.
-    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(false)).await.unwrap()).unwrap();
-
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
     let dorothy = Account::from(subxt_signer::eth::dev::dorothy());
@@ -1175,7 +1172,7 @@ async fn test_trace_block() {
                 {
                     expected_calls.remove(pos);
                 } else {
-                    panic!("unexpected (from, to, value) in trace_block: {:?}", triple);
+                    panic!("unexpected (from, to, value) in trace_block: {triple:?}");
                 }
             }
             other => panic!("expected parity Call action for simple transfer, got {other:?}"),
