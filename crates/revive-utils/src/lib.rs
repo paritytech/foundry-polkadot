@@ -219,9 +219,21 @@ impl InspectorExt for TraceCollector {
                 if matches!(call.call_type, CallType::Create | CallType::Create2) {
                     let scheme = match call.call_type {
                         CallType::Create => CreateScheme::Create,
-                        CallType::Create2 => CreateScheme::Create2 {
-                            salt: RU256::from_be_slice(call.input.0.as_ref()),
-                        },
+                        CallType::Create2 => {
+                            // For Create2 traces from Polkadot Revive, the CallTrace doesn't
+                            // provide a separate salt field. We derive a salt by hashing the input
+                            // to ensure it fits in U256 and is deterministic.
+                            let salt =
+                                RU256::from_be_bytes(
+                                    B256::from_slice(
+                                        &alloy_primitives::keccak256::<&[u8]>(
+                                            call.input.0.as_ref(),
+                                        )[..],
+                                    )
+                                    .0,
+                                );
+                            CreateScheme::Create2 { salt }
+                        }
                         _ => panic!("impossible"),
                     };
                     Some(CreateInputs {
