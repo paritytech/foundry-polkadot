@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall, rollCall,
-        setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall,
+        rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -266,6 +266,20 @@ fn set_timestamp(new_timestamp: U256, ecx: Ecx<'_, '_, '_>) {
     });
 }
 
+fn set_chain_id(new_chain_id: u64, ecx: Ecx<'_, '_, '_>) {
+    // Set new chain id.
+    ecx.cfg.chain_id = new_chain_id;
+
+    // Set chain id in pallet-revive runtime.
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
+                &ecx.cfg.chain_id,
+            );
+        })
+    });
+}
+
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
@@ -443,6 +457,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 set_timestamp(newTimestamp, ccx.ecx);
+
+                Ok(Default::default())
+            }
+
+            t if using_pvm && is::<chainIdCall>(t) => {
+                let &chainIdCall { newChainId } = cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                set_chain_id(newChainId.to(), ccx.ecx);
 
                 Ok(Default::default())
             }
@@ -634,7 +657,9 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
         externalities.execute_with(|| {
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
-
+            <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
+                &data.cfg.chain_id,
+            );
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
             for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
@@ -962,6 +987,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         let debug_settings = DebugSettings::new(true);
                         debug_settings.write_to_storage::<Runtime>();
                     }
+
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
@@ -1104,7 +1130,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         let debug_settings = DebugSettings::new(true);
                         debug_settings.write_to_storage::<Runtime>();
                     }
-
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target,
