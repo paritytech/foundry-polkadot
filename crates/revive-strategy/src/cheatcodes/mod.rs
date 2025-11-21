@@ -655,10 +655,11 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
-            // Enable debug mode to bypass size checks during migration
-            let debug_settings = DebugSettings::new(true);
-            debug_settings.write_to_storage::<Runtime>();
-
+            // Enable debug mode to bypass EIP-170 size checks during testing
+            if data.cfg.limit_contract_code_size == Some(usize::MAX) {
+                let debug_settings = DebugSettings::new(true);
+                debug_settings.write_to_storage::<Runtime>();
+            }
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
