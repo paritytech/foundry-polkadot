@@ -5,14 +5,14 @@ import "ds-test/test.sol";
 import "cheats/Vm.sol";
 import "../../default/logs/console.sol";
 
-
 contract Storage {
     uint256 public slot0 = 10;
     uint256 public slot1 = 20;
+
     function setSlot0(uint256 value) public {
         slot0 = value;
     }
-    
+
     function setSlot1(uint256 value) public {
         slot1 = value;
     }
@@ -45,4 +45,4 @@ contract StoreTestExtra is DSTest {
         assertEq(store.slot0(), 1, "store failed");
         assertEq(store.slot1(), 20, "store failed");
     }
-    }
+}

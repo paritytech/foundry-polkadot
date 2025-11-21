@@ -73,7 +73,7 @@ impl Tracer {
                 for (key, PrestateTraceInfo { balance, nonce, code, mut storage }) in post {
                     let address = Address::from_slice(key.as_bytes());
 
-                    let is_create = ecx.journaled_state.state.get(&address).is_none();
+                    let is_create = !ecx.journaled_state.state.contains_key(&address);
 
                     ecx.journaled_state.load_account(address).expect("account could not be loaded");
 
@@ -107,13 +107,13 @@ impl Tracer {
                             .storage_slots
                             .iter()
                             .map(|slot| {
-                                let slot_key = B256::from(RU256::from_str(&slot).unwrap());
+                                let slot_key = B256::from(RU256::from_str(slot).unwrap());
                                 let slot = PBytes::from(slot_key.0.to_vec());
                                 (
                                     slot,
                                     Pallet::<Runtime>::get_storage(key, slot_key.0)
                                         .unwrap_or(None)
-                                        .map(|v| PBytes::from(v)),
+                                        .map(PBytes::from),
                                 )
                             })
                             .collect();

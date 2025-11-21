@@ -1074,7 +1074,7 @@ fn post_exec(
     let dual_compiled_contracts = &ctx.dual_compiled_contracts;
 
     let call_traces = externalities.execute_with(|| {
-        tracer.apply_prestate_trace(ecx, &dual_compiled_contracts);
+        tracer.apply_prestate_trace(ecx, dual_compiled_contracts);
         tracer.collect_call_traces()
     });
     if let Some(traces) = call_traces
