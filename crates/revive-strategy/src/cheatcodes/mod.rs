@@ -9,7 +9,8 @@ use foundry_cheatcodes::{
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall,
-        rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        revertToStateAndDeleteCall, revertToStateCall, rollCall, setNonceCall, setNonceUnsafeCall,
+        snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -316,6 +317,23 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 ctx.externalities.set_block_number(newHeight);
 
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if using_pvm && is::<snapshotStateCall>(t) => {
+                ctx.externalities.start_snapshotting();
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if using_pvm && is::<revertToStateAndDeleteCall>(t) => {
+                let &revertToStateAndDeleteCall { snapshotId } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+
+                ctx.externalities.revert(snapshotId.try_into().unwrap());
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if using_pvm && is::<revertToStateCall>(t) => {
+                let &revertToStateCall { snapshotId } = cheatcode.as_any().downcast_ref().unwrap();
+
+                ctx.externalities.revert(snapshotId.try_into().unwrap());
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<warpCall>(t) => {

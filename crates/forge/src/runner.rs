@@ -544,13 +544,17 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and unit test function call are discarded after
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
-        let binding = self.executor.clone().into_owned();
+        let binding = self.executor.into_owned();
         self.executor = Cow::Owned(binding);
+        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         // Prepare unit test execution.
         if self.prepare_test(func).is_err() {
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
             return self.result;
         }
-        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
 
         // Run current unit test.
         let (mut raw_call_result, reason) = match self.executor.call(
@@ -598,7 +602,7 @@ impl<'a> FunctionRunner<'a> {
     /// - `bool[] public fixtureSwap = [true, false]` The `table_test` is then called with the pair
     ///   of args `(2, true)` and `(5, false)`.
     fn run_table_test(mut self, func: &Function) -> TestResult {
-        let binding = self.executor.clone().into_owned();
+        let binding = self.executor.into_owned();
         self.executor = Cow::Owned(binding); // Prepare unit test execution.
         if self.prepare_test(func).is_err() {
             return self.result;
@@ -729,7 +733,7 @@ impl<'a> FunctionRunner<'a> {
         identified_contracts: &ContractsByAddress,
         test_bytecode: &Bytes,
     ) -> TestResult {
-        let binding = self.executor.clone().into_owned();
+        let binding = self.executor.into_owned();
         self.executor = Cow::Owned(binding);
         // First, run the test normally to see if it needs to be skipped.
         if let Err(EvmError::Skip(reason)) = self.executor.call(
@@ -955,7 +959,7 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and fuzz test are discarded after test ends,
     /// similar to `eth_call`.
     fn run_fuzz_test(mut self, func: &Function) -> TestResult {
-        let binding = self.executor.clone().into_owned();
+        let binding = self.executor.into_owned();
         self.executor = Cow::Owned(binding);
         // Prepare fuzz test execution.
         if self.prepare_test(func).is_err() {
