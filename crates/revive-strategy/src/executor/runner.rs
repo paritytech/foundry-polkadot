@@ -164,6 +164,6 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         let ctx = get_context_ref(ctx);
         let mut state = ctx.externalties.0.lock().unwrap();
         state.depth = 0;
-        while let Ok(_) = state.externalities.ext().storage_rollback_transaction() {}
+        while state.externalities.ext().storage_rollback_transaction().is_ok() {}
     }
 }
