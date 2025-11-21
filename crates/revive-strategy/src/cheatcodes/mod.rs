@@ -984,7 +984,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
                         || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
                     {
-                        let debug_settings = DebugSettings::new(true);
+                        let debug_settings = DebugSettings::new(true, true);
                         debug_settings.write_to_storage::<Runtime>();
                     }
 
@@ -1127,7 +1127,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
                         || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
                     {
-                        let debug_settings = DebugSettings::new(true);
+                        let debug_settings = DebugSettings::new(true, true);
                         debug_settings.write_to_storage::<Runtime>();
                     }
                     Pallet::<Runtime>::bare_call(
