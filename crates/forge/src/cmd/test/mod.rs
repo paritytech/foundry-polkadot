@@ -24,7 +24,7 @@ use foundry_cli::{
 use foundry_common::{TestFunctionExt, compile::ProjectCompiler, evm::EvmArgs, fs, shell};
 use foundry_compilers::{
     ProjectCompileOutput,
-    artifacts::output_selection::OutputSelection,
+    artifacts::output_selection::{ContractOutputSelection, OutputSelection},
     compilers::{
         Language,
         multi::{MultiCompiler, MultiCompilerLanguage},
@@ -304,7 +304,9 @@ impl TestArgs {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }
-
+        if config.resolc.polkadot {
+            config.extra_output.push(ContractOutputSelection::StorageLayout);
+        }
         // Set up the project.
         let project = config.project()?;
 
@@ -323,7 +325,6 @@ impl TestArgs {
             solc_config.resolc = Default::default();
             solc_config.build_info_path = Some(solc_config.out.join("build-info"));
             let solc_project = solc_config.project()?;
-
             let compiler = ProjectCompiler::new()
                 .dynamic_test_linking(config.dynamic_test_linking)
                 .quiet(shell::is_json() || self.junit)

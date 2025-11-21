@@ -98,3 +98,13 @@ async fn test_revive_callback_from_revive(#[case] runtime_mode: ReviveRuntimeMod
     let filter = Filter::new("testCallbackFromRevive", "EvmReviveMigrationTest", ".*/revive/.*");
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
+
+#[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_revive_storage_migration_extra(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new(".*", "StoreTestExtra", ".*/revive/.*");
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}

@@ -3,3 +3,4 @@ cache/
 out/
 .lock
 .lock_revive
+.lock-revive

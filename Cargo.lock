@@ -3981,7 +3981,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -6759,7 +6759,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#479cf2b36f591d9489fd0cb5f5a3ba72c0ee6db0"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=pkhry%2Fslots#5e1463be54a7e6efeeb5c4e7d24af936001d6cdd"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6797,7 +6797,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#479cf2b36f591d9489fd0cb5f5a3ba72c0ee6db0"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=pkhry%2Fslots#5e1463be54a7e6efeeb5c4e7d24af936001d6cdd"
 dependencies = [
  "foundry-compilers-artifacts-resolc",
  "foundry-compilers-artifacts-solc",
@@ -6807,7 +6807,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts-resolc"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#479cf2b36f591d9489fd0cb5f5a3ba72c0ee6db0"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=pkhry%2Fslots#5e1463be54a7e6efeeb5c4e7d24af936001d6cdd"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6827,7 +6827,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts-solc"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#479cf2b36f591d9489fd0cb5f5a3ba72c0ee6db0"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=pkhry%2Fslots#5e1463be54a7e6efeeb5c4e7d24af936001d6cdd"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6849,7 +6849,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts-vyper"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#479cf2b36f591d9489fd0cb5f5a3ba72c0ee6db0"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=pkhry%2Fslots#5e1463be54a7e6efeeb5c4e7d24af936001d6cdd"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6863,7 +6863,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-core"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#479cf2b36f591d9489fd0cb5f5a3ba72c0ee6db0"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=pkhry%2Fslots#5e1463be54a7e6efeeb5c4e7d24af936001d6cdd"
 dependencies = [
  "alloy-primitives",
  "cfg-if",
