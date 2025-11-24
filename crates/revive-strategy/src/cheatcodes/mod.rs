@@ -657,7 +657,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
         externalities.execute_with(|| {
             // Enable debug mode to bypass EIP-170 size checks during testing
             if data.cfg.limit_contract_code_size == Some(usize::MAX) {
-                let debug_settings = DebugSettings::new(true);
+                let debug_settings = DebugSettings::new(true, true);
                 debug_settings.write_to_storage::<Runtime>();
             }
             System::set_block_number(block_number.saturating_to());

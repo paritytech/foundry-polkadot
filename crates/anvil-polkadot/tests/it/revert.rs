@@ -431,6 +431,8 @@ async fn test_rollback() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    let (alith_addr, _) = alith();
+    let transfer_amount = U256::from(16e17);
 
     // Assert on initial best block number.
     assert_block_number_is_best_and_finalized(&mut node, 0).await;
@@ -441,13 +443,19 @@ async fn test_rollback() {
     // Rollback 2 blocks.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap()).unwrap();
     assert_block_number_is_best_and_finalized(&mut node, 3).await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(4)).await;
+    assert!(receipt_info.is_some());
 
     // Check mining works fine after reverting.
-    mine_blocks(&mut node, 10, 13).await;
+    mine_blocks(&mut node, 10, 14).await;
 
     // Rollback 1 block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert_block_number_is_best_and_finalized(&mut node, 12).await;
+    assert_block_number_is_best_and_finalized(&mut node, 13).await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(14)).await;
+    assert!(receipt_info.is_some());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -615,6 +623,8 @@ async fn test_reset() {
         .with_genesis_block_number(Some(genesis_block_number));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    let (alith_addr, _) = alith();
+    let transfer_amount = U256::from(16e17);
 
     // Deploy multicall contract
     mine_blocks(&mut node, 1, genesis_block_number + 1).await;
@@ -659,7 +669,15 @@ async fn test_reset() {
         0,
         "wrong timestamp after reverting to genesis",
     );
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(genesis_block_number + 1))
+            .await;
+    assert!(receipt_info.is_some());
 
     // Assert we can still mine blocks after the reset.
-    mine_blocks(&mut node, 2, genesis_block_number + 2).await;
+    mine_blocks(&mut node, 2, genesis_block_number + 3).await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(genesis_block_number + 4))
+            .await;
+    assert!(receipt_info.is_some());
 }
