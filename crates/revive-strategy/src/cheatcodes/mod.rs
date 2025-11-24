@@ -655,6 +655,11 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
     execute_with_externalities(|externalities| {
         externalities.execute_with(|| {
+            // Enable debug mode to bypass EIP-170 size checks during testing
+            if data.cfg.limit_contract_code_size == Some(usize::MAX) {
+                let debug_settings = DebugSettings::new(true);
+                debug_settings.write_to_storage::<Runtime>();
+            }
             System::set_block_number(block_number.saturating_to());
             Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
@@ -694,20 +699,21 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
                                             // Collect all immutable bytes from their scattered offsets
                                             immutable_refs
-                                                .values()
-                                                .flatten()
+                                                .values().map(|offsets| offsets.first()).flatten()
                                                 .flat_map(|offset| {
                                                     let start = offset.start as usize;
                                                     let end = start + offset.length as usize;
                                                     evm_bytecode.get(start..end).unwrap_or_else(|| panic!("Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
-                                                        address, start, end, evm_bytecode.len()))
+                                                        address, start, end, evm_bytecode.len())).into_iter().rev()
                                                 })
                                                 .copied()
                                                 .collect::<Vec<u8>>()
                                         });
                                     (contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),immutable_data, BytecodeType::Pvm)
                                 },
-                                crate::ReviveRuntimeMode::Evm => (contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec()), None, BytecodeType::Evm),
+                                crate::ReviveRuntimeMode::Evm => {
+                                    (Some(bytecode.bytecode().to_vec()), None, BytecodeType::Evm)
+                                },
                             };
 
                             if let Some(code_bytes) = code_bytes {
@@ -980,14 +986,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         _ => None,
                     };
 
-                    // If limits are set to max, enable debug mode to bypass them in revive
-                    if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
-                        || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
-                    {
-                        let debug_settings = DebugSettings::new(true);
-                        debug_settings.write_to_storage::<Runtime>();
-                    }
-
                     Pallet::<Runtime>::bare_instantiate(
                         origin,
                         evm_value,
@@ -1123,13 +1121,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         mock_handler: Some(Box::new(mock_handler.clone())),
                         is_dry_run: None,
                     };
-                    // If limits are set to max, enable debug mode to bypass them in revive
-                    if ecx.cfg.limit_contract_code_size == Some(usize::MAX)
-                        || ecx.cfg.limit_contract_initcode_size == Some(usize::MAX)
-                    {
-                        let debug_settings = DebugSettings::new(true);
-                        debug_settings.write_to_storage::<Runtime>();
-                    }
                     Pallet::<Runtime>::bare_call(
                         origin,
                         target,
