@@ -1817,6 +1817,10 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
                 outcome.result.output = Error::encode(msg);
             }
         }
+
+        if outcome.result.is_ok() {
+            self.strategy.runner.revive_call_end(self, ecx, call);
+        }
     }
 
     fn create(&mut self, ecx: Ecx, mut input: &mut CreateInputs) -> Option<CreateOutcome> {
