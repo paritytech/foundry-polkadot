@@ -307,6 +307,8 @@ impl pallet_revive::Config for Runtime {
     type FindAuthor = BlockAuthor;
     type Balance = Balance;
     type NativeToEthRatio = ConstU32<{ constants::NATIVE_TO_ETH_RATIO }>;
+    // No scalling so we can keep the tests the same.
+    type GasScale = ConstU32<1>;
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;

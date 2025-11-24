@@ -27,8 +27,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, DebugSettings,
-        ExecConfig, Pallet, evm::CallTrace,
+        AccountInfo, AddressMapper, BytecodeType, Code, ContractInfo, DebugSettings, ExecConfig,
+        Pallet, TransactionLimits, TransactionMeter, evm::CallTrace, test_utils::deposit_limit,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160, H256},
@@ -638,11 +638,18 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                             };
 
                             if let Some(code_bytes) = code_bytes {
+                                let Ok(mut transaction_meter) = TransactionMeter::<Runtime>::new_from_limits(
+                                        Weight::MAX,
+                                        deposit_limit::<Runtime>(),
+                                    ) else {
+                                        tracing::info!("Could not create transaction meter.");
+                                        return;
+                                    };
                                 let upload_result = Pallet::<Runtime>::try_upload_code(
                                     Pallet::<Runtime>::account_id(),
                                     code_bytes.clone(),
                                     code_type,
-                                    u64::MAX.into(),
+                                    &mut transaction_meter,
                                     &ExecConfig::new_substrate_tx(),
                                 );
                                 match upload_result {
@@ -676,11 +683,18 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                             tracing::info!("Setting evm bytecode stored in account {:?} balance: {:?}", address, amount);
                             // Even if no dual-compiled contract is found, we still upload the existing bytecode because it might be some EVM bytecode that got etched earlier.
                             let code_bytes = bytecode.original_byte_slice().to_vec();
+                            let Ok(mut transaction_meter) = TransactionMeter::<Runtime>::new_from_limits(
+                                        Weight::MAX,
+                                        deposit_limit::<Runtime>(),
+                                    ) else {
+                                        tracing::info!("Could not create transaction meter.");
+                                        return;
+                                    };
                             let upload_result = Pallet::<Runtime>::try_upload_code(
                                 Pallet::<Runtime>::account_id(),
                                 code_bytes.clone(),
                                 BytecodeType::Evm,
-                                u64::MAX.into(),
+                                &mut transaction_meter,
                                 &ExecConfig::new_substrate_tx_without_bump(),
                             );
                             match upload_result {
@@ -919,9 +933,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Pallet::<Runtime>::bare_instantiate(
                     origin,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::MAX,
+                        deposit_limit: u128::MAX,
+                    },
                     code,
                     data,
                     salt,
@@ -941,7 +956,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ = gas.record_cost(res.weight_required.ref_time());
                 }
 
                 let outcome = if result.result.did_revert() {
@@ -1068,9 +1083,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     origin,
                     target,
                     evm_value,
-                    Weight::MAX,
+                    TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::MAX,
+                        deposit_limit: u128::MAX,
+                    },
                     // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
                 )
@@ -1088,7 +1105,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ = gas.record_cost(res.weight_required.ref_time());
                 }
 
                 let outcome = if result.did_revert() {

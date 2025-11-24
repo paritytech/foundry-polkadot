@@ -5,7 +5,7 @@ use call_tracer::ExpectedCallTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker};
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::pallet_revive::{
-    AccountInfo, Pallet, U256, Weight,
+    AccountInfo, Pallet, U256,
     evm::{
         Bytes as PBytes, CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
         PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
@@ -20,7 +20,7 @@ mod call_tracer;
 mod revert_tracer;
 pub mod storage_tracer;
 pub struct Tracer {
-    pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
+    pub call_tracer: CallTracer,
     pub prestate_tracer: PrestateTracer<Runtime>,
     pub storage_accesses: StorageTracer,
     pub revert_tracer: RevertTracer,
@@ -163,7 +163,7 @@ impl Tracing for Tracer {
         &mut self,
         contract_address: polkadot_sdk::sp_core::H160,
         beneficiary_address: polkadot_sdk::sp_core::H160,
-        gas_left: Weight,
+        gas_left: U256,
         value: U256,
     ) {
         self.prestate_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
@@ -176,11 +176,11 @@ impl Tracing for Tracer {
         &mut self,
         from: polkadot_sdk::sp_core::H160,
         to: polkadot_sdk::sp_core::H160,
-        is_delegate_call: bool,
+        is_delegate_call: Option<polkadot_sdk::sp_core::H160>,
         is_read_only: bool,
         value: U256,
         input: &[u8],
-        gas: Weight,
+        gas: U256,
     ) {
         self.prestate_tracer.enter_child_span(
             from,
@@ -282,7 +282,7 @@ impl Tracing for Tracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        gas_left: Weight,
+        gas_left: U256,
     ) {
         self.prestate_tracer.exit_child_span(output, gas_left);
         self.call_tracer.exit_child_span(output, gas_left);
@@ -294,7 +294,7 @@ impl Tracing for Tracer {
     fn exit_child_span_with_error(
         &mut self,
         error: polkadot_sdk::sp_runtime::DispatchError,
-        gas_left: Weight,
+        gas_left: U256,
     ) {
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);

@@ -1,11 +1,13 @@
-use crate::substrate_node::service::{Backend, Client};
+use crate::substrate_node::service::{Backend, Client, TransactionPoolHandle};
 use alloy_primitives::{B256, U256};
 use polkadot_sdk::{
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::Backend as BackendT,
-    sp_blockchain::{HeaderBackend, Info, Result},
+    sc_transaction_pool_api::{ChainEvent, MaintainedTransactionPool},
+    sp_blockchain::{Error, HeaderBackend, Info, Result},
 };
 use std::{collections::BTreeMap, sync::Arc};
+use subxt::utils::H256;
 
 // The snapshot contains the block number and the block hash
 type Snapshot = (u64, B256);
@@ -20,11 +22,25 @@ pub struct RevertManager {
     backend: Arc<Backend>,
     next_snapshot_id: U256,
     snapshots: BTreeMap<U256, Snapshot>,
+    transaction_pool: Arc<TransactionPoolHandle>,
+    genesis_block_number: u32,
 }
 
 impl RevertManager {
-    pub fn new(client: Arc<Client>, backend: Arc<Backend>) -> Self {
-        Self { client, backend, next_snapshot_id: U256::ZERO, snapshots: BTreeMap::new() }
+    pub fn new(
+        client: Arc<Client>,
+        backend: Arc<Backend>,
+        transaction_pool: Arc<TransactionPoolHandle>,
+        genesis_block_number: u32,
+    ) -> Self {
+        Self {
+            client,
+            backend,
+            next_snapshot_id: U256::ZERO,
+            snapshots: BTreeMap::new(),
+            transaction_pool,
+            genesis_block_number,
+        }
     }
 }
 
@@ -40,14 +56,20 @@ impl RevertManager {
     }
 
     /// Revert the chain to the block number represented by the snapshot `id`.
-    pub fn revert(&mut self, snapshot_id: U256) -> Result<Option<RevertInfo>> {
+    pub async fn revert(&mut self, snapshot_id: U256) -> Result<Option<RevertInfo>> {
         let maybe_snapshot = self.snapshots.remove(&snapshot_id);
-        let Some((snapshot_block_number, _)) = maybe_snapshot else {
+        let Some((snapshot_block_number, snapshot_block_hash)) = maybe_snapshot else {
             return Ok(None);
         };
 
         let current_best_number: u64 = self.client.info().best_number.into();
         let number_of_blocks_to_revert = current_best_number - snapshot_block_number;
+
+        let snapshot_block_hash = H256::from_slice(snapshot_block_hash.as_ref());
+
+        self.transaction_pool
+            .maintain(ChainEvent::Reverted { new_head: snapshot_block_hash })
+            .await;
 
         let (reverted, _) =
             self.backend.revert(number_of_blocks_to_revert.try_into().unwrap_or(u32::MAX), true)?;
@@ -58,15 +80,38 @@ impl RevertManager {
     }
 
     /// Revert from best block to a parent represented by current block height minus depth.
-    pub fn rollback(&self, depth: Option<u64>) -> Result<RevertInfo> {
-        let (reverted, _) =
-            self.backend.revert(depth.unwrap_or(1).try_into().unwrap_or(u32::MAX), true)?;
+    pub async fn rollback(&self, depth: Option<u64>) -> Result<RevertInfo> {
+        let depth = depth.unwrap_or(1).try_into().unwrap_or(u32::MAX);
+        let current_info = self.client.info();
+        let target_number = current_info
+            .best_number
+            .checked_sub(depth)
+            .unwrap_or(self.genesis_block_number) // If underflow, clamp to genesis
+            .max(self.genesis_block_number);
+        let Some(target_hash) = self.client.hash(target_number).ok().flatten() else {
+            return Err(Error::UnknownBlock(format!(
+                "Hash not found for block number: {target_number}",
+            )));
+        };
+
+        self.transaction_pool.maintain(ChainEvent::Reverted { new_head: target_hash }).await;
+
+        let (reverted, _) = self.backend.revert(depth, true)?;
         Ok(RevertInfo { reverted: reverted.into(), info: self.client.info() })
     }
 
     /// Will revert to genesis.
-    pub fn reset_to_genesis(&self) -> Result<RevertInfo> {
+    pub async fn reset_to_genesis(&self) -> Result<RevertInfo> {
         let current_block_number = self.client.info().best_number;
+
+        let Some(genesis_hash) = self.client.hash(self.genesis_block_number).ok().flatten() else {
+            return Err(Error::UnknownBlock(format!(
+                "Genesis hash not found for genesis block number: {}",
+                self.genesis_block_number
+            )));
+        };
+        self.transaction_pool.maintain(ChainEvent::Reverted { new_head: genesis_hash }).await;
+
         let (reverted, _) = self.backend.revert(current_block_number, true)?;
 
         // The chain info can refer to a genesis block with a number different than 0, based on how

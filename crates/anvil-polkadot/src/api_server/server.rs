@@ -884,6 +884,7 @@ impl ApiServer {
         let res = self
             .revert_manager
             .revert(id)
+            .await
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
         let Some(res) = res else { return Ok(false) };
 
@@ -909,6 +910,7 @@ impl ApiServer {
         let res = self
             .revert_manager
             .reset_to_genesis()
+            .await
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
 
         self.on_revert_update(res).await
@@ -919,6 +921,7 @@ impl ApiServer {
         let res = self
             .revert_manager
             .rollback(depth)
+            .await
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
 
         self.on_revert_update(res).await?;

@@ -3,7 +3,6 @@ use foundry_cheatcodes::Vm::{AccountAccessKind, StorageAccess};
 use polkadot_sdk::{
     pallet_revive::{self, Code, tracing::Tracing},
     sp_core::{H160, H256, U256},
-    sp_weights::Weight,
 };
 use revive_env::Runtime;
 
@@ -93,11 +92,11 @@ impl Tracing for StorageTracer {
         &mut self,
         from: H160,
         to: H160,
-        is_delegate_call: bool,
+        is_delegate_call: Option<H160>,
         is_read_only: bool,
         value: U256,
         input: &[u8],
-        _gas: Weight,
+        _gas: U256,
     ) {
         use pallet_revive::{AccountId32Mapper, AddressMapper};
         let system_addr = AccountId32Mapper::<Runtime>::to_address(
@@ -154,7 +153,7 @@ impl Tracing for StorageTracer {
             storage_accesses: Default::default(),
         });
 
-        if !is_delegate_call {
+        if is_delegate_call.is_none() {
             self.current_addr = to;
         }
     }
@@ -162,7 +161,7 @@ impl Tracing for StorageTracer {
     fn exit_child_span_with_error(
         &mut self,
         _error: polkadot_sdk::sp_runtime::DispatchError,
-        _gas_left: Weight,
+        _gas_left: U256,
     ) {
         self.is_create = None
     }
@@ -170,7 +169,7 @@ impl Tracing for StorageTracer {
     fn exit_child_span(
         &mut self,
         _output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        _gas_left: Weight,
+        _gas_left: U256,
     ) {
         let skip_call =
             self.call_skip_tracker.pop().expect("unexpected return while skipping call recording");

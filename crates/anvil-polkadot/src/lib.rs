@@ -120,8 +120,19 @@ pub async fn spawn(
     let (substrate_service, task_manager) =
         substrate_node::service::new(&anvil_config, substrate_config)
             .map_err(sc_cli::Error::Service)?;
-    let revert_manager =
-        RevertManager::new(substrate_service.client.clone(), substrate_service.backend.clone());
+    let genesis_block_number = substrate_service.genesis_block_number.try_into().map_err(|_| {
+        sc_cli::Error::Input(format!(
+            "Genesis block number {} is too large for u32 (max: {})",
+            substrate_service.genesis_block_number,
+            u32::MAX
+        ))
+    })?;
+    let revert_manager = RevertManager::new(
+        substrate_service.client.clone(),
+        substrate_service.backend.clone(),
+        substrate_service.tx_pool.clone(),
+        genesis_block_number,
+    );
 
     // Spawn the other tasks.
     let api_handle = spawn_anvil_tasks(

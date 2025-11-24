@@ -5,9 +5,7 @@ use crate::{
     utils::{TestNode, assert_with_tolerance, get_contract_code, unwrap_response},
 };
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_rpc_types::{
-    TransactionInput, TransactionRequest, anvil::Forking, txpool::TxpoolInspect,
-};
+use alloy_rpc_types::{TransactionInput, TransactionRequest, anvil::Forking};
 use alloy_serde::WithOtherFields;
 use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
@@ -431,6 +429,8 @@ async fn test_rollback() {
     let anvil_node_config = AnvilNodeConfig::test_config();
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    let (alith_addr, _) = alith();
+    let transfer_amount = U256::from(16e17);
 
     // Assert on initial best block number.
     assert_block_number_is_best_and_finalized(&mut node, 0).await;
@@ -441,13 +441,19 @@ async fn test_rollback() {
     // Rollback 2 blocks.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(Some(2))).await.unwrap()).unwrap();
     assert_block_number_is_best_and_finalized(&mut node, 3).await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(4)).await;
+    assert!(receipt_info.is_some());
 
     // Check mining works fine after reverting.
-    mine_blocks(&mut node, 10, 13).await;
+    mine_blocks(&mut node, 10, 14).await;
 
     // Rollback 1 block.
     unwrap_response::<()>(node.eth_rpc(EthRequest::Rollback(None)).await.unwrap()).unwrap();
-    assert_block_number_is_best_and_finalized(&mut node, 12).await;
+    assert_block_number_is_best_and_finalized(&mut node, 13).await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(14)).await;
+    assert!(receipt_info.is_some());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -482,29 +488,8 @@ async fn test_mine_with_txs_in_mempool_before_revert() {
 
     // Revert to a block before the transactions have been sent.
     revert(&mut node, zero, 5, true).await;
-    let inspect: TxpoolInspect =
-        unwrap_response(node.eth_rpc(EthRequest::TxPoolInspect(())).await.unwrap()).unwrap();
-    assert_eq!(inspect.pending.len(), 2);
 
     mine_blocks(&mut node, 1, 6).await;
-
-    // Get current block to verify gas_price < base_fee_per_gas
-    let block_number = node.best_block_number().await;
-    let block_hash = node.block_hash_by_number(block_number).await.unwrap();
-    let block = node.get_block_by_hash(block_hash).await;
-    let base_fee = block.base_fee_per_gas.as_u128();
-
-    let pending_alith_txs = inspect.pending.get(&alith_addr).unwrap();
-    let pending_baltathar_txs = inspect.pending.get(&baltathar_addr).unwrap();
-
-    assert_eq!(pending_alith_txs.len(), 1);
-    assert_eq!(pending_baltathar_txs.len(), 1);
-
-    let summary_alith = pending_alith_txs.get("0").unwrap();
-    assert!(summary_alith.gas_price < base_fee);
-
-    let summary_baltathar = pending_baltathar_txs.get("0").unwrap();
-    assert!(summary_baltathar.gas_price < base_fee);
 
     let txs_in_block = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetTransactionCountByNumber(
@@ -615,6 +600,8 @@ async fn test_reset() {
         .with_genesis_block_number(Some(genesis_block_number));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config.clone(), substrate_node_config).await.unwrap();
+    let (alith_addr, _) = alith();
+    let transfer_amount = U256::from(16e17);
 
     // Deploy multicall contract
     mine_blocks(&mut node, 1, genesis_block_number + 1).await;
@@ -659,7 +646,15 @@ async fn test_reset() {
         0,
         "wrong timestamp after reverting to genesis",
     );
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(genesis_block_number + 1))
+            .await;
+    assert!(receipt_info.is_some());
 
     // Assert we can still mine blocks after the reset.
-    mine_blocks(&mut node, 2, genesis_block_number + 2).await;
+    mine_blocks(&mut node, 2, genesis_block_number + 3).await;
+    let (_, receipt_info) =
+        do_transfer(&mut node, alith_addr, None, transfer_amount, Some(genesis_block_number + 4))
+            .await;
+    assert!(receipt_info.is_some());
 }
