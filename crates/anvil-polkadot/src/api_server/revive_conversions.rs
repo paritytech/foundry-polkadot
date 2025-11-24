@@ -388,8 +388,7 @@ impl From<ReviveCallLog> for CallLogFrame {
             ),
             data: Some(call_log.data.0.into()),
             position: Some(call_log.position.into()),
-            // Revive CallLog topics for information about the index, but this is not done in a
-            // structured way.
+            // Revive CallLog currently does not provide the log index.
             index: None,
         }
     }

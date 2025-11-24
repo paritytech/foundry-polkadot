@@ -101,7 +101,10 @@ fn parity_transaction_trace_from_call_trace(
                 }),
                 error: trace.error,
                 result: Some(TraceOutput::Call(CallOutput {
-                    gas_used: trace.gas.try_into().map_err(|_| EthRpcError::ConversionError)?,
+                    gas_used: trace
+                        .gas_used
+                        .try_into()
+                        .map_err(|_| EthRpcError::ConversionError)?,
                     output: trace.output.0.into(),
                 })),
                 subtraces: trace
