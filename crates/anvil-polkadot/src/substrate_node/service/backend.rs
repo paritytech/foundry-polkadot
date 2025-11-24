@@ -11,6 +11,7 @@ use polkadot_sdk::{
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
     sp_blockchain,
+    sp_consensus_slots::Slot,
     sp_core::{H160, H256},
     sp_io::hashing::blake2_256,
     sp_runtime::FixedU128,
@@ -79,6 +80,14 @@ impl BackendWithOverlay {
         let value =
             self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingTimestamp)?;
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)
+    }
+
+    pub fn read_relay_slot_info(&self, hash: Hash) -> Result<(Slot, u32)> {
+        let key = well_known_keys::RELAY_SLOT_INFO;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingTimestamp)?;
+        <(Slot, u32)>::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)
     }
 
     pub fn read_block_number(&self, hash: Hash) -> Result<u32> {

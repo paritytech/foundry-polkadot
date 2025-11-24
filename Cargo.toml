@@ -1,35 +1,35 @@
 [workspace]
 members = [
-    "benches/",
-    "crates/anvil/",
-    "crates/anvil-polkadot",
-    "crates/anvil-polkadot/substrate-runtime",
-    "crates/anvil/core/",
-    "crates/anvil/rpc/",
-    "crates/anvil/server/",
-    "crates/cast/",
-    "crates/cheatcodes/",
-    "crates/cheatcodes/spec/",
-    "crates/chisel/",
-    "crates/cli/",
-    "crates/common/",
-    "crates/config/",
-    "crates/debugger/",
-    "crates/doc/",
-    "crates/evm/core/",
-    "crates/evm/coverage/",
-    "crates/evm/evm/",
-    "crates/evm/fuzz/",
-    "crates/evm/traces/",
-    "crates/fmt/",
-    "crates/forge/",
-    "crates/script-sequence/",
-    "crates/macros/",
-    "crates/test-utils/",
-    "crates/revive-utils",
-    "crates/revive-env",
-    "crates/revive-strategy",
-    "crates/lint/",
+	"benches/",
+	"crates/anvil/",
+	"crates/anvil-polkadot",
+	"crates/anvil-polkadot/substrate-runtime",
+	"crates/anvil/core/",
+	"crates/anvil/rpc/",
+	"crates/anvil/server/",
+	"crates/cast/",
+	"crates/cheatcodes/",
+	"crates/cheatcodes/spec/",
+	"crates/chisel/",
+	"crates/cli/",
+	"crates/common/",
+	"crates/config/",
+	"crates/debugger/",
+	"crates/doc/",
+	"crates/evm/core/",
+	"crates/evm/coverage/",
+	"crates/evm/evm/",
+	"crates/evm/fuzz/",
+	"crates/evm/traces/",
+	"crates/fmt/",
+	"crates/forge/",
+	"crates/script-sequence/",
+	"crates/macros/",
+	"crates/test-utils/",
+	"crates/revive-utils",
+	"crates/revive-env",
+	"crates/revive-strategy",
+	"crates/lint/",
 ]
 resolver = "2"
 
@@ -217,15 +217,16 @@ revive-strategy = { path = "crates/revive-strategy" }
 revive-utils = { path = "crates/revive-utils" }
 
 # polkadot-sdk
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", features = [
-    "experimental",
-    "runtime",
-    "polkadot-runtime-common",
-    "pallet-revive",
-    "pallet-balances",
-    "pallet-timestamp",
-    "pallet-revive-uapi",
-]}
+# git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master"
+polkadot-sdk = { path = "../polkadot-sdk/umbrella/", features = [
+	"experimental",
+	"runtime",
+	"polkadot-runtime-common",
+	"pallet-revive",
+	"pallet-balances",
+	"pallet-timestamp",
+	"pallet-revive-uapi",
+] }
 
 # solc & compilation utilities
 foundry-block-explorers = { version = "0.20.0", default-features = false }
@@ -268,10 +269,10 @@ alloy-op-hardforks = { version = "0.2.12", default-features = false }
 alloy-dyn-abi = "1.2.1"
 alloy-json-abi = "1.2.1"
 alloy-primitives = { version = "1.2.1", features = [
-    "getrandom",
-    "rand",
-    "map-fxhash",
-    "map-foldhash",
+	"getrandom",
+	"rand",
+	"map-fxhash",
+	"map-foldhash",
 ] }
 alloy-sol-macro-expander = "1.2.1"
 alloy-sol-macro-input = "1.2.1"
@@ -322,8 +323,8 @@ walkdir = "2"
 prettyplease = "0.2"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = [
-    "clock",
-    "std",
+	"clock",
+	"std",
 ] }
 axum = "0.8"
 ciborium = "0.2"
@@ -351,8 +352,8 @@ rand_chacha = "0.9.0"
 rayon = "1"
 regex = { version = "1", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = [
-    "rustls-tls",
-    "rustls-tls-native-roots",
+	"rustls-tls",
+	"rustls-tls-native-roots",
 ] }
 rustls = "0.23"
 semver = "1"
