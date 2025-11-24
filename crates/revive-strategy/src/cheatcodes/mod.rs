@@ -1056,7 +1056,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         ecx: Ecx<'_, '_, '_>,
         call: &CallInputs,
     ) {
-        let mut ctx = get_context_ref_mut(state.strategy.context.as_mut());
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         // Skip storage sync if: in PVM mode AND no test contract
         if ctx.using_pvm
@@ -1070,7 +1070,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return;
         }
 
-        apply_revm_storage_diff(&mut ctx, ecx, call.target_address);
+        apply_revm_storage_diff(ctx, ecx, call.target_address);
     }
 }
 
