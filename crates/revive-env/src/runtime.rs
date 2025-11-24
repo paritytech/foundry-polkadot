@@ -102,6 +102,6 @@ impl FindAuthor<<Self as frame_system::Config>::AccountId> for Runtime {
     where
         I: 'a + IntoIterator<Item = (frame_support::ConsensusEngineId, &'a [u8])>,
     {
-        Some(BlockAuthor::get().into())
+        Some(BlockAuthor::get())
     }
 }
