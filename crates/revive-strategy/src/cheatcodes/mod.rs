@@ -8,15 +8,15 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DealRecord, Ecx, Error, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall,
-        rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall,
+        resetNonceCall, rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use foundry_evm::constants::CHEATCODE_ADDRESS;
-use revive_env::{AccountId, Runtime, System, Timestamp};
+use revive_env::{AccountId, BlockAuthor, Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
     fmt::Debug,
@@ -280,6 +280,20 @@ fn set_chain_id(new_chain_id: u64, ecx: Ecx<'_, '_, '_>) {
     });
 }
 
+fn set_block_author(new_author: Address, ecx: Ecx<'_, '_, '_>) {
+    ecx.block.beneficiary = new_author;
+
+    // Set block author in pallet-revive runtime.
+    execute_with_externalities(|externalities| {
+        externalities.execute_with(|| {
+            let account_id32 = sp_core::crypto::AccountId32::from(
+                AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice())),
+            );
+            BlockAuthor::set(&account_id32);
+        })
+    });
+}
+
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
@@ -466,6 +480,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 set_chain_id(newChainId.to(), ccx.ecx);
+
+                Ok(Default::default())
+            }
+            t if using_pvm && is::<coinbaseCall>(t) => {
+                let &coinbaseCall { newCoinbase } = cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                set_block_author(newCoinbase, ccx.ecx);
 
                 Ok(Default::default())
             }

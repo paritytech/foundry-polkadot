@@ -18,7 +18,7 @@ use polkadot_sdk::{
     sp_tracing,
 };
 
-pub use crate::runtime::{AccountId, Balance, Runtime, System, Timestamp};
+pub use crate::runtime::{AccountId, Balance, BlockAuthor, Runtime, System, Timestamp};
 
 mod runtime;
 
