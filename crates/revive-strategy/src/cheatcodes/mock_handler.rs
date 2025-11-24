@@ -128,6 +128,10 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         None
     }
 
+    fn mock_origin(&self) -> Option<&ExecOrigin<Runtime>> {
+        Some(&self.origin)
+    }
+
     fn mock_delegated_caller(
         &self,
         dest: H160,
