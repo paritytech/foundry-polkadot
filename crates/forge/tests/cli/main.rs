@@ -5,6 +5,7 @@ pub mod constants;
 pub mod utils;
 
 mod bind_json;
+mod blobtoolarge;
 mod build;
 mod cache;
 mod cmd;
