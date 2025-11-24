@@ -246,7 +246,8 @@ async fn test_filter_is_evicted() {
 
 // ======= Logs filter
 
-fn assert_decoded_simple_storage_data(log: &Log, old: U256, new: U256) {
+/// Checks that the values from the log are the ones we expect.
+fn assert_decoded_simple_storage_data(log: &Log, old: U256, new: U256, changer: Address) {
     let alloy_topics: Vec<_> =
         log.topics.iter().map(|t| alloy_primitives::B256::from_slice(t.as_bytes())).collect();
 
@@ -256,10 +257,7 @@ fn assert_decoded_simple_storage_data(log: &Log, old: U256, new: U256) {
 
     assert_eq!(decoded.oldValue, old);
     assert_eq!(decoded.newValue, new);
-    assert_eq!(
-        decoded.changer,
-        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()))
-    );
+    assert_eq!(decoded.changer, changer);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -316,7 +314,12 @@ async fn test_logs_filter_receives_new_logs() {
     let event_hash = keccak_256(b"ValueChanged(address,uint256,uint256)");
     assert_eq!(logs[0].topics[0], H256::from(event_hash));
 
-    assert_decoded_simple_storage_data(&logs[0], U256::from(0), U256::from(511));
+    assert_decoded_simple_storage_data(
+        &logs[0],
+        U256::from(0),
+        U256::from(511),
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address())),
+    );
 
     // Emit the second event
     let set_value_data = SimpleStorage::setValueCall::new((U256::from(200),)).abi_encode();
@@ -334,7 +337,12 @@ async fn test_logs_filter_receives_new_logs() {
     )
     .unwrap();
     assert_eq!(logs2.len(), 1);
-    assert_decoded_simple_storage_data(&logs2[0], U256::from(511), U256::from(200));
+    assert_decoded_simple_storage_data(
+        &logs2[0],
+        U256::from(511),
+        U256::from(200),
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address())),
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -384,7 +392,14 @@ async fn test_logs_filter_returns_historic_logs_on_creation() {
     .unwrap();
     for (i, log) in from_block_logs.iter().enumerate().skip(1) {
         let old_value = if i == 1 { 0 } else { 511 + (i - 2) };
-        assert_decoded_simple_storage_data(log, U256::from(old_value), U256::from(511 + (i - 1)));
+        assert_decoded_simple_storage_data(
+            log,
+            U256::from(old_value),
+            U256::from(511 + (i - 1)),
+            Address::from(ReviveAddress::new(
+                Account::from(subxt_signer::eth::dev::alith()).address(),
+            )),
+        );
     }
 
     let set_value_data = SimpleStorage::setValueCall::new((U256::from(514),)).abi_encode();
@@ -400,7 +415,12 @@ async fn test_logs_filter_returns_historic_logs_on_creation() {
     )
     .unwrap();
     assert_eq!(from_block_logs.len(), 1);
-    assert_decoded_simple_storage_data(&from_block_logs[0], U256::from(513), U256::from(514));
+    assert_decoded_simple_storage_data(
+        &from_block_logs[0],
+        U256::from(513),
+        U256::from(514),
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address())),
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -419,7 +439,7 @@ async fn test_logs_filter_with_block_range() {
     let receipt = node.get_transaction_receipt(tx_hash).await;
     let contract_address = receipt.contract_address.unwrap();
 
-    // Create filter with block range 0-2
+    // Create filter with block range 0-1
     let range_filter_id = unwrap_response::<String>(
         node.eth_rpc(EthRequest::EthNewFilter(
             Filter::new()
@@ -431,7 +451,7 @@ async fn test_logs_filter_with_block_range() {
         .unwrap(),
     )
     .unwrap();
-    // Emit event in block 2
+    // Emit event in block 2 (outside the range).
     let set_value_data = SimpleStorage::setValueCall::new((U256::from(100),)).abi_encode();
     let call_tx = TransactionRequest::default()
         .from(Address::from(ReviveAddress::new(alith_address)))
@@ -445,7 +465,7 @@ async fn test_logs_filter_with_block_range() {
         node.eth_rpc(EthRequest::EthGetFilterChanges(range_filter_id.clone())).await.unwrap(),
     )
     .unwrap();
-    assert_eq!(logs.len(), 1); // deployment
+    assert_eq!(logs.len(), 1); // deployment, no ValueChanged event.
 
     // Emit event in block 3 (outside range)
     let set_value_data = SimpleStorage::setValueCall::new((U256::from(200),)).abi_encode();
@@ -719,7 +739,12 @@ async fn test_logs_filter_after_snapshot_and_revert() {
     // Should get the new log from the alternate timeline
     assert_eq!(logs_after_revert.len(), 1);
 
-    assert_decoded_simple_storage_data(&logs_after_revert[0], U256::from(100), U256::from(300));
+    assert_decoded_simple_storage_data(
+        &logs_after_revert[0],
+        U256::from(100),
+        U256::from(300),
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address())),
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -853,7 +878,12 @@ async fn test_logs_filter_future_block_number() {
     )
     .unwrap();
     assert_eq!(logs.len(), 1);
-    assert_decoded_simple_storage_data(&logs[0], U256::from(100), U256::from(511));
+    assert_decoded_simple_storage_data(
+        &logs[0],
+        U256::from(100),
+        U256::from(511),
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address())),
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -916,6 +946,12 @@ async fn test_get_filter_logs_returns_all_matching_logs() {
         node.eth_rpc(EthRequest::EthGetFilterLogs(filter_id.clone())).await.unwrap(),
     )
     .unwrap();
+
+    let logs_from_changes = unwrap_response::<Vec<Log>>(
+        node.eth_rpc(EthRequest::EthGetFilterChanges(filter_id.clone())).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(logs_from_changes.len(), 1);
 
     assert_eq!(all_logs.len(), 5);
 }
