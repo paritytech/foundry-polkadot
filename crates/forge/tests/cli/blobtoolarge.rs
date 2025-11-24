@@ -69,10 +69,9 @@ contract BloatTest is DSTest, ICallback {{
         assertEq(c.lastValue(), 500);
     }}
 
-{}
+{bloat_functions}
 }}
-        "#,
-        bloat_functions
+        "#
     );
 
     prj.add_source("BloatTest.t.sol", &test_contract).unwrap();
