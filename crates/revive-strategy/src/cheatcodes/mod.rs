@@ -694,20 +694,21 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
                                             // Collect all immutable bytes from their scattered offsets
                                             immutable_refs
-                                                .values()
-                                                .flatten()
+                                                .values().map(|offsets| offsets.first()).flatten()
                                                 .flat_map(|offset| {
                                                     let start = offset.start as usize;
                                                     let end = start + offset.length as usize;
                                                     evm_bytecode.get(start..end).unwrap_or_else(|| panic!("Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
-                                                        address, start, end, evm_bytecode.len()))
+                                                        address, start, end, evm_bytecode.len())).into_iter().rev()
                                                 })
                                                 .copied()
                                                 .collect::<Vec<u8>>()
                                         });
                                     (contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),immutable_data, BytecodeType::Pvm)
                                 },
-                                crate::ReviveRuntimeMode::Evm => (contract.evm_deployed_bytecode.as_bytes().map(|b| b.to_vec()), None, BytecodeType::Evm),
+                                crate::ReviveRuntimeMode::Evm => {
+                                    (Some(bytecode.bytecode().to_vec()), None, BytecodeType::Evm)
+                                },
                             };
 
                             if let Some(code_bytes) = code_bytes {
