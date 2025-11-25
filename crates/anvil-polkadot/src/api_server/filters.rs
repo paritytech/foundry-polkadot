@@ -183,7 +183,7 @@ pub enum EthFilter {
     /// and validates block ranges for incoming blocks.
     Logs(Box<LogsFilter>),
     /// Pending transactions filter that tracks new transactions.
-    /// 
+    ///
     /// Returns mined transactions since last poll + transactions that are
     /// ready but have not been mined yet.
     PendingTransactions(Box<PendingTransactionsFilter>),
