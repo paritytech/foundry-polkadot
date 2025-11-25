@@ -13,7 +13,7 @@ macro_rules! revive_cheat_test {
         #[case::evm(ReviveRuntimeMode::Evm)]
         #[tokio::test(flavor = "multi_thread")]
         async fn $test_name(#[case] runtime_mode: ReviveRuntimeMode) {
-            let filter = Filter::new(".*", ".*", &format!(".*/cheats/{}.*", $file_pattern));
+            let filter = Filter::new(".*", ".*", &format!(".*/revive/{}.*", $file_pattern));
 
             let runner = TEST_DATA_REVIVE.runner_revive_with(runtime_mode, |config| {
                 use foundry_config::{FsPermissions, fs_permissions::PathPermission};
@@ -25,4 +25,4 @@ macro_rules! revive_cheat_test {
     };
 }
 
-revive_cheat_test!(test_coinbase, "Bank");
+revive_cheat_test!(test_coinbase, "CoinBase");
