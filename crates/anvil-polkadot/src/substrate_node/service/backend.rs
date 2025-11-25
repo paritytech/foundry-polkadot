@@ -255,7 +255,7 @@ impl StorageOverrides {
     pub fn new(lru_capacity: Option<usize>) -> Self {
         Self {
             per_block: LruCache::new(
-                lru_capacity.and_then(|cap| NonZeroUsize::new(cap)).unwrap_or(DEFAULT_LRU_CAP),
+                lru_capacity.and_then(NonZeroUsize::new).unwrap_or(DEFAULT_LRU_CAP),
             ),
         }
     }
