@@ -253,7 +253,7 @@ impl Executor {
     }
 
     /// Gets the balance of an account
-    pub fn get_balance(&self, address: Address) -> BackendResult<U256> {
+    pub fn get_balance(&mut self, address: Address) -> BackendResult<U256> {
         self.strategy.runner.get_balance(self, address)
     }
 
@@ -263,7 +263,7 @@ impl Executor {
     }
 
     /// Returns the nonce of an account.
-    pub fn get_nonce(&self, address: Address) -> BackendResult<u64> {
+    pub fn get_nonce(&mut self, address: Address) -> BackendResult<u64> {
         self.strategy.runner.get_nonce(self, address)
     }
 

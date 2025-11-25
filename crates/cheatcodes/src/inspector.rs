@@ -1818,7 +1818,6 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
             }
         }
 
-        // Sync REVM state back to pallet-revive if this call was executed in REVM
         if outcome.result.is_ok() {
             self.strategy.runner.revive_call_end(self, ecx, call);
         }

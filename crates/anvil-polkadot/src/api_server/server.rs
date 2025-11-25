@@ -5,9 +5,11 @@ use crate::{
         filters::{BlockNotifications, EthFilter, Filters, LogsFilter, eviction_task},
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
-            ReviveFilter, SubstrateU256, convert_to_generic_transaction,
+            ReviveFilter, ReviveTrace, ReviveTracerType, SubstrateU256,
+            convert_to_generic_transaction,
         },
         signer::DevSigner,
+        trace_helpers::{parity_block_trace_builder, parity_transaction_trace_builder},
         txpool_helpers::{
             TxpoolTransactionInfo, extract_sender, extract_tx_info, extract_tx_summary,
             transaction_matches_eth_hash,
@@ -36,6 +38,10 @@ use alloy_primitives::{Address, B256, U64, U256};
 use alloy_rpc_types::{
     Filter, TransactionRequest,
     anvil::{Forking, Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
+    trace::{
+        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace},
+        parity::LocalizedTransactionTrace,
+    },
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
 };
 use alloy_serde::WithOtherFields;
@@ -57,8 +63,9 @@ use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
         evm::{
-            self, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, FeeHistoryResult, FilterResults,
-            Log, ReceiptInfo, TransactionInfo, TransactionSigned,
+            self, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, CallTracerConfig,
+            FeeHistoryResult, FilterResults, Log, ReceiptInfo, TracerType, TransactionInfo,
+            TransactionSigned,
         },
     },
     parachains_common::{AccountId, Hash, Nonce},
@@ -394,6 +401,20 @@ impl ApiServer {
             // --- Metadata ---
             EthRequest::NodeInfo(_) => self.anvil_node_info().await.to_rpc_result(),
             EthRequest::AnvilMetadata(_) => self.anvil_metadata().await.to_rpc_result(),
+            // --- Trace ---
+            EthRequest::DebugTraceTransaction(tx_hash, geth_tracer_options) => {
+                self.debug_trace_transaction(tx_hash, geth_tracer_options).await.to_rpc_result()
+            }
+            EthRequest::DebugTraceCall(request, block_number, geth_tracer_options) => self
+                .debug_trace_call(request, block_number, geth_tracer_options)
+                .await
+                .to_rpc_result(),
+            EthRequest::TraceTransaction(tx_hash) => {
+                self.trace_transaction(tx_hash).await.to_rpc_result()
+            }
+            EthRequest::TraceBlock(block_number) => {
+                self.trace_block(block_number).await.to_rpc_result()
+            }
             // --- Filters ---
             EthRequest::EthNewFilter(filter) => {
                 self.new_filter(ReviveFilter::from(filter).into_inner()).await.to_rpc_result()
@@ -1623,6 +1644,71 @@ impl ApiServer {
         }
 
         Ok(())
+    }
+
+    async fn debug_trace_transaction(
+        &self,
+        tx_hash: B256,
+        geth_tracer_options: GethDebugTracingOptions,
+    ) -> Result<GethTrace> {
+        node_info!("debug_traceTransaction");
+        let trace = self
+            .eth_rpc_client
+            .trace_transaction(
+                H256::from_slice(tx_hash.as_ref()),
+                ReviveTracerType::from(geth_tracer_options).inner(),
+            )
+            .await?;
+        Ok(ReviveTrace::new(trace).into())
+    }
+
+    async fn debug_trace_call(
+        &self,
+        request: WithOtherFields<TransactionRequest>,
+        block_number: Option<BlockId>,
+        geth_tracer_options: GethDebugTracingCallOptions,
+    ) -> Result<GethTrace> {
+        node_info!("debug_traceCall");
+        let hash = self.get_block_hash_for_tag(block_number).await?;
+        let runtime_api = self.eth_rpc_client.runtime_api(hash);
+        let transaction = convert_to_generic_transaction(request.into_inner());
+        let trace = runtime_api
+            .trace_call(transaction, ReviveTracerType::from(geth_tracer_options).inner())
+            .await?;
+        Ok(ReviveTrace::new(trace).into())
+    }
+
+    async fn trace_transaction(&self, tx_hash: B256) -> Result<Vec<LocalizedTransactionTrace>> {
+        node_info!("trace_transaction");
+        let trace = self
+            .eth_rpc_client
+            .trace_transaction(
+                H256::from_slice(tx_hash.as_ref()),
+                TracerType::CallTracer(Some(CallTracerConfig::default())),
+            )
+            .await?;
+        let tx_info = self.get_transaction_by_hash(tx_hash).await?;
+        parity_transaction_trace_builder(trace, tx_info)
+    }
+
+    async fn trace_block(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<Vec<LocalizedTransactionTrace>> {
+        node_info!("trace_block");
+        // hydrated_transactions is true because we need tx info to build the trace
+        let Some(block) = self.get_block_by_number(block_number, true).await? else {
+            return Ok(vec![]);
+        };
+        let traces = self
+            .eth_rpc_client
+            .trace_block_by_number(
+                ReviveBlockNumberOrTag::from(block_number).inner(),
+                TracerType::CallTracer(Some(CallTracerConfig::default())),
+            )
+            .await?;
+
+        parity_block_trace_builder(traces, block)
     }
 
     // ----- Helpers -----

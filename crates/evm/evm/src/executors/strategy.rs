@@ -64,14 +64,14 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync + ExecutorStrategyExt {
     ) -> BackendResult<()>;
 
     /// Gets the balance of an account
-    fn get_balance(&self, executor: &Executor, address: Address) -> BackendResult<U256>;
+    fn get_balance(&self, executor: &mut Executor, address: Address) -> BackendResult<U256>;
 
     /// Set the nonce of an account.
     fn set_nonce(&self, executor: &mut Executor, address: Address, nonce: u64)
     -> BackendResult<()>;
 
     /// Returns the nonce of an account.
-    fn get_nonce(&self, executor: &Executor, address: Address) -> BackendResult<u64>;
+    fn get_nonce(&self, executor: &mut Executor, address: Address) -> BackendResult<u64>;
 
     /// Execute a transaction and *WITHOUT* applying state changes.
     fn call(
@@ -111,8 +111,8 @@ pub trait ExecutorStrategyExt {
     ) {
     }
 
-    fn checkpoint(&self) {}
-    fn reload_checkpoint(&self) {}
+    fn start_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
+    fn rollback_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
 }
 
 /// Implements [ExecutorStrategyRunner] for EVM.
@@ -132,7 +132,7 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         Ok(())
     }
 
-    fn get_balance(&self, executor: &Executor, address: Address) -> BackendResult<U256> {
+    fn get_balance(&self, executor: &mut Executor, address: Address) -> BackendResult<U256> {
         Ok(executor.backend().basic_ref(address)?.map(|acc| acc.balance).unwrap_or_default())
     }
 
@@ -148,7 +148,7 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         Ok(())
     }
 
-    fn get_nonce(&self, executor: &Executor, address: Address) -> BackendResult<u64> {
+    fn get_nonce(&self, executor: &mut Executor, address: Address) -> BackendResult<u64> {
         Ok(executor.backend().basic_ref(address)?.map(|acc| acc.nonce).unwrap_or_default())
     }
 

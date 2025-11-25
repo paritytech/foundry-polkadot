@@ -17,3 +17,9 @@ sol!(
     Multicall,
     "test-data/Multicall.json"
 );
+
+sol!(
+    #[derive(Debug)]
+    SimpleStorageCaller,
+    "test-data/SimpleStorageCaller.json"
+);

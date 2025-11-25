@@ -11,18 +11,12 @@ use foundry_evm::{
         strategy::ExecutorStrategyExt,
     },
 };
-use polkadot_sdk::{
-    frame_support::traits::{Currency, fungible::Mutate},
-    pallet_balances,
-    pallet_revive::{AddressMapper, BalanceOf, BalanceWithDust},
-    sp_core::{self, H160},
-};
-use revive_env::{AccountId, Runtime, System};
+use polkadot_sdk::sp_externalities::Externalities;
 use revm::context::result::ResultAndState;
 
 use crate::{
     backend::ReviveBackendStrategyBuilder, cheatcodes::PvmCheatcodeInspectorStrategyBuilder,
-    execute_with_externalities, executor::context::ReviveExecutorStrategyContext,
+    executor::context::ReviveExecutorStrategyContext,
 };
 
 /// Defines the [ExecutorStrategyRunner] strategy for Revive.
@@ -45,7 +39,11 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         ctx: &dyn ExecutorStrategyContext,
     ) -> foundry_cheatcodes::CheatcodesStrategy {
         let ctx = get_context_ref(ctx);
-        CheatcodeInspectorStrategy::new_pvm(ctx.dual_compiled_contracts.clone(), ctx.runtime_mode)
+        CheatcodeInspectorStrategy::new_pvm(
+            ctx.dual_compiled_contracts.clone(),
+            ctx.runtime_mode,
+            ctx.externalties.shallow_clone(),
+        )
     }
 
     /// Sets the balance of an account.
@@ -58,33 +56,24 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         address: Address,
         amount: U256,
     ) -> foundry_evm::backend::BackendResult<()> {
-        let amount_pvm =
-            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-        let balance_native =
-            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-
         EvmExecutorStrategyRunner.set_balance(executor, address, amount)?;
 
-        let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
 
-        execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                pallet_balances::Pallet::<Runtime>::set_balance(
-                    &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
-                    balance_native.into_rounded_balance().saturating_add(min_balance),
-                );
-            })
-        });
+        ctx.externalties.set_balance(address, amount);
         Ok(())
     }
 
     fn get_balance(
         &self,
-        executor: &foundry_evm::executors::Executor,
+        executor: &mut foundry_evm::executors::Executor,
         address: Address,
     ) -> foundry_evm::backend::BackendResult<U256> {
         let evm_balance = EvmExecutorStrategyRunner.get_balance(executor, address)?;
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
 
+        let revive_balance = ctx.externalties.get_balance(address);
+        assert_eq!(evm_balance, revive_balance);
         Ok(evm_balance)
     }
 
@@ -95,32 +84,20 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         nonce: u64,
     ) -> foundry_evm::backend::BackendResult<()> {
         EvmExecutorStrategyRunner.set_nonce(executor, address, nonce)?;
-        execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                let account_id =
-                    AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-
-                polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
-                    a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
-                });
-            })
-        });
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
+        ctx.externalties.set_nonce(address, nonce);
         Ok(())
     }
 
     fn get_nonce(
         &self,
-        executor: &foundry_evm::executors::Executor,
+        executor: &mut foundry_evm::executors::Executor,
         address: Address,
     ) -> foundry_evm::backend::BackendResult<u64> {
         let evm_nonce = EvmExecutorStrategyRunner.get_nonce(executor, address)?;
-        let revive_nonce = execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                    address.as_slice(),
-                )))
-            })
-        });
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
+
+        let revive_nonce = ctx.externalties.get_nonce(address);
 
         assert_eq!(evm_nonce, revive_nonce as u64);
         Ok(evm_nonce)
@@ -177,11 +154,15 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         let ctx = get_context_ref_mut(ctx);
         ctx.compilation_output.replace(output);
     }
-
-    fn checkpoint(&self) {
-        crate::save_checkpoint();
+    fn start_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
+        let ctx = get_context_ref(ctx);
+        let mut externalities = ctx.externalties.0.lock().unwrap();
+        externalities.ext().storage_start_transaction();
     }
-    fn reload_checkpoint(&self) {
-        crate::return_to_checkpoint();
+
+    fn rollback_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
+        let ctx = get_context_ref(ctx);
+        let mut externalities = ctx.externalties.0.lock().unwrap();
+        externalities.ext().storage_rollback_transaction().unwrap();
     }
 }

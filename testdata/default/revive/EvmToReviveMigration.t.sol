@@ -176,6 +176,29 @@ contract EvmReviveMigrationTest is DSTest {
         assertEq(storageContract.get(), 100);
     }
 
+    function testStorageMigration() public {
+        SimpleStorage storageContract = new SimpleStorage();
+
+        // Mark the contract as persistent so it migrates
+        vm.makePersistent(address(storageContract));
+
+        storageContract.set(42);
+        assertEq(storageContract.get(), 42);
+
+        vm.pvm(false);
+        SimpleStorage storageContract2 = new SimpleStorage();
+        vm.makePersistent(address(storageContract2));
+        assertEq(storageContract.get(), 42);
+
+        storageContract.set(100);
+        storageContract2.set(100);
+        assertEq(storageContract.get(), 100);
+
+        vm.pvm(true);
+        assertEq(storageContract.get(), 100);
+        assertEq(storageContract2.get(), 100);
+    }
+
     function testTimestampMigration() public {
         uint256 initialTimestamp = 1_000_000;
         vm.warp(initialTimestamp);
