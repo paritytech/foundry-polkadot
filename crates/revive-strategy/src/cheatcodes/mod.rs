@@ -657,7 +657,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
         externalities.execute_with(|| {
             // Enable debug mode to bypass EIP-170 size checks during testing
             if data.cfg.limit_contract_code_size == Some(usize::MAX) {
-                let debug_settings = DebugSettings::new(true);
+                let debug_settings = DebugSettings::new(true, true);
                 debug_settings.write_to_storage::<Runtime>();
             }
             System::set_block_number(block_number.saturating_to());
@@ -699,12 +699,12 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
                                             // Collect all immutable bytes from their scattered offsets
                                             immutable_refs
-                                                .values().map(|offsets| offsets.first()).flatten()
+                                                .values().filter_map(|offsets| offsets.first())
                                                 .flat_map(|offset| {
                                                     let start = offset.start as usize;
                                                     let end = start + offset.length as usize;
                                                     evm_bytecode.get(start..end).unwrap_or_else(|| panic!("Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
-                                                        address, start, end, evm_bytecode.len())).into_iter().rev()
+                                                        address, start, end, evm_bytecode.len())).iter().rev()
                                                 })
                                                 .copied()
                                                 .collect::<Vec<u8>>()

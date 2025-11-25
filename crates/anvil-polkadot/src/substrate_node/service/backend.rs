@@ -19,6 +19,8 @@ use polkadot_sdk::{
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use substrate_runtime::Balance;
 
+const DEFAULT_LRU_CAP: NonZeroUsize = NonZeroUsize::new(256).expect("256 is non-zero");
+
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
     #[error("Inner client error: {0}")]
@@ -249,13 +251,15 @@ pub struct StorageOverrides {
     per_block: LruCache<Hash, BlockOverrides>,
 }
 
-impl Default for StorageOverrides {
-    fn default() -> Self {
-        Self { per_block: LruCache::new(NonZeroUsize::new(10).expect("10 is greater than 0")) }
-    }
-}
-
 impl StorageOverrides {
+    pub fn new(lru_capacity: Option<usize>) -> Self {
+        Self {
+            per_block: LruCache::new(
+                lru_capacity.and_then(|cap| NonZeroUsize::new(cap)).unwrap_or(DEFAULT_LRU_CAP),
+            ),
+        }
+    }
+
     pub fn get(&mut self, block: &Hash) -> Option<BlockOverrides> {
         self.per_block.get(block).cloned()
     }

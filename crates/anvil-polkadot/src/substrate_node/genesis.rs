@@ -157,6 +157,10 @@ impl GenesisConfig {
         json!({
             "revive": {
                 "accounts": revive_genesis_accounts,
+                "debugSettings": {
+                    "allow_unlimited_contract_size": true,
+                    "bypass_eip_3607": true
+                }
             },
             "transactionPayment": {
                 "multiplier": self.base_fee_per_gas.into_inner().to_string(),
