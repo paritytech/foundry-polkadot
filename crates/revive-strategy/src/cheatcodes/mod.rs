@@ -367,7 +367,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     .map(|addr| target == addr)
                     .unwrap_or_default()
                 {
-                    cheatcode.dyn_apply(ccx, executor);
+                    cheatcode.dyn_apply(ccx, executor)
                 } else {
                     let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                     let storage_value = ctx.externalities.get_storage(target, slot)?;
