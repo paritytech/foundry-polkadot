@@ -10,7 +10,6 @@ use tokio::net::TcpListener;
 
 use crate::api_server::ApiHandle;
 
-pub mod error;
 mod handler;
 
 /// Configures a server that handles JSON-RPC calls via HTTP and WS.
