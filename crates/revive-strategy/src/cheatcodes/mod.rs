@@ -699,12 +699,12 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
                                             // Collect all immutable bytes from their scattered offsets
                                             immutable_refs
-                                                .values().map(|offsets| offsets.first()).flatten()
+                                                .values().filter_map(|offsets| offsets.first())
                                                 .flat_map(|offset| {
                                                     let start = offset.start as usize;
                                                     let end = start + offset.length as usize;
                                                     evm_bytecode.get(start..end).unwrap_or_else(|| panic!("Immutable offset out of bounds: address={:?}, offset={}..{}, bytecode_len={}",
-                                                        address, start, end, evm_bytecode.len())).into_iter().rev()
+                                                        address, start, end, evm_bytecode.len())).iter().rev()
                                                 })
                                                 .copied()
                                                 .collect::<Vec<u8>>()

@@ -3,8 +3,8 @@ use crate::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
         filters::{
-            BlockFilter, BlockNotifications, EthFilter, Filters, PendingTransactionsFilter,
-            eviction_task,
+            BlockFilter, BlockNotifications, EthFilter, Filters, LogsFilter,
+            PendingTransactionsFilter, eviction_task,
         },
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
@@ -60,8 +60,8 @@ use polkadot_sdk::{
     pallet_revive::{
         ReviveApi,
         evm::{
-            Block, BlockNumberOrTagOrHash, BlockTag, Bytes, FeeHistoryResult, FilterResults,
-            ReceiptInfo, TransactionInfo, TransactionSigned,
+            self, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, FeeHistoryResult, FilterResults,
+            Log, ReceiptInfo, TransactionInfo, TransactionSigned,
         },
     },
     parachains_common::{AccountId, Hash, Nonce},
@@ -398,16 +398,14 @@ impl ApiServer {
             EthRequest::NodeInfo(_) => self.anvil_node_info().await.to_rpc_result(),
             EthRequest::AnvilMetadata(_) => self.anvil_metadata().await.to_rpc_result(),
             // --- Filters ---
-            EthRequest::EthNewFilter(_filter) => {
-                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+            EthRequest::EthNewFilter(filter) => {
+                self.new_filter(ReviveFilter::from(filter).into_inner()).await.to_rpc_result()
             }
+            EthRequest::EthGetFilterLogs(id) => self.get_filter_logs(&id).await.to_rpc_result(),
             EthRequest::EthGetFilterChanges(id) => self.get_filter_changes(&id).await,
             EthRequest::EthNewBlockFilter(_) => self.new_block_filter().await.to_rpc_result(),
             EthRequest::EthNewPendingTransactionFilter(_) => {
                 self.new_pending_transactions_filter().await.to_rpc_result()
-            }
-            EthRequest::EthGetFilterLogs(_id) => {
-                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
             }
             EthRequest::EthUninstallFilter(id) => self.uninstall_filter(&id).await.to_rpc_result(),
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
@@ -1384,6 +1382,28 @@ impl ApiServer {
             self.eth_rpc_client.clone(),
         )));
         Ok(self.filters.add_filter(filter).await)
+    }
+
+    async fn new_filter(&self, filter: evm::Filter) -> Result<String> {
+        node_info!("eth_newFilter");
+        let eth_filter = EthFilter::Logs(Box::new(
+            LogsFilter::new(
+                BlockNotifications::new(self.new_block_notifications()?),
+                self.eth_rpc_client.clone(),
+                filter,
+            )
+            .await?,
+        ));
+        Ok(self.filters.add_filter(eth_filter).await)
+    }
+
+    async fn get_filter_logs(&self, id: &str) -> Result<Vec<Log>> {
+        node_info!("eth_getFilterLogs");
+        if let Some(filter) = self.filters.get_log_filter(id).await {
+            Ok(self.eth_rpc_client.logs(Some(filter)).await?)
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     // ----- Helpers
