@@ -954,7 +954,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };
-                Pallet::<Runtime>::bare_call(
+                let res = Pallet::<Runtime>::bare_call(
                     origin,
                     target,
                     evm_value,
@@ -963,7 +963,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     BalanceOf::<Runtime>::MAX,
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
-                )
+                );
                 System::inc_account_nonce(AccountId::to_fallback_account_id(
                     &H160::from_slice(call.caller.as_slice()),
                 ));
