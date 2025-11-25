@@ -282,6 +282,130 @@ async fn test_set_balance() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_set_and_spend_balance_for_contract() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let alith =
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
+
+    let ContractCode { init: bytecode, .. } = get_contract_code("SimpleStorage");
+
+    let tx_hash = node
+        .deploy_contract(&bytecode, Account::from(subxt_signer::eth::dev::alith()).address())
+        .await;
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let receipt = node.get_transaction_receipt(tx_hash).await;
+    let contract_address = Address::from(ReviveAddress::new(receipt.contract_address.unwrap()));
+
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(5),)).abi_encode();
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(set_value_data.into()));
+
+    let tx_hash = node.send_transaction(tx).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let _receipt = node.get_transaction_receipt(tx_hash).await;
+
+    // assert new value
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(SimpleStorage::getValueCall.abi_encode().into()));
+
+    let value = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthCall(tx.into(), None, None, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    let value = SimpleStorage::getValueCall::abi_decode_returns(&value.0).unwrap();
+
+    assert_eq!(value, U256::from(5));
+
+    // Get balance
+    assert_eq!(
+        node.get_balance(ReviveAddress::from(contract_address).inner(), None).await,
+        U256::from(0)
+    );
+
+    // Set a new balance
+    let contract_balance = U256::from_str_radix("200000000000000000000", 10).unwrap();
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetBalance(contract_address, contract_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Check balance
+    assert_eq!(
+        node.get_balance(ReviveAddress::from(contract_address).inner(), None).await,
+        contract_balance
+    );
+
+    // Try spending the balance, need to impersonate first.
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::ImpersonateAccount(contract_address)).await.unwrap(),
+    )
+    .unwrap();
+
+    let charleth = Account::from(subxt_signer::eth::dev::charleth());
+    let tx = TransactionRequest::default()
+        .value(U256::from(2e18))
+        .from(contract_address)
+        .to(Address::from(ReviveAddress::new(charleth.address())));
+
+    let tx_hash = node.send_transaction(tx).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let transaction_receipt = node.get_transaction_receipt(tx_hash).await;
+    assert_eq!(transaction_receipt.transaction_hash, tx_hash);
+
+    let new_balance = contract_balance
+        - AlloyU256::from(transaction_receipt.effective_gas_price * transaction_receipt.gas_used)
+            .inner()
+        - U256::from(2e18);
+    assert_eq!(
+        node.get_balance(ReviveAddress::from(contract_address).inner(), None).await,
+        new_balance
+    );
+    assert_eq!(node.get_balance(charleth.address(), None).await, U256::from(2e18));
+
+    // Now try interacting with the contract again to check that it still works.
+    let set_value_data = SimpleStorage::setValueCall::new((U256::from(10),)).abi_encode();
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(set_value_data.into()));
+
+    let tx_hash = node.send_transaction(tx).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let _receipt = node.get_transaction_receipt(tx_hash).await;
+
+    // assert new value.
+    let tx = TransactionRequest::default()
+        .from(alith)
+        .to(contract_address)
+        .input(TransactionInput::both(SimpleStorage::getValueCall.abi_encode().into()));
+
+    let value = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthCall(tx.into(), None, None, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    let value = SimpleStorage::getValueCall::abi_decode_returns(&value.0).unwrap();
+
+    assert_eq!(value, U256::from(10));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 // Test setting the code of an existing contract.
 async fn test_set_code_existing_contract() {
     let anvil_node_config = AnvilNodeConfig::test_config();

@@ -319,6 +319,7 @@ impl pallet_revive::Config for Runtime {
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;
     type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
+    type DebugEnabled = ConstBool<true>;
 }
 
 pallet_revive::impl_runtime_apis_plus_revive_traits!(

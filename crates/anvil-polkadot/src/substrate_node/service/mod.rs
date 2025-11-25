@@ -53,7 +53,8 @@ pub fn new(
     anvil_config: &AnvilNodeConfig,
     config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
-    let storage_overrides = Arc::new(Mutex::new(StorageOverrides::default()));
+    let storage_overrides =
+        Arc::new(Mutex::new(StorageOverrides::new(anvil_config.revive_rpc_block_limit)));
 
     let (client, backend, keystore, mut task_manager) = client::new_client(
         anvil_config.get_genesis_number(),
