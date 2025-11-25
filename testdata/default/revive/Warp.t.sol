@@ -20,18 +20,19 @@ contract WarpTest is DSTest {
         assertEq(timeContract.timestamp(), 10, "warp failed");
     }
 
-    // function testWarpFuzzed(uint32 jump) public {
-    // vm.pvm(true);
-    // BlockTimestamp timeContract = new BlockTimestamp();
-    // uint256 pre = timeContract.timestamp();
-    // vm.warp(pre + jump);
-    // assertEq(timeContract.timestamp(), pre + jump, "warp failed");
-    // }
-    //     // function testWarp2() public {
-    // vm.pvm(true);
-    // BlockTimestamp timeContract = new BlockTimestamp();
-    // assertEq(timeContract.timestamp(), 1);
-    // vm.warp(100);
-    // assertEq(timeContract.timestamp(), 100);
-    // }
+    function testWarpFuzzed(uint32 jump) public {
+        vm.pvm(true);
+        BlockTimestamp timeContract = new BlockTimestamp();
+        uint256 pre = timeContract.timestamp();
+        vm.warp(pre + jump);
+        assertEq(timeContract.timestamp(), pre + jump, "warp failed");
+    }
+    
+    function testWarp2() public {
+        vm.pvm(true);
+        BlockTimestamp timeContract = new BlockTimestamp();
+        assertEq(timeContract.timestamp(), 1);
+        vm.warp(100);
+        assertEq(timeContract.timestamp(), 100);
+    }
 }
