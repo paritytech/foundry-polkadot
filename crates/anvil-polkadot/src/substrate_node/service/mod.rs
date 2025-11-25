@@ -239,7 +239,7 @@ fn create_manual_seal_inherent_data_providers(
             Slot::from(parachain_slot).encode(),
         )];
 
-        // This helps with allowing greater block production velocity per relay chain block.
+        // This helps with allowing greater block production velocity per relay chain slot.
         backend.inject_relay_slot_info(current_para_head.hash(), (slot_in_state, 0));
 
         let mocked_parachain = MockValidationDataInherentDataProvider::<()> {
