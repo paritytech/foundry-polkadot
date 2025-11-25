@@ -800,11 +800,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());
 
-                // Pre-Dispatch Increments the nonce of the origin, so let's make sure we do
-                // that here too to replicate the same address generation.
-                System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                    input.caller().as_slice(),
-                )));
                 let exec_config = ExecConfig {
                     bump_nonce: true,
                     collect_deposit_from_hold: None,
@@ -969,6 +964,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
                 )
+                System::inc_account_nonce(AccountId::to_fallback_account_id(
+                    &H160::from_slice(call.caller.as_slice()),
+                ));
+                res
             })
         });
         mock_handler.update_state_mocks(state);
