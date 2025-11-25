@@ -60,6 +60,18 @@ pub mod well_known_keys {
         229, 192, 87, 48, 249, 93, 62, 96, 159, 163, 11,
     ];
 
+    //twox_128(b"Aura") + twox_128(b"CurrentSlot")
+    pub const CURRENT_SLOT: [u8; 32] = [
+        87, 248, 220, 47, 90, 176, 148, 103, 137, 111, 71, 48, 15, 4, 36, 56, 6, 21, 91, 60, 217,
+        168, 201, 229, 233, 162, 63, 213, 220, 19, 165, 237,
+    ];
+
+    //twox_128(b"ParachainSystem") + twox_128(b"LastRelayChainBlockNumber")
+    pub const LAST_RELAY_CHAIN_BLOCK_NUMBER: [u8; 32] = [
+        69, 50, 61, 247, 204, 71, 21, 11, 57, 48, 226, 102, 107, 10, 163, 19, 162, 188, 161, 144,
+        211, 107, 216, 52, 204, 115, 163, 143, 194, 19, 236, 189,
+    ];
+
     pub fn system_account_info(account_id: AccountId) -> Vec<u8> {
         let mut key = Vec::new();
         key.extend_from_slice(&twox_128("System".as_bytes()));

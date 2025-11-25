@@ -202,7 +202,7 @@ type CreateInherentDataProviders = Box<
 >;
 
 fn create_manual_seal_inherent_data_providers(
-    backend: Arc<Backend>,
+    backend: BackendWithOverlay,
     client: Arc<Client>,
     time_manager: Arc<TimeManager>,
 ) -> CreateInherentDataProviders {
@@ -217,39 +217,41 @@ fn create_manual_seal_inherent_data_providers(
 
         let next_block_number =
             UniqueSaturatedInto::<u32>::unique_saturated_into(current_para_head.number) + 1;
-
         let slot_duration = client.runtime_api().slot_duration(current_para_head.hash()).unwrap();
         let para_id = client.runtime_api().parachain_id(current_para_head.hash()).unwrap();
         let next_time = time_manager.next_timestamp();
-        let slot = next_time.saturating_div(slot_duration.as_millis());
+        let parachain_slot = next_time / slot_duration.as_millis();
 
-        // TODO: remove, relevant for comparing purposes.
-        let state = backend.state_at(current_para_head.hash(), TrieCacheContext::Trusted).unwrap();
-        let relay_slot_info = state
-            .storage(storage::well_known_keys::RELAY_SLOT_INFO.as_ref())
-            .map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))
-            .unwrap()
-            .unwrap();
-        let (slot_in_state, authored_blocks) =
-            <(Slot, u32)>::decode(&mut relay_slot_info.as_bytes_ref()).unwrap();
+        let (slot_in_state, _) = backend.read_relay_slot_info(current_para_head.hash()).unwrap();
+        let last_rc_block_number =
+            backend.read_last_relay_chain_block_number(current_para_head.hash()).unwrap();
 
-        // TODO: remove, some useful debug prints.
-        println!("Slot: {}, relay_offset: {}", slot_in_state, slot);
-        println!("authored blocks: {}", authored_blocks);
+        // Used to set the relay chain slot provided via the proof (which is represented
+        // by a set of relay chain state keys). The slot is read from the proof at the moment
+        // we call consensus hook to perform validations of the relay chain state. We will
+        // check:
+        // - Ensures blocks are not produced faster than the specified velocity `V` (however, given
+        // the nature of the anvil-polkadot mining strategies, we'll hack the check to never fail)
+        // - Verifies parachain slot alignment with relay chain slot (meaning time passes similarly
+        // on both chains, and the additional key values set below ensures it)
+        let additional_key_values = vec![(
+            relay_chain::well_known_keys::CURRENT_SLOT.to_vec(),
+            Slot::from(parachain_slot).encode(),
+        )];
 
-        // TODO: investigate what is this relay_chain current slot, and how are
-        // additional_key_values helpful, if any. State changes could be achieved via the state
-        // injector.
-        // let additional_key_values =
-        //     vec![(relay_chain::well_known_keys::CURRENT_SLOT.to_vec(),
-        // Slot::from(slot).encode())];
+        // This helps with allowing greater block production velocity per relay chain block.
+        backend.inject_relay_slot_info(current_para_head.hash(), (slot_in_state, 0));
 
         let mocked_parachain = MockValidationDataInherentDataProvider::<()> {
             current_para_block: next_block_number,
             para_id,
+            // This is used behind the scenes to set the relay parent number
+            // on top of which we build this block. The new last rc block number
+            // known by the parachain will be set to the value bellow when the parachain
+            // block is finalized.
+            relay_offset: last_rc_block_number + 1,
             current_para_block_head,
-            relay_offset: slot as u32,
-            additional_key_values: None, //Some(additional_key_values),
+            additional_key_values: Some(additional_key_values),
             ..Default::default()
         };
 
@@ -393,9 +395,12 @@ pub fn new(
     );
 
     let aura_digest_provider = AuraConsensusDataProvider::new(client.clone());
-
-    let create_inherent_data_providers =
-        create_manual_seal_inherent_data_providers(backend.clone(), client.clone(), time_manager);
+    let backend_with_overlay = BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
+    let create_inherent_data_providers = create_manual_seal_inherent_data_providers(
+        backend_with_overlay,
+        client.clone(),
+        time_manager,
+    );
 
     let params = ManualSealParams {
         block_import: client.clone(),
