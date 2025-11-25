@@ -1,12 +1,12 @@
 use alloy_primitives::{Address, Bytes, FixedBytes, U256};
 use foundry_cheatcodes::{Ecx, Error, Result};
-use polkadot_sdk::sp_externalities::Externalities;
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
         Executable, Pallet,
     },
     sp_core::{self, H160},
+    sp_externalities::Externalities,
     sp_io::TestExternalities,
 };
 use revive_env::{AccountId, ExtBuilder, Runtime, System, Timestamp};
