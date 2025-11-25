@@ -9,7 +9,6 @@ use polkadot_sdk::{
     sp_core::{self, H160},
     sp_io::TestExternalities,
 };
-
 use revive_env::{AccountId, ExtBuilder, Runtime, System, Timestamp};
 use std::{
     fmt::Debug,

@@ -119,7 +119,7 @@ jobs:
 
       # Build substrate-node (if not cached)
       - name: Build substrate-node
-        if: steps.cache-substrate.outputs.cache-hit != 'true' && matrix.os != 'windows'
+        if: steps.cache-substrate.outputs.cache-hit != 'true' && matrix.os == 'ubuntu'
         run: |
           git init polkadot-sdk
           cd polkadot-sdk
@@ -130,12 +130,12 @@ jobs:
 
       # Install eth-rpc proxy (if not cached)
       - name: Install eth-rpc proxy
-        if: steps.cache-ethrpc.outputs.cache-hit != 'true' && matrix.os != 'windows'
+        if: steps.cache-ethrpc.outputs.cache-hit != 'true' && matrix.os == 'ubuntu'
         run: cargo install pallet-revive-eth-rpc --version ${{ env.ETH_RPC_VERSION }} --locked
 
       # Verify binaries exist
       - name: Verify binaries
-        if: matrix.os != 'windows'
+        if: matrix.os == 'ubuntu'
         run: |
           echo "=== Substrate binary ==="
           ls -lh polkadot-sdk/target/release/substrate-node || echo "substrate-node not found"
@@ -170,14 +170,14 @@ jobs:
         with:
           path: polkadot-sdk/target/release/substrate-node${{ contains(matrix.runner_label, 'windows') && '.exe' || '' }}
           key: substrate-node-${{ matrix.runner_label }}-${{ env.SUBSTRATE_NODE_COMMIT_SHA }}
-          fail-on-cache-miss: ${{ !contains(matrix.runner_label, 'windows') }}
+          fail-on-cache-miss: ${{ contains(matrix.runner_label, 'ubuntu') }}
 
       - name: Restore eth-rpc binary
         uses: actions/cache/restore@v4
         with:
           path: ~/.cargo/bin/eth-rpc${{ contains(matrix.runner_label, 'windows') && '.exe' || '' }}
           key: eth-rpc-${{ matrix.runner_label }}-${{ env.ETH_RPC_VERSION }}
-          fail-on-cache-miss: ${{ !contains(matrix.runner_label, 'windows') }}
+          fail-on-cache-miss: ${{ contains(matrix.runner_label, 'ubuntu') }}
 
       - name: Install dependencies for building (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new')
@@ -191,7 +191,7 @@ jobs:
         with:
           node-version: 20
       - name: Install Bun
-        if: contains(matrix.name, 'external') && !contains(matrix.runner_label, 'windows')
+        if: contains(matrix.name, 'external') && contains(matrix.runner_label, 'ubuntu')
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest

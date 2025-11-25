@@ -519,7 +519,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
     ctx.externalities.execute_with(||{
             // Enable debug mode to bypass EIP-170 size checks during testing
             if data.cfg.limit_contract_code_size == Some(usize::MAX) {
-                let debug_settings = DebugSettings::new(true);
+                let debug_settings = DebugSettings::new(true, true);
                 debug_settings.write_to_storage::<Runtime>();
             }
             System::set_block_number(block_number.saturating_to());
@@ -1074,7 +1074,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         ecx: Ecx<'_, '_, '_>,
         call: &CallInputs,
     ) {
-        let mut ctx = get_context_ref_mut(state.strategy.context.as_mut());
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         // Skip storage sync if: in PVM mode AND no test contract
         if ctx.using_pvm
@@ -1088,7 +1088,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return;
         }
 
-        apply_revm_storage_diff(&mut ctx, ecx, call.target_address);
+        apply_revm_storage_diff(ctx, ecx, call.target_address);
     }
 }
 

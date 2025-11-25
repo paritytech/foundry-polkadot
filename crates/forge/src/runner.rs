@@ -568,7 +568,6 @@ impl<'a> FunctionRunner<'a> {
             }
             Err(err) => {
                 self.result.single_fail(Some(err.to_string()));
-
                 return self.result;
             }
         };
@@ -942,6 +941,8 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and fuzz test are discarded after test ends,
     /// similar to `eth_call`.
     fn run_fuzz_test(mut self, func: &Function) -> TestResult {
+        let binding = self.executor.clone().into_owned();
+        self.executor = Cow::Owned(binding);
         // Prepare fuzz test execution.
         if self.prepare_test(func).is_err() {
             return self.result;
