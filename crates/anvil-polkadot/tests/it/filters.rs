@@ -957,7 +957,6 @@ async fn test_get_filter_logs_returns_all_matching_logs() {
 }
 
 // Pending transactions filter
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_pending_tx_filter_basic() {
     let anvil_node_config = AnvilNodeConfig::test_config();
