@@ -2,7 +2,7 @@ use crate::api_server::{error::Error, revive_conversions::AlloyU256};
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types::trace::parity::{
     Action, CallAction, CallOutput, CallType, CreateAction, CreateOutput, CreationMethod,
-    LocalizedTransactionTrace, TraceOutput, TransactionTrace,
+    LocalizedTransactionTrace, SelfdestructAction, TraceOutput, TransactionTrace,
 };
 use pallet_revive_eth_rpc::EthRpcError;
 use polkadot_sdk::pallet_revive::evm::{
@@ -144,5 +144,19 @@ fn parity_transaction_trace_from_call_trace(
                 trace_address,
             })
         }
+        ReviveCallType::Selfdestruct => Ok(TransactionTrace {
+            action: Action::Selfdestruct(SelfdestructAction {
+                address: Address::from_slice(trace.from.as_ref()),
+                balance: AlloyU256::from(trace.value.unwrap_or_default()).inner(),
+                refund_address: Address::from_slice(trace.to.as_ref()),
+            }),
+            error: trace.error,
+            result: None,
+            subtraces: trace
+                .child_call_count
+                .try_into()
+                .map_err(|_| EthRpcError::ConversionError)?,
+            trace_address,
+        }),
     }
 }
