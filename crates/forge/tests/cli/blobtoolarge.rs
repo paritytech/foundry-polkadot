@@ -45,8 +45,7 @@ contract CallbackContract {
     let mut bloat_functions = String::new();
     for i in 1..=280 {
         bloat_functions.push_str(&format!(
-            "    function bloat{:03}() public pure returns (uint256) {{ return uint256(keccak256(\"{:03}\")); }}\n",
-            i, i
+            "    function bloat{i:03}() public pure returns (uint256) {{ return uint256(keccak256(\"{i:03}\")); }}\n",
         ));
     }
 
@@ -70,10 +69,9 @@ contract BloatTest is DSTest, ICallback {{
         assertEq(c.lastValue(), 500);
     }}
 
-{}
+{bloat_functions}
 }}
-        "#,
-        bloat_functions
+        "#
     );
 
     prj.add_source("BloatTest.t.sol", &test_contract).unwrap();

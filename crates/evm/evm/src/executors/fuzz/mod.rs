@@ -52,7 +52,7 @@ pub struct FuzzTestData {
 /// configuration which can be overridden via [environment variables](proptest::test_runner::Config)
 pub struct FuzzedExecutor {
     /// The EVM executor
-    executor: Executor,
+    pub executor: Executor,
     /// The fuzzer
     runner: TestRunner,
     /// The account that calls tests
@@ -106,12 +106,16 @@ impl FuzzedExecutor {
             if timer.is_timed_out() {
                 return Err(TestCaseError::fail(TEST_TIMEOUT));
             }
-            self.executor.strategy.runner.checkpoint();
+            self.executor
+                .strategy
+                .runner
+                .start_transaction(self.executor.strategy.context.as_ref());
             let fuzz_res = self.single_fuzz(address, calldata);
-            self.executor.strategy.runner.reload_checkpoint();
-
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
             let fuzz_res = fuzz_res?;
-
             // If running with progress then increment current run.
             if let Some(progress) = progress {
                 progress.inc(1);
@@ -245,7 +249,6 @@ impl FuzzedExecutor {
             .executor
             .call_raw(self.sender, address, calldata.clone(), U256::ZERO)
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
-
         // Handle `vm.assume`.
         if call.result.as_ref() == MAGIC_ASSUME {
             return Err(TestCaseError::reject(FuzzError::AssumeReject));

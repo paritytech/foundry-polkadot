@@ -6,7 +6,7 @@ use forge::{MultiContractRunner, MultiContractRunnerBuilder, executors::Executor
 use foundry_cli::utils::install_crypto_provider;
 use foundry_compilers::{
     Project, ProjectCompileOutput, SolcConfig, Vyper,
-    artifacts::{EvmVersion, Libraries, Settings},
+    artifacts::{EvmVersion, Libraries, Settings, output_selection::ContractOutputSelection},
     compilers::{multi::MultiCompiler, resolc::dual_compiled_contracts::DualCompiledContracts},
     utils::RuntimeOrHandle,
 };
@@ -196,7 +196,9 @@ impl ForgeTestData {
     pub fn new_with_revive(profile: ForgeTestProfile) -> Self {
         install_crypto_provider();
         init_tracing();
-        let config = Arc::new(profile.config());
+        let mut config = profile.config();
+        config.extra_output.push(ContractOutputSelection::StorageLayout);
+        let config = Arc::new(config);
 
         let mut solc_config = (*config).clone();
         solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);

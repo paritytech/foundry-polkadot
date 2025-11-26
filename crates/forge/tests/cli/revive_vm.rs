@@ -74,7 +74,7 @@ contract CounterTest is DSTest {
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
-    res.stderr_eq(str![""]).stdout_eq(str![[r#"
+    res.stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
@@ -483,6 +483,15 @@ forgetest!(trace_counter_test, |prj, cmd| {
           emit Increment(number);
 
       }
+      function setAndIncrement(uint256 newNumber) public {
+        setNumber(newNumber);
+        increment();
+      }
+      function setAndIncrementProxy(uint256 newNumber, Counter target) public {
+        setNumber(newNumber);
+        increment();
+        target.setAndIncrement(newNumber);
+      }
   }
   "#,
     )
@@ -498,12 +507,13 @@ import {console} from "./console.sol";
 contract CounterTest is DSTest {
 Vm constant vm = Vm(HEVM_ADDRESS);
 Counter public counter;
+Counter target;
 
 function setUp() public {
   counter = new Counter(); 
-  vm.expectEmit();
+  target = new Counter(); 
+  vm.expectEmit(address(counter));
   emit Counter.SetNumber(5);
-
   counter.setNumber(5);
   assertEq(counter.number(), 5);
 }
@@ -514,6 +524,14 @@ function test_Increment() public {
     assertEq(counter.number(), 55);
     counter.increment(); 
     assertEq(counter.number(), 56);
+}
+
+function test_Seq() public {
+  vm.expectEmit(address(counter));
+  emit Counter.SetNumber(5);
+  vm.expectEmit(address(target));
+  emit Counter.Increment(6);
+  counter.setAndIncrementProxy(5, target);
 }
 
 function test_expectRevert() public {
@@ -535,13 +553,15 @@ Compiler run successful!
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
-Ran 2 tests for src/CounterTest.t.sol:CounterTest
+Ran 3 tests for src/CounterTest.t.sol:CounterTest
 [PASS] test_Increment() ([GAS])
 Traces:
   [..] CounterTest::setUp()
     ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit()
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
     │   └─ ← [Return]
     ├─ emit SetNumber(result: 5)
     ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
@@ -566,12 +586,48 @@ Traces:
     │   └─ ← [Return] 56
     └─ ← [Stop]
 
+[PASS] test_Seq() ([GAS])
+Traces:
+  [..] CounterTest::setUp()
+    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
+    │   └─ ← [Return]
+    ├─ emit SetNumber(result: 5)
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
+    │   ├─ emit SetNumber(result: 5)
+    │   └─ ← [Stop]
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
+    │   └─ ← [Return] 5
+    └─ ← [Stop]
+
+  [..] CounterTest::test_Seq()
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
+    │   └─ ← [Return]
+    ├─ emit SetNumber(result: 5)
+    ├─ [..] VM::expectEmit(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
+    │   └─ ← [Return]
+    ├─ emit Increment(result: 6)
+    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setAndIncrementProxy(5, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
+    │   ├─ emit SetNumber(result: 5)
+    │   ├─ emit Increment(result: 6)
+    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::setAndIncrement(5)
+    │   │   ├─ emit SetNumber(result: 5)
+    │   │   ├─ emit Increment(result: 6)
+    │   │   └─ ← [Return]
+    │   └─ ← [Stop]
+    └─ ← [Stop]
+
 [PASS] test_expectRevert() ([GAS])
 Traces:
   [..] CounterTest::setUp()
     ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
     │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit()
+    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
+    │   └─ ← [Return] [..] bytes of code
+    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
     │   └─ ← [Return]
     ├─ emit SetNumber(result: 5)
     ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
@@ -588,9 +644,9 @@ Traces:
     │   └─ ← [Revert] Revert("failure")
     └─ ← [Stop]
 
-Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
+Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
 
-Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
+Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 
 "#]]);
 });
@@ -1390,6 +1446,150 @@ Traces:
 Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
+
+"#]]);
+});
+
+forgetest!(before_test_setup, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.insert_console();
+    prj.add_source(
+        "Counter.sol",
+        r#"
+    // SPDX-License-Identifier: UNLICENSED
+    pragma solidity ^0.8.13;
+
+    contract Counter {
+        uint256 public number = 0;
+
+        function setNumber(uint256 newNumber) public {
+            number = newNumber;
+        }
+
+        function increment() public {
+            number = number + 1;
+        }
+    }
+    "#,
+    )
+    .unwrap();
+    prj.add_source(
+        "CounterTest.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {Counter} from "./Counter.sol";
+import {console} from "./console.sol";
+
+contract CounterTest is DSTest {
+  Vm constant vm = Vm(HEVM_ADDRESS);
+  Counter public counter;
+
+  function setUp() public {
+    counter = new Counter(); 
+    counter.setNumber(5);
+    assertEq(counter.number(), 5);
+    vm.deal(address(counter), 1 ether);
+  }
+
+  function callMe(uint256 number, uint256 amount) public {
+    counter.setNumber(number);
+    vm.deal(address(counter), amount * 1 ether);   
+  }
+
+  function beforeTestSetup(
+    bytes4 testSelector
+  ) public pure returns (bytes[] memory beforeTestCalldata) {
+    if (testSelector == this.testA.selector) {
+        beforeTestCalldata = new bytes[](1);
+        beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 5, 2);
+    }
+    if (testSelector == this.testB.selector) {
+        beforeTestCalldata = new bytes[](1);
+        beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 10, 3);
+    }
+    if (testSelector == this.testC.selector) {
+        beforeTestCalldata = new bytes[](1);
+        beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 15, 4);
+    }
+    if (testSelector == this.testFuzz_SetNumber.selector) {
+      beforeTestCalldata = new bytes[](1);
+      beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 15, 4);
+  }
+  if (testSelector == this.testFuzz_SetNumber2.selector) {
+    beforeTestCalldata = new bytes[](1);
+    beforeTestCalldata[0] = abi.encodeWithSignature("callMe(uint256,uint256)", 1, 4);
+}
+  }
+
+  function testA() public {
+      assertEq(counter.number(), 5);
+      assertEq(address(counter).balance, 2 ether);
+      counter.setNumber(55); 
+      assertEq(counter.number(), 55);
+      counter.increment(); 
+      assertEq(counter.number(), 56);
+  }
+  function testB() public {
+    assertEq(counter.number(), 10);
+    assertEq(address(counter).balance, 3 ether);
+    counter.setNumber(55); 
+    assertEq(counter.number(), 55);
+    counter.increment(); 
+    assertEq(counter.number(), 56);
+}
+function testC() public {
+    assertEq(counter.number(), 15);
+    assertEq(address(counter).balance, 4 ether);
+    counter.setNumber(55); 
+    assertEq(counter.number(), 55);
+    counter.increment(); 
+    assertEq(counter.number(), 56);
+}
+
+  function testFuzz_SetNumber(uint256 x) public {
+      assertEq(counter.number(), 15);
+      counter.setNumber(x); 
+      assertEq(counter.number(), x);
+  }
+  
+  function testFuzz_SetNumber2(uint256 x) public {
+    assertEq(counter.number(), 1);
+    counter.setNumber(x); 
+    assertEq(counter.number(), x);
+  }
+
+  function testFuzz_SetNumber3(uint256 x) public {
+    assertEq(counter.number(), 5);
+    counter.setNumber(x); 
+    assertEq(counter.number(), x);
+  }
+}
+"#,
+    )
+    .unwrap();
+    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
+
+    let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
+    res.stderr_eq("").stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 6 tests for src/CounterTest.t.sol:CounterTest
+[PASS] testA() ([GAS])
+[PASS] testB() ([GAS])
+[PASS] testC() ([GAS])
+[PASS] testFuzz_SetNumber(uint256) (runs: 256, [AVG_GAS])
+[PASS] testFuzz_SetNumber2(uint256) (runs: 256, [AVG_GAS])
+[PASS] testFuzz_SetNumber3(uint256) (runs: 256, [AVG_GAS])
+Suite result: ok. 6 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 6 tests passed, 0 failed, 0 skipped (6 total tests)
 
 "#]]);
 });

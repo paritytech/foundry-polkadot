@@ -1,4 +1,6 @@
-use alloy_eips::BlockId;
+use alloy_dyn_abi::{DynSolValue, JsonAbiExt};
+use alloy_eips::{BlockId, BlockNumberOrTag};
+use alloy_json_abi::JsonAbi;
 use alloy_primitives::{Address, B256, Bytes, U256, hex};
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
 use alloy_serde::WithOtherFields;
@@ -239,12 +241,9 @@ impl TestNode {
 
     pub async fn eth_best_block(&mut self) -> Block {
         unwrap_response::<Block>(
-            self.eth_rpc(EthRequest::EthGetBlockByNumber(
-                alloy_eips::BlockNumberOrTag::Latest,
-                false,
-            ))
-            .await
-            .unwrap(),
+            self.eth_rpc(EthRequest::EthGetBlockByNumber(BlockNumberOrTag::Latest, false))
+                .await
+                .unwrap(),
         )
         .unwrap()
     }
@@ -469,6 +468,40 @@ pub fn get_contract_code(name: &str) -> ContractCode {
         contract_json.get("bin-runtime").map(|code| hex::decode(code.as_str().unwrap()).unwrap());
 
     ContractCode { init, runtime }
+}
+
+/// Gets contract code with constructor arguments encoded and appended to bytecode.
+/// Loads the ABI from the contract JSON file and encodes the constructor arguments.
+pub fn get_contract_code_with_args(name: &str, constructor_args: Vec<DynSolValue>) -> ContractCode {
+    let contract_code = get_contract_code(name);
+    let contract_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("test-data/{name}.json"));
+
+    let contract_json: Value = serde_json::from_reader(std::io::BufReader::new(
+        std::fs::File::open(contract_path).unwrap(),
+    ))
+    .unwrap();
+
+    // Load ABI - handle both JSON structures
+    let abi: JsonAbi = if contract_json.get("abi").is_some() {
+        // ABI is in "abi" field
+        serde_json::from_value(contract_json.get("abi").unwrap().clone()).unwrap()
+    } else if contract_json.is_array() {
+        // JSON itself is the ABI array
+        serde_json::from_value(contract_json).unwrap()
+    } else {
+        panic!("No ABI found in contract JSON for {name}");
+    };
+
+    let mut init = contract_code.init;
+    if let Some(constructor) = abi.constructor() {
+        let encoded_args = constructor
+            .abi_encode_input(&constructor_args)
+            .expect("Failed to encode constructor arguments");
+        init.extend_from_slice(&encoded_args);
+    }
+
+    ContractCode { init, runtime: contract_code.runtime }
 }
 
 pub fn to_hex_string(value: u64) -> String {

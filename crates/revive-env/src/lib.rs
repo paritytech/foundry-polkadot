@@ -72,6 +72,7 @@ impl ExtBuilder {
                 frame_system::RawOrigin::Signed(pallet_account).into(),
             );
         });
+        ext.commit_all().unwrap();
         ext
     }
 }

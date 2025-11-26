@@ -152,8 +152,8 @@ impl<'a> ContractRunner<'a> {
                 return Ok(result);
             }
         }
-
-        let address = self.sender.create(self.executor.get_nonce(self.sender)?);
+        let nonce = self.executor.get_nonce(self.sender)?;
+        let address = self.sender.create(nonce);
         result.address = address;
         // NOTE(revive): the test contract is set here instead of where upstream does it as
         // the test contract address needs to be retrieved in order to skip
@@ -411,7 +411,7 @@ impl<'a> ContractRunner<'a> {
             let fail =  TestResult::fail("`testFail*` has been removed. Consider changing to test_Revert[If|When]_Condition and expecting a revert".to_string());
             return SuiteResult::new(start.elapsed(), [(instances, fail)].into(), warnings);
         }
-        let f = |backend: Option<revive_strategy::Backend>, func: &Function| {
+        let f = |func: &Function| {
             let f = || {
                 let start = Instant::now();
 
@@ -443,22 +443,10 @@ impl<'a> ContractRunner<'a> {
 
                 (sig, res)
             };
-            if let Some(backend) = backend {
-                revive_strategy::with_externalities(backend, f)
-            } else {
-                f()
-            }
-        };
-        let backend = if self.config.resolc.resolc_compile || self.config.resolc.polkadot {
-            Some(revive_strategy::Backend::get())
-        } else {
-            None
+            f()
         };
 
-        let test_results = functions
-            .into_par_iter()
-            .map(|item| f(backend.clone(), item))
-            .collect::<BTreeMap<_, _>>();
+        let test_results = functions.into_par_iter().map(f).collect::<BTreeMap<_, _>>();
 
         let duration = start.elapsed();
         SuiteResult::new(duration, test_results, warnings)
@@ -530,7 +518,6 @@ impl<'a> FunctionRunner<'a> {
             self.result.single_fail(Some(e.to_string()));
             return self.result;
         }
-
         match kind {
             TestFunctionKind::UnitTest { .. } => self.run_unit_test(func),
             TestFunctionKind::FuzzTest { .. } => self.run_fuzz_test(func),
@@ -557,18 +544,16 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and unit test function call are discarded after
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
+        let binding = self.executor.clone().into_owned();
+        self.executor = Cow::Owned(binding);
         // Prepare unit test execution.
-        self.executor.strategy.runner.checkpoint();
-
         if self.prepare_test(func).is_err() {
-            self.executor.strategy.runner.reload_checkpoint();
-
             return self.result;
         }
-        let mut binding = self.executor.clone();
-        let executor = binding.to_mut();
+        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
+
         // Run current unit test.
-        let (mut raw_call_result, reason) = match executor.call(
+        let (mut raw_call_result, reason) = match self.executor.call(
             self.sender,
             self.address,
             func,
@@ -580,22 +565,26 @@ impl<'a> FunctionRunner<'a> {
             Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
             Err(EvmError::Skip(reason)) => {
                 self.result.single_skip(reason);
-                self.executor.strategy.runner.reload_checkpoint();
-
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
             Err(err) => {
                 self.result.single_fail(Some(err.to_string()));
-                self.executor.strategy.runner.reload_checkpoint();
-
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
         };
+        self.executor.strategy.runner.rollback_transaction(self.executor.strategy.context.as_ref());
 
         let success =
             self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
         self.result.single_result(success, reason, raw_call_result);
-        self.executor.strategy.runner.reload_checkpoint();
 
         self.result
     }
@@ -609,7 +598,8 @@ impl<'a> FunctionRunner<'a> {
     /// - `bool[] public fixtureSwap = [true, false]` The `table_test` is then called with the pair
     ///   of args `(2, true)` and `(5, false)`.
     fn run_table_test(mut self, func: &Function) -> TestResult {
-        // Prepare unit test execution.
+        let binding = self.executor.clone().into_owned();
+        self.executor = Cow::Owned(binding); // Prepare unit test execution.
         if self.prepare_test(func).is_err() {
             return self.result;
         }
@@ -670,6 +660,11 @@ impl<'a> FunctionRunner<'a> {
             }
 
             let args = table_fixtures.iter().map(|row| row[i].clone()).collect_vec();
+            self.executor
+                .strategy
+                .runner
+                .start_transaction(self.executor.strategy.context.as_ref());
+
             let (mut raw_call_result, reason) = match self.executor.call(
                 self.sender,
                 self.address,
@@ -682,13 +677,25 @@ impl<'a> FunctionRunner<'a> {
                 Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
                 Err(EvmError::Skip(reason)) => {
                     self.result.single_skip(reason);
+                    self.executor
+                        .strategy
+                        .runner
+                        .rollback_transaction(self.executor.strategy.context.as_ref());
                     return self.result;
                 }
                 Err(err) => {
                     self.result.single_fail(Some(err.to_string()));
+                    self.executor
+                        .strategy
+                        .runner
+                        .rollback_transaction(self.executor.strategy.context.as_ref());
                     return self.result;
                 }
             };
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
 
             let is_success =
                 self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
@@ -722,10 +729,10 @@ impl<'a> FunctionRunner<'a> {
         identified_contracts: &ContractsByAddress,
         test_bytecode: &Bytes,
     ) -> TestResult {
-        let mut binding = self.executor.clone();
-        let executor = binding.to_mut();
+        let binding = self.executor.clone().into_owned();
+        self.executor = Cow::Owned(binding);
         // First, run the test normally to see if it needs to be skipped.
-        if let Err(EvmError::Skip(reason)) = executor.call(
+        if let Err(EvmError::Skip(reason)) = self.executor.call(
             self.sender,
             self.address,
             func,
@@ -948,6 +955,8 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and fuzz test are discarded after test ends,
     /// similar to `eth_call`.
     fn run_fuzz_test(mut self, func: &Function) -> TestResult {
+        let binding = self.executor.clone().into_owned();
+        self.executor = Cow::Owned(binding);
         // Prepare fuzz test execution.
         if self.prepare_test(func).is_err() {
             return self.result;
@@ -976,6 +985,7 @@ impl<'a> FunctionRunner<'a> {
             progress.as_ref(),
         );
         self.result.fuzz_result(result);
+
         self.result
     }
 

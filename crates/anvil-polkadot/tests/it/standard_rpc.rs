@@ -665,10 +665,11 @@ async fn test_fee_history() {
     // The `SlowAdjustingFeeUpdate` logic decreases the base_fee block by block if the
     // activity contained within them is low.
     let base_fees =
-        [1_000_000, 999981, 999962, 999944, 999925, 999907, 999888, 999869, 999851, 999832, 999832];
-    for (idx, base_fee) in fee_history.base_fee_per_gas.into_iter().enumerate() {
-        assert_eq!(base_fee, pallet_revive::U256::from(base_fees[idx]));
-    }
+        [1_000_000, 999981, 999962, 999944, 999925, 999906, 999888, 999869, 999851, 999832, 999832]
+            .into_iter()
+            .map(|i| pallet_revive::U256::from(i))
+            .collect::<Vec<_>>();
+    assert_eq!(base_fees, fee_history.base_fee_per_gas);
 }
 
 #[tokio::test(flavor = "multi_thread")]
