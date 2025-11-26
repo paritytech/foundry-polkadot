@@ -55,6 +55,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          target: wasm32-unknown-unknown
 
       - name: Install build dependencies
         run: |
