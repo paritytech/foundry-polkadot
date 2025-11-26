@@ -163,7 +163,9 @@ impl ApiServer {
         while let Some(msg) = self.req_receiver.next().await {
             let resp = self.execute(msg.req).await;
 
-            msg.resp_sender.send(resp).expect("Dropped receiver");
+            if let Err(resp) = msg.resp_sender.send(resp) {
+                node_info!("Request was cancelled before sending the response: {:?}", resp);
+            }
         }
     }
 
