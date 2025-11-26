@@ -39,8 +39,6 @@ pub struct GenesisConfig {
     pub number: u32,
     /// The genesis header base fee
     pub base_fee_per_gas: FixedU128,
-    /// The genesis header gas limit.
-    pub gas_limit: Option<u128>,
     /// Signer accounts from account_generator
     pub genesis_accounts: Vec<Keypair>,
     /// Signers accounts balance
@@ -69,7 +67,6 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 anvil_config.get_base_fee(),
                 NATIVE_TO_ETH_RATIO.into(),
             ),
-            gas_limit: anvil_config.gas_limit,
             genesis_accounts: anvil_config.genesis_accounts.clone(),
             genesis_balance: anvil_config.genesis_balance,
             coinbase: anvil_config.genesis.as_ref().map(|g| g.coinbase),

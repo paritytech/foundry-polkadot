@@ -3,7 +3,7 @@ use foundry_compilers::{
 };
 use foundry_evm::executors::ExecutorStrategyContext;
 
-use crate::ReviveRuntimeMode;
+use crate::{ReviveRuntimeMode, state::TestEnv};
 
 /// Defines the context for [crate::ReviveExecutorStrategyRunner].
 #[derive(Debug, Default, Clone)]
@@ -14,6 +14,7 @@ pub struct ReviveExecutorStrategyContext {
     pub(crate) dual_compiled_contracts: DualCompiledContracts,
     /// Compilation output.
     pub(crate) compilation_output: Option<ProjectCompileOutput>,
+    pub(crate) externalties: TestEnv,
 }
 
 impl ReviveExecutorStrategyContext {

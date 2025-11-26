@@ -262,6 +262,7 @@ pub trait CheatcodeInspectorStrategyExt {
         None
     }
 
+    // Needed to sync from test contract callbacks
     fn revive_call_end(&self, _state: &mut crate::Cheatcodes, _ecx: Ecx, _call: &CallInputs) {}
 
     // Remove duplicate accesses in storage_recorder

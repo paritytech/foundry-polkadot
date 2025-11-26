@@ -38,6 +38,7 @@ fn pvm_cheatcodes_state_initializes() {
     state.strategy = CheatcodeInspectorStrategy::new_pvm(
         DualCompiledContracts::default(),
         ReviveRuntimeMode::Pvm,
+        Default::default(),
     );
 
     assert!(!state.gas_metering.paused, "Gas metering should not be paused initially in PVM");
@@ -51,6 +52,7 @@ fn pvm_gas_metering_state_structure() {
     state.strategy = CheatcodeInspectorStrategy::new_pvm(
         DualCompiledContracts::default(),
         ReviveRuntimeMode::Pvm,
+        Default::default(),
     );
 
     assert!(!state.gas_metering.paused);
@@ -69,6 +71,7 @@ fn gas_metering_is_independent_of_mode() {
     pvm_state.strategy = CheatcodeInspectorStrategy::new_pvm(
         DualCompiledContracts::default(),
         ReviveRuntimeMode::Pvm,
+        Default::default(),
     );
 
     assert_eq!(
