@@ -26,6 +26,8 @@ use tokio_stream::wrappers::{BroadcastStream, errors::BroadcastStreamRecvError};
 /// Filters that haven't been polled within this duration will be evicted.
 pub const ACTIVE_FILTER_TIMEOUT_SECS: u64 = 60 * 5;
 
+pub const LOG_TARGET: &str = "node::filter";
+
 /// Maps filter IDs to tuples of filter and deadline.
 type FilterMap = Arc<Mutex<HashMap<String, (EthFilter, Instant)>>>;
 
@@ -88,7 +90,7 @@ impl Filters {
                 return response;
             }
         }
-        warn!(target: "node::filter", "No filter found for {}", id);
+        warn!(target: LOG_TARGET, "No filter found for {}", id);
         ResponseResult::success(Vec::<()>::new())
     }
 
@@ -108,7 +110,7 @@ impl Filters {
 
     /// Removes and returns the filter associated with the given identifier.
     pub async fn uninstall_filter(&self, id: &str) -> Option<EthFilter> {
-        trace!(target: "node::filter", "Uninstalling filter id {}", id);
+        trace!(target: LOG_TARGET, "Uninstalling filter id {}", id);
         self.active_filters.lock().await.remove(id).map(|(f, _)| f)
     }
 
@@ -118,12 +120,12 @@ impl Filters {
     /// stale filters that haven't been polled recently. Evicted filters are permanently
     /// removed and cannot be recovered.
     pub async fn evict(&self) {
-        trace!(target: "node::filter", "Evicting stale filters");
+        trace!(target: LOG_TARGET, "Evicting stale filters");
         let now = Instant::now();
         let mut active_filters = self.active_filters.lock().await;
         active_filters.retain(|id, (_, deadline)| {
             if now > *deadline {
-                trace!(target: "node::filter",?id, "Evicting stale filter");
+                trace!(target: LOG_TARGET,?id, "Evicting stale filter");
                 return false;
             }
             true
@@ -181,12 +183,12 @@ pub enum EthFilter {
     /// logs (from the initial query range) with real-time logs from newly produced
     /// blocks. The filter applies topic matching with OR logic between topic alternatives
     /// and validates block ranges for incoming blocks.
-    Logs(Box<LogsFilter>),
+    Logs(LogsFilter),
     /// Pending transactions filter that tracks new transactions.
     ///
     /// Returns mined transactions since last poll + transactions that are
     /// ready but have not been mined yet.
-    PendingTransactions(Box<PendingTransactionsFilter>),
+    PendingTransactions(PendingTransactionsFilter),
 }
 
 /// Filter for tracking new block hashes.
@@ -211,7 +213,7 @@ impl BlockFilter {
                 Ok(block_hash) => new_blocks.push(block_hash),
                 Err(BroadcastStreamRecvError::Lagged(count)) => {
                     warn!(
-                        target: "node::filter",
+                        target: LOG_TARGET,
                         "Block filter lagged, skipped {} block notifications",
                         count
                     );
@@ -284,7 +286,7 @@ impl LogsFilter {
                 Ok(block_hash) => block_hashes.push(block_hash),
                 Err(BroadcastStreamRecvError::Lagged(blocks)) => {
                     // Channel overflowed - some blocks were skipped
-                    warn!(target: "node::filter", "Logs filter lagged, skipped {} block notifications", blocks);
+                    warn!(target: LOG_TARGET, "Logs filter lagged, skipped {} block notifications", blocks);
                     // Continue draining what's left in the channel
                     continue;
                 }
@@ -394,9 +396,9 @@ impl PendingTransactionsFilter {
             .ready()
             .filter_map(|tx| {
                 extract_tx_info(&tx.data).map(|(_, _, tx_info)| tx_info.hash).or_else(|| {
-                warn!(target: "node::filter", "Failed to extract transaction info from ready pool");
-                None
-            })
+                    warn!(target: LOG_TARGET, "Failed to extract transaction info from ready pool");
+                    None
+                })
             })
             .collect();
 
@@ -408,7 +410,7 @@ impl PendingTransactionsFilter {
                     Ok(tx_hashes) => included_transactions.extend(tx_hashes),
                     Err(e) => {
                         warn!(
-                            target: "node::filter",
+                            target: LOG_TARGET,
                             "Failed to fetch transactions for block {:?}: {}",
                             block_hash, e
                         );
@@ -416,24 +418,29 @@ impl PendingTransactionsFilter {
                 },
                 Err(BroadcastStreamRecvError::Lagged(blocks)) => {
                     // Channel overflowed - some blocks were skipped
-                    warn!(target: "node::filter", "Logs filter lagged, skipped {} block notifications", blocks);
+                    warn!(target: LOG_TARGET, "Logs filter lagged, skipped {} block notifications", blocks);
                     // Continue draining what's left in the channel
                     continue;
                 }
             }
         }
-        // New pending = transactions from current pool + transactions from mined blocks
-        // (that we haven't reported yet)
+
+        // New from pool: transactions in ready pool we haven't seen before
         let new_from_pool: HashSet<H256> =
             current_ready.difference(&self.already_seen).copied().collect();
+        let excluded: HashSet<H256> = self.already_seen.union(&new_from_pool).copied().collect();
         let new_from_blocks: HashSet<H256> =
-            included_transactions.difference(&self.already_seen).copied().collect();
-
+            included_transactions.difference(&excluded).copied().collect();
         let new_pending: Vec<H256> = new_from_pool.union(&new_from_blocks).copied().collect();
+        // Remove mined transactions from already_seen
+        for tx_hash in &included_transactions {
+            self.already_seen.remove(tx_hash);
+        }
 
-        // Update seen to include both current pool and mined transactions
-        self.already_seen.extend(current_ready);
-        self.already_seen.extend(included_transactions);
+        // Only track transactions that are still pending (not mined)
+        let still_pending: HashSet<H256> =
+            current_ready.difference(&included_transactions).copied().collect();
+        self.already_seen.extend(still_pending);
         new_pending
     }
 

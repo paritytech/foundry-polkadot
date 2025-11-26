@@ -1397,24 +1397,24 @@ impl ApiServer {
 
     async fn new_pending_transactions_filter(&self) -> Result<String> {
         node_info!("eth_newPendingTransactionFilter");
-        let filter = EthFilter::PendingTransactions(Box::new(PendingTransactionsFilter::new(
+        let filter = EthFilter::PendingTransactions(PendingTransactionsFilter::new(
             BlockNotifications::new(self.new_block_notifications()?),
             self.tx_pool.clone(),
             self.eth_rpc_client.clone(),
-        )));
+        ));
         Ok(self.filters.add_filter(filter).await)
     }
 
     async fn new_filter(&self, filter: evm::Filter) -> Result<String> {
         node_info!("eth_newFilter");
-        let eth_filter = EthFilter::Logs(Box::new(
+        let eth_filter = EthFilter::Logs(
             LogsFilter::new(
                 BlockNotifications::new(self.new_block_notifications()?),
                 self.eth_rpc_client.clone(),
                 filter,
             )
             .await?,
-        ));
+        );
         Ok(self.filters.add_filter(eth_filter).await)
     }
 

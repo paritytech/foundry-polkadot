@@ -23,8 +23,6 @@ type FilterMap = Arc<Mutex<HashMap<String, (EthFilter, Instant)>>>;
 /// timeout after which to remove an active filter if it wasn't polled since then
 pub const ACTIVE_FILTER_TIMEOUT_SECS: u64 = 60 * 5;
 
-pub const LOG_TARGET: &str = "node::filter";
-
 /// Contains all registered filters
 #[derive(Clone, Debug)]
 pub struct Filters {
@@ -38,7 +36,7 @@ impl Filters {
     /// Adds a new `EthFilter` to the set
     pub async fn add_filter(&self, filter: EthFilter) -> String {
         let id = new_id();
-        trace!(target: LOG_TARGET, "Adding new filter id {}", id);
+        trace!(target: "node::filter", "Adding new filter id {}", id);
         let mut filters = self.active_filters.lock().await;
         filters.insert(id.clone(), (filter, self.next_deadline()));
         id
@@ -56,7 +54,7 @@ impl Filters {
                 return resp;
             }
         }
-        warn!(target: LOG_TARGET, "No filter found for {}", id);
+        warn!(target: "node::filter", "No filter found for {}", id);
         ResponseResult::success(Vec::<()>::new())
     }
 
@@ -71,7 +69,7 @@ impl Filters {
 
     /// Removes the filter identified with the `id`
     pub async fn uninstall_filter(&self, id: &str) -> Option<EthFilter> {
-        trace!(target: LOG_TARGET, "Uninstalling filter id {}", id);
+        trace!(target: "node::filter", "Uninstalling filter id {}", id);
         self.active_filters.lock().await.remove(id).map(|(f, _)| f)
     }
 
@@ -87,12 +85,12 @@ impl Filters {
 
     /// Evict all filters that weren't updated and reached there deadline
     pub async fn evict(&self) {
-        trace!(target: LOG_TARGET, "Evicting stale filters");
+        trace!(target: "node::filter", "Evicting stale filters");
         let now = Instant::now();
         let mut active_filters = self.active_filters.lock().await;
         active_filters.retain(|id, (_, deadline)| {
             if now > *deadline {
-                trace!(target: LOG_TARGET,?id, "Evicting stale filter");
+                trace!(target: "node::filter",?id, "Evicting stale filter");
                 return false;
             }
             true
