@@ -27,15 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          target: wasm32-unknown-unknown
+          components: rust-src
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@1.88.0
-        with:
-          target: wasm32-unknown-unknown
-          components: rust-src
-          toolchain: nightly
       - name: Install clang on ubuntu
         run: |
           sudo apt-get update
