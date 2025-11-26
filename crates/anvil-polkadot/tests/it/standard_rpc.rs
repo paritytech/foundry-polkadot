@@ -667,7 +667,7 @@ async fn test_fee_history() {
     let base_fees =
         [1_000_000, 999981, 999962, 999944, 999925, 999906, 999888, 999869, 999851, 999832, 999832]
             .into_iter()
-            .map(|i| pallet_revive::U256::from(i))
+            .map(pallet_revive::U256::from)
             .collect::<Vec<_>>();
     assert_eq!(base_fees, fee_history.base_fee_per_gas);
 }
