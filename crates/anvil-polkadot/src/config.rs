@@ -1,7 +1,6 @@
 use crate::api_server::revive_conversions::ReviveAddress;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, U256, hex, map::HashMap, utils::Unit};
-use alloy_signer::Signer;
 use alloy_signer_local::{
     MnemonicBuilder, PrivateKeySigner,
     coins_bip39::{English, Mnemonic},
@@ -266,14 +265,8 @@ impl SubstrateCliConfiguration for SubstrateNodeConfig {
 pub struct AnvilNodeConfig {
     /// Chain ID of the EVM chain
     pub chain_id: Option<u64>,
-    /// Default gas limit for all txs
-    pub gas_limit: Option<u128>,
-    /// If set to `true`, disables the block gas limit
-    pub disable_block_gas_limit: bool,
     /// Default base fee
     pub base_fee: Option<u128>,
-    /// If set to `true`, disables the enforcement of a minimum suggested priority fee
-    pub disable_min_priority_fee: bool,
     /// Signer accounts that will be initialised with `genesis_balance` in the genesis block
     pub genesis_accounts: Vec<Keypair>,
     /// Native token balance of every genesis account in the genesis block
@@ -292,8 +285,6 @@ pub struct AnvilNodeConfig {
     pub mixed_mining: bool,
     /// port to use for the server
     pub port: u16,
-    /// maximum number of transactions in a block
-    pub max_transactions: usize,
     /// The generator used to generate the dev accounts
     pub account_generator: Option<AccountGenerator>,
     /// whether to enable tracing
@@ -308,22 +299,10 @@ pub struct AnvilNodeConfig {
     pub genesis: Option<Genesis>,
     /// The ipc path
     pub ipc_path: Option<Option<String>>,
-    /// Enable transaction/call steps tracing for debug calls returning geth-style traces
-    pub enable_steps_tracing: bool,
-    /// Enable printing of `console.log` invocations.
-    pub print_logs: bool,
-    /// Enable printing of traces.
-    pub print_traces: bool,
     /// Enable auto impersonation of accounts on startup
     pub enable_auto_impersonate: bool,
     /// Max number of blocks to keep in memory for the eth revive rpc
     pub revive_rpc_block_limit: Option<usize>,
-    /// Configure the code size limit
-    pub code_size_limit: Option<usize>,
-    /// Disable the default CREATE2 deployer
-    pub disable_default_create2_deployer: bool,
-    /// The memory limit per EVM execution in bytes.
-    pub memory_limit: Option<u64>,
     /// Do not print log messages.
     pub silent: bool,
 }
@@ -408,26 +387,6 @@ Base Fee
         let _ = write!(
             s,
             r#"
-Gas Limit
-==================
-
-{}
-"#,
-            {
-                if self.disable_block_gas_limit {
-                    "Disabled".to_string()
-                } else {
-                    self.gas_limit
-                        .map(|l| l.to_string())
-                        .unwrap_or_else(|| DEFAULT_GAS_LIMIT.to_string())
-                }
-            }
-            .green()
-        );
-
-        let _ = write!(
-            s,
-            r#"
 Genesis Timestamp
 ==================
 
@@ -468,19 +427,11 @@ Genesis Number
             wallet_description.insert("mnemonic".to_string(), phrase);
         };
 
-        let gas_limit = match self.gas_limit {
-            // if we have a disabled flag we should max out the limit
-            Some(_) | None if self.disable_block_gas_limit => Some(u64::MAX.to_string()),
-            Some(limit) => Some(limit.to_string()),
-            _ => None,
-        };
-
         json!({
           "available_accounts": available_accounts,
           "private_keys": private_keys,
           "wallet": wallet_description,
           "base_fee": format!("{}", self.get_base_fee()),
-          "gas_limit": gas_limit,
           "genesis_timestamp": format!("{}", self.get_genesis_timestamp()),
         })
     }
@@ -516,8 +467,6 @@ impl Default for AnvilNodeConfig {
 
         Self {
             chain_id: None,
-            gas_limit: None,
-            disable_block_gas_limit: false,
             signer_accounts: genesis_accounts.clone(),
             genesis_timestamp: None,
             genesis_block_number: None,
@@ -528,15 +477,9 @@ impl Default for AnvilNodeConfig {
             no_mining: false,
             mixed_mining: false,
             port: NODE_PORT,
-            // TODO make this something dependent on block capacity
-            max_transactions: 1_000,
             account_generator: None,
             base_fee: None,
-            disable_min_priority_fee: false,
             enable_tracing: true,
-            enable_steps_tracing: false,
-            print_logs: true,
-            print_traces: false,
             enable_auto_impersonate: false,
             revive_rpc_block_limit: None,
             server_config: Default::default(),
@@ -544,22 +487,12 @@ impl Default for AnvilNodeConfig {
             config_out: None,
             genesis: None,
             ipc_path: None,
-            code_size_limit: None,
-            disable_default_create2_deployer: false,
-            memory_limit: None,
             silent: false,
         }
     }
 }
 
 impl AnvilNodeConfig {
-    /// Returns the memory limit of the node
-    #[must_use]
-    pub fn with_memory_limit(mut self, mems_value: Option<u64>) -> Self {
-        self.memory_limit = mems_value;
-        self
-    }
-
     /// Returns the base fee to use
     pub fn get_base_fee(&self) -> u128 {
         self.base_fee
@@ -570,21 +503,6 @@ impl AnvilNodeConfig {
                 })
             })
             .unwrap_or(INITIAL_BASE_FEE)
-    }
-
-    /// Sets a custom code size limit
-    #[must_use]
-    pub fn with_code_size_limit(mut self, code_size_limit: Option<usize>) -> Self {
-        self.code_size_limit = code_size_limit;
-        self
-    }
-    /// Disables  code size limit
-    #[must_use]
-    pub fn disable_code_size_limit(mut self, disable_code_size_limit: bool) -> Self {
-        if disable_code_size_limit {
-            self.code_size_limit = Some(usize::MAX);
-        }
-        self
     }
 
     /// Sets the chain ID
@@ -606,22 +524,6 @@ impl AnvilNodeConfig {
         self.chain_id = chain_id.map(Into::into);
     }
 
-    /// Sets the gas limit
-    #[must_use]
-    pub fn with_gas_limit(mut self, gas_limit: Option<u128>) -> Self {
-        self.gas_limit = gas_limit;
-        self
-    }
-
-    /// Disable block gas limit check
-    ///
-    /// If set to `true` block gas limit will not be enforced
-    #[must_use]
-    pub fn disable_block_gas_limit(mut self, disable_block_gas_limit: bool) -> Self {
-        self.disable_block_gas_limit = disable_block_gas_limit;
-        self
-    }
-
     /// Sets max number of blocks to keep in memory for the eth revive rpc
     #[must_use]
     pub fn with_revive_rpc_block_limit<U: Into<usize>>(
@@ -636,13 +538,6 @@ impl AnvilNodeConfig {
     #[must_use]
     pub fn with_base_fee(mut self, base_fee: Option<u64>) -> Self {
         self.base_fee = base_fee.map(|bf| bf.into());
-        self
-    }
-
-    /// Disable the enforcement of a minimum suggested priority fee
-    #[must_use]
-    pub fn disable_min_priority_fee(mut self, disable_min_priority_fee: bool) -> Self {
-        self.disable_min_priority_fee = disable_min_priority_fee;
         self
     }
 
@@ -773,27 +668,6 @@ impl AnvilNodeConfig {
         self
     }
 
-    /// Sets whether to enable steps tracing
-    #[must_use]
-    pub fn with_steps_tracing(mut self, enable_steps_tracing: bool) -> Self {
-        self.enable_steps_tracing = enable_steps_tracing;
-        self
-    }
-
-    /// Sets whether to print `console.log` invocations to stdout.
-    #[must_use]
-    pub fn with_print_logs(mut self, print_logs: bool) -> Self {
-        self.print_logs = print_logs;
-        self
-    }
-
-    /// Sets whether to print traces to stdout.
-    #[must_use]
-    pub fn with_print_traces(mut self, print_traces: bool) -> Self {
-        self.print_traces = print_traces;
-        self
-    }
-
     /// Sets whether to enable autoImpersonate
     #[must_use]
     pub fn with_auto_impersonate(mut self, enable_auto_impersonate: bool) -> Self {
@@ -837,13 +711,6 @@ impl AnvilNodeConfig {
         Ok(())
     }
 
-    /// Sets whether to disable the default create2 deployer
-    #[must_use]
-    pub fn with_disable_default_create2_deployer(mut self, yes: bool) -> Self {
-        self.disable_default_create2_deployer = yes;
-        self
-    }
-
     /// Makes the node silent to not emit anything on stdout
     #[must_use]
     pub fn silent(self) -> Self {
@@ -860,7 +727,6 @@ impl AnvilNodeConfig {
 /// Can create dev accounts
 #[derive(Clone, Debug)]
 pub struct AccountGenerator {
-    chain_id: u64,
     amount: usize,
     phrase: String,
     derivation_path: Option<String>,
@@ -869,7 +735,6 @@ pub struct AccountGenerator {
 impl AccountGenerator {
     pub fn new(amount: usize) -> Self {
         Self {
-            chain_id: CHAIN_ID,
             amount,
             phrase: Mnemonic::<English>::new(&mut thread_rng()).to_phrase(),
             derivation_path: None,
@@ -884,12 +749,6 @@ impl AccountGenerator {
 
     fn get_phrase(&self) -> &str {
         &self.phrase
-    }
-
-    #[must_use]
-    pub fn chain_id(mut self, chain_id: impl Into<u64>) -> Self {
-        self.chain_id = chain_id.into();
-        self
     }
 
     #[must_use]
@@ -918,7 +777,7 @@ impl AccountGenerator {
         for idx in 0..self.amount {
             let builder =
                 builder.clone().derivation_path(format!("{derivation_path}{idx}")).unwrap();
-            let wallet = builder.build()?.with_chain_id(Some(self.chain_id));
+            let wallet = builder.build()?;
             wallets.push(wallet)
         }
         Ok(wallets)

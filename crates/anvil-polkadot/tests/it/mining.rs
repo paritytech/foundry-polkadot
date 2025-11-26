@@ -388,10 +388,8 @@ async fn test_evm_mine_detailed() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mining_with_eth_rpc_block_limit() {
-    let anvil_node_config = AnvilNodeConfig::test_config()
-        .with_revive_rpc_block_limit(Some(10usize))
-        .set_silent(false)
-        .with_tracing(true);
+    let anvil_node_config =
+        AnvilNodeConfig::test_config().with_revive_rpc_block_limit(Some(10usize));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
     let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
 
