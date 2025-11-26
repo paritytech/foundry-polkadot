@@ -456,6 +456,8 @@ impl PendingTransactionsFilter {
             .ok_or(Error::InternalError("Could not convert to an evm block".to_string()))?;
         let tx_hashes = match block.transactions {
             HashesOrTransactionInfos::Hashes(hashes) => hashes,
+            // Considering that we called evm_block with hydrated false we will
+            // never receive TransactionInfos but handled it anyways.
             HashesOrTransactionInfos::TransactionInfos(infos) => {
                 infos.iter().map(|ti| ti.hash).collect()
             }
