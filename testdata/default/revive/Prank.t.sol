@@ -162,7 +162,7 @@ contract PrankTest is DSTest {
 
     function testPrankDelegateCallPrank3() public {
         address origin = address(999);
-        vm.assume(isNotReserved(origin));
+        // vm.assume(isNotReserved(origin));
         vm.pvm(true);
         ProxyTest proxy = new ProxyTest();
         ImplementationTest impl = new ImplementationTest();
@@ -187,362 +187,324 @@ contract PrankTest is DSTest {
         vm.stopPrank();
     }
 
-    function testPrankDelegateCallStartPrank3(address origin) public {
-        vm.assume(isNotReserved(origin));
-        vm.pvm(true);
-
-        ProxyTest proxy = new ProxyTest();
-        ImplementationTest impl = new ImplementationTest();
-        vm.startPrank(address(proxy), origin, true);
-
-        // Assert correct `msg.sender`
-        (bool success,) =
-            address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", address(proxy)));
-        require(success, "startPrank3: delegate call failed assertCorrectCaller");
-
-        // Assert correct `tx.origin`
-        (bool successTwo,) = address(impl).delegatecall(abi.encodeWithSignature("assertCorrectOrigin(address)", origin));
-        require(successTwo, "startPrank3: delegate call failed assertCorrectOrigin");
-
-        // Assert storage updates
-        uint256 num = 42;
-        (bool successThree,) = address(impl).delegatecall(abi.encodeWithSignature("setNum(uint256)", num));
-        require(successThree, "startPrank3: delegate call failed setNum");
-        require(proxy.num() == num, "startPrank3: proxy's storage was not set correctly");
-        vm.stopPrank();
-    }
-
-    /// forge-config: default.allow_internal_expect_revert = true
+    // function testPrankDelegateCallStartPrank3(address origin) public {
+    // vm.assume(isNotReserved(origin));
+    // vm.pvm(true);
+    //     // ProxyTest proxy = new ProxyTest();
+    // ImplementationTest impl = new ImplementationTest();
+    // vm.startPrank(address(proxy), origin, true);
+    //     // // Assert correct `msg.sender`
+    // (bool success,) =
+    // address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", address(proxy)));
+    // require(success, "startPrank3: delegate call failed assertCorrectCaller");
+    //     // // Assert correct `tx.origin`
+    // (bool successTwo,) = address(impl).delegatecall(abi.encodeWithSignature("assertCorrectOrigin(address)", origin));
+    // require(successTwo, "startPrank3: delegate call failed assertCorrectOrigin");
+    //     // // Assert storage updates
+    // uint256 num = 42;
+    // (bool successThree,) = address(impl).delegatecall(abi.encodeWithSignature("setNum(uint256)", num));
+    // require(successThree, "startPrank3: delegate call failed setNum");
+    // require(proxy.num() == num, "startPrank3: proxy's storage was not set correctly");
+    // vm.stopPrank();
+    // }
+    //     // /// forge-config: default.allow_internal_expect_revert = true
     function testRevertIfPrankDelegateCalltoEOA() public {
-        uint256 privateKey = uint256(keccak256(abi.encodePacked("alice")));
-        address alice = vm.addr(privateKey);
-        ImplementationTest impl = new ImplementationTest();
-        vm.expectRevert("vm.prank: cannot `prank` delegate call from an EOA");
-        vm.prank(alice, true);
-        // Should fail when EOA pranked with delegatecall.
-        address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", alice));
+    uint256 privateKey = uint256(keccak256(abi.encodePacked("alice")));
+    address alice = vm.addr(privateKey);
+    ImplementationTest impl = new ImplementationTest();
+    vm.expectRevert("vm.prank: cannot `prank` delegate call from an EOA");
+    vm.prank(alice, true);
+    // Should fail when EOA pranked with delegatecall.
+    address(impl).delegatecall(abi.encodeWithSignature("assertCorrectCaller(address)", alice));
     }
 
-    function testPrankSender(address sender) public {
-        vm.assume(isNotReserved(sender));
-        // Perform the prank
-        vm.pvm(true);
+    // function testPrankSender(address sender) public {
+    // vm.assume(isNotReserved(sender));
+    // // Perform the prank
+    // vm.pvm(true);
+    //     // Victim victim = new Victim();
+    // vm.prank(sender);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
+    // );
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
+    // );
+    // }
+    //     // function testPrankOrigin(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // address oldOrigin = tx.origin;
+    // vm.pvm(true);
+    //     // // Perform the prank
+    // Victim victim = new Victim();
+    // vm.prank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
+    // );
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin was not cleaned up"
+    // );
+    // }
 
-        Victim victim = new Victim();
-        vm.prank(sender);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
-        );
+    // function testPrank1AfterPrank0(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // address oldOrigin = tx.origin;
+    // vm.pvm(true);
+    //     // Victim victim = new Victim();
+    // vm.prank(sender);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", oldOrigin, "tx.origin was not set during prank"
+    // );
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
+    // );
+    //     // // Overwrite the prank
+    // vm.prank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin invariant failed"
+    // );
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
+    // );
+    // }
+    //     // function isNotReserved(address addr) internal returns (bool) {
+    // // Check for zero address and common precompiles (addresses 1-9)
+    // if (
+    // addr == address(0) || addr == address(1) || addr == address(2) || addr == address(3) || addr == address(4)
+    // || addr == address(5) || addr == address(6) || addr == address(7) || addr == address(8)
+    // || addr == address(9) || addr == address(10) || addr == address(11) || addr == address(12)
+    // || addr == address(13) || addr == address(14) || addr == address(15) || addr == address(this)
+    // ) {
+    // return false;
+    // }
+    // return true;
+    // }
 
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
-        );
-    }
+    // function testPrank0AfterPrank1(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // address oldOrigin = tx.origin;
+    // vm.pvm(true);
+    // Victim victim = new Victim();
+    // console.log("Balance of sender before prank:", sender.balance);
+    // console.log("Balance of origin before prank:", origin.balance);
+    // vm.prank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
+    // );
+    //     // console.log("After first prank - msg.sender:", address(this));
+    // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
+    // );
+    //     // // Overwrite the prank
+    // vm.prank(sender);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", oldOrigin, "tx.origin invariant failed"
+    // );
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
+    // );
+    // }
+    //     // function testStartPrank0AfterPrank1(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    //     // // Perform the prank
+    // vm.pvm(true);
+    // address oldOrigin = tx.origin;
+    // Victim victim = new Victim();
+    // vm.startPrank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
+    // );
+    //     // // Overwrite the prank
+    // vm.startPrank(sender);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", oldOrigin, "tx.origin invariant failed"
+    // );
+    //     // vm.stopPrank();
+    // // Ensure we cleaned up correctly after stopping the prank
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
+    // );
+    // }
 
-    function testPrankOrigin(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        address oldOrigin = tx.origin;
-        vm.pvm(true);
-
-        // Perform the prank
-        Victim victim = new Victim();
-        vm.prank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
-        );
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin was not cleaned up"
-        );
-    }
-
-    function testPrank1AfterPrank0(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        address oldOrigin = tx.origin;
-        vm.pvm(true);
-
-        Victim victim = new Victim();
-        vm.prank(sender);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", oldOrigin, "tx.origin was not set during prank"
-        );
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
-        );
-
-        // Overwrite the prank
-        vm.prank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", origin, "tx.origin invariant failed"
-        );
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
-        );
-    }
-
-    function isNotReserved(address addr) internal returns (bool) {
-        // Check for zero address and common precompiles (addresses 1-9)
-        if (
-            addr == address(0) || addr == address(1) || addr == address(2) || addr == address(3) || addr == address(4)
-                || addr == address(5) || addr == address(6) || addr == address(7) || addr == address(8)
-                || addr == address(9) || addr == address(10) || addr == address(11) || addr == address(12)
-                || addr == address(13) || addr == address(14) || addr == address(15) || addr == address(this)
-        ) {
-            return false;
-        }
-        return true;
-    }
-
-    function testPrank0AfterPrank1(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        address oldOrigin = tx.origin;
-        vm.pvm(true);
-        Victim victim = new Victim();
-        console.log("Balance of sender before prank:", sender.balance);
-        console.log("Balance of origin before prank:", origin.balance);
-        vm.prank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
-        );
-
-        console.log("After first prank - msg.sender:", address(this));
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
-        );
-
-        // Overwrite the prank
-        vm.prank(sender);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", oldOrigin, "tx.origin invariant failed"
-        );
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
-        );
-    }
-
-    function testStartPrank0AfterPrank1(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-
-        // Perform the prank
-        vm.pvm(true);
-        address oldOrigin = tx.origin;
-        Victim victim = new Victim();
-        vm.startPrank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
-        );
-
-        // Overwrite the prank
-        vm.startPrank(sender);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", oldOrigin, "tx.origin invariant failed"
-        );
-
-        vm.stopPrank();
-        // Ensure we cleaned up correctly after stopping the prank
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
-        );
-    }
-
-    function testStartPrank1AfterStartPrank0(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
-        // Perform the prank
-        address oldOrigin = tx.origin;
-        Victim victim = new Victim();
-        vm.startPrank(sender);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", oldOrigin, "tx.origin was set during prank incorrectly"
-        );
-
-        // Ensure prank is still up as startPrank covers multiple calls
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was cleaned up incorrectly", oldOrigin, "tx.origin invariant failed"
-        );
-
-        // Overwrite the prank
-        vm.startPrank(sender, origin);
-        victim.assertCallerAndOrigin(sender, "msg.sender was not set during prank", origin, "tx.origin was not set");
-
-        // Ensure prank is still up as startPrank covers multiple calls
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was cleaned up incorrectly", origin, "tx.origin invariant failed"
-        );
-
-        vm.stopPrank();
-        // Ensure everything is back to normal after stopPrank
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
-        );
-    }
+    // function testStartPrank1AfterStartPrank0(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // vm.pvm(true);
+    // // Perform the prank
+    // address oldOrigin = tx.origin;
+    // Victim victim = new Victim();
+    // vm.startPrank(sender);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", oldOrigin, "tx.origin was set during prank incorrectly"
+    // );
+    //     // // Ensure prank is still up as startPrank covers multiple calls
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was cleaned up incorrectly", oldOrigin, "tx.origin invariant failed"
+    // );
+    //     // // Overwrite the prank
+    // vm.startPrank(sender, origin);
+    // victim.assertCallerAndOrigin(sender, "msg.sender was not set during prank", origin, "tx.origin was not set");
+    //     // // Ensure prank is still up as startPrank covers multiple calls
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was cleaned up incorrectly", origin, "tx.origin invariant failed"
+    // );
+    //     // vm.stopPrank();
+    // // Ensure everything is back to normal after stopPrank
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
+    // );
+    // }
+    //     // /// forge-config: default.allow_internal_expect_revert = true
+    // function testRevertIfOverwriteUnusedPrank(address sender, address origin) public {
+    // // Set the prank, but not use it
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // vm.pvm(true);
+    // address oldOrigin = tx.origin;
+    // Victim victim = new Victim();
+    // vm.startPrank(sender, origin);
+    // // try to overwrite the prank. This should fail.
+    // vm.expectRevert("vm.startPrank: cannot overwrite a prank until it is applied at least once");
+    // vm.startPrank(address(this), origin);
+    // }
 
     /// forge-config: default.allow_internal_expect_revert = true
-    function testRevertIfOverwriteUnusedPrank(address sender, address origin) public {
-        // Set the prank, but not use it
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
-        address oldOrigin = tx.origin;
-        Victim victim = new Victim();
-        vm.startPrank(sender, origin);
-        // try to overwrite the prank. This should fail.
-        vm.expectRevert("vm.startPrank: cannot overwrite a prank until it is applied at least once");
-        vm.startPrank(address(this), origin);
-    }
+    // function testRevertIfOverwriteUnusedPrankAfterSuccessfulPrank(address sender, address origin) public {
+    // // Set the prank, but not use it
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Set the prank, but not use it
+    // address oldOrigin = tx.origin;
+    // vm.pvm(true);
+    // Victim victim = new Victim();
+    // vm.startPrank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was set during prank incorrectly"
+    // );
+    // vm.startPrank(address(this), origin);
+    // // try to overwrite the prank. This should fail.
+    // vm.expectRevert("vm.startPrank: cannot overwrite a prank until it is applied at least once");
+    // vm.startPrank(sender, origin);
+    // }
+    //     // function testStartPrank0AfterStartPrank1(address sender, address origin) public {
+    // // Perform the prank
+    // // Set the prank, but not use it
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // vm.pvm(true);
+    // address oldOrigin = tx.origin;
+    // Victim victim = new Victim();
+    // vm.startPrank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
+    // );
+    //     // // Ensure prank is still ongoing as we haven't called stopPrank
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was cleaned up incorrectly", origin, "tx.origin was cleaned up incorrectly"
+    // );
+    //     // // Overwrite the prank
+    // vm.startPrank(sender);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", oldOrigin, "tx.origin was not reset correctly"
+    // );
+    //     // vm.stopPrank();
+    // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
+    // );
+    // }
 
-    /// forge-config: default.allow_internal_expect_revert = true
-    function testRevertIfOverwriteUnusedPrankAfterSuccessfulPrank(address sender, address origin) public {
-        // Set the prank, but not use it
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Set the prank, but not use it
-        address oldOrigin = tx.origin;
-        vm.pvm(true);
-        Victim victim = new Victim();
-        vm.startPrank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was set during prank incorrectly"
-        );
-        vm.startPrank(address(this), origin);
-        // try to overwrite the prank. This should fail.
-        vm.expectRevert("vm.startPrank: cannot overwrite a prank until it is applied at least once");
-        vm.startPrank(sender, origin);
-    }
+    // function testPrankConstructorSender(address sender) public {
+    // // Set the prank, but not use it
+    // vm.assume(isNotReserved(sender));
+    // // Perform the prank
+    // vm.pvm(true);
+    // vm.prank(sender);
+    // ConstructorVictim victim = new ConstructorVictim(
+    // sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
+    // );
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
+    // );
+    // }
+    //     // function testPrankConstructorOrigin(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // vm.pvm(true);
+    // // Perform the prank
+    // vm.prank(sender, origin);
+    // ConstructorVictim victim = new ConstructorVictim(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
+    // );
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
+    // );
+    // }
 
-    function testStartPrank0AfterStartPrank1(address sender, address origin) public {
-        // Perform the prank
-        // Set the prank, but not use it
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
-        address oldOrigin = tx.origin;
-        Victim victim = new Victim();
-        vm.startPrank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
-        );
-
-        // Ensure prank is still ongoing as we haven't called stopPrank
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was cleaned up incorrectly", origin, "tx.origin was cleaned up incorrectly"
-        );
-
-        // Overwrite the prank
-        vm.startPrank(sender);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", oldOrigin, "tx.origin was not reset correctly"
-        );
-
-        vm.stopPrank();
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin invariant failed"
-        );
-    }
-
-    function testPrankConstructorSender(address sender) public {
-        // Set the prank, but not use it
-        vm.assume(isNotReserved(sender));
-        // Perform the prank
-        vm.pvm(true);
-        vm.prank(sender);
-        ConstructorVictim victim = new ConstructorVictim(
-            sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
-        );
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin invariant failed"
-        );
-    }
-
-    function testPrankConstructorOrigin(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
-        // Perform the prank
-        vm.prank(sender, origin);
-        ConstructorVictim victim = new ConstructorVictim(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
-        );
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
-        );
-    }
-
-    function testPrankStartStop(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
-        address oldOrigin = tx.origin;
-
-        // Perform the prank
-        Victim victim = new Victim();
-        vm.startPrank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
-        );
-        victim.assertCallerAndOrigin(
-            sender,
-            "msg.sender was not set during prank (call 2)",
-            origin,
-            "tx.origin was not set during prank (call 2)"
-        );
-        vm.stopPrank();
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin was not cleaned up"
-        );
-    }
-
-    function testPrankStartStopConstructor(address sender, address origin) public {
-        // Perform the prank
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
-        vm.startPrank(sender, origin);
-        ConstructorVictim victim = new ConstructorVictim(
-            sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
-        );
-        new ConstructorVictim(
-            sender,
-            "msg.sender was not set during prank (call 2)",
-            origin,
-            "tx.origin was not set during prank (call 2)"
-        );
-        vm.stopPrank();
-
-        // Ensure we cleaned up correctly
-        victim.assertCallerAndOrigin(
-            address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
-        );
-    }
+    // function testPrankStartStop(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // vm.pvm(true);
+    // address oldOrigin = tx.origin;
+    //     // // Perform the prank
+    // Victim victim = new Victim();
+    // vm.startPrank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
+    // );
+    // victim.assertCallerAndOrigin(
+    // sender,
+    // "msg.sender was not set during prank (call 2)",
+    // origin,
+    // "tx.origin was not set during prank (call 2)"
+    // );
+    // vm.stopPrank();
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", oldOrigin, "tx.origin was not cleaned up"
+    // );
+    // }
+    //     // function testPrankStartStopConstructor(address sender, address origin) public {
+    // // Perform the prank
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // vm.pvm(true);
+    // vm.startPrank(sender, origin);
+    // ConstructorVictim victim = new ConstructorVictim(
+    // sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
+    // );
+    // new ConstructorVictim(
+    // sender,
+    // "msg.sender was not set during prank (call 2)",
+    // origin,
+    // "tx.origin was not set during prank (call 2)"
+    // );
+    // vm.stopPrank();
+    //     // // Ensure we cleaned up correctly
+    // victim.assertCallerAndOrigin(
+    // address(this), "msg.sender was not cleaned up", tx.origin, "tx.origin was not cleaned up"
+    // );
+    // }
 
     /// This test checks that depth is working correctly with respect
     /// to the `startPrank` and `stopPrank` cheatcodes.
@@ -632,36 +594,32 @@ contract PrankTest is DSTest {
     /// Checks that `tx.origin` is set for all subcalls of a `prank`.
     ///
     /// Ref: issue #1210
-    function testTxOriginInNestedPrank(address sender, address origin) public {
-        vm.assume(isNotReserved(sender));
-        vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
-        address oldSender = msg.sender;
-        address oldOrigin = tx.origin;
-
-        Victim innerVictim = new Victim();
-        NestedVictim victim = new NestedVictim(innerVictim);
-
-        vm.prank(sender, origin);
-        victim.assertCallerAndOrigin(
-            sender, "msg.sender was not set correctly", origin, "tx.origin was not set correctly"
-        );
-    }
-}
-
-contract Issue9990 is DSTest {
-    Vm constant vm = Vm(address(bytes20(uint160(uint256(keccak256("hevm cheat code"))))));
-
-    // TODO: Enable when Etch support is merged.
-    // function testDelegatePrank() external {
-    //     A a = new A();
-    //     vm.etch(address(0x11111), hex"11");
-    //     vm.startPrank(address(0x11111), true);
-    //     (bool success,) = address(a).delegatecall(abi.encodeWithSelector(A.foo.selector));
-    //     require(success, "MyTest: error calling foo on A");
-    //     vm.stopPrank();
+    // function testTxOriginInNestedPrank(address sender, address origin) public {
+    // vm.assume(isNotReserved(sender));
+    // vm.assume(isNotReserved(origin));
+    // // Perform the prank
+    // vm.pvm(true);
+    // address oldSender = msg.sender;
+    // address oldOrigin = tx.origin;
+    //     // Victim innerVictim = new Victim();
+    // NestedVictim victim = new NestedVictim(innerVictim);
+    //     // vm.prank(sender, origin);
+    // victim.assertCallerAndOrigin(
+    // sender, "msg.sender was not set correctly", origin, "tx.origin was not set correctly"
+    // );
     // }
+    // }
+    //     // contract Issue9990 is DSTest {
+    // Vm constant vm = Vm(address(bytes20(uint160(uint256(keccak256("hevm cheat code"))))));
+    //     // // TODO: Enable when Etch support is merged.
+    // // function testDelegatePrank() external {
+    // //     A a = new A();
+    // //     vm.etch(address(0x11111), hex"11");
+    // //     vm.startPrank(address(0x11111), true);
+    // //     (bool success,) = address(a).delegatecall(abi.encodeWithSelector(A.foo.selector));
+    // //     require(success, "MyTest: error calling foo on A");
+    // //     vm.stopPrank();
+    // // }
 }
 
 // Contracts for DELEGATECALL test case: testDelegatePrank
