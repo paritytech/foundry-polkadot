@@ -302,7 +302,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_pvm && is::<resetNonceCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &resetNonceCall { account } = cheatcode.as_any().downcast_ref().unwrap();
-                ctx.externalities.set_nonce(account, 0);
+
+                // EOA nonces start at 0, contract nonces start at 1
+                let nonce = if ctx.externalities.is_contract(account) {
+                    1u64 // Contract
+                } else {
+                    0u64 // EOA
+                };
+
+                ctx.externalities.set_nonce(account, nonce);
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<getNonce_0Call>(t) => {

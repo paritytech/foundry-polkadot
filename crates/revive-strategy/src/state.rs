@@ -210,4 +210,10 @@ impl TestEnv {
             BlockAuthor::set(&account_id32);
         });
     }
+
+    pub fn is_contract(&self, address: Address) -> bool {
+        self.0.lock().unwrap().execute_with(|| {
+            AccountInfo::<Runtime>::load_contract(&H160::from_slice(address.as_slice())).is_some()
+        })
+    }
 }
