@@ -1070,7 +1070,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             // This entry has been inserted during CREATE/CALL operations in revm's
             // cheatcode inspector and must be removed.
             if index < last.len() {
-                let _ = last.remove(index);
+                let removed = last.remove(index);
+                if let Some(entry) = last.get_mut(index) {
+                    entry.initialized = removed.initialized;
+                }
             } else {
                 warn!(index, len = last.len(), "skipping duplicate access removal: out of bounds");
             }

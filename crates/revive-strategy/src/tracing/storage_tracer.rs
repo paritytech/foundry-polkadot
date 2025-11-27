@@ -44,6 +44,7 @@ pub struct AccountAccess {
     /// is reverted
     pub reverted: bool,
     pub index: usize,
+    pub initialized: bool,
 }
 
 impl StorageTracer {
@@ -112,6 +113,7 @@ impl Tracing for StorageTracer {
             new_balance: U256::zero(),
             storage_accesses: Default::default(),
             index: self.index,
+            initialized: true,
         };
         if let Some(code) = code {
             match code {
@@ -155,6 +157,7 @@ impl Tracing for StorageTracer {
                 x.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
             }
         });
+
         if let Some(code) = is_create {
             record.kind = AccountAccessKind::Create;
             match code {
@@ -197,6 +200,7 @@ impl Tracing for StorageTracer {
                 }
             });
         }
+
         if let Some(code) = is_create {
             record.kind = AccountAccessKind::Create;
             match code {
