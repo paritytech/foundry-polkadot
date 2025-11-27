@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall,
-        rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        AccountAccessKind, chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall,
+        resetNonceCall, rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -36,6 +36,7 @@ use polkadot_sdk::{
 };
 
 use crate::{
+    ReviveRuntimeMode,
     cheatcodes::mock_handler::MockHandlerImpl,
     state::TestEnv,
     tracing::{Tracer, storage_tracer::AccountAccess},
@@ -153,17 +154,18 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
         self
     }
 }
-/// Implements [CheatcodeInspectorStrategyRunner] for PVM.
-#[derive(Debug, Default, Clone)]
-pub struct PvmCheatcodeInspectorStrategyRunner;
-
 impl PvmCheatcodeInspectorStrategyRunner {
     fn append_recorded_accesses(
         &self,
         state: &mut foundry_cheatcodes::Cheatcodes,
         ecx: Ecx<'_, '_, '_>,
-        account_accesses: Vec<AccountAccess>,
+        mut account_accesses: Vec<AccountAccess>,
     ) {
+        let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+            get_context_ref_mut(state.strategy.context.as_mut());
+        let dual_compiled_contracts = &ctx.dual_compiled_contracts;
+        let mode = ctx.runtime_mode;
+        account_accesses.sort_by(|a, b| a.depth.cmp(&b.depth));
         if state.recording_accesses {
             for record in &account_accesses {
                 for r in &record.storage_accesses {
@@ -193,13 +195,12 @@ impl PvmCheatcodeInspectorStrategyRunner {
             // If we are at the root (depth == 1), the placeholder is already the
             // last element of the root vector.  We therefore record `len() - 1`.
             //
-            // `zksync_fix_recorded_accesses()` uses this index later to drop the
+            // `revive_fix_recorded_accesses()` uses this index later to drop the
             // single duplicate.
             //
-            // TODO(zk): This is currently a hack, as account access recording is
+            // TODO(revive): This is currently a hack, as account access recording is
             // done in 4 parts - create/create_end and call/call_end. And these must all be
             // moved to strategy.
-
             let stack_insert_index = if recorded_account_diffs_stack.len() > 1 {
                 recorded_account_diffs_stack
                     .get(recorded_account_diffs_stack.len() - 2)
@@ -210,7 +211,6 @@ impl PvmCheatcodeInspectorStrategyRunner {
             };
 
             if let Some(last) = recorded_account_diffs_stack.last_mut() {
-                let ctx = get_context_ref_mut(state.strategy.context.as_mut());
                 ctx.remove_recorded_access_at = Some(stack_insert_index);
                 for record in account_accesses {
                     let access = FAccountAccess {
@@ -229,13 +229,30 @@ impl PvmCheatcodeInspectorStrategyRunner {
                         oldBalance: U256::from_limbs(record.old_balance.0),
                         newBalance: U256::from_limbs(record.new_balance.0),
                         value: U256::from_limbs(record.value.0),
-                        data: record.data,
-                        reverted: false,
-                        deployedCode: if record.deployed_bytecode_hash.unwrap_or_default().is_zero()
-                        {
-                            Default::default()
+                        data: record.data.clone(),
+                        reverted: record.reverted,
+                        deployedCode: if matches!(record.kind, AccountAccessKind::Create) {
+                            dual_compiled_contracts
+                                .find_bytecode(record.data.0.as_ref())
+                                .map(|x| {
+                                    if mode == ReviveRuntimeMode::Evm {
+                                        Bytes::from(x.contract().evm_bytecode_hash)
+                                    } else {
+                                        Bytes::from(
+                                            x.contract().resolc_bytecode_hash.as_bytes().to_vec(),
+                                        )
+                                    }
+                                })
+                                .or_else(|| {
+                                    ctx.externalities.execute_with(|| {
+                                        Some(Bytes::from(Pallet::<Runtime>::code(&H160::from(
+                                            record.account.0,
+                                        ))))
+                                    })
+                                })
+                                .unwrap_or_else(|| Bytes::from(record.data.0.to_vec()))
                         } else {
-                            Bytes::from(record.deployed_bytecode_hash.unwrap_or_default().0)
+                            Bytes::new()
                         },
                         storageAccesses: record.storage_accesses,
                         depth: record.depth,
@@ -246,6 +263,10 @@ impl PvmCheatcodeInspectorStrategyRunner {
         }
     }
 }
+
+/// Implements [CheatcodeInspectorStrategyRunner] for PVM.
+#[derive(Debug, Default, Clone)]
+pub struct PvmCheatcodeInspectorStrategyRunner;
 
 impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     fn apply_full(
@@ -853,9 +874,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             })
         });
         let mut gas = Gas::new(input.gas_limit());
-        if res.result.as_ref().is_ok_and(|r| !r.result.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
-        }
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
+
         post_exec(state, ecx, executor, &mut tracer, false);
         mock_handler.update_state_mocks(state);
 
@@ -986,9 +1006,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         });
         mock_handler.update_state_mocks(state);
         let mut gas = Gas::new(call.gas_limit);
-        if res.result.as_ref().is_ok_and(|r| !r.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
-        }
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
+
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
 
         match res.result {
