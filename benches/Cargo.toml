@@ -1,29 +1,54 @@
+# -----------------------------------------------------------------------------
+# foundry-bench Cargo.toml Configuration
+# Optimized for consistency within a potential workspace environment.
+# -----------------------------------------------------------------------------
+
 [package]
 name = "foundry-bench"
 version = "0.1.0"
-edition = "2024"
+edition = "2024" # Using the latest Rust edition is recommended
 license = "Apache-2.0 OR MIT"
 
 [[bin]]
 name = "foundry-bench"
 path = "src/main.rs"
 
+[lints]
+workspace = true # Enforce unified linting rules from the workspace
+
 [dependencies]
+# ------------------------------------
+# Core Foundry & Error Handling
+# ------------------------------------
 foundry-test-utils.workspace = true
 foundry-config.workspace = true
 foundry-common.workspace = true
 foundry-compilers = { workspace = true, features = ["project-util"] }
+
 eyre.workspace = true
 color-eyre.workspace = true
+
+# ------------------------------------
+# Serialization & Utilities
+# ------------------------------------
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+rayon.workspace = true # Parallel processing
+num_cpus.workspace = true # Assumed to be defined in workspace for consistency
+once_cell.workspace = true # Assumed to be defined in workspace for consistency
+
+# ------------------------------------
+# Time, CLI, and Async
+# ------------------------------------
+# Using workspace version for consistency, but keeping necessary features
 tokio = { workspace = true, features = ["full"] }
-chrono = { version = "0.4", features = ["serde"] }
-rayon.workspace = true
-clap = { version = "4", features = ["derive"] }
-num_cpus = "1.17"
-once_cell = "1.21"
+
+# Chrono usage with serde feature
+chrono = { workspace = true, features = ["serde"] }
+
+# CLI argument parsing
+clap = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 foundry-test-utils.workspace = true
