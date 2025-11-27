@@ -2,7 +2,10 @@ use crate::{
     api_server::{
         ApiRequest,
         error::{Error, Result, ToRpcResponseResult},
-        filters::{BlockNotifications, EthFilter, Filters, LogsFilter, eviction_task},
+        filters::{
+            BlockFilter, BlockNotifications, EthFilter, Filters, LogsFilter,
+            PendingTransactionsFilter, eviction_task,
+        },
         revive_conversions::{
             AlloyU256, ReviveAddress, ReviveBlockId, ReviveBlockNumberOrTag, ReviveBytes,
             ReviveFilter, ReviveTrace, ReviveTracerType, SubstrateU256,
@@ -425,7 +428,7 @@ impl ApiServer {
             EthRequest::EthGetFilterChanges(id) => self.get_filter_changes(&id).await,
             EthRequest::EthNewBlockFilter(_) => self.new_block_filter().await.to_rpc_result(),
             EthRequest::EthNewPendingTransactionFilter(_) => {
-                Err::<(), _>(Error::RpcUnimplemented).to_rpc_result()
+                self.new_pending_transactions_filter().await.to_rpc_result()
             }
             EthRequest::EthUninstallFilter(id) => self.uninstall_filter(&id).await.to_rpc_result(),
             _ => Err::<(), _>(Error::RpcUnimplemented).to_rpc_result(),
@@ -1376,7 +1379,9 @@ impl ApiServer {
     /// Creates a filter to notify about new blocks
     async fn new_block_filter(&self) -> Result<String> {
         node_info!("eth_newBlockFilter");
-        let filter = EthFilter::Blocks(BlockNotifications::new(self.new_block_notifications()?));
+        let filter = EthFilter::Blocks(BlockFilter::new(BlockNotifications::new(
+            self.new_block_notifications()?,
+        )));
         Ok(self.filters.add_filter(filter).await)
     }
 
@@ -1392,16 +1397,26 @@ impl ApiServer {
         self.filters.get_filter_changes(id).await
     }
 
+    async fn new_pending_transactions_filter(&self) -> Result<String> {
+        node_info!("eth_newPendingTransactionFilter");
+        let filter = EthFilter::PendingTransactions(PendingTransactionsFilter::new(
+            BlockNotifications::new(self.new_block_notifications()?),
+            self.tx_pool.clone(),
+            self.eth_rpc_client.clone(),
+        ));
+        Ok(self.filters.add_filter(filter).await)
+    }
+
     async fn new_filter(&self, filter: evm::Filter) -> Result<String> {
         node_info!("eth_newFilter");
-        let eth_filter = EthFilter::Logs(Box::new(
+        let eth_filter = EthFilter::Logs(
             LogsFilter::new(
                 BlockNotifications::new(self.new_block_notifications()?),
                 self.eth_rpc_client.clone(),
                 filter,
             )
             .await?,
-        ));
+        );
         Ok(self.filters.add_filter(eth_filter).await)
     }
 
