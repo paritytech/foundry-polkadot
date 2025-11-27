@@ -4,7 +4,7 @@ use alloy_primitives::{Address, B256, Bytes, U256 as RU256};
 use foundry_cheatcodes::Ecx;
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::pallet_revive::{
-    AccountInfo, Pallet, U256, Weight,
+    AccountInfo, Pallet, U256,
     evm::{
         Bytes as PBytes, CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
         PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
@@ -17,7 +17,7 @@ use storage_tracer::{AccountAccess, StorageTracer};
 pub mod storage_tracer;
 
 pub struct Tracer {
-    pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
+    pub call_tracer: CallTracer,
     pub prestate_tracer: PrestateTracer<Runtime>,
     pub storage_accesses: Option<StorageTracer>,
 }
@@ -159,7 +159,7 @@ impl Tracing for Tracer {
         is_read_only: bool,
         value: U256,
         input: &[u8],
-        gas: Weight,
+        gas: U256,
     ) {
         self.prestate_tracer.enter_child_span(
             from,
@@ -249,7 +249,7 @@ impl Tracing for Tracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        gas_left: Weight,
+        gas_left: U256,
     ) {
         self.prestate_tracer.exit_child_span(output, gas_left);
         self.call_tracer.exit_child_span(output, gas_left);
@@ -261,7 +261,7 @@ impl Tracing for Tracer {
     fn exit_child_span_with_error(
         &mut self,
         error: polkadot_sdk::sp_runtime::DispatchError,
-        gas_left: Weight,
+        gas_left: U256,
     ) {
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);

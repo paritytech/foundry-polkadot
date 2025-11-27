@@ -3,10 +3,11 @@ use foundry_cheatcodes::{Ecx, Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
-        Executable, Pallet,
+        Executable, Pallet, TransactionMeter,
     },
     sp_core::{self, H160},
     sp_io::TestExternalities,
+    sp_weights::Weight,
 };
 use revive_env::{AccountId, ExtBuilder, Runtime, System, Timestamp};
 use std::{
@@ -107,15 +108,19 @@ impl TestEnv {
             let code = new_runtime_code.to_vec();
             let code_type =
                 if code.starts_with(b"PVM\0") { BytecodeType::Pvm } else { BytecodeType::Evm };
+            let mut meter = TransactionMeter::<Runtime>::new_from_limits(
+                Weight::MAX,
+                BalanceOf::<Runtime>::MAX,
+            )
+            .expect("failed to create transaction meter for upload");
             let contract_blob = Pallet::<Runtime>::try_upload_code(
                 origin_account,
                 code,
                 code_type,
-                BalanceOf::<Runtime>::MAX,
+                &mut meter,
                 &ExecConfig::new_substrate_tx(),
             )
-            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
-            .0;
+            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?;
 
             let mut contract_info = if let Some(contract_info) =
                 AccountInfo::<Runtime>::load_contract(&target_address)
