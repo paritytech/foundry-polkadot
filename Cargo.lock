@@ -648,7 +648,7 @@ dependencies = [
  "alloy-rlp",
  "alloy-serde",
  "alloy-sol-types",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "serde",
  "serde_json",
  "serde_with",
@@ -3993,7 +3993,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.2.0",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -4110,7 +4110,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6800,7 +6800,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#f8d40c64440240e08f3153f9be33473f9cbef102"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#39da269311577619e96cc0542b181b19595b7ea2"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6813,7 +6813,7 @@ dependencies = [
  "fs_extra",
  "futures-util",
  "home",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "path-slash",
  "rand 0.8.5",
  "rayon",
@@ -6838,7 +6838,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#f8d40c64440240e08f3153f9be33473f9cbef102"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#39da269311577619e96cc0542b181b19595b7ea2"
 dependencies = [
  "foundry-compilers-artifacts-resolc",
  "foundry-compilers-artifacts-solc",
@@ -6848,7 +6848,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts-resolc"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#f8d40c64440240e08f3153f9be33473f9cbef102"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#39da269311577619e96cc0542b181b19595b7ea2"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6868,7 +6868,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts-solc"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#f8d40c64440240e08f3153f9be33473f9cbef102"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#39da269311577619e96cc0542b181b19595b7ea2"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6890,7 +6890,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-artifacts-vyper"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#f8d40c64440240e08f3153f9be33473f9cbef102"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#39da269311577619e96cc0542b181b19595b7ea2"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -6904,7 +6904,7 @@ dependencies = [
 [[package]]
 name = "foundry-compilers-core"
 version = "0.18.2"
-source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#f8d40c64440240e08f3153f9be33473f9cbef102"
+source = "git+https://github.com/paritytech/foundry-compilers-polkadot.git?branch=main#39da269311577619e96cc0542b181b19595b7ea2"
 dependencies = [
  "alloy-primitives",
  "cfg-if",
@@ -9547,7 +9547,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.53.2",
 ]
 
 [[package]]
@@ -15120,7 +15120,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
  "heck 0.4.1",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -15139,8 +15139,8 @@ version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
- "heck 0.5.0",
- "itertools 0.14.0",
+ "heck 0.4.1",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -15173,7 +15173,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.104",
@@ -15186,7 +15186,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.104",
@@ -18826,7 +18826,7 @@ dependencies = [
  "derive_more 2.0.1",
  "dunce",
  "inturn",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "itoa",
  "match_cfg",
  "normalize-path",
@@ -18837,7 +18837,7 @@ dependencies = [
  "solar-config",
  "solar-data-structures",
  "solar-macros",
- "thiserror 1.0.69",
+ "thiserror 2.0.12",
  "tracing",
  "unicode-width 0.2.0",
 ]
@@ -18860,7 +18860,7 @@ dependencies = [
  "alloy-primitives",
  "bitflags 2.9.1",
  "bumpalo",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "memchr",
  "num-bigint",
  "num-rational",
@@ -20682,7 +20682,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.12",
  "url",
  "zip",
 ]
@@ -21502,7 +21502,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "319c70195101a93f56db4c74733e272d720768e13471f400c78406a326b172b0"
 dependencies = [
  "cc",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -22851,7 +22851,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

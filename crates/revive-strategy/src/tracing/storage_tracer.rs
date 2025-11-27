@@ -17,6 +17,7 @@ pub(crate) struct StorageTracer {
     records: Vec<AccountAccess>,
     pending: Vec<AccountAccess>,
     records_inner: Vec<AccountAccess>,
+    index: usize,
 }
 
 /// Represents the account access during vm execution.
@@ -42,6 +43,7 @@ pub struct AccountAccess {
     pub storage_accesses: Vec<StorageAccess>,
     /// is reverted
     pub reverted: bool,
+    pub index: usize,
 }
 
 impl StorageTracer {
@@ -56,7 +58,9 @@ impl StorageTracer {
             "inner stack is not empty; found calls without matching returns: {:?}",
             self.records_inner
         );
-        self.records.clone()
+        let mut accounts = self.records.clone();
+        accounts.sort_by_key(|f| f.index);
+        accounts
     }
 }
 
@@ -79,12 +83,14 @@ impl Tracing for StorageTracer {
 
         let kind = if code.is_some() {
             AccountAccessKind::Create
-        } else if is_read_only {
-            AccountAccessKind::StaticCall
-        } else if is_delegate_call {
-            AccountAccessKind::DelegateCall
         } else {
-            AccountAccessKind::Call
+            if is_read_only {
+                AccountAccessKind::StaticCall
+            } else if is_delegate_call {
+                AccountAccessKind::DelegateCall
+            } else {
+                AccountAccessKind::Call
+            }
         };
 
         let last_depth = if !self.pending.is_empty() {
@@ -105,6 +111,7 @@ impl Tracing for StorageTracer {
             old_balance: pallet_revive::Pallet::<Runtime>::evm_balance(&to),
             new_balance: U256::zero(),
             storage_accesses: Default::default(),
+            index: self.index,
         };
         if let Some(code) = code {
             match code {
@@ -115,10 +122,21 @@ impl Tracing for StorageTracer {
             }
         }
         self.pending.push(record);
+        self.index += 1;
 
         if !is_delegate_call {
             self.current_addr = to;
         }
+    }
+
+    fn terminate(
+        &mut self,
+        _contract_address: H160,
+        _beneficiary_address: H160,
+        _gas_left: Weight,
+        _value: U256,
+    ) {
+        todo!("this is not being called");
     }
 
     fn exit_child_span_with_error(
@@ -127,11 +145,16 @@ impl Tracing for StorageTracer {
         _gas_left: Weight,
     ) {
         let is_create = self.is_create.take();
-
         let mut record = self.pending.pop().expect("unexpected return while recording call");
         record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr);
         record.reverted = true;
         record.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+        self.records_inner.iter_mut().for_each(|x| {
+            if record.reverted {
+                x.reverted = true;
+                x.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+            }
+        });
         if let Some(code) = is_create {
             record.kind = AccountAccessKind::Create;
             match code {
@@ -145,8 +168,7 @@ impl Tracing for StorageTracer {
         if self.pending.is_empty() {
             // no more pending records, append everything recorded so far.
             self.records.push(record);
-
-            // also append the inner records.
+            // append the inner records.
             if !self.records_inner.is_empty() {
                 self.records.extend(std::mem::take(&mut self.records_inner));
             }
@@ -168,6 +190,12 @@ impl Tracing for StorageTracer {
         if output.did_revert() {
             record.reverted = true;
             record.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+            self.records_inner.iter_mut().for_each(|x| {
+                if record.reverted {
+                    x.reverted = true;
+                    x.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+                }
+            });
         }
         if let Some(code) = is_create {
             record.kind = AccountAccessKind::Create;
@@ -183,7 +211,7 @@ impl Tracing for StorageTracer {
             // no more pending records, append everything recorded so far.
             self.records.push(record);
 
-            // also append the inner records.
+            // append the inner records.
             if !self.records_inner.is_empty() {
                 self.records.extend(std::mem::take(&mut self.records_inner));
             }
@@ -201,7 +229,7 @@ impl Tracing for StorageTracer {
             isWrite: false,
             previousValue: RU256::from_be_slice(value.unwrap_or_default()).into(),
             newValue: RU256::from_be_slice(value.unwrap_or_default()).into(),
-            reverted: record.reverted,
+            reverted: false,
         });
     }
     fn storage_write(
@@ -217,7 +245,7 @@ impl Tracing for StorageTracer {
             isWrite: true,
             previousValue: RU256::from_be_slice(old_value.unwrap_or_default().as_slice()).into(),
             newValue: RU256::from_be_slice(new_value.unwrap_or_default()).into(),
-            reverted: record.reverted,
+            reverted: false,
         });
     }
 }

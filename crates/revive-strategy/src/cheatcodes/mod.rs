@@ -154,18 +154,21 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
         self
     }
 }
+
+/// Implements [CheatcodeInspectorStrategyRunner] for PVM.
+#[derive(Debug, Default, Clone)]
+pub struct PvmCheatcodeInspectorStrategyRunner;
+
 impl PvmCheatcodeInspectorStrategyRunner {
     fn append_recorded_accesses(
         &self,
         state: &mut foundry_cheatcodes::Cheatcodes,
         ecx: Ecx<'_, '_, '_>,
-        mut account_accesses: Vec<AccountAccess>,
+        account_accesses: Vec<AccountAccess>,
     ) {
         let ctx: &mut PvmCheatcodeInspectorStrategyContext =
             get_context_ref_mut(state.strategy.context.as_mut());
-        let dual_compiled_contracts = &ctx.dual_compiled_contracts;
-        let mode = ctx.runtime_mode;
-        account_accesses.sort_by(|a, b| a.depth.cmp(&b.depth));
+        // account_accesses.sort_by(|a, b| a.depth.cmp(&b.depth));
         if state.recording_accesses {
             for record in &account_accesses {
                 for r in &record.storage_accesses {
@@ -195,10 +198,10 @@ impl PvmCheatcodeInspectorStrategyRunner {
             // If we are at the root (depth == 1), the placeholder is already the
             // last element of the root vector.  We therefore record `len() - 1`.
             //
-            // `revive_fix_recorded_accesses()` uses this index later to drop the
+            // `zksync_fix_recorded_accesses()` uses this index later to drop the
             // single duplicate.
             //
-            // TODO(revive): This is currently a hack, as account access recording is
+            // TODO(zk): This is currently a hack, as account access recording is
             // done in 4 parts - create/create_end and call/call_end. And these must all be
             // moved to strategy.
             let stack_insert_index = if recorded_account_diffs_stack.len() > 1 {
@@ -225,30 +228,25 @@ impl PvmCheatcodeInspectorStrategyRunner {
                         accessor: Address::from(record.accessor.0),
                         account: Address::from(record.account.0),
                         kind: record.kind,
-                        initialized: true,
+                        initialized: if matches!(record.kind, AccountAccessKind::SelfDestruct) {
+                            false
+                        } else {
+                            true
+                        },
                         oldBalance: U256::from_limbs(record.old_balance.0),
-                        newBalance: U256::from_limbs(record.new_balance.0),
+                        newBalance: ctx
+                            .externalities
+                            .get_balance(Address::from_slice(&record.account.0)),
+
                         value: U256::from_limbs(record.value.0),
                         data: record.data.clone(),
                         reverted: record.reverted,
                         deployedCode: if matches!(record.kind, AccountAccessKind::Create) {
-                            dual_compiled_contracts
-                                .find_bytecode(record.data.0.as_ref())
-                                .map(|x| {
-                                    if mode == ReviveRuntimeMode::Evm {
-                                        Bytes::from(x.contract().evm_bytecode_hash)
-                                    } else {
-                                        Bytes::from(
-                                            x.contract().resolc_bytecode_hash.as_bytes().to_vec(),
-                                        )
-                                    }
-                                })
-                                .or_else(|| {
-                                    ctx.externalities.execute_with(|| {
-                                        Some(Bytes::from(Pallet::<Runtime>::code(&H160::from(
-                                            record.account.0,
-                                        ))))
-                                    })
+                            ctx.externalities
+                                .execute_with(|| {
+                                    Some(Bytes::from(Pallet::<Runtime>::code(&H160::from(
+                                        record.account.0,
+                                    ))))
                                 })
                                 .unwrap_or_else(|| Bytes::from(record.data.0.to_vec()))
                         } else {
@@ -263,10 +261,6 @@ impl PvmCheatcodeInspectorStrategyRunner {
         }
     }
 }
-
-/// Implements [CheatcodeInspectorStrategyRunner] for PVM.
-#[derive(Debug, Default, Clone)]
-pub struct PvmCheatcodeInspectorStrategyRunner;
 
 impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     fn apply_full(
