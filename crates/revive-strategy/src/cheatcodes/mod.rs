@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall,
-        rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall,
+        resetNonceCall, rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -153,6 +153,7 @@ impl CheatcodeInspectorStrategyContext for PvmCheatcodeInspectorStrategyContext 
         self
     }
 }
+
 /// Implements [CheatcodeInspectorStrategyRunner] for PVM.
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyRunner;
@@ -335,6 +336,14 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 cheatcode.dyn_apply(ccx, executor)
             }
+            t if using_pvm && is::<coinbaseCall>(t) => {
+                let &coinbaseCall { newCoinbase } = cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                ctx.externalities.set_block_author(newCoinbase);
+
+                cheatcode.dyn_apply(ccx, executor)
+            }
             t if using_pvm && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
@@ -357,10 +366,23 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_pvm && is::<loadCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
-                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                let storage_value = ctx.externalities.get_storage(target, slot)?;
-                let result = storage_value.map(|b| B256::from_slice(&b)).unwrap_or(B256::ZERO);
-                Ok(result.abi_encode())
+
+                // Check if target is the test contract - if so, read from REVM state instead
+                if ccx
+                    .ecx
+                    .journaled_state
+                    .database
+                    .get_test_contract_address()
+                    .map(|addr| target == addr)
+                    .unwrap_or_default()
+                {
+                    cheatcode.dyn_apply(ccx, executor)
+                } else {
+                    let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                    let storage_value = ctx.externalities.get_storage(target, slot)?;
+                    let result = storage_value.map(|b| B256::from_slice(&b)).unwrap_or(B256::ZERO);
+                    Ok(result.abi_encode())
+                }
             }
             t if using_pvm && is::<storeCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);

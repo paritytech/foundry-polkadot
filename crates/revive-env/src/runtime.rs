@@ -92,6 +92,9 @@ impl pallet_revive::Config for Runtime {
 
 parameter_types! {
     pub storage ChainId: u64 = 420_420_420;
+    pub storage BlockAuthor: AccountId32 = {
+        [[0xff; 20].as_slice(), [0xee; 12].as_slice()].concat().as_slice().try_into().unwrap()
+    };
 }
 
 impl FindAuthor<<Self as frame_system::Config>::AccountId> for Runtime {
@@ -99,6 +102,6 @@ impl FindAuthor<<Self as frame_system::Config>::AccountId> for Runtime {
     where
         I: 'a + IntoIterator<Item = (frame_support::ConsensusEngineId, &'a [u8])>,
     {
-        Some([[0xff; 20].as_slice(), [0xee; 12].as_slice()].concat().as_slice().try_into().unwrap())
+        Some(BlockAuthor::get())
     }
 }
