@@ -1,0 +1,133 @@
+name: external-projects
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+  PROJECTS: |
+    [
+      {
+        "name": "layerzero-protocol",
+        "repo": "LayerZero-Labs/LayerZero-v2",
+        "working_dir": "packages/layerzero-v2/evm/protocol",
+        "setup": "yarn install\n(cd packages/layerzero-v2/evm/protocol && forge install)"
+      },
+      {
+        "name": "wormhole",
+        "repo": "wormhole-foundation/wormhole",
+        "working_dir": "ethereum",
+        "setup": "(cd ethereum && npm install && forge install foundry-rs/forge-std)"
+      },
+      {
+        "name": "aave-v3",
+        "repo": "aave-dao/aave-v3-origin",
+        "setup": "cp .env.example .env || true\nforge install"
+      },
+      {
+        "name": "dragonswap",
+        "repo": "dragonswap-app/dragonswap-airdrop-and-staker",
+        "setup": "cp .env.example .env || true"
+      },
+      {
+        "name": "morpho-blue",
+        "repo": "morpho-org/morpho-blue",
+        "setup": "forge install"
+      }
+    ]
+
+jobs:
+  test:
+    name: test external projects
+    runs-on: parity-large-new
+    timeout-minutes: 120
+    steps:
+      - name: Checkout foundry-polkadot
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          target: wasm32-unknown-unknown
+          components: rust-src
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev build-essential unzip
+
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack for Yarn
+        run: corepack enable
+
+      - name: Restore Cargo dependencies from cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+          prefix-key: "v0-rust-after-merge"
+          shared-key: "test"
+
+      - name: Build foundry-polkadot
+        run: cargo build
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+
+      - name: Add forge to PATH
+        run: echo "${{ github.workspace }}/target/debug" >> $GITHUB_PATH
+
+      - name: Test all external projects
+        id: test-all
+        continue-on-error: true
+        run: bash .github/scripts/test-external-projects.sh
+
+      - name: Download master branch results
+        if: github.ref != 'refs/heads/master'
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: test-external-projects.yml
+          branch: master
+          name: master-results
+          path: master-results
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Parse and collect results
+        run: |
+          cd "${{ github.workspace }}"
+          for LOG in test-output-*.log; do
+            [ -f "$LOG" ] || continue
+            PROJECT_NAME="${LOG#test-output-}"
+            PROJECT_NAME="${PROJECT_NAME%.log}"
+            if [ -f "master-results/test-results-${PROJECT_NAME}.txt" ]; then
+              python3 .github/scripts/check-test-regression.py "$PROJECT_NAME" "$LOG" "master-results/test-results-${PROJECT_NAME}.txt"
+            else
+              python3 .github/scripts/check-test-regression.py "$PROJECT_NAME" "$LOG"
+            fi
+          done
+
+      # On master: save results for future PR comparisons
+      - name: Upload master results
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: master-results
+          path: test-results-*.txt
+          retention-days: 90
+          overwrite: true
