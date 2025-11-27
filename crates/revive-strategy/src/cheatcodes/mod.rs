@@ -36,7 +36,6 @@ use polkadot_sdk::{
 };
 
 use crate::{
-    ReviveRuntimeMode,
     cheatcodes::mock_handler::MockHandlerImpl,
     state::TestEnv,
     tracing::{Tracer, storage_tracer::AccountAccess},
@@ -228,11 +227,7 @@ impl PvmCheatcodeInspectorStrategyRunner {
                         accessor: Address::from(record.accessor.0),
                         account: Address::from(record.account.0),
                         kind: record.kind,
-                        initialized: if matches!(record.kind, AccountAccessKind::SelfDestruct) {
-                            false
-                        } else {
-                            true
-                        },
+                        initialized: record.initialized,
                         oldBalance: U256::from_limbs(record.old_balance.0),
                         newBalance: ctx
                             .externalities
