@@ -357,10 +357,23 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_pvm && is::<loadCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
-                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                let storage_value = ctx.externalities.get_storage(target, slot)?;
-                let result = storage_value.map(|b| B256::from_slice(&b)).unwrap_or(B256::ZERO);
-                Ok(result.abi_encode())
+
+                // Check if target is the test contract - if so, read from REVM state instead
+                if ccx
+                    .ecx
+                    .journaled_state
+                    .database
+                    .get_test_contract_address()
+                    .map(|addr| target == addr)
+                    .unwrap_or_default()
+                {
+                    cheatcode.dyn_apply(ccx, executor)
+                } else {
+                    let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                    let storage_value = ctx.externalities.get_storage(target, slot)?;
+                    let result = storage_value.map(|b| B256::from_slice(&b)).unwrap_or(B256::ZERO);
+                    Ok(result.abi_encode())
+                }
             }
             t if using_pvm && is::<storeCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
