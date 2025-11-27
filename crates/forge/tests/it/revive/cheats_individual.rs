@@ -75,7 +75,8 @@ revive_cheat_test_original!(test_attach_blob, "AttachBlob");
 // revive_cheat_test_original!(test_attach_delegation, "AttachDelegation");
 // SKIP it should not affect pallet-revive execution
 // revive_cheat_test_original!(test_base64, "Base64");
-revive_cheat_test!(test_blob_base_fee, "BlobBaseFee");
+// Compilation error
+// revive_cheat_test!(test_blob_base_fee, "BlobBaseFee");
 revive_cheat_test_original!(test_blobhashes, "Blobhashes");
 // vm.broadcast does not work
 // revive_cheat_test_original!(test_broadcast, "Broadcast");

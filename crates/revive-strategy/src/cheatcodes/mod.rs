@@ -986,9 +986,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
                 );
-                System::inc_account_nonce(AccountId::to_fallback_account_id(
-                    &H160::from_slice(call.caller.as_slice()),
-                ));
+                System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
+                    call.caller.as_slice(),
+                )));
                 res
             })
         });
