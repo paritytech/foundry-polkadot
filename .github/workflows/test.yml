@@ -194,7 +194,6 @@ jobs:
   ci-success:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    if: always()
     needs:
       - nextest
       - docs
