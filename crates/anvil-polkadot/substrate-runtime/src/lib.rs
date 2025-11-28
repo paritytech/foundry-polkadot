@@ -172,20 +172,16 @@ mod runtime {
     #[runtime::pallet_index(2)]
     pub type Balances = pallet_balances::Pallet<Runtime>;
 
-    /// Provides a way to execute privileged functions.
-    #[runtime::pallet_index(3)]
-    pub type Sudo = pallet_sudo::Pallet<Runtime>;
-
     /// Provides the ability to charge for extrinsic execution.
-    #[runtime::pallet_index(4)]
+    #[runtime::pallet_index(3)]
     pub type TransactionPayment = pallet_transaction_payment::Pallet<Runtime>;
 
     /// Provides the ability to execute Smart Contracts.
-    #[runtime::pallet_index(5)]
+    #[runtime::pallet_index(4)]
     pub type Revive = pallet_revive::Pallet<Runtime>;
 
     /// Provides the ability to determine AURA authorities for block building.
-    #[runtime::pallet_index(6)]
+    #[runtime::pallet_index(5)]
     pub type Aura = pallet_aura::Pallet<Runtime>;
 }
 
@@ -254,11 +250,7 @@ impl pallet_balances::Config for Runtime {
     type ExistentialDeposit = ExistentialDeposit;
 }
 
-// Implements the types required for the sudo pallet.
-#[derive_impl(pallet_sudo::config_preludes::TestDefaultConfig)]
-impl pallet_sudo::Config for Runtime {}
-
-// Implements the types required for the sudo pallet.
+// Implements the types required for the timestamp pallet.
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
 impl pallet_timestamp::Config for Runtime {}
 

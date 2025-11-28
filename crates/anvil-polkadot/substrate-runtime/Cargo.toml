@@ -16,7 +16,6 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"pallet-aura",
 	"pallet-balances",
 	"pallet-revive",
-	"pallet-sudo",
 	"pallet-timestamp",
 	"pallet-transaction-payment",
 	"pallet-transaction-payment-rpc-runtime-api",

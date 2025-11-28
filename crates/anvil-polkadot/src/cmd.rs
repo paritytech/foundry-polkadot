@@ -1,6 +1,4 @@
-use crate::config::{
-    AccountGenerator, AnvilNodeConfig, CHAIN_ID, DEFAULT_MNEMONIC, SubstrateNodeConfig,
-};
+use crate::config::{AccountGenerator, AnvilNodeConfig, DEFAULT_MNEMONIC, SubstrateNodeConfig};
 use alloy_genesis::Genesis;
 use alloy_primitives::{U256, utils::Unit};
 use alloy_signer_local::coins_bip39::{English, Mnemonic};
@@ -111,8 +109,6 @@ impl NodeArgs {
         let genesis_balance = Unit::ETHER.wei().saturating_mul(U256::from(self.balance));
 
         let anvil_config = AnvilNodeConfig::default()
-            .with_gas_limit(self.evm.gas_limit)
-            .disable_block_gas_limit(self.evm.disable_block_gas_limit)
             .with_blocktime(self.block_time)
             .with_no_mining(self.no_mining)
             .with_mixed_mining(self.mixed_mining, self.block_time)
@@ -122,22 +118,14 @@ impl NodeArgs {
             .with_genesis_block_number(self.number)
             .with_port(self.port)
             .with_base_fee(self.evm.block_base_fee_per_gas)
-            .disable_min_priority_fee(self.evm.disable_min_priority_fee)
             .with_server_config(self.server_config)
             .with_host(self.host)
             .set_silent(shell::is_quiet())
             .set_config_out(self.config_out)
             .with_chain_id(self.evm.chain_id)
             .with_genesis(self.init)
-            .with_steps_tracing(self.evm.steps_tracing)
-            .with_print_logs(!self.evm.disable_console_log)
-            .with_print_traces(self.evm.print_traces)
             .with_auto_impersonate(self.evm.auto_impersonate)
             .with_ipc(self.ipc)
-            .with_code_size_limit(self.evm.code_size_limit)
-            .disable_code_size_limit(self.evm.disable_code_size_limit)
-            .with_disable_default_create2_deployer(self.evm.disable_default_create2_deployer)
-            .with_memory_limit(self.evm.memory_limit)
             .with_revive_rpc_block_limit(self.revive_rpc_block_limit);
 
         let substrate_node_config = SubstrateNodeConfig::new(&anvil_config);
@@ -146,9 +134,8 @@ impl NodeArgs {
     }
 
     fn account_generator(&self) -> AccountGenerator {
-        let mut rng_gen = AccountGenerator::new(self.accounts as usize)
-            .phrase(DEFAULT_MNEMONIC)
-            .chain_id(self.evm.chain_id.unwrap_or(CHAIN_ID.into()));
+        let mut rng_gen = AccountGenerator::new(self.accounts as usize).phrase(DEFAULT_MNEMONIC);
+
         if let Some(ref mnemonic) = self.mnemonic {
             rng_gen = rng_gen.phrase(mnemonic);
         } else if let Some(count) = self.mnemonic_random {
@@ -174,34 +161,6 @@ impl NodeArgs {
 #[derive(Clone, Debug, Parser)]
 #[command(next_help_heading = "EVM options")]
 pub struct AnvilEvmArgs {
-    /// The block gas limit.
-    #[arg(long, alias = "block-gas-limit", help_heading = "Environment config")]
-    pub gas_limit: Option<u128>,
-
-    /// Disable the `call.gas_limit <= block.gas_limit` constraint.
-    #[arg(
-        long,
-        value_name = "DISABLE_GAS_LIMIT",
-        help_heading = "Environment config",
-        alias = "disable-gas-limit",
-        conflicts_with = "gas_limit"
-    )]
-    pub disable_block_gas_limit: bool,
-
-    /// EIP-170: Contract code size limit in bytes. Useful to increase this because of tests. To
-    /// disable entirely, use `--disable-code-size-limit`. By default, it is 0x6000 (~25kb).
-    #[arg(long, value_name = "CODE_SIZE", help_heading = "Environment config")]
-    pub code_size_limit: Option<usize>,
-
-    /// Disable EIP-170: Contract code size limit.
-    #[arg(
-        long,
-        value_name = "DISABLE_CODE_SIZE_LIMIT",
-        conflicts_with = "code_size_limit",
-        help_heading = "Environment config"
-    )]
-    pub disable_code_size_limit: bool,
-
     /// The base fee in a block.
     #[arg(
         long,
@@ -211,38 +170,14 @@ pub struct AnvilEvmArgs {
     )]
     pub block_base_fee_per_gas: Option<u64>,
 
-    /// Disable the enforcement of a minimum suggested priority fee.
-    #[arg(long, visible_alias = "no-priority-fee", help_heading = "Environment config")]
-    pub disable_min_priority_fee: bool,
-
     /// The chain ID.
     #[arg(long, alias = "chain", help_heading = "Environment config")]
     pub chain_id: Option<Chain>,
-
-    /// Enable steps tracing used for debug calls returning geth-style traces
-    #[arg(long, visible_alias = "tracing")]
-    pub steps_tracing: bool,
-
-    /// Disable printing of `console.log` invocations to stdout.
-    #[arg(long, visible_alias = "no-console-log")]
-    pub disable_console_log: bool,
-
-    /// Enable printing of traces for executed transactions and `eth_call` to stdout.
-    #[arg(long, visible_alias = "enable-trace-printing")]
-    pub print_traces: bool,
 
     /// Enables automatic impersonation on startup. This allows any transaction sender to be
     /// simulated as different accounts, which is useful for testing contract behavior.
     #[arg(long, visible_alias = "auto-unlock")]
     pub auto_impersonate: bool,
-
-    /// Disable the default create2 deployer
-    #[arg(long, visible_alias = "no-create2")]
-    pub disable_default_create2_deployer: bool,
-
-    /// The memory limit per EVM execution in bytes.
-    #[arg(long)]
-    pub memory_limit: Option<u64>,
 }
 
 /// Clap's value parser for genesis. Loads a genesis.json file.
@@ -262,31 +197,6 @@ fn duration_from_secs_f64(s: &str) -> Result<Duration, String> {
 mod tests {
     use super::*;
     use std::{env, net::Ipv4Addr};
-
-    #[test]
-    fn can_parse_disable_block_gas_limit() {
-        let args: NodeArgs = NodeArgs::parse_from(["anvil", "--disable-block-gas-limit"]);
-        assert!(args.evm.disable_block_gas_limit);
-
-        let args =
-            NodeArgs::try_parse_from(["anvil", "--disable-block-gas-limit", "--gas-limit", "100"]);
-        assert!(args.is_err());
-    }
-
-    #[test]
-    fn can_parse_disable_code_size_limit() {
-        let args: NodeArgs = NodeArgs::parse_from(["anvil", "--disable-code-size-limit"]);
-        assert!(args.evm.disable_code_size_limit);
-
-        let args = NodeArgs::try_parse_from([
-            "anvil",
-            "--disable-code-size-limit",
-            "--code-size-limit",
-            "100",
-        ]);
-        // can't be used together
-        assert!(args.is_err());
-    }
 
     #[test]
     fn can_parse_host() {
