@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
+
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
 
 contract Counter {
     uint256 public count;
-    function increment() public { count += 1; }
+
+    function increment() public {
+        count += 1;
+    }
 }
 
 contract Child {
     uint256 public id;
+
     constructor(uint256 _id) {
         id = _id;
     }
@@ -17,6 +22,7 @@ contract Child {
 
 contract RevertingChild {
     uint256 public value;
+
     constructor(bool shouldRevert) {
         if (shouldRevert) {
             revert("Constructor revert");
@@ -33,15 +39,10 @@ contract Factory {
     }
 
     function deployCreate2(bytes32 salt, uint256 id) public returns (address deployed) {
-        bytes memory initCode = abi.encodePacked(
-            type(Child).creationCode,
-            abi.encode(id)
-        );
+        bytes memory initCode = abi.encodePacked(type(Child).creationCode, abi.encode(id));
         assembly {
             deployed := create2(0, add(initCode, 0x20), mload(initCode), salt)
-            if iszero(deployed) {
-                revert(0, 0)
-            }
+            if iszero(deployed) { revert(0, 0) }
         }
     }
 
@@ -50,15 +51,10 @@ contract Factory {
     }
 
     function deployCreate2Reverting(bytes32 salt, bool shouldRevert) public returns (address deployed) {
-        bytes memory initCode = abi.encodePacked(
-            type(RevertingChild).creationCode,
-            abi.encode(shouldRevert)
-        );
+        bytes memory initCode = abi.encodePacked(type(RevertingChild).creationCode, abi.encode(shouldRevert));
         assembly {
             deployed := create2(0, add(initCode, 0x20), mload(initCode), salt)
-            if iszero(deployed) {
-                revert(0, 0)
-            }
+            if iszero(deployed) { revert(0, 0) }
         }
     }
 }
@@ -71,7 +67,7 @@ contract NonceTest is DSTest {
 
     function setUp() public {
         vm.startPrank(EOA_ALICE);
-        factory = new Factory(); 
+        factory = new Factory();
         vm.stopPrank();
     }
 
