@@ -5,25 +5,12 @@ use axum::Router;
 use futures::StreamExt;
 use handler::{HttpEthRpcHandler, PubSubEthRpcHandler};
 use polkadot_sdk::sc_service::SpawnTaskHandle;
-use std::{io, net::SocketAddr, pin::pin};
+use std::{io, pin::pin};
 use tokio::net::TcpListener;
 
 use crate::api_server::ApiHandle;
 
 mod handler;
-
-/// Configures a server that handles JSON-RPC calls via HTTP and WS.
-///
-/// The returned future creates a new server, binding it to the given address, which returns another
-/// future that runs it.
-pub async fn serve(
-    addr: SocketAddr,
-    config: ServerConfig,
-    api_handle: ApiHandle,
-) -> io::Result<impl Future<Output = io::Result<()>>> {
-    let tcp_listener = TcpListener::bind(addr).await?;
-    Ok(serve_on(tcp_listener, config, api_handle))
-}
 
 /// Configures a server that handles JSON-RPC calls via HTTP and WS.
 pub async fn serve_on(
@@ -32,13 +19,6 @@ pub async fn serve_on(
     api_handle: ApiHandle,
 ) -> io::Result<()> {
     axum::serve(tcp_listener, router(api_handle, config).into_make_service()).await
-}
-
-/// Configures an [`axum::Router`] that handles JSON-RPC calls via HTTP and WS.
-pub fn router(api_handle: ApiHandle, config: ServerConfig) -> Router {
-    let http = HttpEthRpcHandler::new(api_handle.clone());
-    let ws = PubSubEthRpcHandler::new(api_handle);
-    anvil_server::http_ws_router(config, http, ws)
 }
 
 /// Launches an ipc server at the given path in a new task.
@@ -62,4 +42,11 @@ pub fn try_spawn_ipc(
     });
 
     Ok(())
+}
+
+/// Configures an [`axum::Router`] that handles JSON-RPC calls via HTTP and WS.
+fn router(api_handle: ApiHandle, config: ServerConfig) -> Router {
+    let http = HttpEthRpcHandler::new(api_handle.clone());
+    let ws = PubSubEthRpcHandler::new(api_handle);
+    anvil_server::http_ws_router(config, http, ws)
 }
