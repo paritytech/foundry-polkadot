@@ -1,12 +1,9 @@
-use std::{collections::BTreeMap, str::FromStr};
-
-use alloy_primitives::{Address, B256, Bytes, U256 as RU256};
+use alloy_primitives::{Address, Bytes, U256 as RU256};
 use foundry_cheatcodes::Ecx;
-use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::pallet_revive::{
-    AccountInfo, Pallet, U256, Weight,
+    Pallet, U256, Weight,
     evm::{
-        Bytes as PBytes, CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
+        CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
         PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
     },
     tracing::{Tracing, trace as trace_revive},
@@ -62,18 +59,12 @@ impl Tracer {
     }
 
     /// Applies `PrestateTrace` diffs to the revm state
-    pub fn apply_prestate_trace(
-        &mut self,
-        ecx: Ecx<'_, '_, '_>,
-        dual_compiled_contracts: &DualCompiledContracts,
-    ) {
+    pub fn apply_prestate_trace(&mut self, ecx: Ecx<'_, '_, '_>) {
         let prestate_trace = self.collect_prestate_traces();
         match prestate_trace {
             polkadot_sdk::pallet_revive::evm::PrestateTrace::DiffMode { pre: _digests, post } => {
-                for (key, PrestateTraceInfo { balance, nonce, code, mut storage }) in post {
+                for (key, PrestateTraceInfo { balance, nonce, code, storage }) in post {
                     let address = Address::from_slice(key.as_bytes());
-
-                    let is_create = !ecx.journaled_state.state.contains_key(&address);
 
                     ecx.journaled_state.load_account(address).expect("account could not be loaded");
 
@@ -87,7 +78,7 @@ impl Tracer {
                         account.info.nonce = nonce.into();
                     };
 
-                    if is_create && let Some(ref code) = code {
+                    if let Some(ref code) = code {
                         let code = code.clone();
                         let account =
                             ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
@@ -95,33 +86,7 @@ impl Tracer {
                         account.info.code_hash = bytecode.hash_slow();
                         account.info.code = Some(bytecode);
                     }
-                    use alloy_primitives::hex;
-                    let storage = if is_create
-                        && let Some(info) = AccountInfo::<Runtime>::load_contract(&key)
-                        && let hash = hex::encode(info.code_hash)
-                        && let Some((_, info)) = dual_compiled_contracts
-                            .find_by_resolc_bytecode_hash(hash.clone())
-                            .or_else(|| dual_compiled_contracts.find_by_evm_bytecode_hash(hash))
-                    {
-                        let mut init_storage: BTreeMap<PBytes, Option<PBytes>> = info
-                            .storage_slots
-                            .iter()
-                            .map(|slot| {
-                                let slot_key = B256::from(RU256::from_str(slot).unwrap());
-                                let slot = PBytes::from(slot_key.0.to_vec());
-                                (
-                                    slot,
-                                    Pallet::<Runtime>::get_storage(key, slot_key.0)
-                                        .unwrap_or(None)
-                                        .map(PBytes::from),
-                                )
-                            })
-                            .collect();
-                        init_storage.append(&mut storage);
-                        init_storage
-                    } else {
-                        storage
-                    };
+                    let storage = { storage };
 
                     for (slot, entry) in storage {
                         let key = RU256::from_be_slice(&slot.0);
@@ -148,6 +113,20 @@ impl Tracing for Tracer {
         self.call_tracer.watch_address(addr);
         if let Some(storage_tracer) = &mut self.storage_accesses {
             storage_tracer.watch_address(addr);
+        }
+    }
+
+    fn terminate(
+        &mut self,
+        contract_address: polkadot_sdk::sp_core::H160,
+        beneficiary_address: polkadot_sdk::sp_core::H160,
+        gas_left: Weight,
+        value: U256,
+    ) {
+        self.prestate_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
+        self.call_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
+        if let Some(storage_tracer) = &mut self.storage_accesses {
+            storage_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
         }
     }
 

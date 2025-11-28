@@ -133,12 +133,34 @@ impl Tracing for StorageTracer {
 
     fn terminate(
         &mut self,
-        _contract_address: H160,
-        _beneficiary_address: H160,
+        contract_address: H160,
+        beneficiary_address: H160,
         _gas_left: Weight,
-        _value: U256,
+        value: U256,
     ) {
-        todo!("this is not being called");
+        let last_depth = if !self.pending.is_empty() {
+            self.pending.last().map(|record| record.depth).expect("must have at least one record")
+        } else {
+            self.records.last().map(|record| record.depth).unwrap_or_default()
+        };
+        let new_depth = last_depth.checked_add(1).expect("overflow in recording call depth");
+        let record = AccountAccess {
+            depth: new_depth,
+            kind: AccountAccessKind::SelfDestruct,
+            account: beneficiary_address,
+            accessor: contract_address,
+            data: Bytes::new(),
+            value,
+            reverted: false,
+            old_balance: pallet_revive::Pallet::<Runtime>::evm_balance(&beneficiary_address),
+            new_balance: U256::zero(),
+            storage_accesses: Default::default(),
+            index: self.index,
+            initialized: true,
+        };
+        self.index += 1;
+
+        self.records_inner.push(record);
     }
 
     fn exit_child_span_with_error(
