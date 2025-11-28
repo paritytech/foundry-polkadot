@@ -331,6 +331,7 @@ impl ForgeTestData {
     pub fn runner_revive(&self, runtime_mode: ReviveRuntimeMode) -> MultiContractRunner {
         let mut config = (*self.config).clone();
         config.rpc_endpoints = rpc_endpoints();
+        config.resolc.resolc_compile = false;
         config.allow_paths.push(manifest_root().to_path_buf());
         if config.fs_permissions.is_empty() {
             config.fs_permissions =

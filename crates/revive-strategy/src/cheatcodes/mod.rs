@@ -215,6 +215,11 @@ impl PvmCheatcodeInspectorStrategyRunner {
             if let Some(last) = recorded_account_diffs_stack.last_mut() {
                 ctx.remove_recorded_access_at = Some(stack_insert_index);
                 for record in account_accesses {
+                    let _ = ecx
+                        .journaled_state
+                        .load_account(Address::from(record.account.0))
+                        .expect("failed to load account");
+
                     let access = FAccountAccess {
                         chainInfo: ChainInfo {
                             forkId: ecx
@@ -229,10 +234,11 @@ impl PvmCheatcodeInspectorStrategyRunner {
                         kind: record.kind,
                         initialized: record.initialized,
                         oldBalance: U256::from_limbs(record.old_balance.0),
-                        newBalance: ctx
-                            .externalities
-                            .get_balance(Address::from_slice(&record.account.0)),
-
+                        newBalance: ecx
+                            .journaled_state
+                            .account(Address::from(record.account.0))
+                            .info
+                            .balance,
                         value: U256::from_limbs(record.value.0),
                         data: record.data.clone(),
                         reverted: record.reverted,
@@ -863,9 +869,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             })
         });
         let mut gas = Gas::new(input.gas_limit());
-        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
 
         post_exec(state, ecx, executor, &mut tracer, false);
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
+
         mock_handler.update_state_mocks(state);
 
         match &res.result {
@@ -995,9 +1002,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         });
         mock_handler.update_state_mocks(state);
         let mut gas = Gas::new(call.gas_limit);
-        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
 
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
 
         match res.result {
             Ok(result) => {

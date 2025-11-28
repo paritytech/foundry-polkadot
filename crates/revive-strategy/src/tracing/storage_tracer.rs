@@ -1,7 +1,7 @@
 use alloy_primitives::{Bytes, U256 as RU256};
 use foundry_cheatcodes::Vm::{AccountAccessKind, StorageAccess};
 use polkadot_sdk::{
-    pallet_revive::{self, Code, tracing::Tracing},
+    pallet_revive::{self, AccountInfo, Code, tracing::Tracing},
     sp_core::{H160, U256},
     sp_weights::Weight,
 };
@@ -9,8 +9,6 @@ use revive_env::Runtime;
 
 #[derive(Debug, Default)]
 pub(crate) struct StorageTracer {
-    /// The current address of the contract's which storage is being accessed.
-    current_addr: H160,
     /// Whether the current call is a contract creation.
     is_create: Option<Code>,
 
@@ -18,6 +16,7 @@ pub(crate) struct StorageTracer {
     pending: Vec<AccountAccess>,
     records_inner: Vec<AccountAccess>,
     index: usize,
+    calls: Vec<H160>,
 }
 
 /// Represents the account access during vm execution.
@@ -63,6 +62,10 @@ impl StorageTracer {
         accounts.sort_by_key(|f| f.index);
         accounts
     }
+
+    fn current_addr(&self) -> H160 {
+        self.calls.last().copied().unwrap_or_default()
+    }
 }
 
 impl Tracing for StorageTracer {
@@ -80,6 +83,11 @@ impl Tracing for StorageTracer {
         input: &[u8],
         _gas: Weight,
     ) {
+        if is_delegate_call {
+            self.calls.push(self.current_addr());
+        } else {
+            self.calls.push(to);
+        }
         let code = self.is_create.take();
 
         let kind = if code.is_some() {
@@ -125,10 +133,6 @@ impl Tracing for StorageTracer {
         }
         self.pending.push(record);
         self.index += 1;
-
-        if !is_delegate_call {
-            self.current_addr = to;
-        }
     }
 
     fn terminate(
@@ -144,6 +148,7 @@ impl Tracing for StorageTracer {
             self.records.last().map(|record| record.depth).unwrap_or_default()
         };
         let new_depth = last_depth.checked_add(1).expect("overflow in recording call depth");
+        let account = AccountInfo::<Runtime>::is_contract(&beneficiary_address);
         let record = AccountAccess {
             depth: new_depth,
             kind: AccountAccessKind::SelfDestruct,
@@ -156,7 +161,7 @@ impl Tracing for StorageTracer {
             new_balance: U256::zero(),
             storage_accesses: Default::default(),
             index: self.index,
-            initialized: true,
+            initialized: account,
         };
         self.index += 1;
 
@@ -168,9 +173,11 @@ impl Tracing for StorageTracer {
         _error: polkadot_sdk::sp_runtime::DispatchError,
         _gas_left: Weight,
     ) {
+        self.calls.pop();
+
         let is_create = self.is_create.take();
         let mut record = self.pending.pop().expect("unexpected return while recording call");
-        record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr);
+        record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr());
         record.reverted = true;
         record.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
         self.records_inner.iter_mut().for_each(|x| {
@@ -208,10 +215,12 @@ impl Tracing for StorageTracer {
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
         _gas_left: Weight,
     ) {
+        self.calls.pop();
+
         let is_create = self.is_create.take();
 
         let mut record = self.pending.pop().expect("unexpected return while recording call");
-        record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr);
+        record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr());
         if output.did_revert() {
             record.reverted = true;
             record.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
@@ -248,9 +257,10 @@ impl Tracing for StorageTracer {
     }
 
     fn storage_read(&mut self, key: &polkadot_sdk::pallet_revive::Key, value: Option<&[u8]>) {
+        let account = self.current_addr().0.into();
         let record = self.pending.last_mut().expect("expected at least one record");
         record.storage_accesses.push(StorageAccess {
-            account: self.current_addr.0.into(),
+            account,
             slot: RU256::from_be_slice(key.unhashed()).into(),
             isWrite: false,
             previousValue: RU256::from_be_slice(value.unwrap_or_default()).into(),
@@ -264,9 +274,10 @@ impl Tracing for StorageTracer {
         old_value: Option<Vec<u8>>,
         new_value: Option<&[u8]>,
     ) {
+        let account = self.current_addr().0.into();
         let record = self.pending.last_mut().expect("expected at least one record");
         record.storage_accesses.push(StorageAccess {
-            account: self.current_addr.0.into(),
+            account,
             slot: RU256::from_be_slice(key.unhashed()).into(),
             isWrite: true,
             previousValue: RU256::from_be_slice(old_value.unwrap_or_default().as_slice()).into(),
