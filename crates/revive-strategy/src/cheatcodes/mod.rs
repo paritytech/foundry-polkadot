@@ -617,7 +617,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 code_bytes.clone(),
                                 BytecodeType::Evm,
                                 u64::MAX.into(),
-                                &ExecConfig::new_substrate_tx(),
+                                &ExecConfig::new_substrate_tx_without_bump(),
                             );
                             match upload_result {
                                 Ok(_) => {
@@ -807,19 +807,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let mut tracer = Tracer::new(true);
         let res = ctx.externalities.execute_with(|| {
             tracer.trace(|| {
-                let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                    &H160::from_slice(input.caller().as_slice()),
-                ));
+                let caller_h160 = H160::from_slice(input.caller().as_slice());
+                let origin_account_id = AccountId::to_fallback_account_id(&caller_h160);
+                let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());
-
-                let exec_config = ExecConfig {
-                    bump_nonce: true,
-                    collect_deposit_from_hold: None,
-                    effective_gas_price: Some(gas_price_pvm),
-                    mock_handler: Some(Box::new(mock_handler.clone())),
-                    is_dry_run: None,
-                };
+                System::inc_account_nonce(&origin_account_id);
                 let code = Code::Upload(code_bytes.clone());
                 let data = constructor_args;
                 let salt = match input.scheme() {
@@ -832,6 +825,21 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                             .unwrap(),
                     ),
                     _ => None,
+                };
+
+                let exec_config = ExecConfig {
+                    // IMPORTANT: Do NOT bump nonce here!
+                    // When calling bare_instantiate directly (not through dispatch), the nonce
+                    // has NOT been incremented pre-dispatch. Setting bump_nonce=true would cause
+                    // pallet-revive to increment the nonce AFTER computing the CREATE address,
+                    // but the address computation subtracts 1 from the nonce assuming it was
+                    // already incremented. This causes all deployments to use nonce-1 for
+                    // address computation, resulting in duplicate addresses.
+                    bump_nonce: false,
+                    collect_deposit_from_hold: None,
+                    effective_gas_price: Some(gas_price_pvm),
+                    mock_handler: Some(Box::new(mock_handler.clone())),
+                    is_dry_run: None,
                 };
 
                 Pallet::<Runtime>::bare_instantiate(
@@ -950,24 +958,30 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
+        // Get nonce before execute_with closure
+        let should_bump_nonce = !call.is_static;
+        let caller_h160 = H160::from_slice(call.caller.as_slice());
+
         let mut tracer = Tracer::new(true);
         let res = ctx.externalities.execute_with(|| {
             tracer.trace(|| {
-                let origin = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-                    &H160::from_slice(call.caller.as_slice()),
-                ));
+                let origin =
+                    OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));
                 mock_handler.fund_pranked_accounts(call.caller);
 
                 let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
                 let target = H160::from_slice(call.target_address.as_slice());
                 let exec_config = ExecConfig {
-                    bump_nonce: true,
+                    bump_nonce: false, // only works for contructors
                     collect_deposit_from_hold: None,
                     effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };
-                let res = Pallet::<Runtime>::bare_call(
+                if should_bump_nonce {
+                    System::inc_account_nonce(AccountId::to_fallback_account_id(&caller_h160));
+                }
+                Pallet::<Runtime>::bare_call(
                     origin,
                     target,
                     evm_value,
@@ -976,11 +990,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     BalanceOf::<Runtime>::MAX,
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
-                );
-                System::inc_account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                    call.caller.as_slice(),
-                )));
-                res
+                )
             })
         });
         mock_handler.update_state_mocks(state);
