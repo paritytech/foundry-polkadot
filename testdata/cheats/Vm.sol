@@ -408,6 +408,7 @@ interface Vm {
     function promptUint(string calldata promptText) external returns (uint256);
     function publicKeyP256(uint256 privateKey) external pure returns (uint256 publicKeyX, uint256 publicKeyY);
     function pvm(bool enabled) external;
+    function polkadotSkip() external pure;
     function randomAddress() external returns (address);
     function randomBool() external view returns (bool);
     function randomBytes(uint256 len) external view returns (bytes memory);

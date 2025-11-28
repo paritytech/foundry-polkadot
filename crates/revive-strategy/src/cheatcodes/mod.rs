@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall, resetNonceCall,
-        rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        chainIdCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall, pvmCall,
+        resetNonceCall, rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -112,6 +112,14 @@ impl PvmStartupMigration {
 pub struct PvmCheatcodeInspectorStrategyContext {
     /// Whether we're currently using pallet-revive (migrated from REVM)
     pub using_pvm: bool,
+    /// When in PVM context, execute the next CALL or CREATE in the EVM instead.
+    pub skip_pvm: bool,
+    /// Any contracts that were deployed in `skip_pvm` step.
+    /// This makes it easier to dispatch calls to any of these addresses in PVM context, directly
+    /// to EVM. Alternatively, we'd need to add `vm.polkadotSkip()` to these calls manually.
+    pub skip_pvm_addresses: std::collections::HashSet<Address>,
+    /// Records the next create address for `skip_pvm_addresses`.
+    pub record_next_create_address: bool,
     /// Controls automatic migration to pallet-revive
     pub pvm_startup_migration: PvmStartupMigration,
     pub dual_compiled_contracts: DualCompiledContracts,
@@ -130,6 +138,9 @@ impl PvmCheatcodeInspectorStrategyContext {
         Self {
             // Start in REVM mode by default
             using_pvm: false,
+            skip_pvm: false,
+            skip_pvm_addresses: Default::default(),
+            record_next_create_address: Default::default(),
             // Will be set to Allow when test contract deploys
             pvm_startup_migration: PvmStartupMigration::Defer,
             dual_compiled_contracts,
@@ -271,6 +282,12 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 } else {
                     select_evm(ctx, ccx.ecx);
                 }
+                Ok(Default::default())
+            }
+            t if is::<polkadotSkipCall>(t) => {
+                let polkadotSkipCall { .. } = cheatcode.as_any().downcast_ref().unwrap();
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.skip_pvm = true;
                 Ok(Default::default())
             }
             t if using_pvm && is::<dealCall>(t) => {
@@ -756,6 +773,13 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return None;
         }
 
+        if ctx.skip_pvm {
+            ctx.skip_pvm = false; // handled the skip, reset flag
+            ctx.record_next_create_address = true;
+            tracing::info!("running create in EVM, instead of pallet-revive (skipped)");
+            return None;
+        }
+
         if let Some(CreateScheme::Create) = input.scheme() {
             let caller = input.caller();
             let nonce = ecx
@@ -926,6 +950,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return None;
         }
 
+        if ctx.skip_pvm || ctx.skip_pvm_addresses.contains(&call.target_address) {
+            ctx.skip_pvm = false; // handled the skip, reset flag
+            tracing::info!("running call in EVM, instead of pallet-revive (skipped)");
+            return None;
+        }
+
         if ecx
             .journaled_state
             .database
@@ -1084,6 +1114,22 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         apply_revm_storage_diff(ctx, ecx, call.target_address);
+    }
+
+    fn revive_record_create_address(
+        &self,
+        state: &mut foundry_cheatcodes::Cheatcodes,
+        outcome: &CreateOutcome,
+    ) {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        if ctx.record_next_create_address {
+            ctx.record_next_create_address = false;
+            if let Some(address) = outcome.address {
+                ctx.skip_pvm_addresses.insert(address);
+                tracing::info!("recorded address {:?} for skip execution in the pallet-revive", address);
+            }
+        }
     }
 }
 
