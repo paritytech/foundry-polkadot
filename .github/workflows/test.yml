@@ -30,6 +30,10 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           components: rust-src
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev unzip build-essential
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
