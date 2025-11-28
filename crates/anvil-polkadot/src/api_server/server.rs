@@ -1933,7 +1933,7 @@ async fn create_revive_rpc_client(
             .map_err(Error::from)?;
 
     // Capacity is chosen using random.org
-    eth_rpc_client.create_block_notifier(Some(50));
+    eth_rpc_client.set_block_notifier(Some(tokio::sync::broadcast::channel::<H256>(50).0));
     let eth_rpc_client_clone = eth_rpc_client.clone();
     task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;
