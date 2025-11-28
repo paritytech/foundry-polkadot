@@ -70,7 +70,7 @@ is_pr = os.environ.get("EVENT_NAME") == "pull_request"
 t_linux_x86 = Target("parity-large-new", "x86_64-unknown-linux-gnu", "linux-amd64")
 # TODO: Figure out how to make this work
 # t_linux_arm = Target("ubuntu-latest", "aarch64-unknown-linux-gnu", "linux-aarch64")
-t_macos = Target("parity-macos", "aarch64-apple-darwin", "macosx-aarch64")
+t_macos = Target("macos-latest", "aarch64-apple-darwin", "macosx-aarch64")
 t_windows = Target("windows-latest", "x86_64-pc-windows-msvc", "windows-amd64")
 targets = [t_linux_x86, t_macos, t_windows] if is_pr else [t_linux_x86, t_macos, t_windows]
 

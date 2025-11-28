@@ -8,7 +8,7 @@ on:
         type: string
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: tests-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -37,9 +37,9 @@ jobs:
           PROFILE: ${{ inputs.profile }}
         run: |
           output=$(python3 .github/scripts/matrices.py)
-          echo $output
           echo "::debug::test-matrix=$output"
           echo "test-matrix=$output" >> $GITHUB_OUTPUT
+
   test:
     name: test ${{ matrix.name }}
     runs-on: ${{ matrix.runner_label }}
@@ -52,14 +52,6 @@ jobs:
       ETH_RPC_URL: https://eth-mainnet.alchemyapi.io/v2/${{ secrets.ALCHEMY_API_KEY }}
       CARGO_PROFILE_DEV_DEBUG: 0
     steps:
-      - name: Set up Homebrew (for mac)
-        if: contains(matrix.runner_label, 'macos')
-        uses: Homebrew/actions/setup-homebrew@1ccc07ccd54b6048295516a3eb89b192c35057dc
-      - name: Install curl and jq
-        if: contains(matrix.runner_label, 'macos')
-        run: |
-          brew install curl jq
-
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@nextest
       - name: Install dependencies for building (Ubuntu)
