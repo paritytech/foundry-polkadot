@@ -105,7 +105,7 @@ revive_cheat_test_original!(test_expect_create, "ExpectCreate");
 // fork cheatcodes not supported
 // revive_cheat_test_original!(test_fork2, "Fork2");
 // revive_cheat_test_original!(test_fs, "Fs");
-revive_cheat_test_original!(test_get_artifact_path, "GetArtifactPath");
+revive_cheat_test!(test_get_artifact_path, "GetArtifactPath");
 revive_cheat_test_original!(test_get_chain, "GetChain");
 revive_cheat_test_original!(test_get_code, "GetCode");
 revive_cheat_test_original!(test_get_deployed_code, "GetDeployedCode");
