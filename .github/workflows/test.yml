@@ -7,7 +7,7 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -16,6 +16,7 @@ env:
 
 jobs:
   nextest:
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/nextest.yml
     with:
       profile: default
@@ -53,6 +54,7 @@ jobs:
           force_orphan: true
 
   doctest:
+    if: github.event_name == 'pull_request'
     runs-on: parity-large-new
     timeout-minutes: 60
     steps:
@@ -74,6 +76,7 @@ jobs:
       - run: cargo test --workspace --doc
 
   typos:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -81,6 +84,7 @@ jobs:
       - uses: crate-ci/typos@v1
 
   clippy:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -107,6 +111,7 @@ jobs:
           RUSTFLAGS: -Dwarnings
 
   rustfmt:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -117,6 +122,7 @@ jobs:
       - run: cargo fmt --all --check
 
   forge-fmt:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -135,6 +141,7 @@ jobs:
         run: ./.github/scripts/format.sh --check
 
   crate-checks:
+    if: github.event_name == 'pull_request'
     runs-on: parity-large-new
     timeout-minutes: 90
     steps:
@@ -167,6 +174,7 @@ jobs:
       - run: cargo hack check -p substrate-runtime --each-feature --exclude-no-default-features
 
   deny:
+    if: github.event_name == 'pull_request'
     # Copy of ithacaxyz/ci/.github/workflows/deny.yml@main but without failing the CI
     name: cargo deny check
     runs-on: ubuntu-latest
@@ -184,8 +192,8 @@ jobs:
         run: cargo deny --all-features check all
 
   ci-success:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    if: always()
     needs:
       - nextest
       - docs
