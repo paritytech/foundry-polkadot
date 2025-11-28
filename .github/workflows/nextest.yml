@@ -8,7 +8,7 @@ on:
         type: string
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: tests-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -38,7 +38,6 @@ jobs:
           PROFILE: ${{ inputs.profile }}
         run: |
           output=$(python3 .github/scripts/matrices.py)
-          echo $output
           echo "::debug::test-matrix=$output"
           echo "test-matrix=$output" >> $GITHUB_OUTPUT
 
@@ -53,7 +52,7 @@ jobs:
           - os: ubuntu
             runner: parity-large-new
           - os: macos
-            runner: parity-macos
+            runner: macos-latest
           - os: windows
             runner: windows-latest
     steps:
@@ -74,10 +73,6 @@ jobs:
         with:
           path: ~/.cargo/bin/eth-rpc${{ matrix.os == 'windows' && '.exe' || '' }}
           key: eth-rpc-${{ matrix.runner }}-${{ env.ETH_RPC_VERSION }}
-
-      - name: Set up Homebrew (for mac)
-        if: matrix.os == 'macos'
-        uses: Homebrew/actions/setup-homebrew@1ccc07ccd54b6048295516a3eb89b192c35057dc
 
       # Install dependencies for building
       - name: Install clang on ubuntu
@@ -154,14 +149,6 @@ jobs:
       ETH_RPC_URL: https://eth-mainnet.alchemyapi.io/v2/${{ secrets.ALCHEMY_API_KEY }}
       CARGO_PROFILE_DEV_DEBUG: 0
     steps:
-      - name: Set up Homebrew (for mac)
-        if: contains(matrix.runner_label, 'macos')
-        uses: Homebrew/actions/setup-homebrew@1ccc07ccd54b6048295516a3eb89b192c35057dc
-      - name: Install curl and jq
-        if: contains(matrix.runner_label, 'macos')
-        run: |
-          brew install curl jq
-
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@nextest
 
