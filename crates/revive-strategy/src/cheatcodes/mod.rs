@@ -972,7 +972,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
                 let target = H160::from_slice(call.target_address.as_slice());
                 let exec_config = ExecConfig {
-                    bump_nonce: false, // only works for contructors
+                    bump_nonce: false, // only works for constructors
                     collect_deposit_from_hold: None,
                     effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
