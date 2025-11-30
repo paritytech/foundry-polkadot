@@ -9,7 +9,7 @@ use polkadot_sdk::{
     sp_externalities::Externalities,
     sp_io::TestExternalities,
 };
-use revive_env::{AccountId, ExtBuilder, Runtime, System, Timestamp};
+use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
@@ -44,6 +44,7 @@ impl Clone for TestEnv {
     fn clone(&self) -> Self {
         let mut inner: Inner = Default::default();
         inner.externalities.backend = self.0.lock().unwrap().externalities.as_backend();
+        inner.depth = self.0.lock().unwrap().depth;
         Self(Arc::new(Mutex::new(inner)))
     }
 }
@@ -229,5 +230,13 @@ impl TestEnv {
                 })
                 .0,
         )
+    }
+
+    pub fn set_block_author(&mut self, new_author: Address) {
+        self.0.lock().unwrap().externalities.execute_with(|| {
+            let account_id32 =
+                AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
+            BlockAuthor::set(&account_id32);
+        });
     }
 }

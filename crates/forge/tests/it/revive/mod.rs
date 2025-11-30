@@ -8,5 +8,6 @@ pub mod cheat_mock_functions;
 pub mod cheat_prank;
 mod cheat_snapshot;
 pub mod cheat_store;
+pub mod cheats_individual;
 pub mod migration;
 pub mod tx_gas_price;
