@@ -82,12 +82,12 @@ revive_cheat_test_original!(test_blobhashes, "Blobhashes");
 // revive_cheat_test_original!(test_broadcast, "Broadcast");
 //  vm.broadcastRawTransaction does not work
 // revive_cheat_test_original!(test_broadcast_raw_transaction, "BroadcastRawTransaction");
-// vm.cloneAccount not tested
-revive_cheat_test_original!(test_clone_account, "CloneAccount");
+// vm.cloneAccount maybly ised for forks - skip it
+//revive_cheat_test_original!(test_clone_account, "CloneAccount");
 // not supported in polkadot
 // revive_cheat_test_original!(test_cool, "Cool");
 // vm.copyStorage vm.setArbitraryStorage not implemented
-revive_cheat_test_original!(test_copy_storage, "CopyStorage");
+//revive_cheat_test_original!(test_copy_storage, "CopyStorage");
 //  vm.deployCode not implemented
 revive_cheat_test_original!(test_deploy_code, "DeployCode");
 // SKIP it should not affect pallet-revive execution
@@ -108,7 +108,7 @@ revive_cheat_test_original!(test_expect_create, "ExpectCreate");
 revive_cheat_test!(test_get_artifact_path, "GetArtifactPath");
 revive_cheat_test_original!(test_get_chain, "GetChain");
 revive_cheat_test_original!(test_get_code, "GetCode");
-revive_cheat_test_original!(test_get_deployed_code, "GetDeployedCode");
+revive_cheat_test!(test_get_deployed_code, "GetDeployedCode");
 // SKIP it should not affect pallet-revive execution
 // revive_cheat_test_original!(test_get_foundry_version, "GetFoundryVersion");
 revive_cheat_test_original!(test_get_label, "GetLabel");
