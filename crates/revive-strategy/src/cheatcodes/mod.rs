@@ -9,7 +9,8 @@ use foundry_cheatcodes::{
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall,
-        resetNonceCall, rollCall, setNonceCall, setNonceUnsafeCall, storeCall, warpCall,
+        resetNonceCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall, storeCall,
+        warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -341,6 +342,18 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 ctx.externalities.set_block_author(newCoinbase);
+
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if is::<setBlockhashCall>(t) => {
+                let &setBlockhashCall { blockNumber, blockHash } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_pvm = ?using_pvm);
+
+                let block_num_u64 = blockNumber.try_into()
+                    .map_err(|_| foundry_cheatcodes::Error::from("Block number exceeds u64"))?;
+                ctx.externalities.set_blockhash(block_num_u64, blockHash);
 
                 cheatcode.dyn_apply(ccx, executor)
             }

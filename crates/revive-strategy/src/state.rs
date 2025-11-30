@@ -210,4 +210,22 @@ impl TestEnv {
             BlockAuthor::set(&account_id32);
         });
     }
+
+    pub fn set_blockhash(&mut self, block_number: u64, block_hash: FixedBytes<32>) {
+        self.0.lock().unwrap().execute_with(|| {
+            use polkadot_sdk::frame_system::BlockHash;
+
+            // Convert FixedBytes<32> to H256 (Substrate's hash type)
+            let hash = sp_core::H256::from_slice(block_hash.as_slice());
+
+            // Store in frame_system's BlockHash storage
+            BlockHash::<Runtime>::insert(block_number, hash);
+        });
+    }
+
+    pub fn is_contract(&self, address: Address) -> bool {
+        self.0.lock().unwrap().execute_with(|| {
+            AccountInfo::<Runtime>::load_contract(&H160::from_slice(address.as_slice())).is_some()
+        })
+    }
 }
