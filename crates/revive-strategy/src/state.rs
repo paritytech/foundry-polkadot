@@ -8,7 +8,7 @@ use polkadot_sdk::{
     sp_core::{self, H160},
     sp_io::TestExternalities,
 };
-use revive_env::{AccountId, ExtBuilder, Runtime, System, Timestamp};
+use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
@@ -201,5 +201,13 @@ impl TestEnv {
                 })
                 .0,
         )
+    }
+
+    pub fn set_block_author(&mut self, new_author: Address) {
+        self.0.lock().unwrap().execute_with(|| {
+            let account_id32 =
+                AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
+            BlockAuthor::set(&account_id32);
+        });
     }
 }
