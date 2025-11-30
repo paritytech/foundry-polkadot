@@ -16,7 +16,9 @@ use polkadot_sdk::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
     },
-    sc_transaction_pool, sp_timestamp,
+    sc_transaction_pool,
+    sp_api::StorageProof,
+    sp_timestamp,
 };
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -140,7 +142,9 @@ pub fn new(
         pool: transaction_pool.clone(),
         select_chain: SelectChain::new(backend.clone()),
         commands_stream: Box::pin(commands_stream),
-        consensus_data_provider: Some(Box::new(SameSlotConsensusDataProvider::new())),
+        consensus_data_provider: Some(Box::new(
+            SameSlotConsensusDataProvider::<_, StorageProof>::new(),
+        )),
         create_inherent_data_providers,
     };
     let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);

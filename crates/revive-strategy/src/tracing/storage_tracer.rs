@@ -84,7 +84,7 @@ impl Tracing for StorageTracer {
         _gas: Weight,
     ) {
         if is_delegate_call {
-            self.calls.push(self.current_addr());
+            self.calls.push(to);
         } else {
             self.calls.push(to);
         }

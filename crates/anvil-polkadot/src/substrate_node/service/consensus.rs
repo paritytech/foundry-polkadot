@@ -2,6 +2,7 @@ use polkadot_sdk::{
     sc_consensus::BlockImportParams,
     sc_consensus_aura::CompatibleDigestItem,
     sc_consensus_manual_seal::{ConsensusDataProvider, Error},
+    sp_api::StorageProof,
     sp_consensus_aura::ed25519::AuthoritySignature,
     sp_consensus_babe::Slot,
     sp_inherents::InherentData,
@@ -31,8 +32,6 @@ where
     B: BlockT,
     P: Send + Sync,
 {
-    type Proof = P;
-
     fn create_digest(
         &self,
         _parent: &B::Header,
@@ -50,7 +49,7 @@ where
         _parent: &B::Header,
         _params: &mut BlockImportParams<B>,
         _inherents: &InherentData,
-        _proof: Self::Proof,
+        _proof: StorageProof,
     ) -> Result<(), Error> {
         Ok(())
     }
