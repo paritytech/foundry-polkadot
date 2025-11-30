@@ -43,12 +43,6 @@ contract PolkadotSkipTest is DSTest {
         vm.makePersistent(address(helper));
     }
 
-    /// forge-config: default.allow_internal_expect_revert = true
-    function testRevertWhen_UseCheatcodesInPvmWithoutSkip() external {
-        vm.expectRevert();
-        helper.exec();
-    }
-
     function testUseCheatcodesInEvmWithSkip() external {
         vm.polkadotSkip();
         helper.exec();

@@ -3,17 +3,17 @@ pragma solidity ^0.8.18;
 
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
-import {DeployOnlyInPvm} from "./InPvm.sol";
+import {ReviveDetector, RequiresRevive} from "./ReviveDetector.sol";
 import "../../default/logs/console.sol";
 
-contract Counter is DeployOnlyInPvm {
+contract Counter is RequiresRevive {
     uint256 public number;
 
-    function inc() public inPvm {
+    function inc() public onlyRevive {
         number += 1;
     }
 
-    function reset() public inPvm {
+    function reset() public onlyRevive {
         number = 0;
     }
 }
