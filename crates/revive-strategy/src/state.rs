@@ -5,7 +5,7 @@ use polkadot_sdk::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
         Executable, Pallet,
     },
-    sp_core::{self, H160},
+    sp_core::{self, H160, H256},
     sp_io::TestExternalities,
 };
 use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
@@ -79,7 +79,20 @@ impl TestEnv {
     pub fn set_block_number(&mut self, new_height: U256) {
         // Set block number in pallet-revive runtime.
         self.0.lock().unwrap().execute_with(|| {
-            System::set_block_number(new_height.try_into().expect("Block number exceeds u64"));
+            let new_block_number: u64 = new_height.try_into().expect("Block number exceeds u32");
+            let digest = System::digest();
+            if System::block_hash(&new_block_number) == H256::zero() {
+                // First initialize and finalize the parent block to set up correct hashes.
+                System::set_block_number(new_block_number - 1);
+                let current_hash = System::finalize().hash();
+                System::initialize(&new_block_number, &current_hash, &digest);
+
+                // Now finalize the new block to set up its hash.
+                System::set_block_number(new_block_number);
+                let current_hash = System::finalize().hash();
+                System::initialize(&(new_block_number + 1), &current_hash, &digest);
+            }
+            System::set_block_number(new_block_number);
         });
     }
 
