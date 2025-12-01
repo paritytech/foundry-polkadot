@@ -328,13 +328,13 @@ Ran 1 test for src/ChainId.t.sol:ChainIdTest
 [PASS] testChainIdRevive() ([GAS])
 Traces:
   [..] ChainIdTest::testChainIdRevive()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    ├─ [..] → new <unknown>@[..]
     │   └─ ← [Return] 2357 bytes of code
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::chain_id() [staticcall]
+    ├─ [..] [..]::chain_id() [staticcall]
     │   └─ ← [Return] 31337 [3.133e4]
     ├─ [0] VM::chainId(99)
     │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::chain_id() [staticcall]
+    ├─ [..] [..]::chain_id() [staticcall]
     │   └─ ← [Return] 99
     └─ ← [Stop]
 
@@ -544,7 +544,7 @@ function test_expectRevert() public {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
     res.stderr_eq("").stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -555,95 +555,8 @@ Compiler run successful!
 
 Ran 3 tests for src/CounterTest.t.sol:CounterTest
 [PASS] test_Increment() ([GAS])
-Traces:
-  [..] CounterTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
-    │   ├─ emit SetNumber(result: 5)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    └─ ← [Stop]
-
-  [..] CounterTest::test_Increment()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(55)
-    │   ├─ emit SetNumber(result: 55)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 55
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::increment()
-    │   ├─ emit Increment(result: 56)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 56
-    └─ ← [Stop]
-
 [PASS] test_Seq() ([GAS])
-Traces:
-  [..] CounterTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
-    │   ├─ emit SetNumber(result: 5)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    └─ ← [Stop]
-
-  [..] CounterTest::test_Seq()
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] VM::expectEmit(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   └─ ← [Return]
-    ├─ emit Increment(result: 6)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setAndIncrementProxy(5, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ emit SetNumber(result: 5)
-    │   ├─ emit Increment(result: 6)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::setAndIncrement(5)
-    │   │   ├─ emit SetNumber(result: 5)
-    │   │   ├─ emit Increment(result: 6)
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    └─ ← [Stop]
-
 [PASS] test_expectRevert() ([GAS])
-Traces:
-  [..] CounterTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
-    │   ├─ emit SetNumber(result: 5)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    └─ ← [Stop]
-
-  [..] CounterTest::test_expectRevert()
-    ├─ [..] VM::expectRevert(custom error 0xf28dceb3: 0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000006456941a80000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000076661696c7572650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::failed_call() [staticcall]
-    │   └─ ← [Revert] Revert("failure")
-    └─ ← [Stop]
-
 Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
@@ -764,7 +677,7 @@ contract RecordTest is DSTest {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
     res.stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -775,55 +688,7 @@ Compiler run successful!
 
 Ran 2 tests for src/Test.t.sol:RecordTest
 [PASS] testRecordAccess() ([GAS])
-Traces:
-  [..] RecordTest::testRecordAccess()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::record()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
-    ├─ [0] VM::accesses(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000002], [0x0000000000000000000000000000000000000000000000000000000000000002]
-    └─ ← [Stop]
-
 [PASS] testStopRecordAccess() ([GAS])
-Traces:
-  [..] RecordTest::testStopRecordAccess()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::record()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
-    ├─ [..] VM::stopRecord()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
-    ├─ [..] VM::record()
-    │   └─ ← [Return]
-    ├─ [..] VM::stopRecord()
-    │   └─ ← [Return]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [], []
-    └─ ← [Stop]
-
 Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
@@ -1081,7 +946,7 @@ contract Emitterv2 {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
     res.stderr_eq("").stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -1092,158 +957,12 @@ Compiler run successful!
 
 Ran 7 tests for src/Test.t.sol:RecordLogsTest
 [PASS] testEmitRecordEmit() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testEmitRecordEmit()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 2, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   ├─ emit LogTopic12(topic1: 1, topic2: 2, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   └─ ← [Stop]
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(3, 0x2e38edeff9493e0004540e975027a429)
-    │   ├─ emit LogTopic1(topic1: 3, data: 0x2e38edeff9493e0004540e975027a429)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x7c7d81fafce31d4330303f05da0ccb9d970101c475382b40aa072986ee4caaad, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000102e38edeff9493e0004540e975027a42900000000000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 [PASS] testRecordOffGetsNothing() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOffGetsNothing()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] []
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 [PASS] testRecordOnEmitDifferentDepths() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnEmitDifferentDepths()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ emit LogTopic(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   └─ ← [Stop]
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   ├─ [..] 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x61fb7db3625c10432927a76bb32400c33a94e9bb6374137c4cd59f6e465bfdcb, 0x0000000000000000000000000000000000000000000000000000000000000001], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001043a26051362b8040b289abe93334a5e300000000000000000000000000000000, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496), ([0x7af92d5e3102a27d908bb1859fdef71b723f3c438e5d84f3af49dab68e18dc6d, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001443a26051362b8040b289abe93334a5e3662751aa000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f), ([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000004, 0x0000000000000000000000000000000000000000000000000000000000000005, 0x0000000000000000000000000000000000000000000000000000000000000006], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001843a26051362b8040b289abe93334a5e3662751aa691185ae0000000000000000, 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2)]
-    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::getEmitterAddr() [staticcall]
-    │   └─ ← [Return] 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2
-    └─ ← [Stop]
-
 [PASS] testRecordOnNoLogs() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnNoLogs()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] []
-    └─ ← [Stop]
-
 [PASS] testRecordOnSingleLog() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnSingleLog()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 2, 3, 0x4576656e74204461746120696e20537472696e67)
-    │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x4576656e74204461746120696e20537472696e67)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000144576656e74204461746120696e20537472696e67000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    └─ ← [Stop]
-
 [PASS] testRecordOnSingleLogTopic0() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnSingleLogTopic0()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x0a28c6fad56bcbad1788721e440963b3b762934a3134924733eaf8622cb44279], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003043a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a42900000000000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 [PASS] testRecordsConsumednAsRead() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordsConsumednAsRead()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 0x43a26051362b8040b289abe93334a5e3)
-    │   ├─ emit LogTopic1(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
-    │   └─ ← [Stop]
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] []
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x7af92d5e3102a27d908bb1859fdef71b723f3c438e5d84f3af49dab68e18dc6d, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001843a26051362b8040b289abe93334a5e3662751aa691185ae0000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000004, 0x0000000000000000000000000000000000000000000000000000000000000005, 0x0000000000000000000000000000000000000000000000000000000000000006], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001443a26051362b8040b289abe93334a5e3662751aa000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f), ([0x0a28c6fad56bcbad1788721e440963b3b762934a3134924733eaf8622cb44279], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002043a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(7, 8, 9, 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
-    │   ├─ emit LogTopic123(topic1: 7, topic2: 8, topic3: 9, data: 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000007, 0x0000000000000000000000000000000000000000000000000000000000000008, 0x0000000000000000000000000000000000000000000000000000000000000009], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000182e38edeff9493e0004540e975027a429ee666d1289f2c7a40000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 Suite result: ok. 7 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 7 tests passed, 0 failed, 0 skipped (7 total tests)
@@ -1309,16 +1028,16 @@ forgetest!(record_accesses, |prj, cmd| {
       assertEq(records[0].oldBalance, 0, "oldBalance");
       assertEq(records[0].newBalance, 1 ether, "newBalance");
       assertEq(records[0].value, 1 ether, "value");
-      assertEq(records[0].data, abi.encode(uint(100)), "data");
+      assertEq(records[0].data, abi.encodePacked(type(C).creationCode, (uint(100))));
       assertEq(records[0].reverted, false);
        
-      assertEq(records[0].storageAccesses.length, 2, "accesses"); // check the write
-      assertEq(records[0].storageAccesses[1].account, address(target), "access address");
-      assertEq(records[0].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
-      assertEq(records[0].storageAccesses[1].isWrite, true);
-      assertEq(records[0].storageAccesses[1].previousValue, bytes32(uint(0)), "previousValue");
-      assertEq(records[0].storageAccesses[1].newValue, bytes32(uint(100)), "newValue");
-      assertEq(records[0].storageAccesses[1].reverted, false);    
+      assertEq(records[0].storageAccesses.length, 1, "accesses"); // check the write
+      assertEq(records[0].storageAccesses[0].account, address(target), "access address");
+      assertEq(records[0].storageAccesses[0].slot, bytes32(uint256(1)), "slot");
+      assertEq(records[0].storageAccesses[0].isWrite, true);
+      assertEq(records[0].storageAccesses[0].previousValue, bytes32(uint(0)), "previousValue");
+      assertEq(records[0].storageAccesses[0].newValue, bytes32(uint(100)), "newValue");
+      assertEq(records[0].storageAccesses[0].reverted, false);    
     }
 
     function testCallaccesses() public {
@@ -1338,13 +1057,13 @@ forgetest!(record_accesses, |prj, cmd| {
       assertEq(records[0].data, abi.encodeWithSelector(C.setter.selector, 55), "data");
       assertEq(records[0].reverted, false);
        
-      assertEq(records[0].storageAccesses.length, 2, "accesses"); // check the write
-      assertEq(records[0].storageAccesses[1].account, address(existing), "access address");
-      assertEq(records[0].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
-      assertEq(records[0].storageAccesses[1].isWrite, true);
-      assertEq(records[0].storageAccesses[1].previousValue, bytes32(uint(100)), "previousValue");
-      assertEq(records[0].storageAccesses[1].newValue, bytes32(uint(55)), "newValue");
-      assertEq(records[0].storageAccesses[1].reverted, false);    
+      assertEq(records[0].storageAccesses.length, 1, "accesses"); // check the write
+      assertEq(records[0].storageAccesses[0].account, address(existing), "access address");
+      assertEq(records[0].storageAccesses[0].slot, bytes32(uint256(1)), "slot");
+      assertEq(records[0].storageAccesses[0].isWrite, true);
+      assertEq(records[0].storageAccesses[0].previousValue, bytes32(uint(100)), "previousValue");
+      assertEq(records[0].storageAccesses[0].newValue, bytes32(uint(55)), "newValue");
+      assertEq(records[0].storageAccesses[0].reverted, false);    
     }
     function testCallProxyaccesses() public {
       vm.startStateDiffRecording();
@@ -1363,13 +1082,13 @@ forgetest!(record_accesses, |prj, cmd| {
       assertEq(records[1].data, abi.encodeWithSelector(C.setter.selector, 55), "data");
       assertEq(records[1].reverted, false);
        
-      assertEq(records[1].storageAccesses.length, 2, "accesses"); // check the write
-      assertEq(records[1].storageAccesses[1].account, address(existing), "access address");
-      assertEq(records[1].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
-      assertEq(records[1].storageAccesses[1].isWrite, true);
-      assertEq(records[1].storageAccesses[1].previousValue, bytes32(uint(100)), "previousValue");
-      assertEq(records[1].storageAccesses[1].newValue, bytes32(uint(55)), "newValue");
-      assertEq(records[1].storageAccesses[1].reverted, false);    
+      assertEq(records[1].storageAccesses.length, 1, "accesses"); // check the write
+      assertEq(records[1].storageAccesses[0].account, address(existing), "access address");
+      assertEq(records[1].storageAccesses[0].slot, bytes32(uint256(1)), "slot");
+      assertEq(records[1].storageAccesses[0].isWrite, true);
+      assertEq(records[1].storageAccesses[0].previousValue, bytes32(uint(100)), "previousValue");
+      assertEq(records[1].storageAccesses[0].newValue, bytes32(uint(55)), "newValue");
+      assertEq(records[1].storageAccesses[0].reverted, false);    
     }
   }
   "#,
@@ -1377,72 +1096,16 @@ forgetest!(record_accesses, |prj, cmd| {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--polkadot", "-vvv"]).assert_success();
     res.stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
 
 Ran 3 tests for src/Test.t.sol:StateDiffTest
 [PASS] testCallProxyaccesses() ([GAS])
-Traces:
-  [..] StateDiffTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] StateDiffTest::testCallProxyaccesses()
-    ├─ [..] VM::startStateDiffRecording()
-    │   └─ ← [Return]
-    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::proxyCall(55)
-    │   ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setter(55)
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::stopAndReturnStateDiff()
-    │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 0, 0xac1b14ff0000000000000000000000000000000000000000000000000000000000000037, false, [(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a, 0x0000000000000000000000000000000000000000000000000000000000000000, false, 0x0000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f, 0x0000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f, false)], 1), ((0, 31337 [3.133e4]), 0, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 2)]
-    └─ ← [Stop]
-
 [PASS] testCallaccesses() ([GAS])
-Traces:
-  [..] StateDiffTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] StateDiffTest::testCallaccesses()
-    ├─ [..] VM::startStateDiffRecording()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setter(55)
-    │   └─ ← [Stop]
-    ├─ [..] VM::stopAndReturnStateDiff()
-    │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 1)]
-    └─ ← [Stop]
-
 [PASS] testCreateaccesses() ([GAS])
-Traces:
-  [..] StateDiffTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] StateDiffTest::testCreateaccesses()
-    ├─ [..] VM::startStateDiffRecording()
-    │   └─ ← [Return]
-    ├─ [..] → new <unknown>@0xc7183455a4C133Ae270771860664b6B7ec320bB1
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::stopAndReturnStateDiff()
-    │   └─ ← [Return] [((0, 31337 [3.133e4]), 4, 0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 1000000000000000000 [1e18], 0x0000000000000000000000000000000000000000000000000000000000000064, false, [(0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000000, false), (0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000064, false)], 1)]
-    └─ ← [Stop]
-
 Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
