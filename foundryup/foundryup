@@ -3,7 +3,7 @@ set -eo pipefail
 
 # NOTE: if you make modifications to this script, please increment the version number.
 # WARNING: the SemVer pattern: major.minor.patch must be followed as we use it to determine if the script is up to date.
-FOUNDRYUP_INSTALLER_VERSION="1.3.0"
+FOUNDRYUP_INSTALLER_VERSION="1.4.0"
 
 BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
 FOUNDRY_DIR=${FOUNDRY_DIR:-"$BASE_DIR/.foundry"}
@@ -16,7 +16,7 @@ FOUNDRY_BIN_PATH="$FOUNDRY_BIN_DIR/foundryup-polkadot"
 FOUNDRYUP_JOBS=""
 FOUNDRYUP_IGNORE_VERIFICATION=false
 
-BINS=(forge cast)
+BINS=(forge cast anvil-polkadot)
 
 export RUSTFLAGS="${RUSTFLAGS:--C target-cpu=native}"
 
@@ -161,7 +161,7 @@ main() {
     # If `--force` is set, skip the SHA verification.
     if [ "$FOUNDRYUP_IGNORE_VERIFICATION" = false ]; then
       # Check if the version is already installed by downloading the attestation file.
-      say "checking if forge, cast, anvil, and chisel for $FOUNDRYUP_TAG version are already installed"
+      say "checking if forge, cast, anvil-polkadot, and chisel for $FOUNDRYUP_TAG version are already installed"
 
       # Create a temporary directory to store the attestation link and artifact.
       tmp_dir="$(mktemp -d 2>/dev/null || echo ".")"
@@ -252,7 +252,7 @@ main() {
     fi
 
     # Download and extract the binaries archive
-    say "downloading forge and cast for $FOUNDRYUP_TAG version"
+    say "downloading forge, cast, and anvil-polkadot for $FOUNDRYUP_TAG version"
     if [ "$PLATFORM" = "win32" ]; then
       tmp="$(mktemp -d 2>/dev/null || echo ".")/foundry.zip"
       ensure download "$BIN_ARCHIVE_URL" "$tmp"

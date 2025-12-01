@@ -17,8 +17,7 @@ env:
   RESOLC_VERSION: 0.3.0
   DLRP_API_KEY: ${{ secrets.DLRP_API_KEY }}
   ETHERSCAN_API_KEYS: ${{ secrets.ETHERSCAN_API_KEYS }}
-  ETH_RPC_VERSION: 0.5.0
-  SUBSTRATE_NODE_COMMIT_SHA: f4dba53bfac614b054735aa725d2b0c44efda414
+  SNAPSHOTS: overwrite
 
 jobs:
   matrices:
@@ -41,107 +40,11 @@ jobs:
           echo "::debug::test-matrix=$output"
           echo "test-matrix=$output" >> $GITHUB_OUTPUT
 
-  cache-binaries:
-    name: cache binaries (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu
-            runner: parity-large-new
-          - os: macos
-            runner: macos-latest
-          - os: windows
-            runner: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
-
-      # Check existing caches first
-      - name: Cache substrate-node binary
-        id: cache-substrate
-        uses: actions/cache@v4
-        with:
-          path: polkadot-sdk/target/release/substrate-node${{ matrix.os == 'windows' && '.exe' || '' }}
-          key: substrate-node-${{ matrix.runner }}-${{ env.SUBSTRATE_NODE_COMMIT_SHA }}
-
-      - name: Cache eth-rpc binary
-        id: cache-ethrpc
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/eth-rpc${{ matrix.os == 'windows' && '.exe' || '' }}
-          key: eth-rpc-${{ matrix.runner }}-${{ env.ETH_RPC_VERSION }}
-
-      # Install dependencies for building
-      - name: Install clang on ubuntu
-        if: matrix.os == 'ubuntu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-dev unzip build-essential
-
-      - name: Install protobuf-compiler
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # macOS-specific setup
-      - name: Install libusb 1.0.27 (macOS)
-        if: matrix.os == 'macos'
-        run: |
-          brew install autoconf automake libtool pkg-config
-          wget https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
-          tar -xvjf libusb-1.0.27.tar.bz2
-          cd libusb-1.0.27
-          ./configure --prefix=/usr/local
-          make
-          sudo make install
-
-      - name: Install clang (macOS)
-        if: matrix.os == 'macos'
-        run: |
-          brew install llvm
-          brew link llvm
-          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
-        with:
-          target: ${{ matrix.target }}, wasm32-unknown-unknown
-          components: rust-src
-
-      # Build substrate-node (if not cached)
-      - name: Build substrate-node
-        if: steps.cache-substrate.outputs.cache-hit != 'true' && matrix.os == 'ubuntu'
-        run: |
-          git init polkadot-sdk
-          cd polkadot-sdk
-          git remote add origin https://github.com/paritytech/polkadot-sdk
-          git fetch --depth 1 origin ${{ env.SUBSTRATE_NODE_COMMIT_SHA }}
-          git checkout FETCH_HEAD
-          cargo build --release --bin substrate-node
-
-      # Install eth-rpc proxy (if not cached)
-      - name: Install eth-rpc proxy
-        if: steps.cache-ethrpc.outputs.cache-hit != 'true' && matrix.os == 'ubuntu'
-        run: cargo install pallet-revive-eth-rpc --version ${{ env.ETH_RPC_VERSION }} --locked
-
-      # Verify binaries exist
-      - name: Verify binaries
-        if: matrix.os == 'ubuntu'
-        run: |
-          echo "=== Substrate binary ==="
-          ls -lh polkadot-sdk/target/release/substrate-node || echo "substrate-node not found"
-          echo "=== eth-rpc binary ==="
-          ls -lh ~/.cargo/bin/eth-rpc || echo "eth-rpc not found"
-
   test:
     name: test ${{ matrix.name }}
     runs-on: ${{ matrix.runner_label }}
     timeout-minutes: 90
-    needs: [matrices, cache-binaries]
+    needs: [matrices]
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrices.outputs.test-matrix) }}
@@ -151,21 +54,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@nextest
-
-      - name: Restore substrate-node binary
-        uses: actions/cache/restore@v4
-        with:
-          path: polkadot-sdk/target/release/substrate-node${{ contains(matrix.runner_label, 'windows') && '.exe' || '' }}
-          key: substrate-node-${{ matrix.runner_label }}-${{ env.SUBSTRATE_NODE_COMMIT_SHA }}
-          fail-on-cache-miss: ${{ contains(matrix.runner_label, 'ubuntu') }}
-
-      - name: Restore eth-rpc binary
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cargo/bin/eth-rpc${{ contains(matrix.runner_label, 'windows') && '.exe' || '' }}
-          key: eth-rpc-${{ matrix.runner_label }}-${{ env.ETH_RPC_VERSION }}
-          fail-on-cache-miss: ${{ contains(matrix.runner_label, 'ubuntu') }}
-
       - name: Install dependencies for building (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new')
         run: |
@@ -206,9 +94,6 @@ jobs:
           cargo install rvm-rs
           rvm install ${{ env.RESOLC_VERSION }}
           rvm use ${{ env.RESOLC_VERSION }}
-
-      - name: Add substrate-node to $PATH
-        run: echo "${{github.workspace}}/polkadot-sdk/target/release" >> $GITHUB_PATH
 
       - name: Check Resolc Version
         run: resolc --version
