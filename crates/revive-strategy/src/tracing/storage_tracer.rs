@@ -83,12 +83,13 @@ impl Tracing for StorageTracer {
         input: &[u8],
         _gas: Weight,
     ) {
+        let code = self.is_create.take();
+
         if is_delegate_call {
             self.calls.push(self.current_addr());
         } else {
             self.calls.push(to);
         }
-        let code = self.is_create.take();
 
         let kind = if code.is_some() {
             AccountAccessKind::Create
