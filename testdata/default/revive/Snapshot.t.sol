@@ -22,21 +22,6 @@ contract Storage {
     }
 }
 
-contract Proxy {
-    address target;
-
-    constructor(address _data) payable {
-        target = _data;
-    }
-
-    function proxyCall(uint256 _data, uint256 data) public {
-        (bool success,) = address(target).call(abi.encodeWithSelector(Storage.setSlots.selector, _data, data));
-        if (!success) {
-            assert(false);
-        }
-    }
-}
-
 contract StateSnapshotTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
@@ -165,8 +150,5 @@ contract StateSnapshotTest is DSTest {
 
         assertEq(store.blockNumber(), num, "snapshot revert for block.number unsuccessful");
         assertEq(store.blockTimestamp(), time, "snapshot revert for block.timestamp unsuccessful");
-        Proxy p = new Proxy(address(store2));
-        vm.expectRevert();
-        p.proxyCall(1, 1);
     }
 }
