@@ -514,8 +514,6 @@ impl<'a> FunctionRunner<'a> {
         call_after_invariant: bool,
         identified_contracts: Option<&ContractsByAddress>,
     ) -> TestResult {
-        self.executor.strategy.runner.rollback_transaction(self.executor.strategy.context.as_ref());
-        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         if let Err(e) = self.apply_function_inline_config(func) {
             self.result.single_fail(Some(e.to_string()));
             return self.result;
@@ -547,7 +545,12 @@ impl<'a> FunctionRunner<'a> {
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
         // Prepare unit test execution.
+        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         if self.prepare_test(func).is_err() {
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
             return self.result;
         }
 
@@ -564,10 +567,18 @@ impl<'a> FunctionRunner<'a> {
             Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
             Err(EvmError::Skip(reason)) => {
                 self.result.single_skip(reason);
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
             Err(err) => {
                 self.result.single_fail(Some(err.to_string()));
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
         };
@@ -575,6 +586,7 @@ impl<'a> FunctionRunner<'a> {
         let success =
             self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
         self.result.single_result(success, reason, raw_call_result);
+        self.executor.strategy.runner.rollback_transaction(self.executor.strategy.context.as_ref());
 
         self.result
     }

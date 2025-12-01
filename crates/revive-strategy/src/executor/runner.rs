@@ -163,11 +163,6 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
     fn rollback_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
         let ctx = get_context_ref(ctx);
         let mut state = ctx.externalties.0.lock().unwrap();
-        if state.depth == 0 {
-            let _ = state.externalities.ext().storage_rollback_transaction();
-        } else {
-            state.depth = 0;
-            while state.externalities.ext().storage_rollback_transaction().is_ok() {}
-        }
+        let _ = state.externalities.ext().storage_rollback_transaction();
     }
 }
