@@ -8018,6 +8018,26 @@
     },
     {
       "func": {
+        "id": "polkadotSkip",
+        "description": "When running in PVM context, skips the next CREATE or CALL, executing it on the EVM instead.\nAll `CREATE`s executed within this skip, will automatically have `CALL`s to their target addresses\nexecuted in the EVM, and need not be marked with this cheatcode at every usage location.",
+        "declaration": "function polkadotSkip() external pure;",
+        "visibility": "external",
+        "mutability": "pure",
+        "signature": "polkadotSkip()",
+        "selector": "0x24dcf923",
+        "selectorBytes": [
+          36,
+          220,
+          249,
+          35
+        ]
+      },
+      "group": "testing",
+      "status": "stable",
+      "safety": "safe"
+    },
+    {
+      "func": {
         "id": "prank_0",
         "description": "Sets the *next* call's `msg.sender` to be the input address.",
         "declaration": "function prank(address msgSender) external;",

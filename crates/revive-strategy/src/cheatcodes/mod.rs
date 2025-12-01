@@ -8,9 +8,9 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall, pvmCall,
-        resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall, setNonceCall,
-        setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall,
+        pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
+        setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -41,8 +41,8 @@ use crate::{
     state::TestEnv,
     tracing::{Tracer, storage_tracer::AccountAccess},
 };
-use polkadot_sdk::pallet_revive::tracing::Tracing;
 use foundry_cheatcodes::Vm::{AccountAccess as FAccountAccess, ChainInfo};
+use polkadot_sdk::pallet_revive::tracing::Tracing;
 
 use revm::{
     bytecode::opcode as op,
@@ -791,7 +791,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         input: &dyn CommonCreateInput,
         executor: &mut dyn foundry_cheatcodes::CheatcodesExecutor,
     ) -> Option<CreateOutcome> {
-         let mock_handler =
+        let mock_handler =
             MockHandlerImpl::new(&ecx, &input.caller(), &ecx.tx.caller, None, None, state);
 
         let ctx: &mut PvmCheatcodeInspectorStrategyContext =
@@ -1170,7 +1170,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             ctx.record_next_create_address = false;
             if let Some(address) = outcome.address {
                 ctx.skip_pvm_addresses.insert(address);
-                tracing::info!("recorded address {:?} for skip execution in the pallet-revive", address);
+                tracing::info!(
+                    "recorded address {:?} for skip execution in the pallet-revive",
+                    address
+                );
             }
         }
     }
