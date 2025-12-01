@@ -84,7 +84,7 @@ impl Tracing for StorageTracer {
         _gas: Weight,
     ) {
         if is_delegate_call {
-            self.calls.push(to);
+            self.calls.push(self.current_addr());
         } else {
             self.calls.push(to);
         }
@@ -112,7 +112,7 @@ impl Tracing for StorageTracer {
         let mut record = AccountAccess {
             depth: new_depth,
             kind,
-            account: to,
+            account: self.current_addr(),
             accessor: from,
             data: Bytes::from(input.to_vec()),
             value,

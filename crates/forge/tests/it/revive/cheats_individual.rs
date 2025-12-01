@@ -42,3 +42,4 @@ macro_rules! revive_cheat_test_original {
 revive_cheat_test!(test_custom_nonce, "Nonce");
 revive_cheat_test_original!(test_nonce, "Nonce");
 revive_cheat_test_original!(test_record_accesses, "RecordAccessesRevive");
+revive_cheat_test_original!(test_record_rw, "Record");
