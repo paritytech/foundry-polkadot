@@ -215,10 +215,7 @@ impl TestEnv {
         self.0.lock().unwrap().execute_with(|| {
             use polkadot_sdk::frame_system::BlockHash;
 
-            // Convert FixedBytes<32> to H256 (Substrate's hash type)
             let hash = sp_core::H256::from_slice(block_hash.as_slice());
-
-            // Store in frame_system's BlockHash storage
             BlockHash::<Runtime>::insert(block_number, hash);
         });
     }
