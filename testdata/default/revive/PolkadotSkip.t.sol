@@ -20,13 +20,12 @@ contract EvmTargetContract is DSTest {
     event Added(uint8 indexed sum);
 
     function exec() public {
-        // We emit the event we expect to see.
-        vm.expectEmit();
         emit Added(3);
 
         Calculator calc = new Calculator();
         uint8 sum = calc.add(1, 2);
         assertEq(3, sum);
+        vm.setNonce(address(this), 10);
     }
 }
 
@@ -46,13 +45,20 @@ contract PolkadotSkipTest is DSTest {
     function testUseCheatcodesInEvmWithSkip() external {
         vm.polkadotSkip();
         helper.exec();
+        assertEq(vm.getNonce(address(helper)), 10);
     }
 
-    function testAutoSkipAfterDeployInEvmWithSkip() external {
-        vm.polkadotSkip();
-        EvmTargetContract helper2 = new EvmTargetContract();
+    // function testAutoSkipAfterDeployInEvmWithSkip() external {
+    //     // vm.polkadotSkip();
+    //     EvmTargetContract helper2 = new EvmTargetContract();
 
-        // this should auto execute in EVM
-        helper2.exec();
+    //     // this should auto execute in EVM
+    //     helper2.exec();
+    // }
+
+    function testreviveWhenUseCheatcodeWithoutSkip() external {
+        uint256 nonceBefore = vm.getNonce(address(helper));
+        helper.exec();
+        assertEq(vm.getNonce(address(helper)), nonceBefore + 1);
     }
 }

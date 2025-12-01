@@ -5,7 +5,7 @@ use revm::primitives::hardfork::SpecId;
 use rstest::rstest;
 
 #[rstest]
-#[case::evm_mode(ReviveRuntimeMode::Evm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_polkadot_skip(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner: forge::MultiContractRunner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
