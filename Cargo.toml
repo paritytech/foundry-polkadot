@@ -388,6 +388,12 @@ flate2 = "1.1"
 # See the `idna_adapter` README.md for more details: https://docs.rs/crate/idna_adapter/latest
 idna_adapter = "=1.1.0"
 
+[patch."https://github.com/paritytech/polkadot-sdk"]
+polkadot-sdk = { path = "../polkadot-sdk/umbrella" }
+pallet-revive-eth-rpc = { path = "../polkadot-sdk/substrate/frame/revive/rpc" }
+revive-dev-runtime = { path = "../polkadot-sdk/substrate/frame/revive/dev-node/runtime" }
+sp-runtime-interface = { path = "../polkadot-sdk/substrate/primitives/runtime-interface" }
+
 [patch.crates-io]
 solar-parse = { git = "https://github.com/paradigmxyz/solar", tag = "v0.1.5" }
 solar-sema = { git = "https://github.com/paradigmxyz/solar", tag = "v0.1.5" }

@@ -11,30 +11,31 @@ use crate::sp_runtime::ConsensusEngineId;
 use alloc::{vec, vec::Vec};
 use currency::*;
 use frame_support::weights::{
-    Weight,
     constants::{BlockExecutionWeight, ExtrinsicBaseWeight, WEIGHT_REF_TIME_PER_SECOND},
+    Weight,
 };
 use frame_system::limits::BlockWeights;
 use pallet_revive::{
-    AccountId32Mapper,
     evm::{
         fees::{BlockRatioFee, Info as FeeInfo},
         runtime::EthExtra,
     },
+    AccountId32Mapper,
 };
-use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
+use pallet_transaction_payment::{ConstFeeMultiplier, FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
+    pallet_transaction_payment::Multiplier,
     parachains_common::{
         AccountId, AssetHubPolkadotAuraId as AuraId, BlockNumber, Hash as CommonHash, Header,
         Nonce, Signature,
     },
-    polkadot_runtime_common::SlowAdjustingFeeUpdate,
     polkadot_sdk_frame::{
         deps::sp_genesis_builder,
         runtime::{apis, prelude::*},
         traits::FindAuthor,
     },
-    sp_consensus_aura::{self, SlotDuration, runtime_decl_for_aura_api::AuraApiV1},
+    sp_arithmetic::FixedU128,
+    sp_consensus_aura::{self, runtime_decl_for_aura_api::AuraApiV1, SlotDuration},
     sp_runtime::traits::Block as BlockT,
     *,
 };
@@ -240,6 +241,7 @@ impl frame_system::Config for Runtime {
 
 parameter_types! {
     pub const ExistentialDeposit: Balance = DOLLARS;
+    pub const FeeMultiplier: Multiplier = Multiplier::One();//FixedU128::from_rational(1, 1_000_000_000_000);
 }
 
 // Implements the types required for the balances pallet.
@@ -275,7 +277,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type WeightToFee = WeightToFee;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     // That's how asset-hub-westend sets this.
-    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
+    type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
 }
 
 parameter_types! {
@@ -312,6 +314,7 @@ impl pallet_revive::Config for Runtime {
     type Time = Timestamp;
     type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
     type DebugEnabled = ConstBool<true>;
+    type GasScale = ConstU128<100_000_000>;
 }
 
 pallet_revive::impl_runtime_apis_plus_revive_traits!(
