@@ -113,7 +113,7 @@ impl Tracing for StorageTracer {
         let mut record = AccountAccess {
             depth: new_depth,
             kind,
-            account: self.current_addr(),
+            account: to,
             accessor: from,
             data: Bytes::from(input.to_vec()),
             value,
