@@ -40,6 +40,7 @@ use crate::{
     state::TestEnv,
     tracing::{Tracer, storage_tracer::AccountAccess},
 };
+use polkadot_sdk::pallet_revive::tracing::Tracing;
 use foundry_cheatcodes::Vm::{AccountAccess as FAccountAccess, ChainInfo};
 
 use revm::{
@@ -838,9 +839,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(true);
+        let caller_h160 = H160::from_slice(input.caller().as_slice());
+
         let res = ctx.externalities.execute_with(|| {
+            tracer.watch_address(&caller_h160);
+
             tracer.trace(|| {
-                let caller_h160 = H160::from_slice(input.caller().as_slice());
                 let origin_account_id = AccountId::to_fallback_account_id(&caller_h160);
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
@@ -1003,6 +1007,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let mut tracer = Tracer::new(true);
         let res = ctx.externalities.execute_with(|| {
+            // Watch the caller's address so its nonce changes get tracked in prestate trace
+            tracer.watch_address(&caller_h160);
+
             tracer.trace(|| {
                 let origin =
                     OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));

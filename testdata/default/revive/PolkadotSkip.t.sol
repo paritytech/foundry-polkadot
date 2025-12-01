@@ -34,12 +34,12 @@ contract PolkadotSkipTest is DSTest {
     EvmTargetContract helper;
 
     function setUp() external {
-        vm.pvm(true);
+        assertEq(vm.getNonce(address(this)), 1);
         helper = new EvmTargetContract();
+        assertEq(vm.getNonce(address(this)), 2);
+
         // ensure we can call cheatcodes from the helper
         vm.allowCheatcodes(address(helper));
-        // and that the contract is kept between vm switches
-        vm.makePersistent(address(helper));
     }
 
     function testUseCheatcodesInEvmWithSkip() external {
@@ -48,13 +48,14 @@ contract PolkadotSkipTest is DSTest {
         assertEq(vm.getNonce(address(helper)), 10);
     }
 
-    // function testAutoSkipAfterDeployInEvmWithSkip() external {
-    //     // vm.polkadotSkip();
-    //     EvmTargetContract helper2 = new EvmTargetContract();
-
-    //     // this should auto execute in EVM
-    //     helper2.exec();
-    // }
+    function testAutoSkipAfterDeployInEvmWithSkip() external {
+        assertEq(vm.getNonce(address(this)), 2);
+        vm.polkadotSkip();
+        EvmTargetContract helper2 = new EvmTargetContract();
+        // this should auto execute in EVM
+        helper2.exec();
+        assertEq(vm.getNonce(address(helper2)), 10);
+    }
 
     function testreviveWhenUseCheatcodeWithoutSkip() external {
         uint256 nonceBefore = vm.getNonce(address(helper));
