@@ -950,6 +950,14 @@ impl Cheatcode for pvmCall {
     }
 }
 
+impl Cheatcode for polkadotSkipCall {
+    fn apply_stateful(&self, _ccx: &mut CheatsCtxt) -> Result {
+        // Does nothing by default.
+        // PVM-related logic is implemented in the corresponding strategy object.
+        Ok(Default::default())
+    }
+}
+
 pub(super) fn get_nonce(ccx: &mut CheatsCtxt, address: &Address) -> Result {
     let account = ccx.ecx.journaled_state.load_account(*address)?;
     Ok(account.info.nonce.abi_encode())

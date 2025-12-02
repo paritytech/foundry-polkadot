@@ -937,6 +937,7 @@ impl Cheatcodes {
         }
 
         self.strategy.runner.revive_remove_duplicate_account_access(self);
+        self.strategy.runner.revive_record_create_address(self, outcome);
     }
 
     // Tells whether PVM is enabled or not.

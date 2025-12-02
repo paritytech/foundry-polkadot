@@ -8,9 +8,9 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, pvmCall,
-        resetNonceCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall, storeCall,
-        warpCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall,
+        pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall, setBlockhashCall,
+        setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -42,6 +42,7 @@ use crate::{
     tracing::{Tracer, storage_tracer::AccountAccess},
 };
 use foundry_cheatcodes::Vm::{AccountAccess as FAccountAccess, ChainInfo};
+use polkadot_sdk::pallet_revive::tracing::Tracing;
 
 use revm::{
     bytecode::opcode as op,
@@ -113,6 +114,14 @@ impl PvmStartupMigration {
 pub struct PvmCheatcodeInspectorStrategyContext {
     /// Whether we're currently using pallet-revive (migrated from REVM)
     pub using_pvm: bool,
+    /// When in PVM context, execute the next CALL or CREATE in the EVM instead.
+    pub skip_pvm: bool,
+    /// Any contracts that were deployed in `skip_pvm` step.
+    /// This makes it easier to dispatch calls to any of these addresses in PVM context, directly
+    /// to EVM. Alternatively, we'd need to add `vm.polkadotSkip()` to these calls manually.
+    pub skip_pvm_addresses: std::collections::HashSet<Address>,
+    /// Records the next create address for `skip_pvm_addresses`.
+    pub record_next_create_address: bool,
     /// Controls automatic migration to pallet-revive
     pub pvm_startup_migration: PvmStartupMigration,
     pub dual_compiled_contracts: DualCompiledContracts,
@@ -131,6 +140,9 @@ impl PvmCheatcodeInspectorStrategyContext {
         Self {
             // Start in REVM mode by default
             using_pvm: false,
+            skip_pvm: false,
+            skip_pvm_addresses: Default::default(),
+            record_next_create_address: Default::default(),
             // Will be set to Allow when test contract deploys
             pvm_startup_migration: PvmStartupMigration::Defer,
             dual_compiled_contracts,
@@ -275,6 +287,12 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 }
                 Ok(Default::default())
             }
+            t if is::<polkadotSkipCall>(t) => {
+                let polkadotSkipCall { .. } = cheatcode.as_any().downcast_ref().unwrap();
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.skip_pvm = true;
+                Ok(Default::default())
+            }
             t if using_pvm && is::<dealCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
@@ -318,6 +336,23 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 ctx.externalities.set_block_number(newHeight);
 
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if using_pvm && is::<snapshotStateCall>(t) => {
+                ctx.externalities.start_snapshotting();
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if using_pvm && is::<revertToStateAndDeleteCall>(t) => {
+                let &revertToStateAndDeleteCall { snapshotId } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+
+                ctx.externalities.revert(snapshotId.try_into().unwrap());
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if using_pvm && is::<revertToStateCall>(t) => {
+                let &revertToStateCall { snapshotId } = cheatcode.as_any().downcast_ref().unwrap();
+
+                ctx.externalities.revert(snapshotId.try_into().unwrap());
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_pvm && is::<warpCall>(t) => {
@@ -779,6 +814,13 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return None;
         }
 
+        if ctx.skip_pvm {
+            ctx.skip_pvm = false; // handled the skip, reset flag
+            ctx.record_next_create_address = true;
+            tracing::info!("running create in EVM, instead of pallet-revive (skipped)");
+            return None;
+        }
+
         if let Some(CreateScheme::Create) = input.scheme() {
             let caller = input.caller();
             let nonce = ecx
@@ -828,9 +870,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(true);
+        let caller_h160 = H160::from_slice(input.caller().as_slice());
+
         let res = ctx.externalities.execute_with(|| {
+            tracer.watch_address(&caller_h160);
+
             tracer.trace(|| {
-                let caller_h160 = H160::from_slice(input.caller().as_slice());
                 let origin_account_id = AccountId::to_fallback_account_id(&caller_h160);
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
@@ -952,6 +997,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             return None;
         }
 
+        if ctx.skip_pvm || ctx.skip_pvm_addresses.contains(&call.target_address) {
+            ctx.skip_pvm = false; // handled the skip, reset flag
+            tracing::info!("running call in EVM, instead of pallet-revive (skipped)");
+            return None;
+        }
+
         if ecx
             .journaled_state
             .database
@@ -987,6 +1038,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let mut tracer = Tracer::new(true);
         let res = ctx.externalities.execute_with(|| {
+            // Watch the caller's address so its nonce changes get tracked in prestate trace
+            tracer.watch_address(&caller_h160);
+
             tracer.trace(|| {
                 let origin =
                     OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));
@@ -1116,6 +1170,25 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         apply_revm_storage_diff(ctx, ecx, call.target_address);
+    }
+
+    fn revive_record_create_address(
+        &self,
+        state: &mut foundry_cheatcodes::Cheatcodes,
+        outcome: &CreateOutcome,
+    ) {
+        let ctx = get_context_ref_mut(state.strategy.context.as_mut());
+
+        if ctx.record_next_create_address {
+            ctx.record_next_create_address = false;
+            if let Some(address) = outcome.address {
+                ctx.skip_pvm_addresses.insert(address);
+                tracing::info!(
+                    "recorded address {:?} for skip execution in the pallet-revive",
+                    address
+                );
+            }
+        }
     }
 }
 
