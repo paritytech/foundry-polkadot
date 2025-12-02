@@ -8,9 +8,9 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-AccountAccessKind, chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall,
-        pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
-        setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        AccountAccessKind, chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall,
+        polkadotSkipCall, pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall,
+        rollCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
