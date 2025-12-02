@@ -267,6 +267,14 @@ pub trait CheatcodeInspectorStrategyExt {
 
     // Remove duplicate accesses in storage_recorder
     fn revive_remove_duplicate_account_access(&self, _state: &mut crate::Cheatcodes) {}
+
+    // Record create address for skip_pvm_addresses tracking
+    fn revive_record_create_address(
+        &self,
+        _state: &mut crate::Cheatcodes,
+        _outcome: &revm::interpreter::CreateOutcome,
+    ) {
+    }
 }
 
 // Legacy type aliases for backward compatibility
