@@ -2901,10 +2901,10 @@ interface Vm {
     /// Enables or disables PVM (PolkaVM) mode for contract execution.
     /// When enabled, only PVM-specific calls are intercepted; all other operations run on EVM.
     /// Example usage:
-    /// vm.pvm(true);  // Enable PVM mode
-    /// vm.pvm(false); // Disable PVM mode (use EVM)
+    /// vm.polkadot(true);  // Enable PVM mode
+    /// vm.polkadot(false); // Disable PVM mode (use EVM)
     #[cheatcode(group = Utilities)]
-    function pvm(bool enabled) external;
+    function polkadot(bool enabled) external;
 
     /// When running in PVM context, skips the next CREATE or CALL, executing it on the EVM instead.
     /// All `CREATE`s executed within this skip, will automatically have `CALL`s to their target addresses

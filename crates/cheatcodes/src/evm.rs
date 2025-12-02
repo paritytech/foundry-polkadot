@@ -942,7 +942,7 @@ impl Cheatcode for stopAndReturnDebugTraceRecordingCall {
     }
 }
 
-impl Cheatcode for pvmCall {
+impl Cheatcode for polkadotCall {
     fn apply_stateful(&self, _ccx: &mut CheatsCtxt) -> Result {
         // Does nothing by default.
         // PVM-related logic is implemented in the corresponding strategy object.
