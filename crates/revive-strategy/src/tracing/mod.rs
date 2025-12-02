@@ -134,7 +134,7 @@ impl Tracing for Tracer {
         &mut self,
         from: polkadot_sdk::sp_core::H160,
         to: polkadot_sdk::sp_core::H160,
-        is_delegate_call: bool,
+        is_delegate_call: Option<polkadot_sdk::sp_core::H160>,
         is_read_only: bool,
         value: U256,
         input: &[u8],

@@ -46,6 +46,8 @@ pub struct AccountAccess {
     pub initialized: bool,
 }
 
+
+
 impl StorageTracer {
     pub fn get_records(&self) -> Vec<AccountAccess> {
         assert!(
@@ -77,7 +79,7 @@ impl Tracing for StorageTracer {
         &mut self,
         from: H160,
         to: H160,
-        is_delegate_call: bool,
+        is_delegate_call: Option<H160>,
         is_read_only: bool,
         value: U256,
         input: &[u8],
@@ -85,8 +87,8 @@ impl Tracing for StorageTracer {
     ) {
         let code = self.is_create.take();
 
-        if is_delegate_call {
-            self.calls.push(self.current_addr());
+        if let Some(addr) = is_delegate_call {
+            self.calls.push(addr);
         } else {
             self.calls.push(to);
         }
@@ -96,7 +98,7 @@ impl Tracing for StorageTracer {
         } else {
             if is_read_only {
                 AccountAccessKind::StaticCall
-            } else if is_delegate_call {
+            } else if is_delegate_call.is_some() {
                 AccountAccessKind::DelegateCall
             } else {
                 AccountAccessKind::Call
@@ -113,7 +115,7 @@ impl Tracing for StorageTracer {
         let mut record = AccountAccess {
             depth: new_depth,
             kind,
-            account: to,
+            account: self.current_addr(),
             accessor: from,
             data: Bytes::from(input.to_vec()),
             value,
@@ -124,6 +126,10 @@ impl Tracing for StorageTracer {
             index: self.index,
             initialized: true,
         };
+        if is_delegate_call.is_some() {
+            self.calls.pop(); 
+            self.calls.push(self.current_addr())
+        }
         if let Some(code) = code {
             match code {
                 Code::Upload(items) => {
