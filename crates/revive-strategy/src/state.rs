@@ -109,6 +109,13 @@ impl TestEnv {
         });
     }
 
+    pub fn get_block_number(&mut self) -> U256 {
+        // Get block number in pallet-revive runtime.
+        self.0.lock().unwrap().externalities.execute_with(|| {
+            U256::from(System::block_number())
+        })
+    }
+
     pub fn set_timestamp(&mut self, new_timestamp: U256) {
         // Set timestamp in pallet-revive runtime (milliseconds).
         self.0.lock().unwrap().externalities.execute_with(|| {

@@ -386,9 +386,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug(), using_pvm = ?using_pvm);
 
-                let block_num_u64 = blockNumber
-                    .try_into()
-                    .map_err(|_| foundry_cheatcodes::Error::from("Block number exceeds u64"))?;
+                // Validate blockNumber is not in the future
+                let current_block = ctx.externalities.get_block_number();
+                if blockNumber > current_block {
+                    return Err(foundry_cheatcodes::Error::from(
+                        "block number must be less than or equal to the current block number"
+                    ));
+                }
+
+                let block_num_u64 = blockNumber.to::<u64>();
                 ctx.externalities.set_blockhash(block_num_u64, blockHash);
 
                 cheatcode.dyn_apply(ccx, executor)
