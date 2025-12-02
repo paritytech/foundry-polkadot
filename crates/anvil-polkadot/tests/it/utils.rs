@@ -234,9 +234,7 @@ impl TestNode {
         if n <= self.best_block_number().await {
             return Ok(());
         }
-        tokio::time::timeout(timeout, self.wait_for_substrate_block_with_number(n))
-            .await
-            .map_err(|e| e.into())?;
+        tokio::time::timeout(timeout, self.wait_for_substrate_block_with_number(n)).await?;
 
         // Sleep here to give time for the revive rpc node to process the block
         // Can be removed once pub/sub is supported and we could subscribe to the new block
