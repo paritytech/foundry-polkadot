@@ -2,6 +2,9 @@
 
 FROM ubuntu:24.04 AS builder
 
+# Expose Anvil's default port (Useful for users running the node)
+EXPOSE 8545
+
 ARG VERSION=stable
 
 RUN apt-get update && \
