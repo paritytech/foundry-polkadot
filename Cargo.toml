@@ -40,8 +40,8 @@ edition = "2024"
 rust-version = "1.88"
 authors = ["Foundry Contributors"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/foundry-rs/foundry"
-repository = "https://github.com/foundry-rs/foundry"
+homepage = "https://github.com/paritytech/foundry-polkadot"
+repository = "https://github.com/paritytech/foundry-polkadot"
 exclude = ["benches/", "tests/", "test-data/", "testdata/"]
 
 [workspace.lints.clippy]

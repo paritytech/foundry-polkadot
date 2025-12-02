@@ -6,6 +6,7 @@ use polkadot_sdk::{
         Executable, Pallet,
     },
     sp_core::{self, H160},
+    sp_externalities::Externalities,
     sp_io::TestExternalities,
 };
 use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
@@ -13,15 +14,23 @@ use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
 };
-pub struct TestEnv(pub Arc<Mutex<TestExternalities>>);
 
-impl Default for TestEnv {
+pub(crate) struct Inner {
+    pub externalities: TestExternalities,
+    pub depth: usize,
+}
+
+#[derive(Default)]
+pub struct TestEnv(pub(crate) Arc<Mutex<Inner>>);
+
+impl Default for Inner {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(
-            ExtBuilder::default()
+        Self {
+            externalities: ExtBuilder::default()
                 .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
                 .build(),
-        )))
+            depth: 0,
+        }
     }
 }
 
@@ -33,9 +42,10 @@ impl Debug for TestEnv {
 
 impl Clone for TestEnv {
     fn clone(&self) -> Self {
-        let mut externalities = ExtBuilder::default().build();
-        externalities.backend = self.0.lock().unwrap().as_backend();
-        Self(Arc::new(Mutex::new(externalities)))
+        let mut inner: Inner = Default::default();
+        inner.externalities.backend = self.0.lock().unwrap().externalities.as_backend();
+        inner.depth = self.0.lock().unwrap().depth;
+        Self(Arc::new(Mutex::new(inner)))
     }
 }
 
@@ -44,12 +54,28 @@ impl TestEnv {
         Self(self.0.clone())
     }
 
+    pub fn start_snapshotting(&mut self) {
+        let mut state = self.0.lock().unwrap();
+        state.depth += 1;
+        state.externalities.ext().storage_start_transaction();
+    }
+
+    pub fn revert(&mut self, depth: usize) {
+        let mut state = self.0.lock().unwrap();
+        while state.depth > depth + 1 {
+            state.externalities.ext().storage_rollback_transaction().unwrap();
+            state.depth -= 1;
+        }
+        state.externalities.ext().storage_rollback_transaction().unwrap();
+        state.externalities.ext().storage_start_transaction();
+    }
+
     pub fn execute_with<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
-        self.0.lock().unwrap().execute_with(f)
+        self.0.lock().unwrap().externalities.execute_with(f)
     }
 
     pub fn get_nonce(&mut self, account: Address) -> u32 {
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
                 account.as_slice(),
             )))
@@ -57,7 +83,7 @@ impl TestEnv {
     }
 
     pub fn set_nonce(&mut self, address: Address, nonce: u64) {
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             let account_id =
                 AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
 
@@ -69,7 +95,7 @@ impl TestEnv {
 
     pub fn set_chain_id(&mut self, new_chain_id: u64) {
         // Set chain id in pallet-revive runtime.
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
                 &new_chain_id,
             );
@@ -78,14 +104,14 @@ impl TestEnv {
 
     pub fn set_block_number(&mut self, new_height: U256) {
         // Set block number in pallet-revive runtime.
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             System::set_block_number(new_height.try_into().expect("Block number exceeds u64"));
         });
     }
 
     pub fn set_timestamp(&mut self, new_timestamp: U256) {
         // Set timestamp in pallet-revive runtime (milliseconds).
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             let timestamp_ms = new_timestamp.saturating_to::<u64>().saturating_mul(1000);
             Timestamp::set_timestamp(timestamp_ms);
         });
@@ -97,7 +123,7 @@ impl TestEnv {
         new_runtime_code: &Bytes,
         ecx: Ecx<'_, '_, '_>,
     ) -> Result {
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             let origin_address = H160::from_slice(ecx.tx.caller.as_slice());
             let origin_account = AccountId::to_fallback_account_id(&origin_address);
 
@@ -153,6 +179,7 @@ impl TestEnv {
         self.0
             .lock()
             .unwrap()
+            .externalities
             .execute_with(|| {
                 pallet_revive::Pallet::<Runtime>::get_storage(target_address_h160, slot.into())
             })
@@ -169,6 +196,7 @@ impl TestEnv {
         self.0
             .lock()
             .unwrap()
+            .externalities
             .execute_with(|| {
                 pallet_revive::Pallet::<Runtime>::set_storage(
                     target_address_h160,
@@ -184,7 +212,7 @@ impl TestEnv {
         let amount_pvm =
             sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
 
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             let h160_addr = H160::from_slice(address.as_slice());
             pallet_revive::Pallet::<Runtime>::set_evm_balance(&h160_addr, amount_pvm)
                 .expect("failed to set evm balance");
@@ -195,6 +223,7 @@ impl TestEnv {
             self.0
                 .lock()
                 .unwrap()
+                .externalities
                 .execute_with(|| {
                     let h160_addr = H160::from_slice(address.as_slice());
                     pallet_revive::Pallet::<Runtime>::evm_balance(&h160_addr)
@@ -204,7 +233,7 @@ impl TestEnv {
     }
 
     pub fn set_block_author(&mut self, new_author: Address) {
-        self.0.lock().unwrap().execute_with(|| {
+        self.0.lock().unwrap().externalities.execute_with(|| {
             let account_id32 =
                 AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
             BlockAuthor::set(&account_id32);

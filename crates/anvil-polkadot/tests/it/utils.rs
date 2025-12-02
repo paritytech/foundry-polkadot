@@ -201,23 +201,18 @@ impl TestNode {
         Ok(tx_hash)
     }
 
-    pub async fn get_decoded_timestamp(&self, at: Option<H256>) -> u64 {
+    pub async fn get_decoded_timestamp(&mut self, at: Option<H256>) -> u64 {
         let encoded_value =
             self.state_get_storage(well_known_keys::TIMESTAMP.to_vec(), at).await.unwrap().unwrap();
         let bytes =
             hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
-        let mut input = &bytes[..];
-        Decode::decode(&mut input).unwrap()
-    }
+        let substrate_timestamp: u64 = Decode::decode(&mut &bytes[..]).unwrap();
 
-    pub async fn get_eth_timestamp(&mut self, at: Option<H256>) -> u64 {
-        if let Some(hash) = at {
-            self.get_block_by_hash(hash).await
-        } else {
-            self.eth_best_block().await
-        }
-        .timestamp
-        .as_u64()
+        let eth_timestamp = self.get_eth_timestamp(at).await;
+
+        assert_eq!(eth_timestamp, substrate_timestamp / 1000);
+
+        substrate_timestamp
     }
 
     pub async fn get_nonce(&mut self, address: Address) -> U256 {
@@ -227,38 +222,26 @@ impl TestNode {
         .unwrap()
     }
 
-    pub async fn best_block_number(&self) -> u32 {
-        let num = self
-            .substrate_rpc("chain_getHeader", json!([]))
-            .await
-            .unwrap()
-            .get("number")
-            .and_then(|v| v.as_str())
-            .unwrap()
-            .to_owned();
-        u32::from_str_radix(num.trim_start_matches("0x"), 16).unwrap()
-    }
-
-    pub async fn eth_best_block(&mut self) -> Block {
-        unwrap_response::<Block>(
-            self.eth_rpc(EthRequest::EthGetBlockByNumber(BlockNumberOrTag::Latest, false))
-                .await
-                .unwrap(),
-        )
-        .unwrap()
+    pub async fn best_block_number(&mut self) -> u32 {
+        self.eth_best_block().await.number.as_u32()
     }
 
     pub async fn wait_for_block_with_timeout(
-        &self,
+        &mut self,
         n: u32,
         timeout: std::time::Duration,
     ) -> eyre::Result<()> {
         if n <= self.best_block_number().await {
             return Ok(());
         }
-        tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
-            .await
-            .map_err(|e| e.into())
+        tokio::time::timeout(timeout, self.wait_for_substrate_block_with_number(n)).await?;
+
+        // Sleep here to give time for the revive rpc node to process the block
+        // Can be removed once pub/sub is supported and we could subscribe to the new block
+        // notification.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        Ok(())
     }
 
     pub async fn get_balance(&mut self, address: H160, block: Option<BlockId>) -> U256 {
@@ -369,7 +352,26 @@ impl TestNode {
         Ok(self.service.client.runtime_api().eth_block(substrate_hash)?.hash)
     }
 
-    async fn wait_for_block_with_number(&self, n: u32) {
+    async fn eth_best_block(&mut self) -> Block {
+        unwrap_response::<Block>(
+            self.eth_rpc(EthRequest::EthGetBlockByNumber(BlockNumberOrTag::Latest, false))
+                .await
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    async fn get_eth_timestamp(&mut self, at: Option<H256>) -> u64 {
+        if let Some(hash) = at {
+            self.get_block_by_hash(hash).await
+        } else {
+            self.eth_best_block().await
+        }
+        .timestamp
+        .as_u64()
+    }
+
+    async fn wait_for_substrate_block_with_number(&self, n: u32) {
         let mut import_stream = self.service.client.import_notification_stream();
 
         while let Some(notification) = import_stream.next().await {

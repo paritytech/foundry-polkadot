@@ -157,12 +157,12 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
     fn start_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
         let ctx = get_context_ref(ctx);
         let mut externalities = ctx.externalties.0.lock().unwrap();
-        externalities.ext().storage_start_transaction();
+        externalities.externalities.ext().storage_start_transaction();
     }
 
     fn rollback_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
         let ctx = get_context_ref(ctx);
-        let mut externalities = ctx.externalties.0.lock().unwrap();
-        externalities.ext().storage_rollback_transaction().unwrap();
+        let mut state = ctx.externalties.0.lock().unwrap();
+        let _ = state.externalities.ext().storage_rollback_transaction();
     }
 }
