@@ -1,0 +1,78 @@
+name: anvil-polkadot build and publish image
+
+on:
+  push:
+    branches:
+      - master
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag or ref to build (e.g. v0.3.0, stable)"
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/anvil-polkadot
+
+jobs:
+  build-and-push:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Ensure we checkout the specific tag if provided manually
+          ref: ${{ inputs.tag_name || github.event.inputs.tag_name || github.ref }}
+
+      - name: Login into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # If tag_name is manually provided (dispatch/call), use it as a raw tag
+            type=raw,value=${{ inputs.tag_name || github.event.inputs.tag_name }},enable=${{ inputs.tag_name != '' || github.event.inputs.tag_name != '' }}
+            # If valid tag_name provided, also tag as latest
+            type=raw,value=latest,enable=${{ inputs.tag_name != '' || github.event.inputs.tag_name != '' }}
+            # Standard push to master -> master tag
+            type=ref,event=branch
+            # Push to master -> also latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+
+      # Log docker metadata to explicitly know what is being pushed
+      - name: Inspect Docker Metadata
+        run: |
+          echo "TAGS -> ${{ steps.meta.outputs.tags }}"
+          echo "LABELS -> ${{ steps.meta.outputs.labels }}"
+
+      - name: Build and push anvil-polkadot image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/anvil-polkadot/docker/Dockerfile
+          push: true
+          build-args: |
+            RELEASE_REF=${{ inputs.tag_name || github.event.inputs.tag_name || github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
