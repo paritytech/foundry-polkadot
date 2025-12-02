@@ -9,7 +9,6 @@ contract MockCallsTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testMockCallsLastShouldPersist() public {
-        vm.pvm(true);
         address mockUser = vm.addr(vm.randomUint());
         address mockErc20 = vm.addr(vm.randomUint());
         bytes memory data = abi.encodeWithSignature("balanceOf(address)", mockUser);
@@ -26,8 +25,6 @@ contract MockCallsTest is DSTest {
     }
 
     function testMockCallsWithValue() public {
-        vm.pvm(true);
-
         address mockUser = vm.addr(vm.randomUint());
         address mockErc20 = vm.addr(vm.randomUint());
         bytes memory data = abi.encodeWithSignature("balanceOf(address)", mockUser);
@@ -45,8 +42,6 @@ contract MockCallsTest is DSTest {
     }
 
     function testMockCalls() public {
-        vm.pvm(true);
-
         address mockUser = vm.addr(vm.randomUint());
         address mockErc20 = vm.addr(vm.randomUint());
         bytes memory data = abi.encodeWithSignature("balanceOf(address)", mockUser);
