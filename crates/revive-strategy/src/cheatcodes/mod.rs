@@ -9,8 +9,8 @@ use foundry_cheatcodes::{
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall,
-        pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall, setBlockhashCall,
-        setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
+        setBlockhashCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -390,7 +390,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let current_block = ctx.externalities.get_block_number();
                 if blockNumber > current_block {
                     return Err(foundry_cheatcodes::Error::from(
-                        "block number must be less than or equal to the current block number"
+                        "block number must be less than or equal to the current block number",
                     ));
                 }
 
