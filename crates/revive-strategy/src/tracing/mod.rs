@@ -1,7 +1,8 @@
 use std::{collections::BTreeMap, str::FromStr};
 
 use alloy_primitives::{Address, B256, Bytes, U256 as RU256};
-use foundry_cheatcodes::Ecx;
+use call_tracer::ExpectedCallTracer;
+use foundry_cheatcodes::{Ecx, ExpectedCallTracker};
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::pallet_revive::{
     AccountInfo, Pallet, U256, Weight,
@@ -15,18 +16,19 @@ use revert_tracer::RevertTracer;
 use revive_env::Runtime;
 use revm::{context::JournalTr, database::states::StorageSlot, state::Bytecode};
 use storage_tracer::{AccountAccess, StorageTracer};
+mod call_tracer;
 mod revert_tracer;
 pub mod storage_tracer;
-
 pub struct Tracer {
     pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
     pub prestate_tracer: PrestateTracer<Runtime>,
     pub storage_accesses: StorageTracer,
     pub revert_tracer: RevertTracer,
+    pub expect_call_tracer: ExpectedCallTracer,
 }
 
 impl Tracer {
-    pub fn new() -> Self {
+    pub fn new(data: ExpectedCallTracker) -> Self {
         let call_tracer =
             match Pallet::<revive_env::Runtime>::evm_tracer(TracerType::CallTracer(None)) {
                 ReviveTracer::CallTracer(tracer) => tracer,
@@ -45,6 +47,7 @@ impl Tracer {
             prestate_tracer,
             storage_accesses: Default::default(),
             revert_tracer: RevertTracer::new(),
+            expect_call_tracer: ExpectedCallTracer::new(data),
         }
     }
 
@@ -214,6 +217,15 @@ impl Tracing for Tracer {
             value,
             input,
             gas,
+        );
+        self.expect_call_tracer.enter_child_span(
+            from,
+            to,
+            is_delegate_call,
+            is_read_only,
+            value,
+            input,
+            gas,
         )
     }
 
@@ -226,6 +238,7 @@ impl Tracing for Tracer {
         self.call_tracer.instantiate_code(code, salt);
         self.storage_accesses.instantiate_code(code, salt);
         self.revert_tracer.instantiate_code(code, salt);
+        self.expect_call_tracer.instantiate_code(code, salt);
     }
 
     fn balance_read(&mut self, addr: &polkadot_sdk::sp_core::H160, value: U256) {
@@ -275,6 +288,7 @@ impl Tracing for Tracer {
         self.call_tracer.exit_child_span(output, gas_left);
         self.storage_accesses.exit_child_span(output, gas_left);
         self.revert_tracer.exit_child_span(output, gas_left);
+        self.expect_call_tracer.exit_child_span(output, gas_left);
     }
 
     fn exit_child_span_with_error(
@@ -286,5 +300,6 @@ impl Tracing for Tracer {
         self.call_tracer.exit_child_span_with_error(error, gas_left);
         self.storage_accesses.exit_child_span_with_error(error, gas_left);
         self.revert_tracer.exit_child_span_with_error(error, gas_left);
+        self.expect_call_tracer.exit_child_span_with_error(error, gas_left);
     }
 }
