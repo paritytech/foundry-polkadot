@@ -43,7 +43,7 @@ impl Tracing for RevertTracer {
         &mut self,
         _from: H160,
         to: H160,
-        is_delegate_call: bool,
+        _is_delegate_call: bool,
         _is_read_only: bool,
         _value: U256,
         _input: &[u8],
@@ -51,15 +51,11 @@ impl Tracing for RevertTracer {
     ) {
         self.call_types.push(if self.is_create { Type::Create } else { Type::Rest });
 
-        if is_delegate_call.is_some() {
-            self.calls.push(to);
+        self.calls.push(if self.call_types.last().is_some_and(|x| matches!(x, Type::Create)) {
+            self.current_addr()
         } else {
-            self.calls.push(if self.call_types.last().is_some_and(|x| matches!(x, Type::Create)) {
-                self.current_addr()
-            } else {
-                to
-            });
-        }
+            to
+        });
 
         if self.has_reverted.is_none() {
             self.max_depth += 1;
