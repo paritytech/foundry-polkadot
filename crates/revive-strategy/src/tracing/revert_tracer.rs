@@ -43,7 +43,7 @@ impl Tracing for RevertTracer {
         &mut self,
         _from: H160,
         to: H160,
-        is_delegate_call: Option<H160>,
+        is_delegate_call: bool,
         _is_read_only: bool,
         _value: U256,
         _input: &[u8],
