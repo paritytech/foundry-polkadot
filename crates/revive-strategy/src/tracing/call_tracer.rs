@@ -1,8 +1,7 @@
-use alloy_primitives::Address;
-use alloy_primitives::U256 as RU256;
+use alloy_primitives::{Address, U256 as RU256};
 use foundry_cheatcodes::ExpectedCallTracker;
-use polkadot_sdk::pallet_revive;
 use polkadot_sdk::{
+    pallet_revive,
     pallet_revive::tracing::Tracing,
     sp_core::{H160, U256},
     sp_weights::Weight,
@@ -32,7 +31,8 @@ impl Tracing for ExpectedCallTracer {
         _gas: Weight,
     ) {
         // let gas: u64 =
-        //     pallet_revive::pallet::Pallet::<Runtime>::evm_gas_from_weight(gas).try_into().unwrap();
+        //     pallet_revive::pallet::Pallet::<Runtime>::evm_gas_from_weight(gas).try_into().
+        // unwrap();
         if !self.is_create {
             if let Some(expected_calls_for_target) = self.data.get_mut(&Address::from(to.0)) {
                 // Match every partial/full calldata
