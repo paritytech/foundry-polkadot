@@ -109,6 +109,11 @@ impl TestEnv {
         });
     }
 
+    pub fn get_block_number(&mut self) -> U256 {
+        // Get block number in pallet-revive runtime.
+        self.0.lock().unwrap().externalities.execute_with(|| U256::from(System::block_number()))
+    }
+
     pub fn set_timestamp(&mut self, new_timestamp: U256) {
         // Set timestamp in pallet-revive runtime (milliseconds).
         self.0.lock().unwrap().externalities.execute_with(|| {
@@ -238,5 +243,20 @@ impl TestEnv {
                 AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
             BlockAuthor::set(&account_id32);
         });
+    }
+
+    pub fn set_blockhash(&mut self, block_number: u64, block_hash: FixedBytes<32>) {
+        self.0.lock().unwrap().externalities.execute_with(|| {
+            use polkadot_sdk::frame_system::BlockHash;
+
+            let hash = sp_core::H256::from_slice(block_hash.as_slice());
+            BlockHash::<Runtime>::insert(block_number, hash);
+        });
+    }
+
+    pub fn is_contract(&self, address: Address) -> bool {
+        self.0.lock().unwrap().externalities.execute_with(|| {
+            AccountInfo::<Runtime>::load_contract(&H160::from_slice(address.as_slice())).is_some()
+        })
     }
 }

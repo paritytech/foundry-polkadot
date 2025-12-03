@@ -43,7 +43,7 @@ jobs:
   test:
     name: test ${{ matrix.name }}
     runs-on: ${{ matrix.runner_label }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     needs: [matrices]
     strategy:
       fail-fast: false
