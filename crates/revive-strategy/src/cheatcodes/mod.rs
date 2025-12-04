@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall,
-        pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotCall,
+        polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
         setBlockhashCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
@@ -275,9 +275,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             get_context_ref_mut(ccx.state.strategy.context.as_mut());
         let using_pvm = ctx.using_pvm;
         match cheatcode.as_any().type_id() {
-            t if is::<pvmCall>(t) => {
+            t if is::<polkadotCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let pvmCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
+                let polkadotCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 if *enabled {

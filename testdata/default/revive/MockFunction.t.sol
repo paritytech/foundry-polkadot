@@ -34,7 +34,6 @@ contract MockFunctionTest is DSTest {
     Vm vm = Vm(HEVM_ADDRESS);
 
     function setUp() public {
-        vm.pvm(true);
         my_contract = new MockFunctionContract();
         model_contract = new ModelMockFunctionContract();
     }

@@ -40,13 +40,13 @@ contract TxGasPriceTest is DSTest {
 
     function testTxGasPriceWorksInBothModes() public {
         // Test in EVM mode
-        vm.pvm(false);
+        vm.polkadot(false);
         uint256 evmGasPrice = 50_000_000_000; // 50 gwei
         vm.txGasPrice(evmGasPrice);
         assertEq(tx.gasprice, evmGasPrice, "gas price should work in EVM mode");
 
         // Test in PVM mode
-        vm.pvm(true);
+        vm.polkadot(true);
         uint256 pvmGasPrice = 75_000_000_000; // 75 gwei
         vm.txGasPrice(pvmGasPrice);
         assertEq(tx.gasprice, pvmGasPrice, "gas price should work in PVM mode");
@@ -54,12 +54,12 @@ contract TxGasPriceTest is DSTest {
 
     function testTxGasPricePreservedInPvmContract() public {
         // Set gas price in EVM mode
-        vm.pvm(false);
+        vm.polkadot(false);
         uint256 evmGasPrice = 50_000_000_000; // 50 gwei
         vm.txGasPrice(evmGasPrice);
 
         // Switch to PVM mode (gas price should be preserved)
-        vm.pvm(true);
+        vm.polkadot(true);
 
         // Deploy a contract in PVM mode - it should see the preserved gas price
         GasPriceChecker checker = new GasPriceChecker();

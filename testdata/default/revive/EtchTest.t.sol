@@ -38,7 +38,6 @@ contract EtchTest is DSTest {
 
     // Test etching code into an existing contract instance works correctly.
     function testEtchExistingContractPvmCode() public {
-        vm.pvm(true);
         Adder adder = new Adder();
 
         // Without etch, the add function is broken
@@ -57,7 +56,6 @@ contract EtchTest is DSTest {
 
     // Test etching code into an existing contract instance works correctly.
     function testEtchExistingContractEvmCode() public {
-        vm.pvm(true);
         Adder adder = new Adder();
 
         // Without etch, the add function is broken
@@ -76,7 +74,6 @@ contract EtchTest is DSTest {
 
     // Test etching code into any arbitrary address works correctly.
     function testEtchAnyContractPvmCode() public {
-        vm.pvm(true);
         // Etch the correct bytecode into an arbitrary address
         address target = address(7070707);
         vm.etch(target, code);
@@ -104,7 +101,6 @@ contract EtchTest is DSTest {
 
     // Test etching code into any arbitrary address works correctly.
     function testEtchAnyContractEvmCode() public {
-        vm.pvm(true);
         // Etch the correct bytecode into an arbitrary address
         address target = address(7070707);
         vm.etch(target, code);

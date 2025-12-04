@@ -14,7 +14,6 @@ contract SetBlockhash is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testSetBlockhash() public {
-        vm.pvm(true);
         vm.roll(10);
         BlockHash blockHash = new BlockHash();
         bytes32 expectedHash = 0x1234567890123456789012345678901234567890123456789012345678901234;
