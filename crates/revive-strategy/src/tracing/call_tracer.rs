@@ -30,28 +30,25 @@ impl Tracing for ExpectedCallTracer {
         input: &[u8],
         _gas: Weight,
     ) {
-        // let gas: u64 =
-        //     pallet_revive::pallet::Pallet::<Runtime>::evm_gas_from_weight(gas).try_into().
-        // unwrap();
-        if !self.is_create {
-            if let Some(expected_calls_for_target) = self.data.get_mut(&Address::from(to.0)) {
-                // Match every partial/full calldata
-                for (calldata, (expected, actual_count)) in expected_calls_for_target {
-                    // Increment actual times seen if...
-                    // The calldata is at most, as big as this call's input, and
-                    if calldata.len() <= input.len() &&
+        if !self.is_create
+            && let Some(expected_calls_for_target) = self.data.get_mut(&Address::from(to.0))
+        {
+            // Match every partial/full calldata
+            for (calldata, (expected, actual_count)) in expected_calls_for_target {
+                // Increment actual times seen if...
+                // The calldata is at most, as big as this call's input, and
+                if calldata.len() <= input.len() &&
                     // Both calldata match, taking the length of the assumed smaller one (which will have at least the selector), and
                     *calldata == input[..calldata.len()] &&
                     // The value matches, if provided
                     expected
                         .value.is_none_or(|v| v == RU256::from_limbs(value.0))
-                    // gas tracking is broken now
-                    // // The gas matches, if provided
-                    // expected.gas.is_none_or(|g| g == gas) &&
-                    // // The minimum gas matches, if provided
-                    {
-                        *actual_count += 1;
-                    }
+                // gas tracking is broken now
+                // // The gas matches, if provided
+                // expected.gas.is_none_or(|g| g == gas) &&
+                // // The minimum gas matches, if provided
+                {
+                    *actual_count += 1;
                 }
             }
         }
