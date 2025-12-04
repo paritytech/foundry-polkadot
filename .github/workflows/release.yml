@@ -173,7 +173,7 @@ jobs:
           if [[ "$TARGET" == "x86_64-unknown-linux-musl" ]]; then
             docker run -v $PWD:/opt/revive $RUST_MUSL_CROSS_IMAGE /bin/bash -c "
             apt-get update && apt-get install -y clang libclang-dev unzip build-essential protobuf-compiler
-            rustup default 1.88.0
+            rustup default 1.89.0
             cd /opt/revive
             rustup target add x86_64-unknown-linux-musl
             cargo build $flags
