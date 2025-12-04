@@ -77,7 +77,7 @@ jobs:
       - name: Install Vyper
         run: pip --version && pip install vyper==0.4.3
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@1.89.0
         with:
           target: ${{ matrix.target }}, wasm32-unknown-unknown
           components: rust-src
