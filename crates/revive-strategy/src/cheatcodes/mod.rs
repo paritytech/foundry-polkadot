@@ -10,7 +10,7 @@ use foundry_cheatcodes::{
     Vm::{
         chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall,
         pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
-        setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        setBlockhashCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -377,6 +377,25 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
                 ctx.externalities.set_block_author(newCoinbase);
+
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if is::<setBlockhashCall>(t) => {
+                let &setBlockhashCall { blockNumber, blockHash } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_pvm = ?using_pvm);
+
+                // Validate blockNumber is not in the future
+                let current_block = ctx.externalities.get_block_number();
+                if blockNumber > current_block {
+                    return Err(foundry_cheatcodes::Error::from(
+                        "block number must be less than or equal to the current block number",
+                    ));
+                }
+
+                let block_num_u64 = blockNumber.to::<u64>();
+                ctx.externalities.set_blockhash(block_num_u64, blockHash);
 
                 cheatcode.dyn_apply(ccx, executor)
             }
@@ -856,7 +875,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
-        let mut tracer = Tracer::new(true);
+        let mut tracer = Tracer::new();
         let caller_h160 = H160::from_slice(input.caller().as_slice());
 
         let res = ctx.externalities.execute_with(|| {
@@ -1023,7 +1042,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let should_bump_nonce = !call.is_static;
         let caller_h160 = H160::from_slice(call.caller.as_slice());
 
-        let mut tracer = Tracer::new(true);
+        let mut tracer = Tracer::new();
         let res = ctx.externalities.execute_with(|| {
             // Watch the caller's address so its nonce changes get tracked in prestate trace
             tracer.watch_address(&caller_h160);
@@ -1219,8 +1238,11 @@ fn post_exec(
     }
 
     if let Some(expected_revert) = &mut state.expected_revert {
-        expected_revert.max_depth =
-            std::cmp::max(ecx.journaled_state.depth() + 1, expected_revert.max_depth);
+        expected_revert.max_depth = std::cmp::max(
+            ecx.journaled_state.depth() + tracer.revert_tracer.max_depth,
+            expected_revert.max_depth,
+        );
+        expected_revert.reverted_by = tracer.revert_tracer.has_reverted.map(|x| Address::from(x.0));
     }
 }
 
