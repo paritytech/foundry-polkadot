@@ -39,7 +39,7 @@ use foundry_config::{
         value::{Dict, Map},
     },
     filter::GlobMatcher,
-    revive,
+    revive::{self, PolkadotMode},
 };
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
@@ -304,7 +304,7 @@ impl TestArgs {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }
-        if config.resolc.polkadot {
+        if config.resolc.polkadot == Some(PolkadotMode::Pvm) || config.resolc.resolc_compile {
             config.extra_output.push(ContractOutputSelection::StorageLayout);
         }
         // Set up the project.
@@ -316,7 +316,8 @@ impl TestArgs {
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
         // Handle compilation based on whether dual compilation is enabled
-        let (output, dual_compiled_contracts) = if config.resolc.resolc_compile {
+        let (output, dual_compiled_contracts) = if config.resolc.polkadot == Some(PolkadotMode::Pvm) ||
+                                                    config.resolc.resolc_compile {
             // Dual compilation mode: compile both solc and resolc
 
             // Compile with solc to a subdirectory

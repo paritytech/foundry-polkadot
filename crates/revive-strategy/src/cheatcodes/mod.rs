@@ -8,9 +8,10 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotCall,
-        polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
-        setBlockhashCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadot_0Call,
+        polkadot_1Call, polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall,
+        revertToStateCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall,
+        snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -275,17 +276,21 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             get_context_ref_mut(ccx.state.strategy.context.as_mut());
         let using_pvm = ctx.using_pvm;
         match cheatcode.as_any().type_id() {
-            t if is::<polkadotCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let polkadotCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
+            t if is::<polkadot_0Call>(t) => {
+                // polkadot(bool enable, string backend)
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_pvm = ?using_pvm);
+                let polkadot_0Call { enable, backend } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                if *enabled {
-                    select_revive(ctx, ccx.ecx);
-                } else {
-                    select_evm(ctx, ccx.ecx);
-                }
-                Ok(Default::default())
+                return handle_polkadot(ctx, ccx.ecx, *enable, backend);
+            }
+            t if is::<polkadot_1Call>(t) => {
+                // polkadot(bool enable) - auto-detect backend
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_pvm = ?using_pvm);
+                let polkadot_1Call { enable } = cheatcode.as_any().downcast_ref().unwrap();
+                let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+                    get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                return handle_polkadot(ctx, ccx.ecx, *enable, "");
             }
             t if is::<polkadotSkipCall>(t) => {
                 let polkadotSkipCall { .. } = cheatcode.as_any().downcast_ref().unwrap();
@@ -563,13 +568,64 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     }
 }
 
+/// Handles the vm.polkadot cheatcode with backend selection
+fn handle_polkadot(
+    ctx: &mut PvmCheatcodeInspectorStrategyContext,
+    data: Ecx<'_, '_, '_>,
+    enable: bool,
+    backend: &str,
+) -> Result {
+    if enable {
+        // Switching TO Polkadot
+        if ctx.using_pvm {
+            return Err("Already using Polkadot environment".into());
+        }
+
+        // Validate we're running with --polkadot or --resolc flag:
+        // If dual_compiled_contracts is empty, return error
+        if ctx.dual_compiled_contracts.is_empty() {
+            return Err("vm.polkadot(true) requires running tests with --polkadot or --resolc flag".into());
+        }
+
+        // Parse target backend
+        // Empty string is only used internally by polkadot_1Call (single-param variant) for auto-detection
+        let target_mode = match backend.to_lowercase().as_str() {
+            "" => ctx.runtime_mode, // Auto-detect: use base mode from CLI
+            "evm" => crate::ReviveRuntimeMode::Evm,
+            "pvm" => crate::ReviveRuntimeMode::Pvm,
+            _ => return Err(format!("Invalid backend: '{}'. Use 'evm' or 'pvm'", backend).into()),
+        };
+
+        // Migrate to the target mode
+        select_revive_with_mode(ctx, data, target_mode);
+        Ok(Default::default())
+    } else {
+        // Switching BACK to Foundry EVM
+        if !ctx.using_pvm {
+            return Err("Not currently using Polkadot environment".into());
+        }
+
+        select_evm(ctx, data);
+        Ok(Default::default())
+    }
+}
+
 fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
+    // Use default runtime mode from context
+    select_revive_with_mode(ctx, data, ctx.runtime_mode);
+}
+
+fn select_revive_with_mode(
+    ctx: &mut PvmCheatcodeInspectorStrategyContext,
+    data: Ecx<'_, '_, '_>,
+    target_mode: crate::ReviveRuntimeMode,
+) {
     if ctx.using_pvm {
         tracing::info!("already using pallet-revive");
         return;
     }
 
-    tracing::info!("switching to pallet-revive ({} mode)", ctx.runtime_mode);
+    tracing::info!("switching to pallet-revive ({} mode)", target_mode);
     ctx.using_pvm = true;
 
     let block_number = data.block.number;
@@ -611,7 +667,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                         if let Some((_, contract)) = ctx.dual_compiled_contracts
                             .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
                         {
-                            let (code_bytes, immutable_data, code_type) = match ctx.runtime_mode {
+                            let (code_bytes, immutable_data, code_type) = match target_mode {
                                 crate::ReviveRuntimeMode::Pvm => {
                                     let immutable_data = contract.evm_immutable_references
                                         .as_ref()

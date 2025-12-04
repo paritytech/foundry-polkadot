@@ -3,8 +3,40 @@ use foundry_compilers::{
     solc::SolcSettings,
 };
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+use std::str::FromStr;
 
 use crate::{Config, SolcReq};
+
+/// Polkadot execution mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PolkadotMode {
+    Evm,
+    Pvm,
+}
+
+impl FromStr for PolkadotMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "evm" => Ok(Self::Evm),
+            "pvm" => Ok(Self::Pvm),
+            "" => Ok(Self::Evm), // Default when --polkadot with no value
+            _ => Err(format!("Invalid polkadot mode: {s}. Use 'evm' or 'pvm'")),
+        }
+    }
+}
+
+impl Display for PolkadotMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Evm => write!(f, "evm"),
+            Self::Pvm => write!(f, "pvm"),
+        }
+    }
+}
 
 /// Filename for resolc cache
 pub const RESOLC_SOLIDITY_FILES_CACHE_FILENAME: &str = "resolc-solidity-files-cache.json";
@@ -21,7 +53,7 @@ pub struct ResolcConfig {
     pub resolc_compile: bool,
 
     /// Use pallet-revive runtime backend
-    pub polkadot: bool,
+    pub polkadot: Option<PolkadotMode>,
 
     /// The resolc compiler
     pub resolc: Option<SolcReq>,
