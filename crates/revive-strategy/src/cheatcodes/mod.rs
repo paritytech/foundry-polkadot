@@ -8,7 +8,7 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotCall, 
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotCall,
         polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
         setBlockhashCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
