@@ -8018,8 +8018,28 @@
     },
     {
       "func": {
+        "id": "polkadot",
+        "description": "Enables or disables Polkadot mode for contract execution.\nWhen enabled, only Polkadot-specific calls are intercepted; all other operations run on EVM.\nExample usage:\nvm.polkadot(true);  // Enable Polkadot mode\nvm.polkadot(false); // Disable Polkadot mode (use Foundry EVM)",
+        "declaration": "function polkadot(bool enabled) external;",
+        "visibility": "external",
+        "mutability": "",
+        "signature": "polkadot(bool)",
+        "selector": "0xeabb7787",
+        "selectorBytes": [
+          234,
+          187,
+          119,
+          135
+        ]
+      },
+      "group": "utilities",
+      "status": "stable",
+      "safety": "safe"
+    },
+    {
+      "func": {
         "id": "polkadotSkip",
-        "description": "When running in PVM context, skips the next CREATE or CALL, executing it on the EVM instead.\nAll `CREATE`s executed within this skip, will automatically have `CALL`s to their target addresses\nexecuted in the EVM, and need not be marked with this cheatcode at every usage location.",
+        "description": "When running in Polkadot context, skips the next CREATE or CALL, executing it on the Foundry EVM instead.\nAll `CREATE`s executed within this skip, will automatically have `CALL`s to their target addresses\nexecuted in the Foundry EVM, and need not be marked with this cheatcode at every usage location.",
         "declaration": "function polkadotSkip() external pure;",
         "visibility": "external",
         "mutability": "pure",
@@ -8293,26 +8313,6 @@
         ]
       },
       "group": "crypto",
-      "status": "stable",
-      "safety": "safe"
-    },
-    {
-      "func": {
-        "id": "pvm",
-        "description": "Enables or disables PVM (PolkaVM) mode for contract execution.\nWhen enabled, only PVM-specific calls are intercepted; all other operations run on EVM.\nExample usage:\nvm.pvm(true);  // Enable PVM mode\nvm.pvm(false); // Disable PVM mode (use EVM)",
-        "declaration": "function pvm(bool enabled) external;",
-        "visibility": "external",
-        "mutability": "",
-        "signature": "pvm(bool)",
-        "selector": "0x82bd3ca3",
-        "selectorBytes": [
-          130,
-          189,
-          60,
-          163
-        ]
-      },
-      "group": "utilities",
       "status": "stable",
       "safety": "safe"
     },

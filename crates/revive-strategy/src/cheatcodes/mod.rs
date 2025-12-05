@@ -8,8 +8,8 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotSkipCall,
-        pvmCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotCall,
+        polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
         setBlockhashCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
@@ -275,9 +275,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             get_context_ref_mut(ccx.state.strategy.context.as_mut());
         let using_pvm = ctx.using_pvm;
         match cheatcode.as_any().type_id() {
-            t if is::<pvmCall>(t) => {
+            t if is::<polkadotCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let pvmCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
+                let polkadotCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 if *enabled {
@@ -875,7 +875,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
-        let mut tracer = Tracer::new();
+        let mut tracer = Tracer::new(state.expected_calls.clone());
         let caller_h160 = H160::from_slice(input.caller().as_slice());
 
         let res = ctx.externalities.execute_with(|| {
@@ -1042,7 +1042,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let should_bump_nonce = !call.is_static;
         let caller_h160 = H160::from_slice(call.caller.as_slice());
 
-        let mut tracer = Tracer::new();
+        let mut tracer = Tracer::new(state.expected_calls.clone());
         let res = ctx.externalities.execute_with(|| {
             // Watch the caller's address so its nonce changes get tracked in prestate trace
             tracer.watch_address(&caller_h160);
@@ -1244,6 +1244,7 @@ fn post_exec(
         );
         expected_revert.reverted_by = tracer.revert_tracer.has_reverted.map(|x| Address::from(x.0));
     }
+    state.expected_calls = tracer.expect_call_tracer.data.clone();
 }
 
 struct LogWithIndex {

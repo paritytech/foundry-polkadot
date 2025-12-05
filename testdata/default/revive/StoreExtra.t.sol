@@ -23,7 +23,6 @@ contract StoreTestExtra is DSTest {
     Storage store;
 
     function setUp() public {
-        vm.pvm(true);
         store = new Storage();
         vm.makePersistent(address(store));
     }
@@ -32,7 +31,7 @@ contract StoreTestExtra is DSTest {
         assertEq(store.slot0(), 10, "initial value for slot 0 is incorrect");
         assertEq(store.slot1(), 20, "initial value for slot 1 is incorrect");
         vm.store(address(store), bytes32(0), bytes32(uint256(1)));
-        vm.pvm(false);
+        vm.polkadot(false);
         assertEq(store.slot0(), 1, "store failed");
         assertEq(store.slot1(), 20, "store failed");
     }
@@ -41,7 +40,7 @@ contract StoreTestExtra is DSTest {
         assertEq(store.slot0(), 10, "initial value for slot 0 is incorrect");
         assertEq(store.slot1(), 20, "initial value for slot 1 is incorrect");
         store.setSlot0(1);
-        vm.pvm(false);
+        vm.polkadot(false);
         assertEq(store.slot0(), 1, "store failed");
         assertEq(store.slot1(), 20, "store failed");
     }
