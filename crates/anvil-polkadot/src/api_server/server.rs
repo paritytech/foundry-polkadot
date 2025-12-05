@@ -42,7 +42,7 @@ use alloy_rpc_types::{
     Filter, TransactionRequest,
     anvil::{Forking, Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
     trace::{
-        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace},
+        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace, TraceResult},
         parity::LocalizedTransactionTrace,
     },
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
@@ -412,6 +412,11 @@ impl ApiServer {
             }
             EthRequest::DebugTraceCall(request, block_number, geth_tracer_options) => self
                 .debug_trace_call(request, block_number, geth_tracer_options)
+                .await
+                .to_rpc_result(),
+            // Non-standard anvil RPC, comes from Geth
+            EthRequest::DebugTraceBlockByNumber(block_number, geth_tracer_options) => self
+                .debug_trace_block_by_number(block_number, geth_tracer_options)
                 .await
                 .to_rpc_result(),
             EthRequest::TraceTransaction(tx_hash) => {
@@ -1693,6 +1698,28 @@ impl ApiServer {
             .trace_call(transaction, ReviveTracerType::from(geth_tracer_options).inner())
             .await?;
         Ok(ReviveTrace::new(trace).into())
+    }
+
+    async fn debug_trace_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+        geth_tracer_options: GethDebugTracingOptions,
+    ) -> Result<Vec<TraceResult>> {
+        node_info!("debug_traceBlockByNumber");
+
+        Ok(self
+            .eth_rpc_client
+            .trace_block_by_number(
+                ReviveBlockNumberOrTag::from(block_number).inner(),
+                ReviveTracerType::from(geth_tracer_options).inner(),
+            )
+            .await?
+            .into_iter()
+            .map(|tx_trace| TraceResult::Success {
+                result: ReviveTrace::new(tx_trace.trace).into(),
+                tx_hash: Some(B256::from_slice(tx_trace.tx_hash.as_ref())),
+            })
+            .collect::<Vec<_>>())
     }
 
     async fn trace_transaction(&self, tx_hash: B256) -> Result<Vec<LocalizedTransactionTrace>> {
