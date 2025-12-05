@@ -334,6 +334,7 @@ impl EthApi {
             EthRequest::DebugTraceCall(tx, block, opts) => {
                 self.debug_trace_call(tx, block, opts).await.to_rpc_result()
             }
+            anvil_core::eth::EthRequest::DebugTraceBlockByNumber(_, _) => unimplemented!(),
             EthRequest::DebugCodeByHash(hash, block) => {
                 self.debug_code_by_hash(hash, block).await.to_rpc_result()
             }
