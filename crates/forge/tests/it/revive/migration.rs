@@ -144,7 +144,10 @@ async fn test_multiple_mode_switches(#[case] runtime_mode: ReviveRuntimeMode) {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_contract_deployment_in_different_modes(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter =
-        Filter::new("testContractDeploymentInDifferentModes", "EvmReviveMigrationTest", ".*/revive/.*");
+    let filter = Filter::new(
+        "testContractDeploymentInDifferentModes",
+        "EvmReviveMigrationTest",
+        ".*/revive/.*",
+    );
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }

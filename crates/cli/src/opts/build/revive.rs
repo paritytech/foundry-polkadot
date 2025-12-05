@@ -1,5 +1,5 @@
 use clap::Parser;
-use foundry_config::{SolcReq, revive::{ResolcConfig, PolkadotMode}};
+use foundry_config::{SolcReq, revive::ResolcConfig};
 use serde::Serialize;
 
 #[derive(Clone, Debug, Default, Serialize, Parser)]
@@ -14,14 +14,6 @@ pub struct ResolcOpts {
         action = clap::ArgAction::SetTrue
     )]
     pub resolc_compile: Option<bool>,
-
-    /// Use pallet-revive runtime backend
-    #[arg(
-        long = "polkadot",
-        help = "Use pallet-revive runtime backend (evm or pvm mode)",
-        value_name = "MODE"
-    )]
-    pub polkadot: Option<PolkadotMode>,
 
     /// Specify the resolc version, or a path to a local resolc, to build with.
     ///
@@ -86,13 +78,6 @@ impl ResolcOpts {
             self.resolc_compile.and_then(|v| if v { Some(true) } else { None }),
             resolc.resolc_compile
         );
-        if let Some(polkadot_mode) = self.polkadot {
-            resolc.polkadot = Some(polkadot_mode);
-        }
-        // Auto-set polkadot=pvm when --resolc is used without --polkadot
-        if self.resolc_compile == Some(true) && self.polkadot.is_none() && resolc.polkadot.is_none() {
-            resolc.polkadot = Some(PolkadotMode::Pvm);
-        }
         set_if_some!(
             self.use_resolc.as_ref().map(|v| SolcReq::from(v.trim_start_matches("resolc:"))),
             resolc.resolc
