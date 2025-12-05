@@ -414,6 +414,7 @@ impl ApiServer {
                 .debug_trace_call(request, block_number, geth_tracer_options)
                 .await
                 .to_rpc_result(),
+            // Non-standard anvil RPC, comes from Geth
             EthRequest::DebugTraceBlockByNumber(block_number, geth_tracer_options) => self
                 .debug_trace_block_by_number(block_number, geth_tracer_options)
                 .await
