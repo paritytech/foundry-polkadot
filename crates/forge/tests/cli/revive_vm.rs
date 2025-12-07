@@ -315,7 +315,7 @@ contract ChainIdTest is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvvv", "--polkadot"]).assert_success();
+    let res = cmd.args(["test", "-vvvv", "--polkadot=pvm"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]

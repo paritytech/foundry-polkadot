@@ -525,7 +525,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
         if ctx.revive_startup_migration.is_allowed() && !ctx.using_revive {
             tracing::info!("startup pallet-revive migration initiated");
-            select_revive(ctx, ecx, ctx.runtime_mode);
+            select_revive(ctx, ecx);
             ctx.revive_startup_migration.done();
             tracing::info!("startup pallet-revive migration completed");
         }
@@ -602,12 +602,10 @@ fn handle_polkadot_call(
                 "Backend switching to PVM requires running tests with --polkadot and --resolc flags".into(),
             );
         }
-
-        if is_backend_switch {
-            ctx.runtime_mode = target_mode;
-        } else {
+        ctx.runtime_mode = target_mode;
+        if !is_backend_switch {
             // Migrate to the target mode (from standard EVM to Polkadot)
-            select_revive(ctx, data, target_mode);
+            select_revive(ctx, data);
         }
     } else if ctx.using_revive {
         // Switching BACK to Foundry EVM
@@ -616,17 +614,13 @@ fn handle_polkadot_call(
     Ok(Default::default())
 }
 
-fn select_revive(
-    ctx: &mut PvmCheatcodeInspectorStrategyContext,
-    data: Ecx<'_, '_, '_>,
-    target_mode: crate::ReviveRuntimeMode,
-) {
+fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
     if ctx.using_revive {
         tracing::info!("already using pallet-revive");
         return;
     }
 
-    tracing::info!("switching to pallet-revive ({} mode)", target_mode);
+    tracing::info!("switching to pallet-revive ({} mode)", ctx.runtime_mode);
     ctx.using_revive = true;
 
     let block_number = data.block.number;
@@ -644,7 +638,9 @@ fn select_revive(
                 &data.cfg.chain_id,
             );
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
+            let test_contract_addr = data.journaled_state.database.get_test_contract_address();
             for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
+                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;
                 let nonce = acc.data.info.nonce;
@@ -668,7 +664,7 @@ fn select_revive(
                         if let Some((_, contract)) = ctx.dual_compiled_contracts
                             .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
                         {
-                            let (code_bytes, immutable_data, code_type) = match target_mode {
+                            let (code_bytes, immutable_data, code_type) = match ctx.runtime_mode {
                                 crate::ReviveRuntimeMode::Pvm => {
                                     let immutable_data = contract.evm_immutable_references
                                         .as_ref()
