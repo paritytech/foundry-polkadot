@@ -138,7 +138,6 @@ pub fn get_executor_strategy(config: &Config) -> ExecutorStrategy {
 
     match config.resolc.polkadot {
         // No --polkadot flag: Standard Foundry EVM
-        // Note: --resolc flag is ignored for test execution strategy
         None => {
             info!("using standard EVM strategy");
             ExecutorStrategy::new_evm()

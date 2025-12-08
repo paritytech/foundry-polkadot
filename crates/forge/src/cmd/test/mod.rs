@@ -314,6 +314,14 @@ impl TestArgs {
             }
         }
 
+        // Auto-set polkadot=pvm when --resolc is used without explicit --polkadot flag
+        if config.resolc.resolc_compile && config.resolc.polkadot.is_none() {
+            tracing::warn!(
+                "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
+            );
+            config.resolc.polkadot = Some(PolkadotMode::Pvm);
+        }
+
         let mut strategy = utils::get_executor_strategy(&config);
 
         // Explicitly enable isolation for gas reports for more correct gas accounting.
