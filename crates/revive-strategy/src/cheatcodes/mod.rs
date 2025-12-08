@@ -664,7 +664,14 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                         if let Some((_, contract)) = ctx.dual_compiled_contracts
                             .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
                         {
-                            let (code_bytes, immutable_data, code_type) = match ctx.runtime_mode {
+                            // Test contract should always use EVM bytecode, even in PVM mode
+                            // TODO check why this is needed now
+                            let effective_runtime_mode = if test_contract_addr == Some(address) {
+                                crate::ReviveRuntimeMode::Evm
+                            } else {
+                                ctx.runtime_mode
+                            };
+                            let (code_bytes, immutable_data, code_type) = match effective_runtime_mode {
                                 crate::ReviveRuntimeMode::Pvm => {
                                     let immutable_data = contract.evm_immutable_references
                                         .as_ref()
@@ -810,6 +817,7 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
 
                 // Try both PVM and EVM bytecode lookups since runtime_mode may not reflect
                 // the actual bytecode type stored (especially after backend switches)
+                // TODO: make PristineCode public to avoid this double lookup
                 let bytecode_result = ctx
                     .dual_compiled_contracts
                     .find_by_resolc_bytecode_hash(hash.clone())
