@@ -118,8 +118,9 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     /// When in Polkadot context, execute the next CALL or CREATE in the EVM instead.
     pub skip_revive: bool,
     /// Any contracts that were deployed in `skip_revive` step.
-    /// This makes it easier to dispatch calls to any of these addresses in revive context, directly
-    /// to EVM. Alternatively, we'd need to add `vm.polkadotSkip()` to these calls manually.
+    /// This makes it easier to dispatch calls to any of these addresses in revive context,
+    /// directly to EVM. Alternatively, we'd need to add `vm.polkadotSkip()` to these calls
+    /// manually.
     pub skip_revive_addresses: std::collections::HashSet<Address>,
     /// Records the next create address for `skip_pvm_addresses`.
     pub record_next_create_address: bool,
@@ -576,7 +577,8 @@ fn handle_polkadot_call(
     backend: &str,
 ) -> Result {
     if enable {
-        // Empty string is only used internally by polkadot_1Call (single-param variant) for auto-detection
+        // Empty string is only used internally by polkadot_1Call (single-param variant) for
+        // auto-detection
         let target_mode = match backend.to_lowercase().as_str() {
             "" => ctx.runtime_mode, // Auto-detect: use base mode from CLI
             "evm" => crate::ReviveRuntimeMode::Evm,
@@ -918,22 +920,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let (code_bytes, constructor_args) = match ctx.runtime_mode {
             crate::ReviveRuntimeMode::Pvm => {
                 // PVM mode: use resolc (PVM) bytecode
-                // If we can't find the dual-compiled bytecode, fallback to EVM (e.g., for test contracts)
-                if let Some(find_contract) = ctx.dual_compiled_contracts.find_bytecode(&init_code.0)
-                {
-                    tracing::info!("running create in PVM mode with PVM bytecode");
-                    let constructor_args = find_contract.constructor_args();
-                    let contract = find_contract.contract();
-                    (
-                        contract.resolc_bytecode.as_bytes().unwrap().to_vec(),
-                        constructor_args.to_vec(),
-                    )
-                } else {
-                    tracing::warn!(
-                        "no dual-compiled bytecode found, falling back to EVM for contract creation"
-                    );
-                    (init_code.0.to_vec(), vec![])
-                }
+                tracing::info!("running create in PVM mode with PVM bytecode");
+                let find_contract = ctx
+                    .dual_compiled_contracts
+                    .find_bytecode(&init_code.0)
+                    .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
+                let constructor_args = find_contract.constructor_args();
+                let contract = find_contract.contract();
+                (contract.resolc_bytecode.as_bytes().unwrap().to_vec(), constructor_args.to_vec())
             }
             crate::ReviveRuntimeMode::Evm => {
                 // EVM mode: use EVM bytecode directly

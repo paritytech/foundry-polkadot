@@ -3,8 +3,7 @@ use foundry_compilers::{
     solc::SolcSettings,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 use crate::{Config, SolcReq};
 
