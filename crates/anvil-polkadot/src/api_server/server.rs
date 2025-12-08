@@ -63,7 +63,6 @@ use pallet_revive_eth_rpc::{
     },
 };
 use polkadot_sdk::{
-    cumulus_primitives_core::GetParachainInfo,
     pallet_revive::{
         ReviveApi,
         evm::{
@@ -115,6 +114,12 @@ pub struct ApiServer {
     filters: Filters,
 }
 
+/// Fetch the chain ID from the substrate chain.
+async fn chain_id(api: &OnlineClient<SrcChainConfig>) -> Result<u64> {
+    let query = subxt_client::constants().revive().chain_id();
+    api.constants().at(&query).map_err(|err| err.into())
+}
+
 impl ApiServer {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
@@ -141,6 +146,15 @@ impl ApiServer {
         )
         .await?;
 
+        let backend = BackendWithOverlay::new(
+            substrate_service.backend.clone(),
+            substrate_service.storage_overrides.clone(),
+        );
+
+        let chain_id = chain_id(&api).await?;
+        let latest_block = backend.blockchain().info().best_hash;
+        backend.inject_chain_id(latest_block, chain_id);
+
         let filters_clone = filters.clone();
         substrate_service.spawn_handle.spawn("filter-eviction-task", "None", async move {
             eviction_task(filters_clone).await;
@@ -149,10 +163,7 @@ impl ApiServer {
             block_provider,
             req_receiver,
             logging_manager,
-            backend: BackendWithOverlay::new(
-                substrate_service.backend.clone(),
-                substrate_service.storage_overrides.clone(),
-            ),
+            backend,
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
@@ -619,24 +630,7 @@ impl ApiServer {
     }
 
     fn chain_id(&self, at: Hash) -> u64 {
-        // .expect("Chain ID is populated on genesis");
-        let id_res = self.backend.read_chain_id(at);
-
-        let para_id = match id_res {
-            Ok(id) => id,
-            Err(_) => {
-                let id = self
-                    .client
-                    .runtime_api()
-                    .parachain_id(at)
-                    .expect("retrieving chain id from runtime");
-
-                let id_u64: u32 = id.into();
-                id_u64 as u64
-            }
-        };
-
-        para_id
+        self.backend.read_chain_id(at).expect("Chain ID is populated on genesis")
     }
 
     // Eth RPCs
