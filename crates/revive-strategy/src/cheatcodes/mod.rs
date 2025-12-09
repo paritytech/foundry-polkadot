@@ -27,8 +27,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, DebugSettings,
-        ExecConfig, Pallet, evm::CallTrace,
+        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo,
+        DebugSettings, ExecConfig, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160, H256},
@@ -642,7 +642,11 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     Pallet::<Runtime>::account_id(),
                                     code_bytes.clone(),
                                     code_type,
-                                    u64::MAX.into(),
+                                    &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                        weight_limit: Weight::MAX,
+                                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                                    })
+                                    .unwrap(),
                                     &ExecConfig::new_substrate_tx(),
                                 );
                                 match upload_result {
@@ -680,7 +684,11 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 Pallet::<Runtime>::account_id(),
                                 code_bytes.clone(),
                                 BytecodeType::Evm,
-                                u64::MAX.into(),
+                                &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                    weight_limit: Weight::MAX,
+                                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                                })
+                                .unwrap(),
                                 &ExecConfig::new_substrate_tx_without_bump(),
                             );
                             match upload_result {
@@ -919,9 +927,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Pallet::<Runtime>::bare_instantiate(
                     origin,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::MAX,
+                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                    },
                     code,
                     data,
                     salt,
@@ -930,10 +939,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             })
         });
         let mut gas = Gas::new(input.gas_limit());
-        if res.result.as_ref().is_ok_and(|r| !r.result.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
-        }
         post_exec(state, ecx, executor, &mut tracer, false);
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
         mock_handler.update_state_mocks(state);
 
         match &res.result {
@@ -941,7 +948,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.result.did_revert() {
@@ -1068,9 +1076,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     origin,
                     target,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::MAX,
+                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                    },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
                 )
@@ -1078,17 +1087,16 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         });
         mock_handler.update_state_mocks(state);
         let mut gas = Gas::new(call.gas_limit);
-        if res.result.as_ref().is_ok_and(|r| !r.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
-        }
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
 
         match res.result {
             Ok(result) => {
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.did_revert() {
@@ -1170,7 +1178,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 .database
                 .get_test_contract_address()
                 .map(|addr| call.bytecode_address != addr && call.target_address != addr)
-                .unwrap_or(true)
+                .unwrap_or_default()
         {
             return;
         }
@@ -1242,7 +1250,11 @@ fn post_exec(
             ecx.journaled_state.depth() + tracer.revert_tracer.max_depth,
             expected_revert.max_depth,
         );
-        expected_revert.reverted_by = tracer.revert_tracer.has_reverted.map(|x| Address::from(x.0));
+        expected_revert.reverted_by = tracer
+            .revert_tracer
+            .has_reverted
+            .map(|x| Address::from(x.0))
+            .or(expected_revert.reverted_by);
     }
     state.expected_calls = tracer.expect_call_tracer.data.clone();
 }

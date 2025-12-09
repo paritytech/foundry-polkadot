@@ -4,7 +4,6 @@ use polkadot_sdk::{
     pallet_revive,
     pallet_revive::tracing::Tracing,
     sp_core::{H160, U256},
-    sp_weights::Weight,
 };
 
 #[derive(Debug)]
@@ -24,14 +23,16 @@ impl Tracing for ExpectedCallTracer {
         &mut self,
         _from: H160,
         to: H160,
-        _is_delegate_call: bool,
+        is_delegate_call: Option<H160>,
         _is_read_only: bool,
         value: U256,
         input: &[u8],
-        _gas: Weight,
+        _gas: U256,
     ) {
+        let addr =
+            is_delegate_call.map(|x| Address::from(x.0)).unwrap_or_else(|| Address::from(to.0));
         if !self.is_create
-            && let Some(expected_calls_for_target) = self.data.get_mut(&Address::from(to.0))
+            && let Some(expected_calls_for_target) = self.data.get_mut(&addr)
         {
             // Match every partial/full calldata
             for (calldata, (expected, actual_count)) in expected_calls_for_target {
@@ -53,7 +54,14 @@ impl Tracing for ExpectedCallTracer {
             }
         }
     }
-    fn exit_child_span(&mut self, _output: &pallet_revive::ExecReturnValue, _gas_left: Weight) {
+    fn exit_child_span(&mut self, _output: &pallet_revive::ExecReturnValue, _gas_left: U256) {
+        self.is_create = false;
+    }
+    fn exit_child_span_with_error(
+        &mut self,
+        _error: polkadot_sdk::sp_runtime::DispatchError,
+        _gas_used: U256,
+    ) {
         self.is_create = false;
     }
     fn instantiate_code(
