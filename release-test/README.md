@@ -8,7 +8,7 @@ This folder contains scripts and resources for running comprehensive release tes
   - The scripts in this suite only check that each command returns a zero (0) exit code, indicating success at the process level.
   - They do **not** inspect or validate the actual content of the command outputs.
   - As a result, a successful run (all commands return 0) does **not** guarantee that all features or commands are working 100% as expected—only that they did not fail fatally.
-  - For full verification, manual inspection of the output logs (`forge.txt`, `cast.txt`) or more advanced automated output validation would be required.
+  - For full verification, manual inspection of the output logs (`forge.txt`, `cast.txt`, `anvil-polkadot.txt`) or more advanced automated output validation would be required.
 - **RPC Endpoint Dependency:**
   - The reliability and results of the test suite depend on the behavior of the configured RPC URL (e.g., Paseo, Westend, etc.).
   - If the RPC endpoint is unstable, down, or changes its behavior, tests may fail or produce inconsistent results, even if the toolchain itself is functioning correctly.
@@ -19,8 +19,10 @@ This folder contains scripts and resources for running comprehensive release tes
 - **Dockerfile**: Builds a Docker image with the required `foundry-polkadot` binaries. The `version` is configurable as parameter.
 - **forge.sh**: Script to run a suite of `forge` commands and capture their output.
 - **cast.sh**: Script to run a suite of `cast` commands and capture their output.
+- **anvil-polkadot.sh**: Script to run a suite of `anvil-polkadot` commands and capture their output.
 - **forge.txt**: Output log from the last run of `forge.sh`.
 - **cast.txt**: Output log from the last run of `cast.sh`.
+- **anvil-polkadot.txt**: Output log from the last run of `anvil-polkadot.sh`.
 - **test/**: Directory for storing test artifacts.
 
 ## Prerequisites
@@ -54,7 +56,7 @@ Comment out the `ENTRYPOINT` line in the `Dockerfile` to use the default entrypo
 docker build --platform=linux/amd64 -t foundry .
 ```
 
-Update `forge.sh` and `cast.sh` under `docker_run()` to use `docker run --platform=linux/amd64` instead of `docker run` to run the commands.
+Update `forge.sh`, `cast.sh`, and `anvil-polkadot.sh` under `docker_run()` to use `docker run --platform=linux/amd64` instead of `docker run` to run the commands.
 
 ### 2. Run the Test Scripts
 
@@ -97,13 +99,13 @@ Update `forge.sh` and `cast.sh` under `docker_run()` to use `docker run --platfo
 
 ### 3. Review Results
 
-- Check `forge.txt` and `cast.txt` for command outputs and any errors.
+- Check `forge.txt`, `cast.txt`, and `anvil-polkadot.txt` for command outputs and any errors.
 - These files are overwritten on each run.
 
 ## Modifying the Release Test
 
 - **To add or change tested commands:**  
-  Edit `forge.sh` or `cast.sh` and add / remove / modify the `docker_run` lines as needed.  
+  Edit `forge.sh`, `cast.sh`, or `anvil-polkadot.sh` and add / remove / modify the `docker_run` lines as needed.  
   Each command is run inside the Docker container and its output is appended to the respective `.txt` file.
 
 - **To change the foundry-polkadot version:**  
@@ -133,6 +135,6 @@ docker run --rm -v $PWD/test:/test -w /test foundry forge --help
 
 ## Notes
 
-- If a script fails, check the output log (`forge.txt` or `cast.txt`) for the last successful command and the error message.
+- If a script fails, check the output log (`forge.txt`, `cast.txt` or `anvil-polkadot.txt` ) for the last successful command and the error message.
 - These scripts are intended for CI and release validation, but can also be run locally for manual testing.
 - The test suite is destructive to the `test/` directory it creates inside the container; do not use for persistent data.
