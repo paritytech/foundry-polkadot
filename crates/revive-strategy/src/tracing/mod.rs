@@ -296,6 +296,7 @@ impl Tracing for Tracer {
         error: polkadot_sdk::sp_runtime::DispatchError,
         gas_left: U256,
     ) {
+        println!("ERROR: {:?}", error);
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);
         self.storage_accesses.exit_child_span_with_error(error, gas_left);
