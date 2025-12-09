@@ -2898,13 +2898,22 @@ interface Vm {
     #[cheatcode(group = Utilities, safety = Unsafe)]
     function interceptInitcode() external;
 
-    /// Enables or disables Polkadot mode for contract execution.
-    /// When enabled, only Polkadot-specific calls are intercepted; all other operations run on EVM.
-    /// Example usage:
-    /// vm.polkadot(true);  // Enable Polkadot mode
-    /// vm.polkadot(false); // Disable Polkadot mode (use Foundry EVM)
+    /// Enables or disables Polkadot execution mode with explicit backend selection.
+    /// When enabled, contracts execute on pallet-revive runtime instead of standard EVM.
+    /// @param enable true = switch to Polkadot environment, false = switch back to Foundry EVM
+    /// @param backend Target backend: "evm" or "pvm"
+    /// Example: vm.polkadot(true, "evm");  // Enable Polkadot EVM backend
+    /// Example: vm.polkadot(true, "pvm");  // Enable Polkadot PVM backend
     #[cheatcode(group = Utilities)]
-    function polkadot(bool enabled) external;
+    function polkadot(bool enable, string calldata backend) external;
+
+    /// Enables or disables Polkadot execution mode with auto-detected backend.
+    /// Auto-detects backend based on CLI flags (--polkadot=evm or --polkadot=pvm).
+    /// @param enable true = switch to Polkadot environment, false = switch back to Foundry EVM
+    /// Example: vm.polkadot(true);   // Enable Polkadot mode (auto-detect backend)
+    /// Example: vm.polkadot(false);  // Disable Polkadot mode (back to Foundry EVM)
+    #[cheatcode(group = Utilities)]
+    function polkadot(bool enable) external;
 
     /// When running in Polkadot context, skips the next CREATE or CALL, executing it on the Foundry EVM instead.
     /// All `CREATE`s executed within this skip, will automatically have `CALL`s to their target addresses

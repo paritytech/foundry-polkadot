@@ -394,8 +394,9 @@ interface Vm {
     function parseUint(string calldata stringifiedValue) external pure returns (uint256 parsedValue);
     function pauseGasMetering() external;
     function pauseTracing() external view;
-    function polkadot(bool enabled) external;
     function polkadotSkip() external pure;
+    function polkadot(bool enable, string calldata backend) external;
+    function polkadot(bool enable) external;
     function prank(address msgSender) external;
     function prank(address msgSender, address txOrigin) external;
     function prank(address msgSender, bool delegateCall) external;
