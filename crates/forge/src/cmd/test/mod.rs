@@ -39,7 +39,7 @@ use foundry_config::{
         value::{Dict, Map},
     },
     filter::GlobMatcher,
-    revive,
+    revive::{self, PolkadotMode},
 };
 use foundry_debugger::Debugger;
 use foundry_evm::traces::identifier::TraceIdentifiers;
@@ -155,6 +155,20 @@ pub struct TestArgs {
     /// List tests instead of running them.
     #[arg(long, short, conflicts_with_all = ["show_progress", "decode_internal", "summary"], help_heading = "Display options")]
     list: bool,
+
+    /// Use pallet-revive runtime backend (evm or pvm mode).
+    ///
+    /// Controls which runtime backend to use during test execution:
+    /// - No flag or --polkadot=evm: Use EVM backend (single compilation, fast)
+    /// - --polkadot=pvm: Use PVM backend (dual compilation required)
+    #[arg(
+        long = "polkadot",
+        value_name = "MODE",
+        num_args = 0..=1,
+        default_missing_value = "evm",
+        require_equals = true
+    )]
+    polkadot: Option<PolkadotMode>,
 
     /// Set seed used to generate randomness during your fuzz runs.
     #[arg(long)]
@@ -288,6 +302,26 @@ impl TestArgs {
         // Merge all configs.
         let (mut config, mut evm_opts) = self.load_config_and_evm_opts()?;
 
+        // Override polkadot mode from CLI flag if provided
+        if let Some(polkadot_mode) = self.polkadot {
+            config.polkadot.polkadot = Some(polkadot_mode);
+            // Auto-enable resolc_compile when using --polkadot=pvm (required for dual compilation)
+            if polkadot_mode == PolkadotMode::Pvm {
+                tracing::warn!(
+                    "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
+                );
+                config.polkadot.resolc_compile = true;
+            }
+        }
+
+        // Auto-set polkadot=pvm when --resolc is used without explicit --polkadot flag
+        if config.polkadot.resolc_compile && config.polkadot.polkadot.is_none() {
+            tracing::warn!(
+                "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
+            );
+            config.polkadot.polkadot = Some(PolkadotMode::Pvm);
+        }
+
         let mut strategy = utils::get_executor_strategy(&config);
 
         // Explicitly enable isolation for gas reports for more correct gas accounting.
@@ -304,7 +338,7 @@ impl TestArgs {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }
-        if config.resolc.polkadot {
+        if config.polkadot.resolc_compile {
             config.extra_output.push(ContractOutputSelection::StorageLayout);
         }
         // Set up the project.
@@ -316,13 +350,13 @@ impl TestArgs {
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
         // Handle compilation based on whether dual compilation is enabled
-        let (output, dual_compiled_contracts) = if config.resolc.resolc_compile {
+        let (output, dual_compiled_contracts) = if config.polkadot.resolc_compile {
             // Dual compilation mode: compile both solc and resolc
 
             // Compile with solc to a subdirectory
             let mut solc_config = config.clone();
             solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
-            solc_config.resolc = Default::default();
+            solc_config.polkadot = Default::default();
             solc_config.build_info_path = Some(solc_config.out.join("build-info"));
             let solc_project = solc_config.project()?;
             let compiler = ProjectCompiler::new()

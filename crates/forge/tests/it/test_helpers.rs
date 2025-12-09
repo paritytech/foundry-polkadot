@@ -209,7 +209,7 @@ impl ForgeTestData {
 
         // Create resolc config with resolc compilation enabled
         let mut resolc_config = (*config).clone();
-        resolc_config.resolc.resolc_compile = true;
+        resolc_config.polkadot.resolc_compile = true;
         let mut resolc_project = resolc_config.project().unwrap();
 
         // Filter files compatible with resolc
