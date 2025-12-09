@@ -16,22 +16,20 @@ use std::marker::PhantomData;
 /// forking from an assethub chain, we expect an assethub runtime based on AURA,
 /// which will pick the author based on the slot given through the digest, which will
 /// also result in picking the AURA authority from index 0.
-pub struct SameSlotConsensusDataProvider<B, P> {
-    _phantom: PhantomData<(B, P)>,
+pub struct SameSlotConsensusDataProvider<B> {
+    _phantom: PhantomData<B>,
 }
 
-impl<B, P> SameSlotConsensusDataProvider<B, P> {
+impl<B> SameSlotConsensusDataProvider<B> {
     pub fn new() -> Self {
         Self { _phantom: PhantomData }
     }
 }
 
-impl<B, P> ConsensusDataProvider<B> for SameSlotConsensusDataProvider<B, P>
+impl<B> ConsensusDataProvider<B> for SameSlotConsensusDataProvider<B>
 where
     B: BlockT,
-    P: Send + Sync,
 {
-    type Proof = P;
 
     fn create_digest(
         &self,
@@ -50,7 +48,6 @@ where
         _parent: &B::Header,
         _params: &mut BlockImportParams<B>,
         _inherents: &InherentData,
-        _proof: Self::Proof,
     ) -> Result<(), Error> {
         Ok(())
     }
