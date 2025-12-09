@@ -695,8 +695,10 @@ impl ApiServer {
         hydrated_transactions: bool,
     ) -> Result<Option<Block>> {
         node_info!("eth_getBlockByHash");
-        let Some(block) =
-            self.eth_rpc_client.block_by_hash(&H256::from_slice(block_hash.as_slice())).await?
+        let Some(block) = self
+            .eth_rpc_client
+            .block_by_ethereum_hash(&H256::from_slice(block_hash.as_slice()))
+            .await?
         else {
             return Ok(None);
         };

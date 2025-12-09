@@ -81,10 +81,10 @@ async fn test_get_block_by_hash() {
     let tx_hash2 = node.send_transaction(transaction.nonce(2)).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
-    let hash1 = node.block_hash_by_number(1).await.unwrap();
-    let hash2 = node.block_hash_by_number(2).await.unwrap();
-    let block1 = node.get_block_by_hash(hash1).await;
-    let block2 = node.get_block_by_hash(hash2).await;
+    let hash1 = node.eth_block_hash_by_number(1).await.unwrap();
+    let hash2 = node.eth_block_hash_by_number(2).await.unwrap();
+    let block1 = node.get_block_by_eth_hash(hash1).await;
+    let block2 = node.get_block_by_eth_hash(hash2).await;
     assert!(is_transaction_in_block(&block1.transactions, tx_hash0));
     assert!(is_transaction_in_block(&block1.transactions, tx_hash1));
     assert!(is_transaction_in_block(&block2.transactions, tx_hash2));

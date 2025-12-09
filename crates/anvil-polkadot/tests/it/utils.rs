@@ -269,6 +269,12 @@ impl TestNode {
     }
 
     pub async fn get_block_by_hash(&mut self, hash: H256) -> Block {
+        let eth_hash = self.resolve_ethereum_hash(hash).unwrap();
+        self.get_block_by_eth_hash(eth_hash).await
+    }
+
+    // This relies on the `GetBlockByHash` anvil RPC call.
+    pub async fn get_block_by_eth_hash(&mut self, hash: H256) -> Block {
         unwrap_response::<Block>(
             self.eth_rpc(EthRequest::EthGetBlockByHash(hash.as_fixed_bytes().into(), false))
                 .await
