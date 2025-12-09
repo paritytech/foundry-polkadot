@@ -29,11 +29,10 @@ use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo,
-        DebugSettings, ExecConfig, Pallet, ResourceMeter, evm::CallTrace,
+        DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::{self, H160, H256},
-    sp_io,
+    sp_core::{self, H160},
     sp_weights::Weight,
 };
 
@@ -712,8 +711,8 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     &ExecConfig::new_substrate_tx(),
                                 );
                                 match upload_result {
-                                    Ok(_) => {
-                                        let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
+                                    Ok(upload_res) => {
+                                        let code_hash = upload_res.code_hash().to_owned();
                                         let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
                                             .expect("Failed to create contract info");
                                         AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
@@ -754,9 +753,9 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 &ExecConfig::new_substrate_tx_without_bump(),
                             );
                             match upload_result {
-                                Ok(_) => {
-                                    let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
-                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                Ok(upload_res) => {
+                                    let code_hash = upload_res.code_hash();
+                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash.to_owned())
                                         .expect("Failed to create contract info");
                                     AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
                                 }
@@ -958,17 +957,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());
 
-                polkadot_sdk::frame_system::Account::<Runtime>::mutate(&origin_account_id, |a| {
-                    a.nonce = ecx
-                        .journaled_state
-                        .load_account(input.caller())
-                        .unwrap()
-                        .info
-                        .nonce
-                        .min(u32::MAX.into())
-                        .try_into()
-                        .expect("shouldn't happen");
-                });
                 System::inc_account_nonce(&origin_account_id);
                 let code = Code::Upload(code_bytes.clone());
                 let data = constructor_args;
@@ -1140,9 +1128,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));
                 mock_handler.fund_pranked_accounts(call.caller);
 
-                let evm_value = sp_core::U256::from_little_endian(
-                    &call.transfer_value().unwrap_or_else(|| U256::ZERO).as_le_bytes(),
-                );
+                let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
                 let target = H160::from_slice(call.target_address.as_slice());
                 let exec_config = ExecConfig {
                     bump_nonce: false, // only works for constructors
