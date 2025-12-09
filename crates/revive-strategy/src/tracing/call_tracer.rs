@@ -57,13 +57,7 @@ impl Tracing for ExpectedCallTracer {
     fn exit_child_span(&mut self, _output: &pallet_revive::ExecReturnValue, _gas_left: U256) {
         self.is_create = false;
     }
-    fn exit_child_span_with_error(
-        &mut self,
-        _error: polkadot_sdk::sp_runtime::DispatchError,
-        _gas_used: U256,
-    ) {
-        self.is_create = false;
-    }
+
     fn instantiate_code(
         &mut self,
         _code: &polkadot_sdk::pallet_revive::Code,

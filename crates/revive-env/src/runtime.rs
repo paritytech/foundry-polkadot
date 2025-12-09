@@ -61,9 +61,10 @@ impl pallet_timestamp::Config for Runtime {}
 parameter_types! {
     pub const UnstableInterface: bool = true;
     pub const DepositPerByte: Balance = 1;
-    pub const DepositPerItem: Balance = 2;
+    pub const DepositPerItem: Balance = 1;
     pub const CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(0);
     pub const NativeToEthRatio: u32 = 1_000_000;
+    pub const GasScale : u32 = u32::MAX;
     pub BlockWeights: frame_system::limits::BlockWeights =
         frame_system::limits::BlockWeights::simple_max(
             Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
@@ -88,6 +89,7 @@ impl pallet_revive::Config for Runtime {
     type NativeToEthRatio = NativeToEthRatio;
     type FindAuthor = Self;
     type DebugEnabled = ConstBool<true>;
+    type GasScale = GasScale;
 }
 
 parameter_types! {

@@ -894,6 +894,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());
+
+                polkadot_sdk::frame_system::Account::<Runtime>::mutate(&origin_account_id, |a| {
+                    a.nonce = ecx
+                        .journaled_state
+                        .load_account(input.caller())
+                        .unwrap()
+                        .info
+                        .nonce
+                        .min(u32::MAX.into())
+                        .try_into()
+                        .expect("shouldn't happen");
+                });
                 System::inc_account_nonce(&origin_account_id);
                 let code = Code::Upload(code_bytes.clone());
                 let data = constructor_args;
@@ -948,8 +960,13 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ =
-                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
+                    let _ = gas.record_cost(
+                        res.gas_consumed
+                            .div_ceil(<Runtime as pallet_revive::Config>::GasScale::get().into())
+                            .min(u64::MAX.into())
+                            .try_into()
+                            .unwrap(),
+                    );
                 }
 
                 let outcome = if result.result.did_revert() {
@@ -1060,7 +1077,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));
                 mock_handler.fund_pranked_accounts(call.caller);
 
-                let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
+                let evm_value = sp_core::U256::from_little_endian(
+                    &call.transfer_value().unwrap_or_else(|| U256::ZERO).as_le_bytes(),
+                );
                 let target = H160::from_slice(call.target_address.as_slice());
                 let exec_config = ExecConfig {
                     bump_nonce: false, // only works for constructors
@@ -1078,7 +1097,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
                         weight_limit: Weight::MAX,
-                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                        deposit_limit: if call.is_static { 0 } else { BalanceOf::<Runtime>::MAX },
                     },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
@@ -1095,8 +1114,13 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ =
-                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
+                    let _ = gas.record_cost(
+                        res.gas_consumed
+                            .div_ceil(<Runtime as pallet_revive::Config>::GasScale::get().into())
+                            .min(u64::MAX.into())
+                            .try_into()
+                            .unwrap(),
+                    );
                 }
 
                 let outcome = if result.did_revert() {
@@ -1178,7 +1202,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 .database
                 .get_test_contract_address()
                 .map(|addr| call.bytecode_address != addr && call.target_address != addr)
-                .unwrap_or_default()
+                .unwrap_or(true)
         {
             return;
         }
@@ -1250,11 +1274,7 @@ fn post_exec(
             ecx.journaled_state.depth() + tracer.revert_tracer.max_depth,
             expected_revert.max_depth,
         );
-        expected_revert.reverted_by = tracer
-            .revert_tracer
-            .has_reverted
-            .map(|x| Address::from(x.0))
-            .or(expected_revert.reverted_by);
+        expected_revert.reverted_by = tracer.revert_tracer.has_reverted.map(|x| Address::from(x.0));
     }
     state.expected_calls = tracer.expect_call_tracer.data.clone();
 }

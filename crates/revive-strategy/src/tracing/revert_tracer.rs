@@ -85,7 +85,6 @@ impl Tracing for RevertTracer {
         _gas_used: U256,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
-
         if self.has_reverted.is_none() {
             self.has_reverted = Some(addr);
         }
@@ -93,6 +92,8 @@ impl Tracing for RevertTracer {
         if typ.is_some_and(|x| matches!(x, Type::Create)) {
             self.is_create = false;
         }
-        self.max_depth -= 1;
+        if self.has_reverted.is_none() {
+            self.max_depth -= 1;
+        }
     }
 }
