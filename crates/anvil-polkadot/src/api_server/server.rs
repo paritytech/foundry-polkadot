@@ -112,6 +112,7 @@ pub struct ApiServer {
     instance_id: B256,
     /// Tracks all active filters
     filters: Filters,
+    chain_id: u64,
 }
 
 /// Fetch the chain ID from the substrate chain.
@@ -151,9 +152,10 @@ impl ApiServer {
             substrate_service.storage_overrides.clone(),
         );
 
+        // When forking we need to use the chain ID of the forked network, but for non-forking we do
+        // not want to use this as we allow for the chain_id to be customized. So we will
+        // not write this to the backend, but cache it to use if we are forking.
         let chain_id = chain_id(&api).await?;
-        let latest_block = backend.blockchain().info().best_hash;
-        backend.inject_chain_id(latest_block, chain_id);
 
         let filters_clone = filters.clone();
         substrate_service.spawn_handle.spawn("filter-eviction-task", "None", async move {
@@ -173,6 +175,7 @@ impl ApiServer {
             wallet: DevSigner::new(signers)?,
             instance_id: B256::random(),
             filters,
+            chain_id,
         })
     }
 
@@ -630,7 +633,16 @@ impl ApiServer {
     }
 
     fn chain_id(&self, at: Hash) -> u64 {
-        self.backend.read_chain_id(at).expect("Chain ID is populated on genesis")
+        let id_res = self.backend.read_chain_id(at);
+
+        let id = match id_res {
+            Ok(id) => id,
+            // If chain_id is not found in the backend, we are forking so use the cached chain_id
+            // from the forked network
+            Err(_) => self.chain_id,
+        };
+
+        id
     }
 
     // Eth RPCs
