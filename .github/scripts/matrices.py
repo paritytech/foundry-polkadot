@@ -130,6 +130,8 @@ def main():
                 
                 if profile == "isolate":
                     flags += " --features=isolate-by-default"
+                if target == t_windows:
+                    flags += " --no-default-features"
                 name += os_str
 
                 obj = Expanded(
