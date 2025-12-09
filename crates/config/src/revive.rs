@@ -47,7 +47,7 @@ pub const CONTRACT_SIZE_LIMIT: usize = 250_000;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Default, Deserialize)]
 /// Resolc Config
-pub struct ResolcConfig {
+pub struct PolkadotConfig {
     /// Enable compilation using resolc
     pub resolc_compile: bool,
 
@@ -70,7 +70,7 @@ pub struct ResolcConfig {
     pub debug_information: Option<bool>,
 }
 
-impl ResolcConfig {
+impl PolkadotConfig {
     /// Returns the `ProjectPathsConfig` sub set of the config.
     pub fn project_paths(config: &Config) -> ProjectPathsConfig<MultiCompilerLanguage> {
         let builder = ProjectPathsConfig::builder()
@@ -92,10 +92,10 @@ impl ResolcConfig {
     pub fn resolc_settings(config: &Config) -> Result<SolcSettings, SolcError> {
         config.solc_settings().map(|mut s| {
             s.extra_settings = ResolcSettings::new(
-                config.resolc.optimizer_mode,
-                config.resolc.heap_size,
-                config.resolc.stack_size,
-                config.resolc.debug_information,
+                config.polkadot.optimizer_mode,
+                config.polkadot.heap_size,
+                config.polkadot.stack_size,
+                config.polkadot.debug_information,
             );
             s
         })

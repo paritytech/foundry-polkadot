@@ -89,7 +89,7 @@ impl ResolveArgs {
             let mut config = Config::load_with_root(&root)?.canonic_at(root);
 
             if resolc_compile {
-                config.resolc.resolc_compile = true;
+                config.polkadot.resolc_compile = true;
             }
             config
         };
@@ -145,7 +145,7 @@ impl ResolveArgs {
 
                     let dependency = {
                         // `Input.version` will always differ from `compiler_version`
-                        if config.resolc.resolc_compile {
+                        if config.polkadot.resolc_compile {
                             let names = compiler_name;
                             let mut names = names.split_whitespace();
                             compiler_name =

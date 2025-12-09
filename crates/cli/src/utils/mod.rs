@@ -136,7 +136,7 @@ pub fn get_executor_strategy(config: &Config) -> ExecutorStrategy {
     use foundry_config::revive::PolkadotMode;
     use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 
-    match config.resolc.polkadot {
+    match config.polkadot.polkadot {
         // No --polkadot flag: Standard Foundry EVM
         None => {
             info!("using standard EVM strategy");

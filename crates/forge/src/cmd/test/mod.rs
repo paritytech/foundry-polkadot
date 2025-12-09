@@ -304,22 +304,22 @@ impl TestArgs {
 
         // Override polkadot mode from CLI flag if provided
         if let Some(polkadot_mode) = self.polkadot {
-            config.resolc.polkadot = Some(polkadot_mode);
+            config.polkadot.polkadot = Some(polkadot_mode);
             // Auto-enable resolc_compile when using --polkadot=pvm (required for dual compilation)
             if polkadot_mode == PolkadotMode::Pvm {
                 tracing::warn!(
                     "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
                 );
-                config.resolc.resolc_compile = true;
+                config.polkadot.resolc_compile = true;
             }
         }
 
         // Auto-set polkadot=pvm when --resolc is used without explicit --polkadot flag
-        if config.resolc.resolc_compile && config.resolc.polkadot.is_none() {
+        if config.polkadot.resolc_compile && config.polkadot.polkadot.is_none() {
             tracing::warn!(
                 "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
             );
-            config.resolc.polkadot = Some(PolkadotMode::Pvm);
+            config.polkadot.polkadot = Some(PolkadotMode::Pvm);
         }
 
         let mut strategy = utils::get_executor_strategy(&config);
@@ -338,7 +338,7 @@ impl TestArgs {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }
-        if config.resolc.resolc_compile {
+        if config.polkadot.resolc_compile {
             config.extra_output.push(ContractOutputSelection::StorageLayout);
         }
         // Set up the project.
@@ -350,13 +350,13 @@ impl TestArgs {
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
         // Handle compilation based on whether dual compilation is enabled
-        let (output, dual_compiled_contracts) = if config.resolc.resolc_compile {
+        let (output, dual_compiled_contracts) = if config.polkadot.resolc_compile {
             // Dual compilation mode: compile both solc and resolc
 
             // Compile with solc to a subdirectory
             let mut solc_config = config.clone();
             solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
-            solc_config.resolc = Default::default();
+            solc_config.polkadot = Default::default();
             solc_config.build_info_path = Some(solc_config.out.join("build-info"));
             let solc_project = solc_config.project()?;
             let compiler = ProjectCompiler::new()
