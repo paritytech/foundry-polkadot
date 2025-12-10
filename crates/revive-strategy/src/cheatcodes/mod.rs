@@ -354,7 +354,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     .ecx
                     .journaled_state
                     .database
-                    .block_hash(new_block_number - 1)
+                    .block_hash(new_block_number)
                     .expect("Should not fail");
                 ctx.externalities.set_block_number(
                     newHeight,
