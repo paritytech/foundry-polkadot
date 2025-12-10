@@ -902,7 +902,7 @@ async fn test_anvil_node_info() {
     assert_eq!(node_info.fork_config.fork_block_number, None);
     assert_eq!(node_info.fork_config.fork_retry_backoff, None);
 
-    let genesis_block_hash = node.block_hash_by_number(0).await.unwrap();
+    let genesis_block_hash = node.eth_block_hash_by_number(0).await.unwrap();
     assert_eq!(node_info.current_block_hash, B256::from_slice(genesis_block_hash.as_ref()));
     let block = node.get_block_by_hash(genesis_block_hash).await;
     assert_eq!(block.gas_limit, node_info.environment.gas_limit.into());
@@ -946,7 +946,7 @@ async fn test_anvil_metadata() {
     assert!(metadata.snapshots.is_empty());
 
     // Get current block hash for comparison
-    let block_hash = node.block_hash_by_number(0).await.unwrap();
+    let block_hash = node.eth_block_hash_by_number(0).await.unwrap();
     assert_eq!(metadata.latest_block_hash, B256::from_slice(block_hash.as_ref()));
 
     // Create a snapshot and verify it appears in metadata
