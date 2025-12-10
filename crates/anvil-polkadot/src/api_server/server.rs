@@ -941,22 +941,25 @@ impl ApiServer {
         let Some(current_block) = self.eth_rpc_client.block_by_hash(&best_hash).await? else {
             return Err(Error::InternalError("Latest block not found".to_string()));
         };
+        let Some(evm_block) = self.eth_rpc_client.evm_block(current_block, false).await else {
+            return Err(Error::InternalError("Latest block not found".to_string()));
+        };
         let current_block_number: u64 =
-            current_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
+            evm_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
         let current_block_timestamp: u64 =
-            current_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
+            evm_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
         // This is both gas price and base fee, since pallet-revive does not support tips
         // https://github.com/paritytech/polkadot-sdk/blob/227c73b5c8810c0f34e87447f00e96743234fa52/substrate/frame/revive/rpc/src/lib.rs#L269
         let base_fee: u128 =
-            current_block.base_fee_per_gas.try_into().map_err(|_| EthRpcError::ConversionError)?;
-        let gas_limit: u64 = current_block.gas_limit.try_into().unwrap_or(u64::MAX);
+            evm_block.base_fee_per_gas.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        let gas_limit: u64 = evm_block.gas_limit.try_into().unwrap_or(u64::MAX);
         // pallet-revive should currently support all opcodes in PRAGUE.
         let hard_fork: &str = SpecId::PRAGUE.into();
 
         Ok(NodeInfo {
             current_block_number,
             current_block_timestamp,
-            current_block_hash: B256::from_slice(current_block.hash().as_ref()),
+            current_block_hash: B256::from_slice(evm_block.hash.as_ref()),
             hard_fork: hard_fork.to_string(),
             // pallet-revive does not support tips
             transaction_order: "fifo".to_string(),
@@ -978,8 +981,7 @@ impl ApiServer {
         let Some(latest_block) = self.eth_rpc_client.block_by_hash(&best_hash).await? else {
             return Err(Error::InternalError("Latest block not found".to_string()));
         };
-        let latest_block_number: u64 =
-            latest_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
+        let latest_block_number: u64 = latest_block.number().into();
 
         Ok(AnvilMetadata {
             client_version: CLIENT_VERSION.to_string(),
