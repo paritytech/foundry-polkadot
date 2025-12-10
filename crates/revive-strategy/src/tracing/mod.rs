@@ -96,12 +96,15 @@ impl Tracer {
                         account.info.nonce = nonce.into();
                     };
 
-                    if is_create && let Some(ref code) = code {
+                    if is_create
+                        && let Some(ref code) = code
+                        && let Some(info) = AccountInfo::<Runtime>::load_contract(&key)
+                    {
                         let code = code.clone();
                         let account =
                             ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
                         let bytecode = Bytecode::new_raw(Bytes::from(code.0));
-                        account.info.code_hash = bytecode.hash_slow();
+                        account.info.code_hash = info.code_hash.0.into();
                         account.info.code = Some(bytecode);
                     }
                     use alloy_primitives::hex;

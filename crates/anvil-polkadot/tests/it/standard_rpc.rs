@@ -174,7 +174,7 @@ async fn test_gas_price() {
 
     let gas_price =
         unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
-    assert_eq!(gas_price, U256::from(1000000));
+    assert_eq!(gas_price, U256::from(10000000));
 }
 
 #[tokio::test(flavor = "multi_thread")]
