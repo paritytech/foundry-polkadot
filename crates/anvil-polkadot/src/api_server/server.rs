@@ -799,7 +799,6 @@ impl ApiServer {
         };
 
         let latest_block = self.latest_block();
-        let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block.as_ref())));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {
@@ -813,8 +812,7 @@ impl ApiServer {
         };
 
         if transaction.gas.is_none() {
-            transaction.gas =
-                Some(self.estimate_gas(transaction_req.clone(), latest_block_id).await?);
+            transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
         }
 
         if transaction.gas_price.is_none() {
@@ -822,7 +820,7 @@ impl ApiServer {
         }
 
         if transaction.nonce.is_none() {
-            transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
+            transaction.nonce = Some(self.get_transaction_count(from, None).await?);
         }
 
         if transaction.chain_id.is_none() {
