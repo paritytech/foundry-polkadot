@@ -27,7 +27,10 @@ impl Default for Inner {
     fn default() -> Self {
         Self {
             externalities: ExtBuilder::default()
-                .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
+                .balance_genesis_config(vec![(
+                    H160::from_low_u64_be(1),
+                    1_000_000_000_000_000_000_000_000_000_u128,
+                )])
                 .build(),
             depth: 0,
         }

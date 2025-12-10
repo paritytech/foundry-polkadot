@@ -1013,7 +1013,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 if !state.gas_metering.paused {
                     let _ = gas.record_cost(
                         res.gas_consumed
-                            .div_ceil(<Runtime as pallet_revive::Config>::GasScale::get().into())
+                            .div_euclid(<Runtime as pallet_revive::Config>::GasScale::get().into())
                             .min(u64::MAX.into())
                             .try_into()
                             .unwrap(),
@@ -1165,7 +1165,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 if !state.gas_metering.paused {
                     let _ = gas.record_cost(
                         res.gas_consumed
-                            .div_ceil(<Runtime as pallet_revive::Config>::GasScale::get().into())
+                            .div_euclid(<Runtime as pallet_revive::Config>::GasScale::get().into())
                             .min(u64::MAX.into())
                             .try_into()
                             .unwrap(),
