@@ -268,9 +268,11 @@ impl TestNode {
         .unwrap()
     }
 
+    // pallet revive block_by_ethereum_hash, which is used by the anvil RPC server, reverts to using
+    // the substrate hash if the ethereum hash is not found for backwards compatibility.
+    // This is why we are not resolving the ethereum hash to substrate hash here.
     pub async fn get_block_by_hash(&mut self, hash: H256) -> Block {
-        let eth_hash = self.resolve_ethereum_hash(hash).unwrap();
-        self.get_block_by_eth_hash(eth_hash).await
+        self.get_block_by_eth_hash(hash).await
     }
 
     // This relies on the `GetBlockByHash` anvil RPC call.
