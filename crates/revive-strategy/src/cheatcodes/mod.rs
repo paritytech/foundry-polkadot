@@ -788,7 +788,13 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                     }
                 }
             }
-        })
+        });
+    ctx.externalities.set_balance(
+        AccountId::to_address(&Pallet::<Runtime>::checking_account()).0.into(),
+        U256::MAX,
+    );
+    ctx.externalities
+        .set_balance(AccountId::to_address(&Pallet::<Runtime>::account_id()).0.into(), U256::MAX);
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
@@ -947,7 +953,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(state.expected_calls.clone());
         let caller_h160 = H160::from_slice(input.caller().as_slice());
-
+        ctx.externalities.set_nonce(
+            input.caller(),
+            ecx.journaled_state.load_account(input.caller()).unwrap().info.nonce,
+        );
         let res = ctx.externalities.execute_with(|| {
             tracer.watch_address(&caller_h160);
 
@@ -982,7 +991,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     // address computation, resulting in duplicate addresses.
                     bump_nonce: false,
                     collect_deposit_from_hold: None,
-                    effective_gas_price: Some(gas_price_pvm),
+                    effective_gas_price: Some(sp_core::U256::one()),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };
@@ -1011,13 +1020,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(
-                        res.gas_consumed
-                            .div_euclid(<Runtime as pallet_revive::Config>::GasScale::get().into())
-                            .min(u64::MAX.into())
-                            .try_into()
-                            .unwrap(),
-                    );
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.result.did_revert() {
@@ -1089,7 +1093,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .journaled_state
             .database
             .get_test_contract_address()
-            .map(|addr| call.bytecode_address == addr || call.target_address == addr)
+            .map(|addr| call.bytecode_address == addr)
             .unwrap_or_default()
         {
             tracing::info!(
@@ -1113,7 +1117,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         );
 
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
-
+        ctx.externalities.set_nonce(
+            call.caller,
+            ecx.journaled_state.load_account(call.caller).unwrap().info.nonce,
+        );
         // Get nonce before execute_with closure
         let should_bump_nonce = !call.is_static;
         let caller_h160 = H160::from_slice(call.caller.as_slice());
@@ -1133,7 +1140,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let exec_config = ExecConfig {
                     bump_nonce: false, // only works for constructors
                     collect_deposit_from_hold: None,
-                    effective_gas_price: Some(gas_price_pvm),
+                    effective_gas_price: Some(sp_core::U256::one()),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };
@@ -1146,7 +1153,11 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
                         weight_limit: Weight::MAX,
-                        deposit_limit: if call.is_static { 0 } else { BalanceOf::<Runtime>::MAX },
+                        deposit_limit: if call.is_static {
+                            0
+                        } else {
+                            BalanceOf::<Runtime>::MAX / 2
+                        },
                     },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
@@ -1163,13 +1174,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(
-                        res.gas_consumed
-                            .div_euclid(<Runtime as pallet_revive::Config>::GasScale::get().into())
-                            .min(u64::MAX.into())
-                            .try_into()
-                            .unwrap(),
-                    );
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.did_revert() {
@@ -1250,7 +1256,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 .journaled_state
                 .database
                 .get_test_contract_address()
-                .map(|addr| call.bytecode_address != addr && call.target_address != addr)
+                .map(|addr| call.bytecode_address != addr)
                 .unwrap_or(true)
         {
             return;
@@ -1401,6 +1407,9 @@ fn apply_revm_storage_diff(
     if !contract_exists {
         return;
     }
+
+    ctx.externalities.set_balance(address, account_state.info.balance);
+    ctx.externalities.set_nonce(address, account_state.info.nonce);
 
     ctx.externalities.execute_with(|| {
         for (slot, storage_slot) in &account_state.storage {
