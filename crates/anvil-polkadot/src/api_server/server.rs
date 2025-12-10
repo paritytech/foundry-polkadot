@@ -689,6 +689,7 @@ impl ApiServer {
         Ok(code.into())
     }
 
+    /// Returns the EVM block with the given ethereum hash.
     async fn get_block_by_hash(
         &self,
         block_hash: B256,
@@ -937,9 +938,7 @@ impl ApiServer {
         node_info!("anvil_nodeInfo");
 
         let best_hash = self.latest_block();
-        let Some(current_block) =
-            self.get_block_by_hash(B256::from_slice(best_hash.as_ref()), false).await?
-        else {
+        let Some(current_block) = self.eth_rpc_client.block_by_hash(&best_hash).await? else {
             return Err(Error::InternalError("Latest block not found".to_string()));
         };
         let current_block_number: u64 =
@@ -957,7 +956,7 @@ impl ApiServer {
         Ok(NodeInfo {
             current_block_number,
             current_block_timestamp,
-            current_block_hash: B256::from_slice(best_hash.as_ref()),
+            current_block_hash: B256::from_slice(current_block.hash().as_ref()),
             hard_fork: hard_fork.to_string(),
             // pallet-revive does not support tips
             transaction_order: "fifo".to_string(),
@@ -976,9 +975,7 @@ impl ApiServer {
         node_info!("anvil_metadata");
 
         let best_hash = self.latest_block();
-        let Some(latest_block) =
-            self.get_block_by_hash(B256::from_slice(best_hash.as_ref()), false).await?
-        else {
+        let Some(latest_block) = self.eth_rpc_client.block_by_hash(&best_hash).await? else {
             return Err(Error::InternalError("Latest block not found".to_string()));
         };
         let latest_block_number: u64 =
@@ -987,7 +984,7 @@ impl ApiServer {
         Ok(AnvilMetadata {
             client_version: CLIENT_VERSION.to_string(),
             chain_id: self.chain_id(best_hash),
-            latest_block_hash: B256::from_slice(best_hash.as_ref()),
+            latest_block_hash: B256::from_slice(latest_block.hash().as_ref()),
             latest_block_number,
             instance_id: self.instance_id,
             // Forking is not supported yet in anvil-polkadot
@@ -1474,12 +1471,18 @@ impl ApiServer {
         Ok(())
     }
 
+    // This function translates a block ethereum hash to a substrate hash if needed.
     async fn maybe_get_block_hash_for_tag(
         &self,
         block_id: Option<BlockId>,
     ) -> Result<Option<H256>> {
         match ReviveBlockId::from(block_id).inner() {
-            BlockNumberOrTagOrHash::BlockHash(hash) => Ok(Some(hash)),
+            BlockNumberOrTagOrHash::BlockHash(hash) => {
+                // Translate the ethereum hash to a substrate hash.
+                Ok(Some(self.eth_rpc_client.resolve_substrate_hash(&hash).await.ok_or(
+                    Error::ReviveRpc(EthRpcError::ClientError(ClientError::EthereumBlockNotFound)),
+                )?))
+            }
             BlockNumberOrTagOrHash::BlockNumber(block_number) => {
                 let n = block_number.try_into().map_err(|_| {
                     Error::InvalidParams("Block number conversion failed".to_string())
@@ -1497,6 +1500,7 @@ impl ApiServer {
         }
     }
 
+    /// Returns the substrate block hash for a given block id.
     async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
         self.maybe_get_block_hash_for_tag(block_id)
             .await?
