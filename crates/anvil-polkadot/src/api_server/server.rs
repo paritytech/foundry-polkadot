@@ -42,7 +42,7 @@ use alloy_rpc_types::{
     Filter, TransactionRequest,
     anvil::{Forking, Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
     trace::{
-        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace},
+        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace, TraceResult},
         parity::LocalizedTransactionTrace,
     },
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
@@ -412,6 +412,11 @@ impl ApiServer {
             }
             EthRequest::DebugTraceCall(request, block_number, geth_tracer_options) => self
                 .debug_trace_call(request, block_number, geth_tracer_options)
+                .await
+                .to_rpc_result(),
+            // Non-standard anvil RPC, comes from Geth
+            EthRequest::DebugTraceBlockByNumber(block_number, geth_tracer_options) => self
+                .debug_trace_block_by_number(block_number, geth_tracer_options)
                 .await
                 .to_rpc_result(),
             EthRequest::TraceTransaction(tx_hash) => {
@@ -1695,6 +1700,28 @@ impl ApiServer {
         Ok(ReviveTrace::new(trace).into())
     }
 
+    async fn debug_trace_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+        geth_tracer_options: GethDebugTracingOptions,
+    ) -> Result<Vec<TraceResult>> {
+        node_info!("debug_traceBlockByNumber");
+
+        Ok(self
+            .eth_rpc_client
+            .trace_block_by_number(
+                ReviveBlockNumberOrTag::from(block_number).inner(),
+                ReviveTracerType::from(geth_tracer_options).inner(),
+            )
+            .await?
+            .into_iter()
+            .map(|tx_trace| TraceResult::Success {
+                result: ReviveTrace::new(tx_trace.trace).into(),
+                tx_hash: Some(B256::from_slice(tx_trace.tx_hash.as_ref())),
+            })
+            .collect::<Vec<_>>())
+    }
+
     async fn trace_transaction(&self, tx_hash: B256) -> Result<Vec<LocalizedTransactionTrace>> {
         node_info!("trace_transaction");
         let trace = self
@@ -1932,7 +1959,8 @@ async fn create_revive_rpc_client(
             .await
             .map_err(Error::from)?;
 
-    eth_rpc_client.create_block_notifier();
+    // Capacity is chosen using random.org
+    eth_rpc_client.set_block_notifier(Some(tokio::sync::broadcast::channel::<H256>(50).0));
     let eth_rpc_client_clone = eth_rpc_client.clone();
     task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.18;
 
 import "ds-test/test.sol";
-import "cheats/Vm.sol";
 import "../logs/console.sol";
 
 
@@ -45,6 +44,7 @@ contract RollTest is DSTest {
         assertTrue(blockContract.hash(5) != blockContract.hash(10), "block hash collision");
         vm.roll(5);
         assertEq(blockContract.hash(5), hash, "block 5 changed hash");
+        // Make sure blockhashes match the EVM's blockhashes
         assertEq(blockContract.hash(5), blockhash(5));
         assertEq(blockContract.hash(4), blockhash(4));
     }

@@ -117,9 +117,10 @@ jobs:
             arch: amd64
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target }}, wasm32-unknown-unknown
+          components: rust-src
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -136,6 +137,19 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y musl-tools
+
+      - name: Install clang (macOS)
+        if: contains(matrix.runner, 'macos')
+        run: |
+          brew install llvm
+          brew link llvm
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build binaries
         env:
@@ -159,8 +173,11 @@ jobs:
 
           if [[ "$TARGET" == "x86_64-unknown-linux-musl" ]]; then
             docker run -v $PWD:/opt/revive $RUST_MUSL_CROSS_IMAGE /bin/bash -c "
+            apt-get update && apt-get install -y clang libclang-dev unzip build-essential protobuf-compiler
+            rustup default 1.89.0
+            rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown
+            rustup component add rust-src
             cd /opt/revive
-            rustup target add x86_64-unknown-linux-musl
             cargo build $flags
           "
           sudo chown -R $(id -u):$(id -g) .
@@ -168,7 +185,7 @@ jobs:
             cargo build $flags
           fi
 
-          bins=(cast forge)
+          bins=(cast forge anvil-polkadot)
           for name in "${bins[@]}"; do
             bin=$OUT_DIR/$name$ext
             echo ""
@@ -189,16 +206,16 @@ jobs:
         shell: bash
         run: |
           if [ "$PLATFORM_NAME" == "linux" ]; then
-            tar -czvf "foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C $OUT_DIR forge cast
+            tar -czvf "foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C $OUT_DIR forge cast anvil-polkadot
             echo "file_name=foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           elif [ "$PLATFORM_NAME" == "darwin" ]; then
             # We need to use gtar here otherwise the archive is corrupt.
             # See: https://github.com/actions/virtual-environments/issues/2619
-            gtar -czvf "foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C $OUT_DIR forge cast
+            gtar -czvf "foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C $OUT_DIR forge cast anvil-polkadot
             echo "file_name=foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           else
             cd $OUT_DIR
-            7z a -tzip "foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" forge.exe cast.exe
+            7z a -tzip "foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" forge.exe cast.exe anvil-polkadot.exe
             mv "foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" ../../../
             echo "file_name=foundry_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" >> $GITHUB_OUTPUT
           fi
@@ -215,9 +232,11 @@ jobs:
           sudo apt-get -y install help2man
           help2man -N $OUT_DIR/forge > forge.1
           help2man -N $OUT_DIR/cast > cast.1
+          help2man -N $OUT_DIR/anvil-polkadot > anvil-polkadot.1
           gzip forge.1
           gzip cast.1
-          tar -czvf "foundry_man_${VERSION_NAME}.tar.gz" forge.1.gz cast.1.gz
+          gzip anvil-polkadot.1
+          tar -czvf "foundry_man_${VERSION_NAME}.tar.gz" forge.1.gz cast.1.gz anvil-polkadot.1.gz
           echo "foundry_man=foundry_man_${VERSION_NAME}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: Binaries attestation
@@ -227,6 +246,7 @@ jobs:
           subject-path: |
             ${{ env.cast_bin_path }}
             ${{ env.forge_bin_path }}
+            ${{ env.anvil_polkadot_bin_path }}
 
       - name: Record attestation URL
         run: |

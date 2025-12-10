@@ -3714,7 +3714,7 @@ Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
 forgetest_init!(test_resolc_config_option, |prj, cmd| {
     // Set resolc.resolc_compile = true in foundry.toml
     prj.update_config(|config| {
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
 
     // Test that the config option is recognized

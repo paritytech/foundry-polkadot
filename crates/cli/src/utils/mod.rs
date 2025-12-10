@@ -133,27 +133,24 @@ pub fn get_provider_builder(config: &Config) -> Result<ProviderBuilder> {
 
 /// Return an [ExecutorStrategy] via the config.
 pub fn get_executor_strategy(config: &Config) -> ExecutorStrategy {
+    use foundry_config::revive::PolkadotMode;
     use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 
-    let polkadot = config.resolc.polkadot;
-    let resolc = config.resolc.resolc_compile;
-
-    match (resolc, polkadot) {
-        // (default) - Standard Foundry EVM test
-        (false, false) => {
+    match config.polkadot.polkadot {
+        // No --polkadot flag: Standard Foundry EVM
+        None => {
             info!("using standard EVM strategy");
             ExecutorStrategy::new_evm()
         }
-        // --resolc - Run PolkaVM backend on pallet-revive (PVM)
-        // --resolc --polkadot - Run PolkaVM backend on pallet-revive (PVM)
-        (true, false) | (true, true) => {
-            info!("using revive strategy with PVM backend");
-            ExecutorStrategy::new_revive(ReviveRuntimeMode::Pvm)
-        }
-        // --polkadot (without resolc) - Run EVM backend on pallet-revive
-        (false, true) => {
+        // --polkadot or --polkadot=evm: Polkadot EVM backend
+        Some(PolkadotMode::Evm) => {
             info!("using revive strategy with EVM backend on pallet-revive");
             ExecutorStrategy::new_revive(ReviveRuntimeMode::Evm)
+        }
+        // --polkadot=pvm: Polkadot PVM backend
+        Some(PolkadotMode::Pvm) => {
+            info!("using revive strategy with PVM backend");
+            ExecutorStrategy::new_revive(ReviveRuntimeMode::Pvm)
         }
     }
 }

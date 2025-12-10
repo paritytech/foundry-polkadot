@@ -69,7 +69,6 @@ contract MockCallTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testMockGetters() public {
-        vm.pvm(true);
         Mock target = new Mock();
 
         // pre-mock
@@ -84,8 +83,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockNestedSimple() public {
-        vm.pvm(true);
-
         Mock inner = new Mock();
         NestedMock target = new NestedMock(inner);
 
@@ -99,8 +96,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockNestedEmptyAccount() public {
-        vm.pvm(true);
-
         Mock inner = Mock(address(100));
         NestedMock target = new NestedMock(inner);
 
@@ -112,8 +107,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockNestedPayDoesntTransfer() public {
-        vm.pvm(true);
-
         Mock inner = new Mock();
         NestedMock target = new NestedMock(inner);
 
@@ -127,8 +120,6 @@ contract MockCallTest is DSTest {
 
     // Ref: https://github.com/foundry-rs/foundry/issues/8066
     function testMockNestedDelegate() public {
-        vm.pvm(true);
-
         Mock inner = new Mock();
         NestedMockDelegateCall target = new NestedMockDelegateCall(inner);
 
@@ -140,8 +131,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockSelector() public {
-        vm.pvm(true);
-
         Mock target = new Mock();
         assertEq(target.add(5, 5), 10);
 
@@ -151,8 +140,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockCalldata() public {
-        vm.pvm(true);
-
         Mock target = new Mock();
         assertEq(target.add(5, 5), 10);
         assertEq(target.add(6, 4), 10);
@@ -164,8 +151,6 @@ contract MockCallTest is DSTest {
     }
 
     function testClearMockedCalls() public {
-        vm.pvm(true);
-
         Mock target = new Mock();
 
         vm.mockCall(address(target), abi.encodeWithSelector(target.numberB.selector), abi.encode(10));
@@ -180,8 +165,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockCallMultiplePartialMatch() public {
-        vm.pvm(true);
-
         Mock mock = new Mock();
 
         vm.mockCall(address(mock), abi.encodeWithSelector(mock.add.selector), abi.encode(10));
@@ -194,7 +177,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockCallWithValue() public {
-        vm.pvm(true);
         Mock mock = new Mock();
 
         vm.mockCall(address(mock), 10, abi.encodeWithSelector(mock.pay.selector), abi.encode(10));
@@ -212,8 +194,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockCallWithValueCalldataPrecedence() public {
-        vm.pvm(true);
-
         Mock mock = new Mock();
 
         vm.mockCall(address(mock), 10, abi.encodeWithSelector(mock.pay.selector), abi.encode(10));
@@ -225,8 +205,6 @@ contract MockCallTest is DSTest {
     }
 
     function testMockCallEmptyAccount() public {
-        vm.pvm(true);
-
         Mock mock = Mock(address(100));
 
         vm.mockCall(address(mock), abi.encodeWithSelector(mock.add.selector), abi.encode(10));
@@ -245,8 +223,6 @@ contract MockCallRevertTest is DSTest {
     bytes constant ERROR_MESSAGE = "ERROR_MESSAGE";
 
     function testMockGettersRevert() public {
-        vm.pvm(true);
-
         Mock target = new Mock();
 
         // pre-mock
@@ -265,8 +241,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockRevertWithCustomError() public {
-        vm.pvm(true);
-
         Mock target = new Mock();
 
         assertEq(target.numberA(), 1);
@@ -285,7 +259,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockNestedRevert() public {
-        vm.pvm(true);
         Mock inner = new Mock();
         NestedMock target = new NestedMock(inner);
 
@@ -301,8 +274,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockCalldataRevert() public {
-        vm.pvm(true);
-
         Mock target = new Mock();
         assertEq(target.add(5, 5), 10);
         assertEq(target.add(6, 4), 10);
@@ -319,8 +290,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testClearMockRevertedCalls() public {
-        vm.pvm(true);
-
         Mock target = new Mock();
 
         vm.mockCallRevert(address(target), abi.encodeWithSelector(target.numberB.selector), ERROR_MESSAGE);
@@ -332,8 +301,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockCallRevertPartialMatch() public {
-        vm.pvm(true);
-
         Mock mock = new Mock();
 
         vm.mockCallRevert(address(mock), abi.encodeWithSelector(mock.add.selector, 2), ERROR_MESSAGE);
@@ -348,8 +315,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockCallRevertWithValue() public {
-        vm.pvm(true);
-
         Mock mock = new Mock();
 
         vm.mockCallRevert(address(mock), 10, abi.encodeWithSelector(mock.pay.selector), ERROR_MESSAGE);
@@ -365,8 +330,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockCallResetsMockCallRevert() public {
-        vm.pvm(true);
-
         Mock mock = new Mock();
 
         vm.mockCallRevert(address(mock), abi.encodeWithSelector(mock.add.selector), ERROR_MESSAGE);
@@ -376,8 +339,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockCallRevertResetsMockCall() public {
-        vm.pvm(true);
-
         Mock mock = new Mock();
 
         vm.mockCall(address(mock), abi.encodeWithSelector(mock.add.selector), abi.encode(5));
@@ -393,8 +354,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockCallRevertWithCall() public {
-        vm.pvm(true);
-
         Mock mock = new Mock();
 
         bytes memory customError = abi.encodeWithSelector(TestError.selector, ERROR_MESSAGE);
@@ -407,8 +366,6 @@ contract MockCallRevertTest is DSTest {
     }
 
     function testMockCallEmptyAccountRevert() public {
-        vm.pvm(true);
-
         Mock mock = Mock(address(100));
 
         vm.mockCallRevert(address(mock), abi.encodeWithSelector(mock.add.selector), ERROR_MESSAGE);

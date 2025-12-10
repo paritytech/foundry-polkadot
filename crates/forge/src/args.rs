@@ -114,7 +114,7 @@ pub fn run_command(args: Forge) -> Result<()> {
             // cleanup cache inverse to the one currently used
             // e.g. when `resolc` is used it's `solc` cache.
             {
-                config.resolc.resolc_compile = !config.resolc.resolc_compile;
+                config.polkadot.resolc_compile = !config.polkadot.resolc_compile;
                 let project = config.project()?;
                 config.cleanup(&project)?;
             }
