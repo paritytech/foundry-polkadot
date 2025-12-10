@@ -4,7 +4,6 @@ pragma solidity ^0.8.30;
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
 
-
 contract BlockNumber {
     function number() public view returns (uint256) {
         return block.number;

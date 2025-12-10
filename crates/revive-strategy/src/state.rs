@@ -112,7 +112,7 @@ impl TestEnv {
         self.0.lock().unwrap().externalities.execute_with(|| {
             let new_block_number: u64 = new_height.try_into().expect("Block number exceeds u32");
             let digest = System::digest();
-            if System::block_hash(&new_block_number) == H256::zero() {
+            if System::block_hash(new_block_number) == H256::zero() {
                 // First initialize and finalize the parent block to set up correct hashes.
                 System::set_block_number(new_block_number - 1);
                 let current_hash = H256::from_slice(prev_new_height_hash.0.as_slice());
