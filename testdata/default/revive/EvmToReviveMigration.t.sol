@@ -265,4 +265,107 @@ contract EvmReviveMigrationTest is DSTest {
         assertTrue(!result2, "Unauthorized callback should fail");
         assertEq(callbackContract.getLastValue(), authorizedValue, "Last value should not be updated");
     }
+
+    function testExplicitEvmModeSwitch() public {
+        // Start in PVM (default for revive runner)
+        vm.deal(alice, 1 ether);
+        uint256 pvmBalance = alice.balance;
+        assertEq(pvmBalance, 1 ether, "PVM balance should be 1 ether");
+
+        // Explicitly switch to EVM mode
+        vm.polkadot(true, "evm");
+
+        // Balance should migrate to EVM
+        assertEq(alice.balance, pvmBalance, "Balance should migrate to EVM mode");
+
+        // Modify balance in EVM
+        vm.deal(alice, 2 ether);
+        uint256 evmBalance = alice.balance;
+        assertEq(evmBalance, 2 ether, "EVM balance should be 2 ether");
+
+        // Switch back to PVM explicitly
+        vm.polkadot(true, "pvm");
+
+        // Balance should migrate back to PVM
+        assertEq(alice.balance, evmBalance, "Balance should migrate back to PVM mode");
+    }
+
+    function testExplicitPvmModeSwitch() public {
+        // Switch to EVM first
+        vm.polkadot(false);
+
+        vm.deal(alice, 3 ether);
+        uint256 evmBalance = alice.balance;
+        assertEq(evmBalance, 3 ether, "EVM balance should be 3 ether");
+
+        // Explicitly switch to PVM mode
+        vm.polkadot(true, "pvm");
+
+        // Balance should migrate to PVM
+        assertEq(alice.balance, evmBalance, "Balance should migrate to PVM mode");
+
+        // Modify balance in PVM
+        vm.deal(alice, 4 ether);
+        assertEq(alice.balance, 4 ether, "PVM balance should be 4 ether");
+    }
+
+    function testMultipleModeSwitches() public {
+        SimpleStorage storageContract = new SimpleStorage();
+        vm.makePersistent(address(storageContract));
+
+        // Set value in PVM
+        storageContract.set(10);
+        assertEq(storageContract.get(), 10, "Value should be 10 in PVM");
+
+        // Switch to EVM explicitly
+        vm.polkadot(true, "evm");
+        assertEq(storageContract.get(), 10, "Value should persist to EVM");
+        storageContract.set(20);
+        assertEq(storageContract.get(), 20, "Value should be 20 in EVM");
+
+        // Switch to PVM explicitly
+        vm.polkadot(true, "pvm");
+        assertEq(storageContract.get(), 20, "Value should persist to PVM");
+        storageContract.set(30);
+        assertEq(storageContract.get(), 30, "Value should be 30 in PVM");
+
+        // Switch back to EVM
+        vm.polkadot(true, "evm");
+        assertEq(storageContract.get(), 30, "Value should persist back to EVM");
+
+        // Disable Polkadot (back to standard EVM)
+        vm.polkadot(false);
+        assertEq(storageContract.get(), 30, "Value should persist to standard EVM");
+    }
+
+    function testContractDeploymentInDifferentModes() public {
+        // Deploy in PVM
+        SimpleStorage pvmContract = new SimpleStorage();
+        vm.makePersistent(address(pvmContract));
+        pvmContract.set(100);
+
+        // Switch to EVM and deploy another contract
+        vm.polkadot(true, "evm");
+        SimpleStorage evmContract = new SimpleStorage();
+        vm.makePersistent(address(evmContract));
+        evmContract.set(200);
+
+        // Both contracts should work
+        assertEq(pvmContract.get(), 100, "PVM contract should work in EVM mode");
+        assertEq(evmContract.get(), 200, "EVM contract should work in EVM mode");
+
+        // Switch back to PVM
+        vm.polkadot(true, "pvm");
+
+        // Both contracts should still work
+        assertEq(pvmContract.get(), 100, "PVM contract should work in PVM mode");
+        assertEq(evmContract.get(), 200, "EVM contract should work in PVM mode");
+
+        // Modify both
+        pvmContract.set(150);
+        evmContract.set(250);
+
+        assertEq(pvmContract.get(), 150, "PVM contract should update in PVM mode");
+        assertEq(evmContract.get(), 250, "EVM contract should update in PVM mode");
+    }
 }

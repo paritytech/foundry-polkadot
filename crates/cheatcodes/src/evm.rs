@@ -942,10 +942,18 @@ impl Cheatcode for stopAndReturnDebugTraceRecordingCall {
     }
 }
 
-impl Cheatcode for polkadotCall {
+impl Cheatcode for polkadot_0Call {
     fn apply_stateful(&self, _ccx: &mut CheatsCtxt) -> Result {
         // Does nothing by default.
-        // PVM-related logic is implemented in the corresponding strategy object.
+        // Polkadot-related logic is implemented in the corresponding strategy object.
+        Ok(Default::default())
+    }
+}
+
+impl Cheatcode for polkadot_1Call {
+    fn apply_stateful(&self, _ccx: &mut CheatsCtxt) -> Result {
+        // Does nothing by default.
+        // Polkadot-related logic is implemented in the corresponding strategy object.
         Ok(Default::default())
     }
 }
@@ -953,7 +961,7 @@ impl Cheatcode for polkadotCall {
 impl Cheatcode for polkadotSkipCall {
     fn apply_stateful(&self, _ccx: &mut CheatsCtxt) -> Result {
         // Does nothing by default.
-        // PVM-related logic is implemented in the corresponding strategy object.
+        // Polkadot-related logic is implemented in the corresponding strategy object.
         Ok(Default::default())
     }
 }

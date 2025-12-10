@@ -195,9 +195,9 @@ impl<'a> From<&'a BuildOpts> for Figment {
         let resolc = args
             .compiler
             .resolc_opts
-            .apply_overrides(figment.extract_inner("resolc").unwrap_or_default());
+            .apply_overrides(figment.extract_inner("polkadot").unwrap_or_default());
 
-        figment.merge(("resolc", resolc))
+        figment.merge(("polkadot", resolc))
     }
 }
 

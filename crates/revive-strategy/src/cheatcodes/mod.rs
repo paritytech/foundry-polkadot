@@ -8,9 +8,10 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadotCall,
-        polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall, revertToStateCall, rollCall,
-        setBlockhashCall, setNonceCall, setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadot_0Call,
+        polkadot_1Call, polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall,
+        revertToStateCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall,
+        snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -80,7 +81,7 @@ impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
 
 /// Controls the automatic migration to pallet-revive during test execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PvmStartupMigration {
+pub enum ReviveStartupMigration {
     /// Defer database migration to a later execution point.
     /// This is the initial state - waiting for the test contract to be deployed.
     Defer,
@@ -93,7 +94,7 @@ pub enum PvmStartupMigration {
     Done,
 }
 
-impl PvmStartupMigration {
+impl ReviveStartupMigration {
     /// Check if startup migration is allowed
     pub fn is_allowed(&self) -> bool {
         matches!(self, Self::Allow)
@@ -113,17 +114,18 @@ impl PvmStartupMigration {
 #[derive(Debug, Default, Clone)]
 pub struct PvmCheatcodeInspectorStrategyContext {
     /// Whether we're currently using pallet-revive (migrated from REVM)
-    pub using_pvm: bool,
-    /// When in PVM context, execute the next CALL or CREATE in the EVM instead.
-    pub skip_pvm: bool,
-    /// Any contracts that were deployed in `skip_pvm` step.
-    /// This makes it easier to dispatch calls to any of these addresses in PVM context, directly
-    /// to EVM. Alternatively, we'd need to add `vm.polkadotSkip()` to these calls manually.
-    pub skip_pvm_addresses: std::collections::HashSet<Address>,
+    pub using_revive: bool,
+    /// When in Polkadot context, execute the next CALL or CREATE in the EVM instead.
+    pub skip_revive: bool,
+    /// Any contracts that were deployed in `skip_revive` step.
+    /// This makes it easier to dispatch calls to any of these addresses in revive context,
+    /// directly to EVM. Alternatively, we'd need to add `vm.polkadotSkip()` to these calls
+    /// manually.
+    pub skip_revive_addresses: std::collections::HashSet<Address>,
     /// Records the next create address for `skip_pvm_addresses`.
     pub record_next_create_address: bool,
     /// Controls automatic migration to pallet-revive
-    pub pvm_startup_migration: PvmStartupMigration,
+    pub revive_startup_migration: ReviveStartupMigration,
     pub dual_compiled_contracts: DualCompiledContracts,
     /// Runtime backend mode when using pallet-revive (PVM or EVM)
     pub runtime_mode: crate::ReviveRuntimeMode,
@@ -139,12 +141,12 @@ impl PvmCheatcodeInspectorStrategyContext {
     ) -> Self {
         Self {
             // Start in REVM mode by default
-            using_pvm: false,
-            skip_pvm: false,
-            skip_pvm_addresses: Default::default(),
+            using_revive: false,
+            skip_revive: false,
+            skip_revive_addresses: Default::default(),
             record_next_create_address: Default::default(),
             // Will be set to Allow when test contract deploys
-            pvm_startup_migration: PvmStartupMigration::Defer,
+            revive_startup_migration: ReviveStartupMigration::Defer,
             dual_compiled_contracts,
             runtime_mode,
             remove_recorded_access_at: None,
@@ -273,35 +275,40 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         }
         let ctx: &mut PvmCheatcodeInspectorStrategyContext =
             get_context_ref_mut(ccx.state.strategy.context.as_mut());
-        let using_pvm = ctx.using_pvm;
+        let using_revive = ctx.using_revive;
         match cheatcode.as_any().type_id() {
-            t if is::<polkadotCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
-                let polkadotCall { enabled } = cheatcode.as_any().downcast_ref().unwrap();
+            t if is::<polkadot_0Call>(t) => {
+                // polkadot(bool enable, string backend)
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                let polkadot_0Call { enable, backend } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                if *enabled {
-                    select_revive(ctx, ccx.ecx);
-                } else {
-                    select_evm(ctx, ccx.ecx);
-                }
-                Ok(Default::default())
+                handle_polkadot_call(ctx, ccx.ecx, *enable, backend)
+            }
+            t if is::<polkadot_1Call>(t) => {
+                // polkadot(bool enable) - auto-detect backend
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                let polkadot_1Call { enable } = cheatcode.as_any().downcast_ref().unwrap();
+                let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+                    get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                handle_polkadot_call(ctx, ccx.ecx, *enable, "")
             }
             t if is::<polkadotSkipCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
                 let polkadotSkipCall { .. } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                ctx.skip_pvm = true;
+                ctx.skip_revive = true;
                 Ok(Default::default())
             }
-            t if using_pvm && is::<dealCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+            t if using_revive && is::<dealCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
                 ctx.externalities.set_balance(*account, *newBalance);
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<setNonceCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+            t if using_revive && is::<setNonceCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
 
                 let &setNonceCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
@@ -309,8 +316,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<setNonceUnsafeCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+            t if using_revive && is::<setNonceUnsafeCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
 
                 let &setNonceUnsafeCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
@@ -318,64 +325,64 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<resetNonceCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+            t if using_revive && is::<resetNonceCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let &resetNonceCall { account } = cheatcode.as_any().downcast_ref().unwrap();
                 ctx.externalities.set_nonce(account, 0);
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<getNonce_0Call>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+            t if using_revive && is::<getNonce_0Call>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let &getNonce_0Call { account } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 let nonce = ctx.externalities.get_nonce(account);
                 Ok(u64::from(nonce).abi_encode())
             }
-            t if using_pvm && is::<rollCall>(t) => {
+            t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
 
                 ctx.externalities.set_block_number(newHeight);
 
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<snapshotStateCall>(t) => {
+            t if using_revive && is::<snapshotStateCall>(t) => {
                 ctx.externalities.start_snapshotting();
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<revertToStateAndDeleteCall>(t) => {
+            t if using_revive && is::<revertToStateAndDeleteCall>(t) => {
                 let &revertToStateAndDeleteCall { snapshotId } =
                     cheatcode.as_any().downcast_ref().unwrap();
 
                 ctx.externalities.revert(snapshotId.try_into().unwrap());
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<revertToStateCall>(t) => {
+            t if using_revive && is::<revertToStateCall>(t) => {
                 let &revertToStateCall { snapshotId } = cheatcode.as_any().downcast_ref().unwrap();
 
                 ctx.externalities.revert(snapshotId.try_into().unwrap());
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<warpCall>(t) => {
+            t if using_revive && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 ctx.externalities.set_timestamp(newTimestamp);
 
                 cheatcode.dyn_apply(ccx, executor)
             }
 
-            t if using_pvm && is::<chainIdCall>(t) => {
+            t if using_revive && is::<chainIdCall>(t) => {
                 let &chainIdCall { newChainId } = cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 ctx.externalities.set_chain_id(newChainId.to());
 
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<coinbaseCall>(t) => {
+            t if using_revive && is::<coinbaseCall>(t) => {
                 let &coinbaseCall { newCoinbase } = cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 ctx.externalities.set_block_author(newCoinbase);
 
                 cheatcode.dyn_apply(ccx, executor)
@@ -384,7 +391,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let &setBlockhashCall { blockNumber, blockHash } =
                     cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_pvm = ?using_pvm);
+                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
 
                 // Validate blockNumber is not in the future
                 let current_block = ctx.externalities.get_block_number();
@@ -399,7 +406,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<etchCall>(t) => {
+            t if using_revive && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
@@ -418,8 +425,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_pvm && is::<loadCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+            t if using_revive && is::<loadCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
 
                 // Check if target is the test contract - if so, read from REVM state instead
@@ -439,8 +446,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     Ok(result.abi_encode())
                 }
             }
-            t if using_pvm && is::<storeCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_pvm = ?using_pvm);
+            t if using_revive && is::<storeCall>(t) => {
+                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let &storeCall { target, slot, value } = cheatcode.as_any().downcast_ref().unwrap();
                 if ccx.is_precompile(&target) {
                     return Err(precompile_error(&target));
@@ -460,7 +467,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         let ctx = get_context_ref_mut(ctx);
 
         tracing::debug!("allowing startup PVM migration");
-        ctx.pvm_startup_migration.allow();
+        ctx.revive_startup_migration.allow();
     }
 
     fn record_broadcastable_create_transactions(
@@ -517,10 +524,10 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     ) {
         let ctx = get_context_ref_mut(ctx);
 
-        if ctx.pvm_startup_migration.is_allowed() && !ctx.using_pvm {
+        if ctx.revive_startup_migration.is_allowed() && !ctx.using_revive {
             tracing::info!("startup pallet-revive migration initiated");
             select_revive(ctx, ecx);
-            ctx.pvm_startup_migration.done();
+            ctx.revive_startup_migration.done();
             tracing::info!("startup pallet-revive migration completed");
         }
     }
@@ -533,7 +540,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     ) -> bool {
         let ctx = get_context_ref_mut(ctx);
 
-        if !ctx.using_pvm {
+        if !ctx.using_revive {
             return false;
         }
 
@@ -550,7 +557,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         };
 
         let balance = ctx.externalities.get_balance(address);
-        tracing::info!(operation = "get_balance" , using_pvm = ?ctx.using_pvm, target = ?address, balance = ?balance);
+        tracing::info!(operation = "get_balance" , using_revive = ?ctx.using_revive, target = ?address, balance = ?balance);
 
         // Skip the current BALANCE instruction since we've already handled it
         if interpreter.stack.push(balance) {
@@ -563,14 +570,60 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
     }
 }
 
+fn handle_polkadot_call(
+    ctx: &mut PvmCheatcodeInspectorStrategyContext,
+    data: Ecx<'_, '_, '_>,
+    enable: bool,
+    backend: &str,
+) -> Result {
+    if enable {
+        // Empty string is only used internally by polkadot_1Call (single-param variant) for
+        // auto-detection
+        let target_mode = match backend.to_lowercase().as_str() {
+            "" => ctx.runtime_mode, // Auto-detect: use base mode from CLI
+            "evm" => crate::ReviveRuntimeMode::Evm,
+            "pvm" => {
+                tracing::warn!(
+                    "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
+                );
+                crate::ReviveRuntimeMode::Pvm
+            }
+            _ => return Err(format!("Invalid backend: '{backend}'. Use 'evm' or 'pvm'").into()),
+        };
+
+        // When explicit backend is provided, allow switching between EVM/PVM backends
+        let is_backend_switch = target_mode != ctx.runtime_mode && ctx.using_revive;
+
+        // Validate we're running with --polkadot and --resolc flags if switching to PVM
+        // If dual_compiled_contracts is empty, return error
+        if is_backend_switch
+            && ctx.dual_compiled_contracts.is_empty()
+            && target_mode == crate::ReviveRuntimeMode::Pvm
+        {
+            return Err(
+                "Backend switching to PVM requires running tests with --polkadot and --resolc flags".into(),
+            );
+        }
+        ctx.runtime_mode = target_mode;
+        if !is_backend_switch {
+            // Migrate to the target mode (from standard EVM to Polkadot)
+            select_revive(ctx, data);
+        }
+    } else if ctx.using_revive {
+        // Switching BACK to Foundry EVM
+        select_evm(ctx, data);
+    }
+    Ok(Default::default())
+}
+
 fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
-    if ctx.using_pvm {
+    if ctx.using_revive {
         tracing::info!("already using pallet-revive");
         return;
     }
 
     tracing::info!("switching to pallet-revive ({} mode)", ctx.runtime_mode);
-    ctx.using_pvm = true;
+    ctx.using_revive = true;
 
     let block_number = data.block.number;
     let timestamp = data.block.timestamp;
@@ -587,7 +640,9 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                 &data.cfg.chain_id,
             );
             let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
+            let test_contract_addr = data.journaled_state.database.get_test_contract_address();
             for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
+                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;
                 let nonce = acc.data.info.nonce;
@@ -611,7 +666,14 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                         if let Some((_, contract)) = ctx.dual_compiled_contracts
                             .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
                         {
-                            let (code_bytes, immutable_data, code_type) = match ctx.runtime_mode {
+                            // Test contract should always use EVM bytecode, even in PVM mode
+                            // TODO check why this is needed now
+                            let effective_runtime_mode = if test_contract_addr == Some(address) {
+                                crate::ReviveRuntimeMode::Evm
+                            } else {
+                                ctx.runtime_mode
+                            };
+                            let (code_bytes, immutable_data, code_type) = match effective_runtime_mode {
                                 crate::ReviveRuntimeMode::Pvm => {
                                     let immutable_data = contract.evm_immutable_references
                                         .as_ref()
@@ -723,13 +785,13 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
-    if !ctx.using_pvm {
+    if !ctx.using_revive {
         tracing::info!("already using REVM");
         return;
     }
 
     tracing::info!("switching from pallet-revive back to REVM");
-    ctx.using_pvm = false;
+    ctx.using_revive = false;
 
     ctx.externalities.execute_with(|| {
         let block_number = System::block_number();
@@ -755,30 +817,31 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
             {
                 let hash = hex::encode(info.code_hash);
 
-                if let Some((code_hash, bytecode)) = match ctx.runtime_mode {
-                    crate::ReviveRuntimeMode::Pvm => ctx
-                        .dual_compiled_contracts
-                        .find_by_resolc_bytecode_hash(hash)
-                        .and_then(|(_, contract)| {
-                            contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
-                                (
-                                    contract.evm_bytecode_hash,
-                                    Bytecode::new_raw(evm_bytecode.clone()),
-                                )
-                            })
-                        }),
-                    crate::ReviveRuntimeMode::Evm => ctx
-                        .dual_compiled_contracts
-                        .find_by_evm_bytecode_hash(hash)
-                        .and_then(|(_, contract)| {
-                            contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
-                                (
-                                    contract.evm_bytecode_hash,
-                                    Bytecode::new_raw(evm_bytecode.clone()),
-                                )
-                            })
-                        }),
-                } {
+                // Try both PVM and EVM bytecode lookups since runtime_mode may not reflect
+                // the actual bytecode type stored (especially after backend switches)
+                // TODO: make PristineCode public to avoid this double lookup
+                let bytecode_result = ctx
+                    .dual_compiled_contracts
+                    .find_by_resolc_bytecode_hash(hash.clone())
+                    .and_then(|(_, contract)| {
+                        contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                            (contract.evm_bytecode_hash, Bytecode::new_raw(evm_bytecode.clone()))
+                        })
+                    })
+                    .or_else(|| {
+                        ctx.dual_compiled_contracts.find_by_evm_bytecode_hash(hash).and_then(
+                            |(_, contract)| {
+                                contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                                    (
+                                        contract.evm_bytecode_hash,
+                                        Bytecode::new_raw(evm_bytecode.clone()),
+                                    )
+                                })
+                            },
+                        )
+                    });
+
+                if let Some((code_hash, bytecode)) = bytecode_result {
                     account.info.code_hash = code_hash;
                     account.info.code = Some(bytecode);
                 } else {
@@ -796,7 +859,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
     fn is_pvm_enabled(&self, state: &mut foundry_cheatcodes::Cheatcodes) -> bool {
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
-        ctx.using_pvm
+        ctx.using_revive
     }
 
     /// Try handling the `CREATE` within PVM.
@@ -816,12 +879,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let ctx: &mut PvmCheatcodeInspectorStrategyContext =
             get_context_ref_mut(state.strategy.context.as_mut());
 
-        if !ctx.using_pvm {
+        if !ctx.using_revive {
             return None;
         }
 
-        if ctx.skip_pvm {
-            ctx.skip_pvm = false; // handled the skip, reset flag
+        if ctx.skip_revive {
+            ctx.skip_revive = false; // handled the skip, reset flag
             ctx.record_next_create_address = true;
             tracing::info!("running create in EVM, instead of pallet-revive (skipped)");
             return None;
@@ -999,12 +1062,12 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             _ => None,
         };
 
-        if !ctx.using_pvm {
+        if !ctx.using_revive {
             return None;
         }
 
-        if ctx.skip_pvm || ctx.skip_pvm_addresses.contains(&call.target_address) {
-            ctx.skip_pvm = false; // handled the skip, reset flag
+        if ctx.skip_revive || ctx.skip_revive_addresses.contains(&call.target_address) {
+            ctx.skip_revive = false; // handled the skip, reset flag
             tracing::info!("running call in EVM, instead of pallet-revive (skipped)");
             return None;
         }
@@ -1164,7 +1227,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         // Skip storage sync if: in PVM mode AND no test contract
-        if ctx.using_pvm
+        if ctx.using_revive
             && ecx
                 .journaled_state
                 .database
@@ -1188,7 +1251,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         if ctx.record_next_create_address {
             ctx.record_next_create_address = false;
             if let Some(address) = outcome.address {
-                ctx.skip_pvm_addresses.insert(address);
+                ctx.skip_revive_addresses.insert(address);
                 tracing::info!(
                     "recorded address {:?} for skip execution in the pallet-revive",
                     address
