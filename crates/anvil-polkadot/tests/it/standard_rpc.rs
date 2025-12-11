@@ -904,7 +904,7 @@ async fn test_anvil_node_info() {
 
     let genesis_block_hash = node.eth_block_hash_by_number(0).await.unwrap();
     assert_eq!(node_info.current_block_hash, B256::from_slice(genesis_block_hash.as_ref()));
-    let block = node.get_block_by_hash(genesis_block_hash).await;
+    let block = node.get_block_by_eth_hash(genesis_block_hash).await;
     assert_eq!(block.gas_limit, node_info.environment.gas_limit.into());
     assert_eq!(block.base_fee_per_gas, node_info.environment.base_fee.into());
     assert_eq!(block.base_fee_per_gas, node_info.environment.gas_price.into());
