@@ -340,8 +340,27 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
+                let new_block_number: u64 = newHeight.try_into().expect("Block number exceeds u32");
 
-                ctx.externalities.set_block_number(newHeight);
+                // blockhash should be the same on both revive and revm sides, so fetch it before
+                // changing the block number.
+                let prev_new_height_hash = ccx
+                    .ecx
+                    .journaled_state
+                    .database
+                    .block_hash(new_block_number - 1)
+                    .expect("Should not fail");
+                let new_height_hash = ccx
+                    .ecx
+                    .journaled_state
+                    .database
+                    .block_hash(new_block_number)
+                    .expect("Should not fail");
+                ctx.externalities.set_block_number(
+                    newHeight,
+                    prev_new_height_hash,
+                    new_height_hash,
+                );
 
                 cheatcode.dyn_apply(ccx, executor)
             }

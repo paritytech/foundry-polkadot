@@ -46,3 +46,4 @@ revive_cheat_test_original!(test_expect_call, "ExpectCallRevive");
 revive_cheat_test!(test_coinbase, "CoinBase");
 revive_cheat_test!(test_set_custom_blockhash, "SetBlockhash");
 revive_cheat_test_original!(test_set_blockhash, "SetBlockhash");
+revive_cheat_test!(test_roll, "Roll");
