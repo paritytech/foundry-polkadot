@@ -9,7 +9,8 @@ use foundry_cheatcodes::{Ecx, MockCallDataContext, MockCallReturnData};
 use polkadot_sdk::{
     frame_system,
     pallet_revive::{
-        self, AddressMapper, DelegateInfo, ExecOrigin, ExecReturnValue, Pallet, mock::MockHandler,
+        self, AccountId32Mapper, AddressMapper, DelegateInfo, ExecOrigin, ExecReturnValue, Pallet,
+        mock::MockHandler,
     },
     pallet_revive_uapi::ReturnFlags,
     polkadot_sdk_frame::prelude::OriginFor,
@@ -42,7 +43,9 @@ impl MockHandlerImpl {
         Self {
             inner: Rc::new(RefCell::new(inject_env)),
             origin: ExecOrigin::<Runtime>::from_runtime_origin(OriginFor::<Runtime>::signed(
-                AccountId::to_fallback_account_id(&H160::from_slice(origin.as_slice())),
+                AccountId32Mapper::<Runtime>::to_fallback_account_id(&H160::from_slice(
+                    origin.as_slice(),
+                )),
             ))
             .expect("Could not create tx origin"),
         }
@@ -193,14 +196,15 @@ impl MockHandlerInner<Runtime> {
         callee: Option<&Address>,
         state: &mut foundry_cheatcodes::Cheatcodes,
     ) -> Self {
-        let pranked_caller = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-            &H160::from_slice(caller.as_slice()),
-        ));
+        let pranked_caller =
+            OriginFor::<Runtime>::signed(AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                &H160::from_slice(caller.as_slice()),
+            ));
 
         let delegated_caller = target_address.map(|addr| {
-            OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&H160::from_slice(
-                addr.as_slice(),
-            )))
+            OriginFor::<Runtime>::signed(AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                &H160::from_slice(addr.as_slice()),
+            ))
         });
 
         Self {

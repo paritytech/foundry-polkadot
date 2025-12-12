@@ -3,10 +3,16 @@
 //! THIS IS WORK IN PROGRESS. It is not yet complete and may change in the future.
 
 use frame_support::{runtime, traits::FindAuthor, weights::constants::WEIGHT_REF_TIME_PER_SECOND};
-use pallet_revive::AccountId32Mapper;
 use polkadot_sdk::{
-    pallet_revive::evm::fees::BlockRatioFee,
+    pallet_revive::{
+        AccountId32Mapper,
+        evm::{
+            fees::{BlockRatioFee, Info},
+            runtime::EthExtra,
+        },
+    },
     pallet_transaction_payment::{ConstFeeMultiplier, Multiplier},
+    parachains_common::{AccountId, Hash, Header, Nonce},
     polkadot_sdk_frame::runtime::prelude::*,
     sp_runtime::AccountId32,
     sp_weights::ConstantMultiplier,
@@ -14,8 +20,9 @@ use polkadot_sdk::{
 };
 
 pub type Balance = u128;
-pub type AccountId = pallet_revive::AccountId32Mapper<Runtime>;
-pub type Block = frame_system::mocking::MockBlock<Runtime>;
+pub type Block = sp_runtime::generic::Block<Header, UncheckedExtrinsic>;
+pub type UncheckedExtrinsic =
+    pallet_revive::evm::runtime::UncheckedExtrinsic<Address, Signature, EthExtraImpl>;
 
 parameter_types! {
     pub const TransactionByteFee: Balance = 10;
@@ -59,7 +66,6 @@ mod runtime {
 
     #[runtime::pallet_index(3)]
     pub type Contracts = pallet_revive;
-
     /// Provides the ability to charge for extrinsic execution.
     #[runtime::pallet_index(4)]
     pub type TransactionPayment = pallet_transaction_payment::Pallet<Runtime>;
@@ -68,8 +74,9 @@ mod runtime {
 #[derive_impl(frame_system::config_preludes::SolochainDefaultConfig)]
 impl frame_system::Config for Runtime {
     type Block = Block;
-    type BlockWeights = BlockWeights;
-    type AccountId = AccountId32;
+    type AccountId = AccountId;
+    type Hash = Hash;
+    type Nonce = Nonce;
     type AccountData = pallet_balances::AccountData<<Self as pallet_balances::Config>::Balance>;
 }
 
@@ -115,6 +122,78 @@ impl pallet_revive::Config for Runtime {
     type FindAuthor = Self;
     type DebugEnabled = ConstBool<true>;
     type GasScale = GasScale;
+    type FeeInfo = Info<Address, Signature, EthExtraImpl>;
+}
+
+pub use polkadot_sdk::parachains_common::Signature;
+
+pub type Address = sp_runtime::MultiAddress<AccountId, ()>;
+
+/// The transaction extensions that are added to the runtime.
+type TxExtension = (
+    // Checks that the sender is not the zero address.
+    frame_system::CheckNonZeroSender<Runtime>,
+    // Checks that the runtime version is correct.
+    frame_system::CheckSpecVersion<Runtime>,
+    // Checks that the transaction version is correct.
+    frame_system::CheckTxVersion<Runtime>,
+    // Checks that the genesis hash is correct.
+    frame_system::CheckGenesis<Runtime>,
+    // Checks that the era is valid.
+    frame_system::CheckEra<Runtime>,
+    // Checks that the nonce is valid.
+    frame_system::CheckNonce<Runtime>,
+    // Checks that the weight is valid.
+    frame_system::CheckWeight<Runtime>,
+    // Ensures that the sender has enough funds to pay for the transaction
+    // and deducts the fee from the sender's account.
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    // Needs to be done after all extensions that rely on a signed origin.
+    pallet_revive::evm::tx_extension::SetOrigin<Runtime>,
+    // Reclaim the unused weight from the block using post dispatch information.
+    // It must be last in the pipeline in order to catch the refund in previous transaction
+    // extensions
+    frame_system::WeightReclaim<Runtime>,
+);
+/// Default extensions applied to Ethereum transactions.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EthExtraImpl;
+
+impl EthExtra for EthExtraImpl {
+    type Config = Runtime;
+    type Extension = TxExtension;
+
+    fn get_eth_extension(nonce: u32, tip: Balance) -> Self::Extension {
+        (
+            frame_system::CheckNonZeroSender::<Runtime>::new(),
+            frame_system::CheckSpecVersion::<Runtime>::new(),
+            frame_system::CheckTxVersion::<Runtime>::new(),
+            frame_system::CheckGenesis::<Runtime>::new(),
+            frame_system::CheckMortality::from(sp_runtime::generic::Era::Immortal),
+            frame_system::CheckNonce::<Runtime>::from(nonce),
+            frame_system::CheckWeight::<Runtime>::new(),
+            pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+            pallet_revive::evm::tx_extension::SetOrigin::<Runtime>::new_from_eth_transaction(),
+            frame_system::WeightReclaim::<Runtime>::new(),
+        )
+    }
+}
+
+impl pallet_revive::evm::runtime::SetWeightLimit for RuntimeCall {
+    fn set_weight_limit(&mut self, new_weight_limit: Weight) -> Weight {
+        use pallet_revive::pallet::Call as ReviveCall;
+        match self {
+            Self::Contracts(
+                ReviveCall::eth_call { weight_limit, .. }
+                | ReviveCall::eth_instantiate_with_code { weight_limit, .. },
+            ) => {
+                let old = *weight_limit;
+                *weight_limit = new_weight_limit;
+                old
+            }
+            _ => Weight::default(),
+        }
+    }
 }
 
 parameter_types! {

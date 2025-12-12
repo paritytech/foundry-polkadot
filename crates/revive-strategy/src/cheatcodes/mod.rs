@@ -18,7 +18,7 @@ use foundry_cheatcodes::{
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use foundry_evm::constants::CHEATCODE_ADDRESS;
-use revive_env::{AccountId, Runtime, System, Timestamp};
+use revive_env::{Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
     sync::Arc,
@@ -28,8 +28,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo,
-        DebugSettings, DryRunConfig, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code,
+        ContractInfo, DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -647,7 +647,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                 let nonce = acc.data.info.nonce;
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
-                    AccountId::to_fallback_account_id(&account);
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
                 let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
                 Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
                     .expect("failed to set evm balance");
@@ -790,11 +790,13 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
             }
         });
     ctx.externalities.set_balance(
-        AccountId::to_address(&Pallet::<Runtime>::checking_account()).0.into(),
+        AccountId32Mapper::<Runtime>::to_address(&Pallet::<Runtime>::checking_account()).0.into(),
         U256::MAX,
     );
-    ctx.externalities
-        .set_balance(AccountId::to_address(&Pallet::<Runtime>::account_id()).0.into(), U256::MAX);
+    ctx.externalities.set_balance(
+        AccountId32Mapper::<Runtime>::to_address(&Pallet::<Runtime>::account_id()).0.into(),
+        U256::MAX,
+    );
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
@@ -961,7 +963,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
-                let origin_account_id = AccountId::to_fallback_account_id(&caller_h160);
+                let origin_account_id =
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160);
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());
@@ -1131,8 +1134,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
-                let origin =
-                    OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));
+                let origin = OriginFor::<Runtime>::signed(
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
+                );
                 mock_handler.fund_pranked_accounts(call.caller);
 
                 let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
@@ -1145,7 +1149,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     is_dry_run: None,
                 };
                 if should_bump_nonce {
-                    System::inc_account_nonce(AccountId::to_fallback_account_id(&caller_h160));
+                    System::inc_account_nonce(
+                        AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
+                    );
                 }
                 dry_run = Some(Pallet::<Runtime>::bare_call(
                     origin.clone(),

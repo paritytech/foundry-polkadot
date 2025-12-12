@@ -9,7 +9,7 @@ use polkadot_sdk::{
     frame_support::traits::{OnGenesis, fungible::Mutate},
     frame_system::{self, Pallet},
     pallet_balances,
-    pallet_revive::{self, AddressMapper},
+    pallet_revive::{self, AccountId32Mapper, AddressMapper},
     polkadot_runtime_common::BuildStorage,
     sp_core::H160,
     sp_io,
@@ -18,8 +18,8 @@ use polkadot_sdk::{
     sp_tracing,
 };
 
-pub use crate::runtime::{AccountId, Balance, BlockAuthor, GasScale, Runtime, System, Timestamp};
-
+pub use crate::runtime::{Balance, BlockAuthor, GasScale, Runtime, System, Timestamp};
+pub use polkadot_sdk::parachains_common::AccountId;
 mod runtime;
 
 /// Externalities builder
@@ -35,7 +35,11 @@ impl ExtBuilder {
         Self {
             balance_genesis_config: value
                 .iter()
-                .map(|(address, balance)| (AccountId::to_fallback_account_id(address), *balance))
+                .map(|(address, balance)| {
+                    let acc: AccountId32 =
+                        AccountId32Mapper::<Runtime>::to_fallback_account_id(address);
+                    (acc.into(), *balance)
+                })
                 .collect(),
         }
     }
@@ -89,7 +93,7 @@ mod tests {
         ext.execute_with(|| {
             assert_eq!(
                 pallet_balances::Pallet::<Runtime>::free_balance(
-                    AccountId::to_fallback_account_id(&H160::from_low_u64_be(1))
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&H160::from_low_u64_be(1))
                 ),
                 1000
             );
