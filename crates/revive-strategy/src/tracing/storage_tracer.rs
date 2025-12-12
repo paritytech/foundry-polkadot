@@ -93,14 +93,12 @@ impl Tracing for StorageTracer {
 
         let kind = if code.is_some() {
             AccountAccessKind::Create
+        } else if is_read_only {
+            AccountAccessKind::StaticCall
+        } else if is_delegate_call {
+            AccountAccessKind::DelegateCall
         } else {
-            if is_read_only {
-                AccountAccessKind::StaticCall
-            } else if is_delegate_call {
-                AccountAccessKind::DelegateCall
-            } else {
-                AccountAccessKind::Call
-            }
+            AccountAccessKind::Call
         };
 
         let last_depth = if !self.pending.is_empty() {

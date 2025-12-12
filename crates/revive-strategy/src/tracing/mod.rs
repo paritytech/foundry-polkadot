@@ -1,9 +1,7 @@
-use std::{collections::BTreeMap, str::FromStr};
 
-use alloy_primitives::{Address, B256, Bytes, U256 as RU256};
+use alloy_primitives::{Address, Bytes, U256 as RU256};
 use call_tracer::ExpectedCallTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker};
-use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::pallet_revive::{
     Pallet, U256, Weight,
     evm::{
