@@ -799,11 +799,16 @@ impl ApiServer {
         };
 
         let best_hash = self.latest_block();
-        let Some(best_eth_hash) = self.eth_rpc_client.resolve_ethereum_hash(&best_hash).await
-        else {
-            return Err(Error::InternalError(
-                "Ethereum block hash of latest block not found".to_string(),
-            ));
+        let best_eth_hash = match self.eth_rpc_client.resolve_ethereum_hash(&best_hash).await {
+            Some(h) => h,
+            None => {
+                self.index_latest_block().await;
+                self.eth_rpc_client.resolve_ethereum_hash(&best_hash).await.ok_or_else(|| {
+                    Error::InternalError(
+                        "Ethereum block hash of latest block not found".to_string(),
+                    )
+                })?
+            }
         };
         let latest_block_id = Some(BlockId::hash(B256::from_slice(best_eth_hash.as_ref())));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
@@ -1487,9 +1492,18 @@ impl ApiServer {
         match ReviveBlockId::from(block_id).inner() {
             BlockNumberOrTagOrHash::BlockHash(hash) => {
                 // Translate the ethereum hash to a substrate hash.
-                Ok(Some(self.eth_rpc_client.resolve_substrate_hash(&hash).await.ok_or(
-                    Error::ReviveRpc(EthRpcError::ClientError(ClientError::EthereumBlockNotFound)),
-                )?))
+                let substrate_hash = match self.eth_rpc_client.resolve_substrate_hash(&hash).await {
+                    Some(h) => h,
+                    None => {
+                        self.index_latest_block().await;
+                        self.eth_rpc_client.resolve_substrate_hash(&hash).await.ok_or(
+                            Error::ReviveRpc(EthRpcError::ClientError(
+                                ClientError::EthereumBlockNotFound,
+                            )),
+                        )?
+                    }
+                };
+                Ok(Some(substrate_hash))
             }
             BlockNumberOrTagOrHash::BlockNumber(block_number) => {
                 let n = block_number.try_into().map_err(|_| {
@@ -1852,6 +1866,11 @@ impl ApiServer {
         }
         Ok(())
     }
+
+    /// Best-effort helper to (re)index the latest block if needed.
+    async fn index_latest_block(&self) {
+        let _ = self.eth_rpc_client.subscribe_and_cache_blocks(1).await;
+    }
 }
 
 /// Returns the `Utc` datetime for the given seconds since unix epoch
@@ -1982,13 +2001,13 @@ async fn create_revive_rpc_client(
             })?;
 
     let mut eth_rpc_client =
-        EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
+        EthRpcClient::new(api.clone(), rpc_client, rpc, block_provider.clone(), receipt_provider)
             .await
             .map_err(Error::from)?;
 
-    // Backfill at least genesis (and optionally more) before starting live subscriptions.
+    // Best-effort indexing: we do not fail init if the block provider isn't ready yet.
     let backfill_n = keep_latest_n_blocks.and_then(|n| u32::try_from(n).ok()).unwrap_or(1);
-    eth_rpc_client.subscribe_and_cache_blocks(backfill_n).await.map_err(Error::from)?;
+    let _ = eth_rpc_client.subscribe_and_cache_blocks(backfill_n).await;
 
     // Capacity is chosen using random.org
     eth_rpc_client.set_block_notifier(Some(tokio::sync::broadcast::channel::<H256>(50).0));
