@@ -557,7 +557,7 @@ async fn test_timestmap_in_contract_after_revert() {
     let timestamp = multicall_get_timestamp(&mut node, alith_addr, contract_address).await;
     assert_eq!(timestamp, U256::from(first_timestamp.saturating_div(1000)));
 
-    let second_timestamp = first_timestamp.saturating_add(3000);
+    let second_timestamp = first_timestamp.saturating_add(3500);
     assert_with_tolerance(
         unwrap_response::<u64>(
             node.eth_rpc(EthRequest::EvmSetTime(U256::from(second_timestamp.saturating_div(1000))))
