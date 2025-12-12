@@ -1,4 +1,3 @@
-
 use alloy_primitives::{Address, Bytes, U256 as RU256};
 use call_tracer::ExpectedCallTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker};
