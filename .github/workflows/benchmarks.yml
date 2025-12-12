@@ -41,7 +41,7 @@ jobs:
           sudo apt-get install -y build-essential pkg-config
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

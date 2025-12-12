@@ -1004,15 +1004,16 @@ impl Cheatcodes {
         }
 
         // Handle expected calls
-
-        // Grab the different calldatas expected.
-        if let Some(expected_calls_for_target) = self.expected_calls.get_mut(&call.bytecode_address)
-        {
-            // Match every partial/full calldata
-            for (calldata, (expected, actual_count)) in expected_calls_for_target {
-                // Increment actual times seen if...
-                // The calldata is at most, as big as this call's input, and
-                if calldata.len() <= call.input.len() &&
+        if !self.is_pvm_enabled() {
+            // Grab the different calldatas expected.
+            if let Some(expected_calls_for_target) =
+                self.expected_calls.get_mut(&call.bytecode_address)
+            {
+                // Match every partial/full calldata
+                for (calldata, (expected, actual_count)) in expected_calls_for_target {
+                    // Increment actual times seen if...
+                    // The calldata is at most, as big as this call's input, and
+                    if calldata.len() <= call.input.len() &&
                     // Both calldata match, taking the length of the assumed smaller one (which will have at least the selector), and
                     *calldata == call.input.bytes(ecx)[..calldata.len()] &&
                     // The value matches, if provided
@@ -1022,8 +1023,9 @@ impl Cheatcodes {
                     expected.gas.is_none_or(|gas| gas == call.gas_limit) &&
                     // The minimum gas matches, if provided
                     expected.min_gas.is_none_or(|min_gas| min_gas <= call.gas_limit)
-                {
-                    *actual_count += 1;
+                    {
+                        *actual_count += 1;
+                    }
                 }
             }
         }

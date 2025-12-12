@@ -18,7 +18,7 @@ mod executor;
 mod state;
 mod tracing;
 
-pub use cheatcodes::{PvmCheatcodeInspectorStrategyBuilder, PvmStartupMigration};
+pub use cheatcodes::{PvmCheatcodeInspectorStrategyBuilder, ReviveStartupMigration};
 
 /// Runtime backend mode for pallet-revive
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

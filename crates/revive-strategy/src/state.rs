@@ -1,11 +1,11 @@
-use alloy_primitives::{Address, Bytes, FixedBytes, U256};
+use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
 use foundry_cheatcodes::{Ecx, Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
         Executable, Pallet,
     },
-    sp_core::{self, H160},
+    sp_core::{self, H160, H256},
     sp_externalities::Externalities,
     sp_io::TestExternalities,
 };
@@ -102,11 +102,35 @@ impl TestEnv {
         });
     }
 
-    pub fn set_block_number(&mut self, new_height: U256) {
+    pub fn set_block_number(
+        &mut self,
+        new_height: U256,
+        prev_new_height_hash: B256,
+        new_height_hash: B256,
+    ) {
         // Set block number in pallet-revive runtime.
         self.0.lock().unwrap().externalities.execute_with(|| {
-            System::set_block_number(new_height.try_into().expect("Block number exceeds u64"));
+            let new_block_number: u64 = new_height.try_into().expect("Block number exceeds u32");
+            let digest = System::digest();
+            if System::block_hash(new_block_number) == H256::zero() {
+                // First initialize and finalize the parent block to set up correct hashes.
+                System::set_block_number(new_block_number - 1);
+                let current_hash = H256::from_slice(prev_new_height_hash.0.as_slice());
+                System::initialize(&new_block_number, &current_hash, &digest);
+
+                // Now finalize the new block to set up its hash.
+                System::set_block_number(new_block_number);
+                let current_hash = H256::from_slice(new_height_hash.0.as_slice());
+
+                System::initialize(&(new_block_number + 1), &current_hash, &digest);
+            }
+            System::set_block_number(new_block_number);
         });
+    }
+
+    pub fn get_block_number(&mut self) -> U256 {
+        // Get block number in pallet-revive runtime.
+        self.0.lock().unwrap().externalities.execute_with(|| U256::from(System::block_number()))
     }
 
     pub fn set_timestamp(&mut self, new_timestamp: U256) {
@@ -238,5 +262,20 @@ impl TestEnv {
                 AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
             BlockAuthor::set(&account_id32);
         });
+    }
+
+    pub fn set_blockhash(&mut self, block_number: u64, block_hash: FixedBytes<32>) {
+        self.0.lock().unwrap().externalities.execute_with(|| {
+            use polkadot_sdk::frame_system::BlockHash;
+
+            let hash = sp_core::H256::from_slice(block_hash.as_slice());
+            BlockHash::<Runtime>::insert(block_number, hash);
+        });
+    }
+
+    pub fn is_contract(&self, address: Address) -> bool {
+        self.0.lock().unwrap().externalities.execute_with(|| {
+            AccountInfo::<Runtime>::load_contract(&H160::from_slice(address.as_slice())).is_some()
+        })
     }
 }

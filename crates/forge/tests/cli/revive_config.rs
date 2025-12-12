@@ -50,15 +50,15 @@ Error: `resolc` this/resolc/does/not/exist does not exist
 // checks that we can set various config values
 forgetest_init!(can_set_resolc_config_values, |prj, _cmd| {
     let config = prj.config_from_output(["--resolc", "--resolc-optimization", "z"]);
-    assert!(config.resolc.resolc_compile);
-    assert_eq!(config.resolc.optimizer_mode, Some('z'));
+    assert!(config.polkadot.resolc_compile);
+    assert_eq!(config.polkadot.optimizer_mode, Some('z'));
 });
 
 // checks that we can set debug info flag
 forgetest_init!(can_set_resolc_debug_info, |prj, _cmd| {
     let config = prj.config_from_output(["--resolc", "--debug-info"]);
-    assert!(config.resolc.resolc_compile);
-    assert_eq!(config.resolc.debug_information, Some(true));
+    assert!(config.polkadot.resolc_compile);
+    assert_eq!(config.polkadot.debug_information, Some(true));
 });
 
 // checks that we can set debug info flag from foundry.toml
@@ -66,7 +66,7 @@ forgetest_init!(can_set_resolc_debug_info_from_toml, |prj, _cmd| {
     use std::fs;
 
     let toml_config = r#"
-[profile.default.resolc]
+[profile.default.polkadot]
 resolc_compile = true
 debug_information = true
 "#;
@@ -74,8 +74,8 @@ debug_information = true
     fs::write(prj.root().join("foundry.toml"), toml_config).unwrap();
 
     let config = foundry_config::Config::load_with_root(prj.root()).unwrap();
-    assert!(config.resolc.resolc_compile);
-    assert_eq!(config.resolc.debug_information, Some(true));
+    assert!(config.polkadot.resolc_compile);
+    assert_eq!(config.polkadot.debug_information, Some(true));
 });
 
 // tests that resolc can be explicitly enabled
@@ -90,7 +90,7 @@ contract Greeter {}
     .unwrap();
 
     prj.update_config(|config| {
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
 
     cmd.arg("build").assert_success().stdout_eq(str![[r#"

@@ -2,9 +2,6 @@
 
 FROM ubuntu:24.04 AS builder
 
-# Expose Anvil's default port (Useful for users running the node)
-EXPOSE 8545
-
 ARG VERSION=stable
 
 RUN apt-get update && \
@@ -27,5 +24,12 @@ RUN apt-get update && \
         git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Expose Anvil's default JSON-RPC port from the final image.
+EXPOSE 8545
+
+# Allow `anvil-polkadot` (and `anvil`) to bind externally by default.
+# This can still be overridden by passing `--host` explicitly.
+ENV ANVIL_IP_ADDR=0.0.0.0
 
 COPY --from=builder /root/.foundry/bin/ /usr/local/bin/

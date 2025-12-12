@@ -12,7 +12,7 @@ use alloy_rpc_types::{
     trace::{
         geth::{
             GethDebugBuiltInTracerType, GethDebugTracerType, GethDebugTracingCallOptions,
-            GethDebugTracingOptions, GethTrace,
+            GethDebugTracingOptions, GethTrace, TraceResult,
         },
         parity::{
             Action as ParityAction, CallAction as ParityCallAction, CallType as ParityCallType,
@@ -28,6 +28,7 @@ use anvil_polkadot::{
     config::{AnvilNodeConfig, SubstrateNodeConfig},
 };
 use polkadot_sdk::pallet_revive::evm::Account;
+use std::collections::BTreeMap;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_traces() {
@@ -71,6 +72,7 @@ async fn test_traces() {
     assert!(call_frame.error.is_none());
     assert!(call_frame.revert_reason.is_none());
     assert_eq!(call_frame.value, Some(value));
+    assert_eq!(call_frame.typ, "CALL");
 
     // trace_transaction should return a single parity trace matching the same call
     let trace_resp = node
@@ -213,6 +215,60 @@ async fn test_trace_block() {
         }
     }
     assert!(expected_calls.is_empty(), "not all expected transfers were seen in trace_block");
+
+    // Re-populate expected calls for debug_traceBlockByNumber
+    let mut expected_calls_debug = BTreeMap::new();
+    expected_calls_debug
+        .insert(B256::from_slice(tx_hash_0.as_ref()), (alith_addr, baltathar_addr, value_0));
+    expected_calls_debug
+        .insert(B256::from_slice(tx_hash_1.as_ref()), (alith_addr, dorothy_addr, value_1));
+    expected_calls_debug
+        .insert(B256::from_slice(tx_hash_2.as_ref()), (baltathar_addr, alith_addr, value_2));
+
+    // debug_traceBlockByNumber for block 1 should return three traces, one per transaction.
+    let debug_block_traces: Vec<TraceResult> = unwrap_response(
+        node.eth_rpc(EthRequest::DebugTraceBlockByNumber(
+            alloy_eips::BlockNumberOrTag::Number(1),
+            GethDebugTracingOptions::default(),
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        debug_block_traces.len(),
+        3,
+        "expected three debug traces for the three transfers in block 1"
+    );
+
+    for trace_result in debug_block_traces {
+        match trace_result {
+            TraceResult::Success { result, tx_hash } => {
+                let tx_hash = tx_hash.expect("missing transaction hash in debug trace");
+                let (expected_from, expected_to, expected_value) = expected_calls_debug
+                    .remove(&tx_hash)
+                    .unwrap_or_else(|| panic!("unexpected transaction hash: {tx_hash}"));
+
+                let frame = match result {
+                    GethTrace::CallTracer(frame) => frame,
+                    other => panic!("expected CallTracer trace, got {other:?}"),
+                };
+
+                assert_eq!(frame.from, expected_from, "mismatched sender");
+                assert_eq!(frame.to, Some(expected_to), "mismatched recipient");
+                assert_eq!(frame.value, Some(expected_value), "mismatched value");
+                assert_eq!(frame.typ, "CALL", "mismatched call type");
+            }
+            TraceResult::Error { error, .. } => panic!("debug trace failed: {error}"),
+        }
+    }
+
+    assert!(
+        expected_calls_debug.is_empty(),
+        "not all expected transfers were seen in debug_traceBlockByNumber: {:?}",
+        expected_calls_debug.keys()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
