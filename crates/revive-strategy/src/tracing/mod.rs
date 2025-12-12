@@ -140,20 +140,6 @@ impl Tracing for Tracer {
         self.revert_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
     }
 
-    fn terminate(
-        &mut self,
-        contract_address: polkadot_sdk::sp_core::H160,
-        beneficiary_address: polkadot_sdk::sp_core::H160,
-        gas_left: Weight,
-        value: U256,
-    ) {
-        self.prestate_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
-        self.call_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
-        }
-    }
-
     fn enter_child_span(
         &mut self,
         from: polkadot_sdk::sp_core::H160,
