@@ -1980,7 +1980,7 @@ async fn create_revive_rpc_client(
             })?;
 
     let mut eth_rpc_client =
-        EthRpcClient::new(api.clone(), rpc_client, rpc, block_provider.clone(), receipt_provider)
+        EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
             .await
             .map_err(Error::from)?;
     // Genesis block is not imported via block import notifications, so we need to subscribe and
@@ -1996,9 +1996,7 @@ async fn create_revive_rpc_client(
             eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::BestBlocks);
         let finalized_future =
             eth_rpc_client.subscribe_and_cache_new_blocks(SubscriptionType::FinalizedBlocks);
-
         let res = tokio::try_join!(best_future, finalized_future).map(|_| ());
-
         if let Err(err) = res {
             panic!("Block subscription task failed: {err:?}")
         }
