@@ -29,7 +29,7 @@ use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo,
-        DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
+        DebugSettings, DryRunConfig, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -1000,7 +1000,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     origin,
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
-                        weight_limit: Weight::MAX,
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
                         deposit_limit: BalanceOf::<Runtime>::MAX,
                     },
                     code,
@@ -1115,7 +1115,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             Some(&call.bytecode_address),
             state,
         );
-
+        let mut dry_run = None;
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
         ctx.externalities.set_nonce(
             call.caller,
@@ -1147,12 +1147,33 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 if should_bump_nonce {
                     System::inc_account_nonce(AccountId::to_fallback_account_id(&caller_h160));
                 }
+                dry_run = Some(Pallet::<Runtime>::bare_call(
+                    origin.clone(),
+                    target,
+                    evm_value,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::MAX,
+                        deposit_limit: if call.is_static {
+                            0
+                        } else {
+                            BalanceOf::<Runtime>::MAX / 2
+                        },
+                    },
+                    call.input.bytes(ecx).to_vec(),
+                    ExecConfig {
+                        bump_nonce: false, // only works for constructors
+                        collect_deposit_from_hold: None,
+                        effective_gas_price: Some(sp_core::U256::one()),
+                        mock_handler: Some(Box::new(mock_handler.clone())),
+                        is_dry_run: Some(Default::default()),
+                    },
+                ));
                 Pallet::<Runtime>::bare_call(
                     origin,
                     target,
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
-                        weight_limit: Weight::MAX,
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
                         deposit_limit: if call.is_static {
                             0
                         } else {
@@ -1168,7 +1189,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let mut gas = Gas::new(call.gas_limit);
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
         self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
-
         match res.result {
             Ok(result) => {
                 // Only record gas cost if gas metering is not paused.

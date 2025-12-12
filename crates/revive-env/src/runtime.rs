@@ -4,11 +4,32 @@
 
 use frame_support::{runtime, traits::FindAuthor, weights::constants::WEIGHT_REF_TIME_PER_SECOND};
 use pallet_revive::AccountId32Mapper;
-use polkadot_sdk::{polkadot_sdk_frame::runtime::prelude::*, sp_runtime::AccountId32, *};
+use polkadot_sdk::{
+    pallet_revive::evm::fees::BlockRatioFee,
+    pallet_transaction_payment::{ConstFeeMultiplier, Multiplier},
+    polkadot_sdk_frame::runtime::prelude::*,
+    sp_runtime::AccountId32,
+    sp_weights::ConstantMultiplier,
+    *,
+};
 
 pub type Balance = u128;
 pub type AccountId = pallet_revive::AccountId32Mapper<Runtime>;
 pub type Block = frame_system::mocking::MockBlock<Runtime>;
+
+parameter_types! {
+    pub const TransactionByteFee: Balance = 10;
+    pub FeeMultiplier: Multiplier = Multiplier::one();
+}
+
+// Implements the types required for the transaction payment pallet.
+#[derive_impl(pallet_transaction_payment::config_preludes::TestDefaultConfig)]
+impl pallet_transaction_payment::Config for Runtime {
+    type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
+    type WeightToFee = BlockRatioFee<1, 1, Self>;
+    type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
+    type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
+}
 
 #[runtime]
 mod runtime {
@@ -38,6 +59,10 @@ mod runtime {
 
     #[runtime::pallet_index(3)]
     pub type Contracts = pallet_revive;
+
+    /// Provides the ability to charge for extrinsic execution.
+    #[runtime::pallet_index(4)]
+    pub type TransactionPayment = pallet_transaction_payment::Pallet<Runtime>;
 }
 
 #[derive_impl(frame_system::config_preludes::SolochainDefaultConfig)]
@@ -64,7 +89,7 @@ parameter_types! {
     pub const DepositPerItem: Balance = 1;
     pub const CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(0);
     pub const NativeToEthRatio: u32 = 1_000_000;
-    pub const GasScale : u32 = u32::MAX;
+    pub const GasScale : u32 = 1_000_000;
     pub BlockWeights: frame_system::limits::BlockWeights =
         frame_system::limits::BlockWeights::simple_max(
             Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
