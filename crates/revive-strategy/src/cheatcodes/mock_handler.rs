@@ -16,7 +16,7 @@ use polkadot_sdk::{
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::H160,
 };
-use revive_env::{AccountId, Runtime};
+use revive_env::Runtime;
 
 use revm::interpreter::InstructionResult;
 

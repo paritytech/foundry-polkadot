@@ -723,7 +723,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     code_bytes.clone(),
                                     code_type,
                                     &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
-                                        weight_limit: Weight::MAX,
+                                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
                                         deposit_limit: BalanceOf::<Runtime>::MAX,
                                     })
                                     .unwrap(),
@@ -765,7 +765,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 code_bytes.clone(),
                                 BytecodeType::Evm,
                                 &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
-                                    weight_limit: Weight::MAX,
+                                    weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
                                     deposit_limit: BalanceOf::<Runtime>::MAX,
                                 })
                                 .unwrap(),
@@ -1013,7 +1013,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     // address computation, resulting in duplicate addresses.
                     bump_nonce: false,
                     collect_deposit_from_hold: None,
-                    effective_gas_price: Some(sp_core::U256::one()),
+                    effective_gas_price: None,
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };
@@ -1137,7 +1137,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             Some(&call.bytecode_address),
             state,
         );
-        let mut dry_run = None;
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
         ctx.externalities.set_nonce(
             call.caller,
@@ -1163,7 +1162,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let exec_config = ExecConfig {
                     bump_nonce: false, // only works for constructors
                     collect_deposit_from_hold: None,
-                    effective_gas_price: Some(sp_core::U256::one()),
+                    effective_gas_price: None,
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };
@@ -1172,27 +1171,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
                     );
                 }
-                dry_run = Some(Pallet::<Runtime>::bare_call(
-                    origin.clone(),
-                    target,
-                    evm_value,
-                    pallet_revive::TransactionLimits::WeightAndDeposit {
-                        weight_limit: Weight::MAX,
-                        deposit_limit: if call.is_static {
-                            0
-                        } else {
-                            BalanceOf::<Runtime>::MAX / 2
-                        },
-                    },
-                    call.input.bytes(ecx).to_vec(),
-                    ExecConfig {
-                        bump_nonce: false, // only works for constructors
-                        collect_deposit_from_hold: None,
-                        effective_gas_price: Some(sp_core::U256::one()),
-                        mock_handler: Some(Box::new(mock_handler.clone())),
-                        is_dry_run: Some(Default::default()),
-                    },
-                ));
                 Pallet::<Runtime>::bare_call(
                     origin,
                     target,

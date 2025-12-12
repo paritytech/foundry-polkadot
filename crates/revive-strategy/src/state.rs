@@ -10,7 +10,7 @@ use polkadot_sdk::{
     sp_io::TestExternalities,
     sp_weights::Weight,
 };
-use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
+use revive_env::{BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
@@ -169,7 +169,7 @@ impl TestEnv {
                 code,
                 code_type,
                 &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
-                    weight_limit: Weight::MAX,
+                    weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
                     deposit_limit: BalanceOf::<Runtime>::MAX,
                 })
                 .unwrap(),

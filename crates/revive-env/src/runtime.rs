@@ -4,8 +4,9 @@
 
 use frame_support::{runtime, traits::FindAuthor, weights::constants::WEIGHT_REF_TIME_PER_SECOND};
 use polkadot_sdk::{
+    frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight},
     pallet_revive::{
-        AccountId32Mapper,
+        AccountId32Mapper, BlockWeights,
         evm::{
             fees::{BlockRatioFee, Info},
             runtime::EthExtra,
@@ -24,8 +25,15 @@ pub type Block = sp_runtime::generic::Block<Header, UncheckedExtrinsic>;
 pub type UncheckedExtrinsic =
     pallet_revive::evm::runtime::UncheckedExtrinsic<Address, Signature, EthExtraImpl>;
 
+pub mod currency {
+    use super::Balance;
+    pub const DOLLARS: Balance = 1_000_000_000_000;
+    pub const CENTS: Balance = DOLLARS / 100;
+    pub const MILLICENTS: Balance = CENTS / 1_000;
+}
+
 parameter_types! {
-    pub const TransactionByteFee: Balance = 10;
+    pub const TransactionByteFee: Balance = 10 * currency::MILLICENTS;
     pub FeeMultiplier: Multiplier = Multiplier::one();
 }
 
@@ -84,23 +92,45 @@ impl frame_system::Config for Runtime {
 impl pallet_balances::Config for Runtime {
     type AccountStore = System;
     type Balance = Balance;
-    type ExistentialDeposit = ConstU128<1_000>;
+    type ExistentialDeposit = ConstU128<{ currency::CENTS }>;
 }
 
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
 impl pallet_timestamp::Config for Runtime {}
 
+/// We assume that ~10% of the block weight is consumed by `on_initialize` handlers.
+/// This is used to limit the maximal weight of a single extrinsic.
+const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(10);
+/// We allow `Normal` extrinsics to fill up the block up to 75%, the rest can be used
+/// by  Operational  extrinsics.
+const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
+/// We allow for 2 seconds of compute with a 6 second average block time, with maximum proof size.
+const MAXIMUM_BLOCK_WEIGHT: Weight =
+    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
+
 parameter_types! {
     pub const UnstableInterface: bool = true;
-    pub const DepositPerByte: Balance = 1;
-    pub const DepositPerItem: Balance = 1;
     pub const CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(0);
     pub const NativeToEthRatio: u32 = 1_000_000;
     pub const GasScale : u32 = 1_000_000;
-    pub BlockWeights: frame_system::limits::BlockWeights =
-        frame_system::limits::BlockWeights::simple_max(
-            Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
+    pub RuntimeBlockWeights: BlockWeights = BlockWeights::builder()
+    .base_block(BlockExecutionWeight::get())
+    .for_class(DispatchClass::all(), |weights| {
+        weights.base_extrinsic = ExtrinsicBaseWeight::get();
+    })
+    .for_class(DispatchClass::Normal, |weights| {
+        weights.max_total = Some(NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT);
+    })
+    .for_class(DispatchClass::Operational, |weights| {
+        weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
+        // Operational transactions have some extra reserved space, so that they
+        // are included even if block reached `MAXIMUM_BLOCK_WEIGHT`.
+        weights.reserved = Some(
+            MAXIMUM_BLOCK_WEIGHT - NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT
         );
+    })
+    .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
+    .build_or_panic();
 }
 
 #[derive_impl(pallet_revive::config_preludes::TestDefaultConfig)]
@@ -108,8 +138,6 @@ impl pallet_revive::Config for Runtime {
     type Time = Timestamp;
     type Balance = Balance;
     type Currency = Balances;
-    type DepositPerByte = DepositPerByte;
-    type DepositPerItem = DepositPerItem;
     type AddressMapper = AccountId32Mapper<Self>;
     type RuntimeMemory = ConstU32<{ 512 * 1024 * 1024 }>;
     type PVFMemory = ConstU32<{ 1024 * 1024 * 1024 }>;
