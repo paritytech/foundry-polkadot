@@ -25,7 +25,6 @@ env:
   IS_NIGHTLY: ${{ inputs.is_nightly }}
   PROFILE: maxperf
   STABLE_VERSION: ${{ inputs.version }}
-  RUST_MUSL_CROSS_IMAGE: messense/rust-musl-cross@sha256:5afc91a4f7da8a14a6c688ebf49fef9b9ec30f28fd827f2cf7e7c4d6c31bd10a
 
 jobs:
   prepare:
@@ -93,14 +92,14 @@ jobs:
           # `target`: Rust build target triple
           # `platform` and `arch`: Used in tarball names
           # `svm`: target platform to use for the Solc binary: https://github.com/roynalnaruto/svm-rs/blob/84cbe0ac705becabdc13168bae28a45ad2299749/svm-builds/build.rs#L4-L24
-          - runner: ubuntu-24.04
+          - runner: parity-large-new
             target: x86_64-unknown-linux-musl
             svm_target_platform: linux-amd64
             platform: linux
             arch: amd64
           # This is pinned to `macos-13-large` to support old SDK versions.
           # If the runner is deprecated it should be pinned to the oldest available version of the runner.
-          - runner: macos-13-large
+          - runner: macos-14-large
             target: x86_64-apple-darwin
             svm_target_platform: macosx-amd64
             platform: darwin
@@ -125,6 +124,11 @@ jobs:
         with:
           key: ${{ matrix.target }}
           cache-on-failure: true
+      - name: Install dependencies for building (Ubuntu)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev unzip build-essential
 
       - name: Apple M1 setup
         if: matrix.target == 'aarch64-apple-darwin'
@@ -132,11 +136,13 @@ jobs:
           echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
           echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
 
-      - name: Linux setup musl x86_64
+      - name: cross setup
         if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y musl-tools
+        uses: taiki-e/cache-cargo-install-action@7447f04c51f2ba27ca35e7f1e28fab848c5b3ba7 # v2
+        with:
+          git: https://github.com/cross-rs/cross
+          rev: baf457efc2555225af47963475bd70e8d2f5993f
+          tool: cross
 
       - name: Install clang (macOS)
         if: contains(matrix.runner, 'macos')
@@ -172,13 +178,7 @@ jobs:
           fi
 
           if [[ "$TARGET" == "x86_64-unknown-linux-musl" ]]; then
-            docker run -v $PWD:/opt/revive $RUST_MUSL_CROSS_IMAGE /bin/bash -c "
-            apt-get update && apt-get install -y clang libclang-dev unzip build-essential protobuf-compiler
-            rustup default 1.89.0
-            rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown
-            rustup component add rust-src
-            cd /opt/revive
-            cargo build $flags
+            cross build $flags
           "
           sudo chown -R $(id -u):$(id -g) .
           else
