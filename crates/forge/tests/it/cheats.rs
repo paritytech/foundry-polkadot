@@ -16,7 +16,7 @@ use foundry_test_utils::Filter;
 /// specific seed.
 async fn test_cheats_local(test_data: &ForgeTestData) {
     let mut filter = Filter::new(".*", ".*", &format!(".*cheats{RE_PATH_SEPARATOR}*"))
-        .exclude_paths("Fork")
+        .exclude_paths("(Fork|Revive)")
         .exclude_contracts("(Isolated|WithSeed)");
 
     // Exclude FFI tests on Windows because no `echo`, and file tests that expect certain file paths
@@ -33,31 +33,33 @@ async fn test_cheats_local(test_data: &ForgeTestData) {
         config.evm_version = EvmVersion::Prague;
     });
 
-    TestConfig::with_filter_no_revive(runner, filter).run().await;
+    TestConfig::with_filter(runner, filter).run().await;
 }
 
 /// Executes subset of all cheat code tests in isolation mode.
 async fn test_cheats_local_isolated(test_data: &ForgeTestData) {
-    let filter = Filter::new(".*", ".*(Isolated)", &format!(".*cheats{RE_PATH_SEPARATOR}*"));
+    let filter = Filter::new(".*", ".*(Isolated)", &format!(".*cheats{RE_PATH_SEPARATOR}*"))
+        .exclude_paths("Revive");
 
     let runner = test_data.runner_with(|config| {
         config.isolate = true;
         config.evm_version = EvmVersion::Prague;
     });
 
-    TestConfig::with_filter_no_revive(runner, filter).run().await;
+    TestConfig::with_filter(runner, filter).run().await;
 }
 
 /// Executes subset of all cheat code tests using a specific seed.
 async fn test_cheats_local_with_seed(test_data: &ForgeTestData) {
-    let filter = Filter::new(".*", ".*(WithSeed)", &format!(".*cheats{RE_PATH_SEPARATOR}*"));
+    let filter = Filter::new(".*", ".*(WithSeed)", &format!(".*cheats{RE_PATH_SEPARATOR}*"))
+        .exclude_paths("Revive");
 
     let runner = test_data.runner_with(|config| {
         config.fuzz.seed = Some(U256::from(100));
         config.evm_version = EvmVersion::Prague;
     });
 
-    TestConfig::with_filter_no_revive(runner, filter).run().await;
+    TestConfig::with_filter(runner, filter).run().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
