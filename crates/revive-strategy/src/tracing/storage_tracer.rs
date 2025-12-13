@@ -1,30 +1,22 @@
 use alloy_primitives::{Bytes, U256 as RU256};
 use foundry_cheatcodes::Vm::{AccountAccessKind, StorageAccess};
 use polkadot_sdk::{
-    pallet_revive::{self, Code, tracing::Tracing},
-    sp_core::{H160, H256, U256},
+    pallet_revive::{self, AccountInfo, Code, tracing::Tracing},
+    sp_core::{H160, U256},
     sp_weights::Weight,
 };
 use revive_env::Runtime;
 
 #[derive(Debug, Default)]
 pub(crate) struct StorageTracer {
-    /// The current address of the contract's which storage is being accessed.
-    current_addr: H160,
     /// Whether the current call is a contract creation.
     is_create: Option<Code>,
 
     records: Vec<AccountAccess>,
     pending: Vec<AccountAccess>,
     records_inner: Vec<AccountAccess>,
-    /// Track the calls that must be skipped.
-    /// We track this on a different stack to easily skip the `call_end`
-    /// instances, if they were marked to be skipped in the `call_start`.
-    call_skip_tracker: Vec<bool>,
-    /// Mark the next call at a given depth and having the given address accesses.
-    /// This is useful, for example to skip nested constructor calls after CREATE,
-    /// to allow us to omit/flatten them like in EVM.
-    skip_next_call: Option<(u64, CallAddresses)>,
+    index: usize,
+    calls: Vec<H160>,
 }
 
 /// Represents the account access during vm execution.
@@ -40,8 +32,6 @@ pub struct AccountAccess {
     pub accessor: H160,
     /// Call data.
     pub data: Bytes,
-    /// Deployed bytecode hash if CREATE.
-    pub deployed_bytecode_hash: Option<H256>,
     /// Call value.
     pub value: U256,
     /// Previous balance of the accessed account.
@@ -50,26 +40,14 @@ pub struct AccountAccess {
     pub new_balance: U256,
     /// Storage slots that were accessed.
     pub storage_accesses: Vec<StorageAccess>,
-}
-
-#[derive(Debug, Default, Clone)]
-struct CallAddresses {
-    pub to: H160,
-    pub from: H160,
+    /// is reverted
+    pub reverted: bool,
+    pub index: usize,
+    pub initialized: bool,
 }
 
 impl StorageTracer {
     pub fn get_records(&self) -> Vec<AccountAccess> {
-        assert!(
-            self.call_skip_tracker.is_empty(),
-            "call skip tracker is not empty; found calls without matching returns: {:?}",
-            self.call_skip_tracker
-        );
-        assert!(
-            self.skip_next_call.is_none(),
-            "skip next call is not empty: {:?}",
-            self.skip_next_call
-        );
         assert!(
             self.pending.is_empty(),
             "pending call stack is not empty; found calls without matching returns: {:?}",
@@ -80,7 +58,13 @@ impl StorageTracer {
             "inner stack is not empty; found calls without matching returns: {:?}",
             self.records_inner
         );
-        self.records.clone()
+        let mut accounts = self.records.clone();
+        accounts.sort_by_key(|f| f.index);
+        accounts
+    }
+
+    fn current_addr(&self) -> H160 {
+        self.calls.last().copied().unwrap_or_default()
     }
 }
 
@@ -99,16 +83,20 @@ impl Tracing for StorageTracer {
         input: &[u8],
         _gas: Weight,
     ) {
-        use pallet_revive::{AccountId32Mapper, AddressMapper};
-        let system_addr = AccountId32Mapper::<Runtime>::to_address(
-            &pallet_revive::Pallet::<Runtime>::account_id(),
-        );
-        if system_addr == from || system_addr == to || is_read_only {
-            self.call_skip_tracker.push(true);
-            return;
+        let code = self.is_create.take();
+
+        if is_delegate_call {
+            self.calls.push(self.current_addr());
+        } else {
+            self.calls.push(to);
         }
-        let kind = if self.is_create.is_some() {
+
+        let kind = if code.is_some() {
             AccountAccessKind::Create
+        } else if is_read_only {
+            AccountAccessKind::StaticCall
+        } else if is_delegate_call {
+            AccountAccessKind::DelegateCall
         } else {
             AccountAccessKind::Call
         };
@@ -120,43 +108,63 @@ impl Tracing for StorageTracer {
         };
         let new_depth = last_depth.checked_add(1).expect("overflow in recording call depth");
 
-        // For create we expect another CALL if the constructor is invoked. We need to skip/flatten
-        // this call so it is consistent with CREATE in the EVM.
-        match kind {
-            AccountAccessKind::Create => {
-                // skip the next nested call to the created address from the caller.
-                self.skip_next_call =
-                    Some((new_depth.saturating_add(1), CallAddresses { to, from }));
-            }
-            AccountAccessKind::Call => {
-                if let Some((depth, call_addr)) = self.skip_next_call.take()
-                    && depth == new_depth
-                    && call_addr.from == from
-                    && call_addr.to == to
-                {
-                    self.call_skip_tracker.push(true);
-                    return;
-                }
-            }
-            _ => panic!("cant be matched"),
-        }
-        self.call_skip_tracker.push(false);
-        self.pending.push(AccountAccess {
+        let mut record = AccountAccess {
             depth: new_depth,
             kind,
             account: to,
             accessor: from,
             data: Bytes::from(input.to_vec()),
-            deployed_bytecode_hash: None,
             value,
+            reverted: false,
             old_balance: pallet_revive::Pallet::<Runtime>::evm_balance(&to),
             new_balance: U256::zero(),
             storage_accesses: Default::default(),
-        });
-
-        if !is_delegate_call {
-            self.current_addr = to;
+            index: self.index,
+            initialized: true,
+        };
+        if let Some(code) = code {
+            match code {
+                Code::Upload(items) => {
+                    record.data = Bytes::from(items);
+                }
+                Code::Existing(_) => (),
+            }
         }
+        self.pending.push(record);
+        self.index += 1;
+    }
+
+    fn terminate(
+        &mut self,
+        contract_address: H160,
+        beneficiary_address: H160,
+        _gas_left: Weight,
+        value: U256,
+    ) {
+        let last_depth = if !self.pending.is_empty() {
+            self.pending.last().map(|record| record.depth).expect("must have at least one record")
+        } else {
+            self.records.last().map(|record| record.depth).unwrap_or_default()
+        };
+        let new_depth = last_depth.checked_add(1).expect("overflow in recording call depth");
+        let account = AccountInfo::<Runtime>::is_contract(&beneficiary_address);
+        let record = AccountAccess {
+            depth: new_depth,
+            kind: AccountAccessKind::SelfDestruct,
+            account: beneficiary_address,
+            accessor: contract_address,
+            data: Bytes::new(),
+            value,
+            reverted: false,
+            old_balance: pallet_revive::Pallet::<Runtime>::evm_balance(&beneficiary_address),
+            new_balance: U256::zero(),
+            storage_accesses: Default::default(),
+            index: self.index,
+            initialized: account,
+        };
+        self.index += 1;
+
+        self.records_inner.push(record);
     }
 
     fn exit_child_span_with_error(
@@ -164,42 +172,80 @@ impl Tracing for StorageTracer {
         _error: polkadot_sdk::sp_runtime::DispatchError,
         _gas_left: Weight,
     ) {
-        self.is_create = None
+        self.calls.pop();
+
+        let is_create = self.is_create.take();
+        let mut record = self.pending.pop().expect("unexpected return while recording call");
+        record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr());
+        record.reverted = true;
+        record.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+        self.records_inner.iter_mut().for_each(|x| {
+            if record.reverted {
+                x.reverted = true;
+                x.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+            }
+        });
+
+        if let Some(code) = is_create {
+            record.kind = AccountAccessKind::Create;
+            match code {
+                Code::Upload(items) => {
+                    record.data = Bytes::from(items);
+                }
+                Code::Existing(_) => (),
+            }
+        }
+
+        if self.pending.is_empty() {
+            // no more pending records, append everything recorded so far.
+            self.records.push(record);
+            // append the inner records.
+            if !self.records_inner.is_empty() {
+                self.records.extend(std::mem::take(&mut self.records_inner));
+            }
+        } else {
+            // we have pending records, so record to inner.
+            self.records_inner.push(record);
+        }
     }
 
     fn exit_child_span(
         &mut self,
-        _output: &polkadot_sdk::pallet_revive::ExecReturnValue,
+        output: &polkadot_sdk::pallet_revive::ExecReturnValue,
         _gas_left: Weight,
     ) {
-        let skip_call =
-            self.call_skip_tracker.pop().expect("unexpected return while skipping call recording");
-        if skip_call {
-            return;
-        }
-        let mut record = self.pending.pop().expect("unexpected return while recording call");
-        record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr);
+        self.calls.pop();
+
         let is_create = self.is_create.take();
-        if is_create.is_some() {
-            match is_create {
-                Some(Code::Existing(_)) => (),
-                Some(Code::Upload(_)) => (),
-                None => (),
-            }
+
+        let mut record = self.pending.pop().expect("unexpected return while recording call");
+        record.new_balance = pallet_revive::Pallet::<Runtime>::evm_balance(&self.current_addr());
+        if output.did_revert() {
+            record.reverted = true;
+            record.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+            self.records_inner.iter_mut().for_each(|x| {
+                if record.reverted {
+                    x.reverted = true;
+                    x.storage_accesses.iter_mut().for_each(|x| x.reverted = true);
+                }
+            });
         }
 
-        if let Some((depth, _)) = &self.skip_next_call
-            && record.depth < *depth
-        {
-            // reset call skip if not encountered (depth has been crossed)
-            self.skip_next_call = None;
+        if let Some(code) = is_create {
+            record.kind = AccountAccessKind::Create;
+            match code {
+                Code::Upload(items) => {
+                    record.data = Bytes::from(items);
+                }
+                Code::Existing(_) => (),
+            }
         }
 
         if self.pending.is_empty() {
             // no more pending records, append everything recorded so far.
             self.records.push(record);
 
-            // also append the inner records.
+            // append the inner records.
             if !self.records_inner.is_empty() {
                 self.records.extend(std::mem::take(&mut self.records_inner));
             }
@@ -210,9 +256,10 @@ impl Tracing for StorageTracer {
     }
 
     fn storage_read(&mut self, key: &polkadot_sdk::pallet_revive::Key, value: Option<&[u8]>) {
+        let account = self.current_addr().0.into();
         let record = self.pending.last_mut().expect("expected at least one record");
         record.storage_accesses.push(StorageAccess {
-            account: self.current_addr.0.into(),
+            account,
             slot: RU256::from_be_slice(key.unhashed()).into(),
             isWrite: false,
             previousValue: RU256::from_be_slice(value.unwrap_or_default()).into(),
@@ -226,9 +273,10 @@ impl Tracing for StorageTracer {
         old_value: Option<Vec<u8>>,
         new_value: Option<&[u8]>,
     ) {
+        let account = self.current_addr().0.into();
         let record = self.pending.last_mut().expect("expected at least one record");
         record.storage_accesses.push(StorageAccess {
-            account: self.current_addr.0.into(),
+            account,
             slot: RU256::from_be_slice(key.unhashed()).into(),
             isWrite: true,
             previousValue: RU256::from_be_slice(old_value.unwrap_or_default().as_slice()).into(),
