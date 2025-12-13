@@ -972,7 +972,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
-        let mut tracer = Tracer::new(state.expected_calls.clone());
+        let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
         let caller_h160 = H160::from_slice(input.caller().as_slice());
 
         let res = ctx.externalities.execute_with(|| {
@@ -1139,7 +1139,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let should_bump_nonce = !call.is_static;
         let caller_h160 = H160::from_slice(call.caller.as_slice());
 
-        let mut tracer = Tracer::new(state.expected_calls.clone());
+        let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
         let res = ctx.externalities.execute_with(|| {
             // Watch the caller's address so its nonce changes get tracked in prestate trace
             tracer.watch_address(&caller_h160);
@@ -1307,10 +1307,10 @@ fn post_exec(
     let ctx = &mut get_context_ref_mut(state.strategy.context.as_mut());
 
     let externalities = &mut ctx.externalities;
-
-    let call_traces = externalities.execute_with(|| {
+    let dual_compiled_contracts = &ctx.dual_compiled_contracts;
+    let (call_traces, create_traces) = externalities.execute_with(|| {
         tracer.apply_prestate_trace(ecx);
-        tracer.collect_call_traces()
+        (tracer.collect_call_traces(), tracer.create_tracer.finalize(dual_compiled_contracts))
     });
     if let Some(traces) = call_traces
         && !is_static_call
@@ -1343,6 +1343,7 @@ fn post_exec(
         expected_revert.reverted_by = tracer.revert_tracer.has_reverted.map(|x| Address::from(x.0));
     }
     state.expected_calls = tracer.expect_call_tracer.data.clone();
+    state.expected_creates = create_traces;
 }
 
 struct LogWithIndex {

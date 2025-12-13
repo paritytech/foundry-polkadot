@@ -197,6 +197,7 @@ impl ForgeTestData {
         install_crypto_provider();
         init_tracing();
         let mut config = profile.config();
+        config.out = profile.root().join("resolc-out").join(profile.to_string());
         config.extra_output.push(ContractOutputSelection::StorageLayout);
         let config = Arc::new(config);
 
