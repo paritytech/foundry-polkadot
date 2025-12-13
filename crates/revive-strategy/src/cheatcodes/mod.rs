@@ -8,10 +8,10 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall, polkadot_0Call,
-        polkadot_1Call, polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall,
-        revertToStateCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall,
-        snapshotStateCall, storeCall, warpCall,
+        AccountAccessKind, chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall,
+        polkadot_0Call, polkadot_1Call, polkadotSkipCall, resetNonceCall,
+        revertToStateAndDeleteCall, revertToStateCall, rollCall, setBlockhashCall, setNonceCall,
+        setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -180,6 +180,9 @@ impl PvmCheatcodeInspectorStrategyRunner {
         ecx: Ecx<'_, '_, '_>,
         account_accesses: Vec<AccountAccess>,
     ) {
+        let ctx: &mut PvmCheatcodeInspectorStrategyContext =
+            get_context_ref_mut(state.strategy.context.as_mut());
+        // account_accesses.sort_by(|a, b| a.depth.cmp(&b.depth));
         if state.recording_accesses {
             for record in &account_accesses {
                 for r in &record.storage_accesses {
@@ -215,7 +218,6 @@ impl PvmCheatcodeInspectorStrategyRunner {
             // TODO(zk): This is currently a hack, as account access recording is
             // done in 4 parts - create/create_end and call/call_end. And these must all be
             // moved to strategy.
-
             let stack_insert_index = if recorded_account_diffs_stack.len() > 1 {
                 recorded_account_diffs_stack
                     .get(recorded_account_diffs_stack.len() - 2)
@@ -226,9 +228,13 @@ impl PvmCheatcodeInspectorStrategyRunner {
             };
 
             if let Some(last) = recorded_account_diffs_stack.last_mut() {
-                let ctx = get_context_ref_mut(state.strategy.context.as_mut());
                 ctx.remove_recorded_access_at = Some(stack_insert_index);
                 for record in account_accesses {
+                    let _ = ecx
+                        .journaled_state
+                        .load_account(Address::from(record.account.0))
+                        .expect("failed to load account");
+
                     let access = FAccountAccess {
                         chainInfo: ChainInfo {
                             forkId: ecx
@@ -241,17 +247,26 @@ impl PvmCheatcodeInspectorStrategyRunner {
                         accessor: Address::from(record.accessor.0),
                         account: Address::from(record.account.0),
                         kind: record.kind,
-                        initialized: true,
+                        initialized: record.initialized,
                         oldBalance: U256::from_limbs(record.old_balance.0),
-                        newBalance: U256::from_limbs(record.new_balance.0),
+                        newBalance: ecx
+                            .journaled_state
+                            .account(Address::from(record.account.0))
+                            .info
+                            .balance,
                         value: U256::from_limbs(record.value.0),
-                        data: record.data,
-                        reverted: false,
-                        deployedCode: if record.deployed_bytecode_hash.unwrap_or_default().is_zero()
-                        {
-                            Default::default()
+                        data: record.data.clone(),
+                        reverted: record.reverted,
+                        deployedCode: if matches!(record.kind, AccountAccessKind::Create) {
+                            ctx.externalities
+                                .execute_with(|| {
+                                    Some(Bytes::from(Pallet::<Runtime>::code(&H160::from(
+                                        record.account.0,
+                                    ))))
+                                })
+                                .unwrap_or_else(|| Bytes::from(record.data.0.to_vec()))
                         } else {
-                            Bytes::from(record.deployed_bytecode_hash.unwrap_or_default().0)
+                            Bytes::new()
                         },
                         storageAccesses: record.storage_accesses,
                         depth: record.depth,
@@ -1012,10 +1027,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             })
         });
         let mut gas = Gas::new(input.gas_limit());
-        if res.result.as_ref().is_ok_and(|r| !r.result.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
-        }
+
         post_exec(state, ecx, executor, &mut tracer, false);
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
+
         mock_handler.update_state_mocks(state);
 
         match &res.result {
@@ -1160,10 +1175,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         });
         mock_handler.update_state_mocks(state);
         let mut gas = Gas::new(call.gas_limit);
-        if res.result.as_ref().is_ok_and(|r| !r.did_revert()) {
-            self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
-        }
+
         post_exec(state, ecx, executor, &mut tracer, call.is_static);
+        self.append_recorded_accesses(state, ecx, tracer.get_recorded_accesses());
 
         match res.result {
             Ok(result) => {
@@ -1231,7 +1245,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             // This entry has been inserted during CREATE/CALL operations in revm's
             // cheatcode inspector and must be removed.
             if index < last.len() {
-                let _ = last.remove(index);
+                let removed = last.remove(index);
+                if let Some(entry) = last.get_mut(index) {
+                    entry.initialized = removed.initialized;
+                }
             } else {
                 warn!(index, len = last.len(), "skipping duplicate access removal: out of bounds");
             }
@@ -1290,10 +1307,9 @@ fn post_exec(
     let ctx = &mut get_context_ref_mut(state.strategy.context.as_mut());
 
     let externalities = &mut ctx.externalities;
-    let dual_compiled_contracts = &ctx.dual_compiled_contracts;
 
     let call_traces = externalities.execute_with(|| {
-        tracer.apply_prestate_trace(ecx, dual_compiled_contracts);
+        tracer.apply_prestate_trace(ecx);
         tracer.collect_call_traces()
     });
     if let Some(traces) = call_traces
