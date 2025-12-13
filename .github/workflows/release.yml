@@ -97,6 +97,13 @@ jobs:
             svm_target_platform: linux-amd64
             platform: linux
             arch: amd64
+          # This is pinned to `macos-13-large` to support old SDK versions.
+          # If the runner is deprecated it should be pinned to the oldest available version of the runner.
+          - runner: macos-14-large
+            target: x86_64-apple-darwin
+            svm_target_platform: macosx-amd64
+            platform: darwin
+            arch: amd64
           - runner: macos-latest-large
             target: aarch64-apple-darwin
             svm_target_platform: macosx-aarch64
@@ -118,10 +125,11 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
       - name: Install dependencies for building (Ubuntu)
-        if: contains(matrix.runner_label, 'parity-large-new')
+        if: matrix.target == 'x86_64-unknown-linux-musl'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang libclang-dev unzip build-essential
+
       - name: Apple M1 setup
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
