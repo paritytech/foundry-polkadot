@@ -33,7 +33,7 @@ async fn test_cheats_local(test_data: &ForgeTestData) {
         config.evm_version = EvmVersion::Prague;
     });
 
-    TestConfig::with_filter(runner, filter).run().await;
+    TestConfig::with_filter_no_revive(runner, filter).run().await;
 }
 
 /// Executes subset of all cheat code tests in isolation mode.
@@ -45,7 +45,7 @@ async fn test_cheats_local_isolated(test_data: &ForgeTestData) {
         config.evm_version = EvmVersion::Prague;
     });
 
-    TestConfig::with_filter(runner, filter).run().await;
+    TestConfig::with_filter_no_revive(runner, filter).run().await;
 }
 
 /// Executes subset of all cheat code tests using a specific seed.
@@ -57,7 +57,7 @@ async fn test_cheats_local_with_seed(test_data: &ForgeTestData) {
         config.evm_version = EvmVersion::Prague;
     });
 
-    TestConfig::with_filter(runner, filter).run().await;
+    TestConfig::with_filter_no_revive(runner, filter).run().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

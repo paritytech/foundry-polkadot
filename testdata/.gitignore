@@ -1,6 +1,7 @@
 # Compiler files
 cache/
 out/
+resolc-out/
 .lock
 .lock_revive
 .lock-revive

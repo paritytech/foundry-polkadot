@@ -41,6 +41,7 @@ macro_rules! revive_cheat_test_original {
 
 revive_cheat_test!(test_custom_nonce, "Nonce");
 revive_cheat_test_original!(test_nonce, "Nonce");
+revive_cheat_test_original!(test_expect_create, "ExpectCreate");
 revive_cheat_test_original!(test_expect_revert, "ExpectRevert");
 revive_cheat_test_original!(test_expect_call, "ExpectCallRevive");
 revive_cheat_test!(test_coinbase, "CoinBase");

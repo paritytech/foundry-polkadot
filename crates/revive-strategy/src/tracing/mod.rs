@@ -2,7 +2,8 @@ use std::{collections::BTreeMap, str::FromStr};
 
 use alloy_primitives::{Address, B256, Bytes, U256 as RU256};
 use call_tracer::ExpectedCallTracer;
-use foundry_cheatcodes::{Ecx, ExpectedCallTracker};
+use expect_create::CreateTracer;
+use foundry_cheatcodes::{Ecx, ExpectedCallTracker, ExpectedCreate};
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::pallet_revive::{
     AccountInfo, Pallet, U256, Weight,
@@ -17,6 +18,7 @@ use revive_env::Runtime;
 use revm::{context::JournalTr, database::states::StorageSlot, state::Bytecode};
 use storage_tracer::{AccountAccess, StorageTracer};
 mod call_tracer;
+mod expect_create;
 mod revert_tracer;
 pub mod storage_tracer;
 pub struct Tracer {
@@ -25,10 +27,11 @@ pub struct Tracer {
     pub storage_accesses: StorageTracer,
     pub revert_tracer: RevertTracer,
     pub expect_call_tracer: ExpectedCallTracer,
+    pub create_tracer: CreateTracer,
 }
 
 impl Tracer {
-    pub fn new(data: ExpectedCallTracker) -> Self {
+    pub fn new(data: ExpectedCallTracker, create_data: Vec<ExpectedCreate>) -> Self {
         let call_tracer =
             match Pallet::<revive_env::Runtime>::evm_tracer(TracerType::CallTracer(None)) {
                 ReviveTracer::CallTracer(tracer) => tracer,
@@ -48,6 +51,7 @@ impl Tracer {
             storage_accesses: Default::default(),
             revert_tracer: RevertTracer::new(),
             expect_call_tracer: ExpectedCallTracer::new(data),
+            create_tracer: CreateTracer::new(create_data),
         }
     }
 
@@ -157,6 +161,7 @@ impl Tracing for Tracer {
         self.call_tracer.watch_address(addr);
         self.storage_accesses.watch_address(addr);
         self.revert_tracer.watch_address(addr);
+        self.create_tracer.watch_address(addr);
     }
 
     fn terminate(
@@ -170,6 +175,7 @@ impl Tracing for Tracer {
         self.call_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
         self.storage_accesses.terminate(contract_address, beneficiary_address, gas_left, value);
         self.revert_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
+        self.create_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
     }
 
     fn enter_child_span(
@@ -226,6 +232,15 @@ impl Tracing for Tracer {
             value,
             input,
             gas,
+        );
+        self.create_tracer.enter_child_span(
+            from,
+            to,
+            is_delegate_call,
+            is_read_only,
+            value,
+            input,
+            gas,
         )
     }
 
@@ -239,6 +254,7 @@ impl Tracing for Tracer {
         self.storage_accesses.instantiate_code(code, salt);
         self.revert_tracer.instantiate_code(code, salt);
         self.expect_call_tracer.instantiate_code(code, salt);
+        self.create_tracer.instantiate_code(code, salt);
     }
 
     fn balance_read(&mut self, addr: &polkadot_sdk::sp_core::H160, value: U256) {
@@ -246,6 +262,7 @@ impl Tracing for Tracer {
         self.call_tracer.balance_read(addr, value);
         self.storage_accesses.balance_read(addr, value);
         self.revert_tracer.balance_read(addr, value);
+        self.create_tracer.balance_read(addr, value);
     }
 
     fn storage_read(&mut self, key: &polkadot_sdk::pallet_revive::Key, value: Option<&[u8]>) {
@@ -253,6 +270,7 @@ impl Tracing for Tracer {
         self.call_tracer.storage_read(key, value);
         self.storage_accesses.storage_read(key, value);
         self.revert_tracer.storage_read(key, value);
+        self.create_tracer.storage_read(key, value);
     }
 
     fn storage_write(
@@ -264,7 +282,8 @@ impl Tracing for Tracer {
         self.prestate_tracer.storage_write(key, old_value.clone(), new_value);
         self.call_tracer.storage_write(key, old_value.clone(), new_value);
         self.storage_accesses.storage_write(key, old_value.clone(), new_value);
-        self.revert_tracer.storage_write(key, old_value, new_value);
+        self.revert_tracer.storage_write(key, old_value.clone(), new_value);
+        self.create_tracer.storage_write(key, old_value, new_value);
     }
 
     fn log_event(
@@ -277,6 +296,7 @@ impl Tracing for Tracer {
         self.call_tracer.log_event(event, topics, data);
         self.storage_accesses.log_event(event, topics, data);
         self.revert_tracer.log_event(event, topics, data);
+        self.create_tracer.log_event(event, topics, data);
     }
 
     fn exit_child_span(
@@ -289,6 +309,7 @@ impl Tracing for Tracer {
         self.storage_accesses.exit_child_span(output, gas_left);
         self.revert_tracer.exit_child_span(output, gas_left);
         self.expect_call_tracer.exit_child_span(output, gas_left);
+        self.create_tracer.exit_child_span(output, gas_left);
     }
 
     fn exit_child_span_with_error(
@@ -301,5 +322,6 @@ impl Tracing for Tracer {
         self.storage_accesses.exit_child_span_with_error(error, gas_left);
         self.revert_tracer.exit_child_span_with_error(error, gas_left);
         self.expect_call_tracer.exit_child_span_with_error(error, gas_left);
+        self.create_tracer.exit_child_span_with_error(error, gas_left);
     }
 }

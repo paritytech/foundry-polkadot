@@ -31,6 +31,12 @@ impl TestConfig {
         Self { runner, should_fail: false, filter }
     }
 
+    pub fn with_filter_no_revive(runner: MultiContractRunner, filter: Filter) -> Self {
+        let filter = filter.exclude_paths("Revive");
+        init_tracing();
+        Self { runner, should_fail: false, filter }
+    }
+
     pub fn spec_id(mut self, spec: SpecId) -> Self {
         self.runner.spec_id = spec;
         self
