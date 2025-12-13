@@ -57,7 +57,7 @@ jobs:
       - name: Install dependencies for building (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new')
         run: |
-          sudo apt-get update
+          sudo apt-get update 
           sudo apt-get install -y clang libclang-dev unzip build-essential
 
       - name: Setup Node.js
