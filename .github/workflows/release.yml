@@ -129,7 +129,7 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libclang-dev unzip build-essential
+          sudo apt-get install -y clang libclang-dev unzip build-essential musl-tools
 
       - name: Apple M1 setup
         if: matrix.target == 'aarch64-apple-darwin'
