@@ -179,8 +179,6 @@ jobs:
 
           if [[ "$TARGET" == "x86_64-unknown-linux-musl" ]]; then
             cross build $flags
-          "
-          sudo chown -R $(id -u):$(id -g) .
           else
             cargo build $flags
           fi
