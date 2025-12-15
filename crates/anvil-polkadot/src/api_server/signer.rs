@@ -3,8 +3,7 @@ use crate::api_server::{
     revive_conversions::ReviveAddress,
 };
 use alloy_dyn_abi::TypedData;
-use alloy_primitives::Address;
-use alloy_primitives::utils::eip191_hash_message;
+use alloy_primitives::{Address, utils::eip191_hash_message};
 use polkadot_sdk::pallet_revive::evm::{Account, TransactionSigned, TransactionUnsigned};
 use std::collections::HashMap;
 use subxt::utils::H160;
