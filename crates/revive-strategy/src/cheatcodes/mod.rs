@@ -1177,11 +1177,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
                         weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                        deposit_limit: if call.is_static {
-                            0
-                        } else {
-                            BalanceOf::<Runtime>::MAX / 2
-                        },
+                        deposit_limit: if call.is_static { 0 } else { 10_000_000_000_000 },
                     },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
