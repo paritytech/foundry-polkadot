@@ -41,20 +41,24 @@ pub fn new_client(
     config: &mut sc_service::Configuration,
     executor: WasmExecutor,
     storage_overrides: Arc<Mutex<StorageOverrides>>,
+    genesis_num: u64,
 ) -> Result<(Arc<Client>, Arc<Backend>, KeystorePtr, TaskManager), sc_service::error::Error> {
+     println!("genesis_num {}", genesis_num);
     let fork_config: Option<(Arc<dyn RPCClient<Block>>, Block)> =
         if let Some(fork_url) = &anvil_config.eth_rpc_url {
-            let (rpc_client, checkpoint_block) = setup_fork(anvil_config, config, fork_url)?;
+            let (rpc_client, checkpoint_block) = setup_fork(anvil_config, config, fork_url, genesis_num)?;
             Some((rpc_client, checkpoint_block))
         } else {
             None
         };
+
 
     let backend = new_lazy_loading_backend(fork_config.clone())?;
 
     // In fork mode, use the checkpoint block as genesis
     // In normal mode, create a new genesis block
     let genesis_block_builder = if let Some((_, checkpoint)) = &fork_config {
+        println!("checkpoint {}", checkpoint.header.number);
         // Fork mode: use checkpoint block as genesis
         DevelopmentGenesisBlockBuilder::new_with_checkpoint(
             config.chain_spec.as_storage_builder(),
@@ -169,6 +173,7 @@ fn setup_fork(
     anvil_config: &AnvilNodeConfig,
     config: &mut sc_service::Configuration,
     fork_url: &str,
+    genesis_num: u64,
 ) -> Result<(Arc<dyn RPCClient<Block>>, Block), sc_service::error::Error> {
     let http_client = jsonrpsee::http_client::HttpClientBuilder::default()
         .max_request_size(u32::MAX)
@@ -188,12 +193,40 @@ fn setup_fork(
         sp_blockchain::Error::Backend(format!("failed to fetch system_properties: {e}"))
     })?;
 
+     // TODO refactor this to account for fork choice
     // Get block hash from fork_choice config
     // If no fork_choice is specified, we need to fetch the latest block and use its hash
     // for all subsequent requests to avoid inconsistencies if a new block is mined between calls.
-    let block_hash: <Block as BlockT>::Hash = if let Some(fork_choice) = &anvil_config.fork_choice {
-        let block_num = resolve_fork_block_number(&rpc_client, fork_choice)?;
-        rpc_client
+    // let block_hash: <Block as BlockT>::Hash = if let Some(fork_choice) = &anvil_config.fork_choice {
+    //    // let block_num = resolve_fork_block_number(&rpc_client, fork_choice)?;
+    //     let block_num = genesis_num as u32;
+    //     rpc_client
+    //         .block_hash(Some(block_num))
+    //         .map_err(|e| {
+    //             sp_blockchain::Error::Backend(format!(
+    //                 "failed to fetch block hash for block {block_num}: {e}"
+    //             ))
+    //         })?
+    //         .ok_or_else(|| {
+    //             sp_blockchain::Error::Backend(format!("block hash not found for block {block_num}"))
+    //         })?
+    // } else {
+    //     // No fork_choice specified, fetch the latest block header and use its hash
+    //     let latest_header = rpc_client
+    //         .header(None)
+    //         .map_err(|e| {
+    //             sp_blockchain::Error::Backend(format!(
+    //                 "failed to fetch latest header for fork: {e}"
+    //             ))
+    //         })?
+    //         .ok_or_else(|| {
+    //             sp_blockchain::Error::Backend("latest header not found for fork".into())
+    //         })?;
+    //     latest_header.hash()
+    // };
+
+    let block_num = genesis_num as u32;
+    let block_hash = rpc_client
             .block_hash(Some(block_num))
             .map_err(|e| {
                 sp_blockchain::Error::Backend(format!(
@@ -202,21 +235,7 @@ fn setup_fork(
             })?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!("block hash not found for block {block_num}"))
-            })?
-    } else {
-        // No fork_choice specified, fetch the latest block header and use its hash
-        let latest_header = rpc_client
-            .header(None)
-            .map_err(|e| {
-                sp_blockchain::Error::Backend(format!(
-                    "failed to fetch latest header for fork: {e}"
-                ))
-            })?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend("latest header not found for fork".into())
             })?;
-        latest_header.hash()
-    };
 
     let wasm_binary = rpc_client
         .storage(StorageKey(CODE.to_vec()), Some(block_hash))

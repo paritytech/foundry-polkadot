@@ -30,6 +30,9 @@ use polkadot_sdk::{
 };
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio::runtime::Builder as TokioRtBuilder;
+
+use subxt::{PolkadotConfig, backend::rpc::RpcClient, ext::subxt_rpcs::rpc_params, utils::H256};
 
 pub use backend::{BackendError, BackendWithOverlay, StorageOverrides};
 pub use client::Client;
@@ -138,6 +141,36 @@ fn create_manual_seal_inherent_data_providers(
         // This helps with allowing greater block production velocity per relay chain slot.
         backend.inject_relay_slot_info(current_para_head.hash(), (slot_in_state, 0));
 
+         // Read the DMQ MQC head from parachain storage to avoid "DMQ head mismatch" errors
+        // The storage key is: twox_128("ParachainSystem") + twox_128("LastDmqMqcHead")
+        let pallet_prefix = polkadot_sdk::sp_core::twox_128(b"ParachainSystem");
+        let storage_prefix = polkadot_sdk::sp_core::twox_128(b"LastDmqMqcHead");
+        let mut dmq_storage_key = Vec::new();
+        dmq_storage_key.extend_from_slice(&pallet_prefix);
+        dmq_storage_key.extend_from_slice(&storage_prefix);
+
+        // Read the MessageQueueChain from storage and extract its head hash
+        use polkadot_sdk::sc_client_api::StorageProvider;
+        let dmq_mqc_head = client
+            .storage(
+                current_para_head.hash(),
+                &polkadot_sdk::sc_client_api::StorageKey(dmq_storage_key),
+            )
+            .ok()
+            .flatten()
+            .and_then(|encoded_data| {
+                // MessageQueueChain is just a wrapper around a Hash, decode it
+                // The MessageQueueChain stores the head as the last 32 bytes
+                if encoded_data.0.len() >= 32 {
+                    let mut hash_bytes = [0u8; 32];
+                    hash_bytes.copy_from_slice(&encoded_data.0[encoded_data.0.len() - 32..]);
+                    Some(polkadot_sdk::cumulus_primitives_core::relay_chain::Hash::from(hash_bytes))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default(); // Use default (zeros) if we can't read it
+
         let mocked_parachain = MockValidationDataInherentDataProvider::<()> {
             current_para_block: next_block_number,
             para_id,
@@ -148,6 +181,10 @@ fn create_manual_seal_inherent_data_providers(
             relay_offset: last_rc_block_number + 1,
             current_para_block_head,
             additional_key_values: Some(additional_key_values),
+            xcm_config: polkadot_sdk::cumulus_client_parachain_inherent::MockXcmConfig {
+                starting_dmq_mqc_head: dmq_mqc_head,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -162,12 +199,58 @@ pub fn new(
     anvil_config: &AnvilNodeConfig,
     mut config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
+
+    let mut genesis_block_number = anvil_config.get_genesis_number();
+    if let Some(ref fork_url) = anvil_config.eth_rpc_url {
+        let http_url = fork_url.replacen("https://", "wss://", 1)
+            .replacen("http://", "wss://", 1);
+        let storage_map =
+            std::thread::spawn(move || -> eyre::Result<Result<u64, ()>> {
+                let rt = TokioRtBuilder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|e| eyre::eyre!("tokio rt build error: {e}"))?;
+                rt.block_on(async move {
+                    let client =
+                        subxt::client::OnlineClient::<PolkadotConfig>::from_url(http_url.clone())
+                            .await
+                            .unwrap();
+                 
+                    let finalized_block_ref =
+                        client.backend().latest_finalized_block_ref().await.unwrap();
+                    let finalized_head_header = client
+                        .backend()
+                        .block_header(finalized_block_ref.hash())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    println!("fork finalized block number {}", finalized_head_header.number);
+
+                    Ok(Ok((finalized_head_header.number.into())))
+                })
+            })
+            .join()
+            .map_err(|_| ServiceError::Other("tokio thread panicked".into()))?
+            .map_err(|e| ServiceError::Other(format!("fork fetch failed: {e}")))?;
+
+        match storage_map {
+            Ok((genesis_number)) => {
+                genesis_block_number = genesis_number;
+            }
+            _ => {
+                panic!("shouldn't happen")
+            }
+        }
+    }
+
+    println!("genesis block number {}", genesis_block_number);
+
     let storage_overrides =
         Arc::new(Mutex::new(StorageOverrides::new(anvil_config.revive_rpc_block_limit)));
     let executor = sc_service::new_wasm_executor(&config.executor);
 
     let (client, backend, keystore, mut task_manager) =
-        client::new_client(anvil_config, &mut config, executor, storage_overrides.clone())?;
+        client::new_client(anvil_config, &mut config, executor, storage_overrides.clone(), genesis_block_number)?;
 
     let transaction_pool = Arc::from(
         sc_transaction_pool::Builder::new(
@@ -209,7 +292,7 @@ pub fn new(
     ));
 
     let rpc_handlers = spawn_rpc_server(
-        anvil_config.get_genesis_number(),
+        genesis_block_number,
         &mut task_manager,
         client.clone(),
         config,
@@ -233,12 +316,6 @@ pub fn new(
     );
 
     let aura_digest_provider = AuraConsensusDataProvider::new(client.clone());
-    // let create_inherent_data_providers = {
-    //     move |_, ()| {
-    //         let next_timestamp = time_manager.next_timestamp();
-    //         async move { Ok(sp_timestamp::InherentDataProvider::new(next_timestamp.into())) }
-    //     }
-    // };
     let backend_with_overlay = BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
     let create_inherent_data_providers = create_manual_seal_inherent_data_providers(
         backend_with_overlay,
@@ -273,7 +350,7 @@ pub fn new(
             rpc_handlers,
             mining_engine,
             storage_overrides,
-            genesis_block_number: anvil_config.get_genesis_number(),
+            genesis_block_number: genesis_block_number,
         },
         task_manager,
     ))

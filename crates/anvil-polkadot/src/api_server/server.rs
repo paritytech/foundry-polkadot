@@ -524,6 +524,7 @@ impl ApiServer {
         // Subscribe to new best blocks.
         let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
         let awaited_hash = self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        println!("awaited hash {}", awaited_hash);
         self.wait_for_hash(receiver, awaited_hash).await?;
         Ok("0x0".to_string())
     }
@@ -1875,6 +1876,8 @@ async fn create_online_client(
             u32::MAX
         ))
     })?;
+
+    println!("genesis block num {}", genesis_block_number);
 
     let Some(genesis_hash) = substrate_service.client.hash(genesis_block_number).ok().flatten()
     else {
