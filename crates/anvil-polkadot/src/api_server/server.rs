@@ -766,7 +766,49 @@ impl ApiServer {
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
         let hash = H256(keccak_256(&transaction.0));
         let call = subxt_client::tx().revive().eth_transact(transaction.0);
-        self.eth_rpc_client.submit(call).await?;
+        let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
+
+        self.eth_rpc_client.submit(call).await.map_err(|err| {
+            node_info!("send_raw_transaction ethereum_hash: {hash:?} failed: {err:?}");
+            err
+        })?;
+
+        node_info!("send_raw_transaction with hash: {hash:?}");
+
+        // Wait for the transaction to be included in a block if automine is enabled
+        if let Some(mut receiver) = receiver {
+            if let Err(err) = tokio::time::timeout(Duration::from_millis(1000), async {
+                let mut block_number = 0u64;
+				loop {
+					if let Ok(block_hash) = receiver.recv().await {
+						let Ok(Some(block)) = self.eth_rpc_client.block_by_hash(&block_hash).await else {
+							node_info!( "Could not find the block with the received hash: {hash:?}.");
+							continue
+						};
+						let Some(evm_block) = self.eth_rpc_client.evm_block(block, false).await else {
+							node_info!( "Failed to get the EVM block for substrate block with hash: {hash:?}");
+							continue
+						};
+						if evm_block.transactions.contains_tx(hash) {
+							node_info!( "{hash:} was included in a block");
+							block_number= evm_block.number.as_u64();
+                            self.mining_engine.mine(None, None).await;
+                            continue;
+						}
+                        if evm_block.number.as_u64().gt(&block_number) {
+							node_info!( "block {block_number:} corresponding to {hash:} has been finalized");
+                            break
+                        }
+					}
+				}
+			})
+			.await
+			{
+				node_info!( "timeout waiting for new block: {err:?}");
+			}
+        }
+
+        node_info!("send_raw_transaction hash: {hash:?}");
         Ok(hash)
     }
 
