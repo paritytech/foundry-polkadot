@@ -116,7 +116,7 @@ pub struct ApiServer {
 }
 
 /// Fetch the chain ID from the substrate chain.
-async fn chain_id(api: &OnlineClient<SrcChainConfig>) -> Result<u64> {
+async fn chain_id_from_metadata(api: &OnlineClient<SrcChainConfig>) -> Result<u64> {
     let query = subxt_client::constants().revive().chain_id();
     api.constants().at(&query).map_err(|err| err.into())
 }
@@ -155,7 +155,7 @@ impl ApiServer {
         // When forking we need to use the chain ID of the forked network, but for non-forking we do
         // not want to use this as we allow for the chain_id to be customized. So we will
         // not write this to the backend, but cache it to use if we are forking.
-        let chain_id = chain_id(&api).await?;
+        let chain_id = chain_id_from_metadata(&api).await?;
 
         let filters_clone = filters.clone();
         substrate_service.spawn_handle.spawn("filter-eviction-task", "None", async move {
@@ -633,7 +633,7 @@ impl ApiServer {
         Ok(())
     }
 
-    fn chain_id_from_metadata(&self, at: Hash) -> u64 {
+    fn chain_id(&self, at: Hash) -> u64 {
         let id_res = self.backend.read_chain_id(at);
 
         let id = match id_res {
@@ -651,14 +651,14 @@ impl ApiServer {
         node_info!("eth_chainId");
         let latest_block = self.latest_block();
 
-        Ok(U256::from(self.chain_id_from_metadata(latest_block)).to::<U64>())
+        Ok(U256::from(self.chain_id(latest_block)).to::<U64>())
     }
 
     fn network_id(&self) -> Result<u64> {
         node_info!("eth_networkId");
         let latest_block = self.latest_block();
 
-        Ok(self.chain_id_from_metadata(latest_block))
+        Ok(self.chain_id(latest_block))
     }
 
     fn net_listening(&self) -> Result<bool> {
@@ -855,7 +855,7 @@ impl ApiServer {
         if transaction.chain_id.is_none() {
             println!("chain id is none");
             transaction.chain_id = Some(sp_core::U256::from_big_endian(
-                &self.chain_id_from_metadata(latest_block).to_be_bytes(),
+                &self.chain_id(latest_block).to_be_bytes(),
             ));
         }
 
@@ -993,7 +993,7 @@ impl ApiServer {
             transaction_order: "fifo".to_string(),
             environment: NodeEnvironment {
                 base_fee,
-                chain_id: self.chain_id_from_metadata(best_hash),
+                chain_id: self.chain_id(best_hash),
                 gas_limit,
                 gas_price: base_fee,
             },
@@ -1016,7 +1016,7 @@ impl ApiServer {
 
         Ok(AnvilMetadata {
             client_version: CLIENT_VERSION.to_string(),
-            chain_id: self.chain_id_from_metadata(best_hash),
+            chain_id: self.chain_id(best_hash),
             latest_block_hash: B256::from_slice(best_hash.as_ref()),
             latest_block_number,
             instance_id: self.instance_id,
