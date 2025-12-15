@@ -10,7 +10,7 @@ use polkadot_sdk::{
     sp_io::TestExternalities,
     sp_weights::Weight,
 };
-use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
+use revive_env::{AccountIdMapper, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
@@ -80,7 +80,7 @@ impl TestEnv {
 
     pub fn get_nonce(&mut self, account: Address) -> u32 {
         self.0.lock().unwrap().externalities.execute_with(|| {
-            System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
+            System::account_nonce(AccountIdMapper::to_fallback_account_id(&H160::from_slice(
                 account.as_slice(),
             )))
         })
@@ -89,7 +89,7 @@ impl TestEnv {
     pub fn set_nonce(&mut self, address: Address, nonce: u64) {
         self.0.lock().unwrap().externalities.execute_with(|| {
             let account_id =
-                AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
+                AccountIdMapper::to_fallback_account_id(&H160::from_slice(address.as_slice()));
 
             polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
                 a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
@@ -134,10 +134,10 @@ impl TestEnv {
     ) -> Result {
         self.0.lock().unwrap().externalities.execute_with(|| {
             let origin_address = H160::from_slice(ecx.tx.caller.as_slice());
-            let origin_account = AccountId::to_fallback_account_id(&origin_address);
+            let origin_account = AccountIdMapper::to_fallback_account_id(&origin_address);
 
             let target_address = H160::from_slice(target.as_slice());
-            let target_account = AccountId::to_fallback_account_id(&target_address);
+            let target_account = AccountIdMapper::to_fallback_account_id(&target_address);
 
             let code = new_runtime_code.to_vec();
             let code_type =
@@ -169,7 +169,7 @@ impl TestEnv {
                     tracing::error!("Could not create contract info: {:?}", err);
                     <&str as Into<Error>>::into("Could not create contract info")
                 })?;
-                System::inc_account_nonce(AccountId::to_fallback_account_id(&target_address));
+                System::inc_account_nonce(AccountIdMapper::to_fallback_account_id(&target_address));
                 contract_info
             };
             contract_info.code_hash = *contract_blob.code_hash();
@@ -247,7 +247,7 @@ impl TestEnv {
     pub fn set_block_author(&mut self, new_author: Address) {
         self.0.lock().unwrap().externalities.execute_with(|| {
             let account_id32 =
-                AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
+                AccountIdMapper::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
             BlockAuthor::set(&account_id32);
         });
     }

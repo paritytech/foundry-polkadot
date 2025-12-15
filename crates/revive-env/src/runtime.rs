@@ -5,17 +5,69 @@
 use frame_support::{runtime, traits::FindAuthor, weights::constants::WEIGHT_REF_TIME_PER_SECOND};
 use pallet_revive::AccountId32Mapper;
 use polkadot_sdk::{
-    pallet_revive::evm::fees::BlockRatioFee,
+    pallet_revive::evm::{
+        fees::{BlockRatioFee, Info as FeeInfo},
+        runtime::EthExtra,
+    },
     pallet_transaction_payment::{ConstFeeMultiplier, Multiplier},
-    polkadot_sdk_frame::runtime::prelude::*,
-    sp_runtime::AccountId32,
+    polkadot_sdk_frame::{
+        runtime::{apis, prelude::*},
+        traits::Block as BlockT,
+    },
+    sp_runtime::{
+        traits::{Lazy, Verify},
+        AccountId32,
+    },
     sp_weights::ConstantMultiplier,
     *,
 };
 
 pub type Balance = u128;
-pub type AccountId = pallet_revive::AccountId32Mapper<Runtime>;
-pub type Block = frame_system::mocking::MockBlock<Runtime>;
+pub type BlockNumber = u64;
+type Header = sp_runtime::generic::Header<BlockNumber, BlakeTwo256>;
+pub type Block = sp_runtime::generic::Block<
+    Header,
+    frame_system::mocking::MockUncheckedExtrinsic<Runtime, MockSignature, TxExtension>,
+>;
+pub type Nonce = u32;
+pub type AccountId = AccountId32;
+pub type AccountIdMapper = pallet_revive::AccountId32Mapper<Runtime>;
+
+#[derive(
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Debug,
+    Hash,
+    PartialOrd,
+    Ord,
+    MaxEncodedLen,
+    TypeInfo,
+)]
+pub struct MockSignature(AccountId32);
+
+impl IdentifyAccount for MockSignature {
+    type AccountId = AccountId32;
+
+    fn into_account(self) -> Self::AccountId {
+        self.0
+    }
+}
+
+impl Verify for MockSignature {
+    type Signer = Self;
+
+    fn verify<L: Lazy<[u8]>>(
+        &self,
+        _msg: L,
+        _signer: &<Self::Signer as IdentifyAccount>::AccountId,
+    ) -> bool {
+        true
+    }
+}
 
 parameter_types! {
     pub const TransactionByteFee: Balance = 10;
@@ -70,6 +122,8 @@ impl frame_system::Config for Runtime {
     type Block = Block;
     type BlockWeights = BlockWeights;
     type AccountId = AccountId32;
+    type Lookup = IdentityLookup<AccountId32>;
+    type Nonce = Nonce;
     type AccountData = pallet_balances::AccountData<<Self as pallet_balances::Config>::Balance>;
 }
 
@@ -96,6 +150,21 @@ parameter_types! {
         );
 }
 
+type TxExtension = (pallet_transaction_payment::ChargeTransactionPayment<Runtime>,);
+
+/// Default extensions applied to Ethereum transactions.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EthExtraImpl;
+
+impl EthExtra for EthExtraImpl {
+    type Config = Runtime;
+    type Extension = TxExtension;
+
+    fn get_eth_extension(_nonce: u32, tip: Balance) -> Self::Extension {
+        (pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),)
+    }
+}
+
 #[derive_impl(pallet_revive::config_preludes::TestDefaultConfig)]
 impl pallet_revive::Config for Runtime {
     type Time = Timestamp;
@@ -111,6 +180,8 @@ impl pallet_revive::Config for Runtime {
     type InstantiateOrigin = EnsureSigned<AccountId32>;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type ChainId = ChainId;
+    type FeeInfo =
+        FeeInfo<<Runtime as frame_system::Config>::AccountId, MockSignature, EthExtraImpl>;
     type NativeToEthRatio = NativeToEthRatio;
     type FindAuthor = Self;
     type DebugEnabled = ConstBool<true>;
@@ -132,3 +203,41 @@ impl FindAuthor<<Self as frame_system::Config>::AccountId> for Runtime {
         Some(BlockAuthor::get())
     }
 }
+
+extern crate alloc;
+
+type Executive = frame_executive::Executive<
+    Runtime,
+    Block,
+    frame_system::ChainContext<Runtime>,
+    Runtime,
+    AllPalletsWithSystem,
+>;
+
+/// The runtime version.
+pub const VERSION: RuntimeVersion = RuntimeVersion {
+    spec_name: alloc::borrow::Cow::Borrowed("revive-dev-runtime"),
+    impl_name: alloc::borrow::Cow::Borrowed("revive-dev-runtime"),
+    authoring_version: 1,
+    spec_version: 0,
+    impl_version: 1,
+    apis: RUNTIME_API_VERSIONS,
+    transaction_version: 1,
+    system_version: 1,
+};
+
+pallet_revive::impl_runtime_apis_plus_revive_traits!(Runtime, Contracts, Executive, EthExtraImpl,
+    impl apis::Core<Block> for Runtime {
+        fn version() -> RuntimeVersion {
+            VERSION
+        }
+
+        fn execute_block(_block: <Block as BlockT>::LazyBlock) {
+
+        }
+
+        fn initialize_block(_header: &Header) -> ExtrinsicInclusionMode {
+            ExtrinsicInclusionMode::AllExtrinsics
+        }
+    }
+);

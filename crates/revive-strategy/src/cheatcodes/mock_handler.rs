@@ -15,7 +15,7 @@ use polkadot_sdk::{
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::H160,
 };
-use revive_env::{AccountId, Runtime};
+use revive_env::{AccountIdMapper, Runtime};
 
 use revm::interpreter::InstructionResult;
 
@@ -42,7 +42,7 @@ impl MockHandlerImpl {
         Self {
             inner: Rc::new(RefCell::new(inject_env)),
             origin: ExecOrigin::<Runtime>::from_runtime_origin(OriginFor::<Runtime>::signed(
-                AccountId::to_fallback_account_id(&H160::from_slice(origin.as_slice())),
+                AccountIdMapper::to_fallback_account_id(&H160::from_slice(origin.as_slice())),
             ))
             .expect("Could not create tx origin"),
         }
@@ -193,12 +193,12 @@ impl MockHandlerInner<Runtime> {
         callee: Option<&Address>,
         state: &mut foundry_cheatcodes::Cheatcodes,
     ) -> Self {
-        let pranked_caller = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
+        let pranked_caller = OriginFor::<Runtime>::signed(AccountIdMapper::to_fallback_account_id(
             &H160::from_slice(caller.as_slice()),
         ));
 
         let delegated_caller = target_address.map(|addr| {
-            OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&H160::from_slice(
+            OriginFor::<Runtime>::signed(AccountIdMapper::to_fallback_account_id(&H160::from_slice(
                 addr.as_slice(),
             )))
         });

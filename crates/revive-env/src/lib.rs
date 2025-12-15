@@ -6,19 +6,21 @@
 //! THIS IS WORK IN PROGRESS. It is not yet complete and may change in the future.
 #![allow(clippy::disallowed_macros)]
 use polkadot_sdk::{
-    frame_support::traits::{OnGenesis, fungible::Mutate},
+    frame_support::traits::{fungible::Mutate, OnGenesis},
     frame_system::{self, Pallet},
     pallet_balances,
     pallet_revive::{self, AddressMapper},
     polkadot_runtime_common::BuildStorage,
     sp_core::H160,
     sp_io,
-    sp_keystore::{KeystoreExt, testing::MemoryKeystore},
+    sp_keystore::{testing::MemoryKeystore, KeystoreExt},
     sp_runtime::AccountId32,
     sp_tracing,
 };
 
-pub use crate::runtime::{AccountId, Balance, BlockAuthor, GasScale, Runtime, System, Timestamp};
+pub use crate::runtime::{
+    AccountIdMapper, Balance, BlockAuthor, GasScale, Runtime, System, Timestamp,
+};
 
 mod runtime;
 
@@ -35,7 +37,9 @@ impl ExtBuilder {
         Self {
             balance_genesis_config: value
                 .iter()
-                .map(|(address, balance)| (AccountId::to_fallback_account_id(address), *balance))
+                .map(|(address, balance)| {
+                    (AccountIdMapper::to_fallback_account_id(address), *balance)
+                })
                 .collect(),
         }
     }
