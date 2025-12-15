@@ -202,8 +202,9 @@ pub fn new(
 
     let mut genesis_block_number = anvil_config.get_genesis_number();
     if let Some(ref fork_url) = anvil_config.eth_rpc_url {
-        let http_url = fork_url.replacen("https://", "wss://", 1)
-            .replacen("http://", "wss://", 1);
+        // TODO ws is for local host, wss for remote (aka prod)
+        let http_url = fork_url.replacen("https://", "ws://", 1)
+            .replacen("http://", "ws://", 1);
         let storage_map =
             std::thread::spawn(move || -> eyre::Result<Result<u64, ()>> {
                 let rt = TokioRtBuilder::new_current_thread()
