@@ -757,17 +757,19 @@ impl Backend {
         // explicit set_test_contract() call in runner.rs to enable PVM mode detection.
         // This prevents infrastructure deployments (like CREATE2 deployer) from
         // overwriting the actual test contract address.
-        let test_contract = match env.tx.kind {
-            TxKind::Call(to) => to,
-            TxKind::Create => {
-                let nonce = self
-                    .basic_ref(env.tx.caller)
-                    .map(|b| b.unwrap_or_default().nonce)
-                    .unwrap_or_default();
-                env.tx.caller.create(nonce)
-            }
-        };
-        self.set_test_contract(test_contract);
+        if self.inner.test_contract.is_none() {
+            let test_contract = match env.tx.kind {
+                TxKind::Call(to) => to,
+                TxKind::Create => {
+                    let nonce = self
+                        .basic_ref(env.tx.caller)
+                        .map(|b| b.unwrap_or_default().nonce)
+                        .unwrap_or_default();
+                    env.tx.caller.create(nonce)
+                }
+            };
+            self.set_test_contract(test_contract);
+        }
     }
 
     /// Executes the configured test call of the `env` without committing state changes.

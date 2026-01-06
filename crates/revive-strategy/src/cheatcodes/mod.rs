@@ -808,14 +808,6 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                 }
             }
         });
-    ctx.externalities.set_balance(
-        AccountId32Mapper::<Runtime>::to_address(&Pallet::<Runtime>::checking_account()).0.into(),
-        U256::MAX,
-    );
-    ctx.externalities.set_balance(
-        AccountId32Mapper::<Runtime>::to_address(&Pallet::<Runtime>::account_id()).0.into(),
-        U256::MAX,
-    );
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
@@ -974,10 +966,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(state.expected_calls.clone());
         let caller_h160 = H160::from_slice(input.caller().as_slice());
-        ctx.externalities.set_nonce(
-            input.caller(),
-            ecx.journaled_state.load_account(input.caller()).unwrap().info.nonce,
-        );
+
         let res = ctx.externalities.execute_with(|| {
             tracer.watch_address(&caller_h160);
 
@@ -1115,7 +1104,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             .journaled_state
             .database
             .get_test_contract_address()
-            .map(|addr| call.bytecode_address == addr)
+            .map(|addr| call.bytecode_address == addr || call.target_address == addr)
             .unwrap_or_default()
         {
             tracing::info!(
@@ -1138,10 +1127,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             state,
         );
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
-        ctx.externalities.set_nonce(
-            call.caller,
-            ecx.journaled_state.load_account(call.caller).unwrap().info.nonce,
-        );
+
         // Get nonce before execute_with closure
         let should_bump_nonce = !call.is_static;
         let caller_h160 = H160::from_slice(call.caller.as_slice());
@@ -1426,9 +1412,6 @@ fn apply_revm_storage_diff(
     if !contract_exists {
         return;
     }
-
-    ctx.externalities.set_balance(address, account_state.info.balance);
-    ctx.externalities.set_nonce(address, account_state.info.nonce);
 
     ctx.externalities.execute_with(|| {
         for (slot, storage_slot) in &account_state.storage {
