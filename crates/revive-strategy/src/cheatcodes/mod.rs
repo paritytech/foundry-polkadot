@@ -724,7 +724,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     code_type,
                                     &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
                                         weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                                        deposit_limit: 100_000_000_000_000,
                                     })
                                     .unwrap(),
                                     &ExecConfig::new_substrate_tx(),
@@ -1023,7 +1023,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
                         weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                        deposit_limit: 100_000_000_000_000,
                     },
                     code,
                     data,
@@ -1177,7 +1177,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
                         weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                        deposit_limit: if call.is_static { 0 } else { 10_000_000_000_000 },
+                        deposit_limit: if call.is_static { 0 } else { 100_000_000_000_000 },
                     },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,

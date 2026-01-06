@@ -15,13 +15,13 @@ use polkadot_sdk::{
     pallet_transaction_payment::{ConstFeeMultiplier, Multiplier},
     parachains_common::{AccountId, Hash, Header, Nonce},
     polkadot_sdk_frame::runtime::prelude::*,
-    sp_runtime::AccountId32,
+    sp_runtime::{AccountId32, generic},
     sp_weights::ConstantMultiplier,
     *,
 };
 
 pub type Balance = u128;
-pub type Block = sp_runtime::generic::Block<Header, UncheckedExtrinsic>;
+pub type Block = sp_runtime::generic::Block<generic::Header<u64, BlakeTwo256>, UncheckedExtrinsic>;
 pub type UncheckedExtrinsic =
     pallet_revive::evm::runtime::UncheckedExtrinsic<Address, Signature, EthExtraImpl>;
 
