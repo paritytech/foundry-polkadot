@@ -192,7 +192,8 @@ jobs:
             du -h "$bin" || true
             ldd "$bin" || true
             $bin --version || true
-            echo "${name}_bin_path=${bin}" >> $GITHUB_ENV
+            var_name=$(echo "${name}" | tr '-' '_')
+            echo "${var_name}_bin_path=${bin}" >> $GITHUB_ENV
           done
 
       - name: Archive binaries
