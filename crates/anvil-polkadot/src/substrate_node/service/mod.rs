@@ -33,7 +33,7 @@ use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio::runtime::Builder as TokioRtBuilder;
 
-use subxt::{PolkadotConfig, backend::rpc::RpcClient, ext::subxt_rpcs::rpc_params, utils::H256};
+use subxt::PolkadotConfig;
 
 pub use backend::{BackendError, BackendWithOverlay, StorageOverrides};
 pub use client::Client;
@@ -97,8 +97,6 @@ fn create_manual_seal_inherent_data_providers(
             Ok(duration) => duration,
             Err(e) => return futures::future::ready(Err(Box::new(e))),
         };
-
-        println!("nex block num {}", next_block_number);
 
         let id = client
             .runtime_api()
@@ -228,7 +226,6 @@ pub fn new(
                         .unwrap()
                         .unwrap();
                     let finalized_block_number: u64 = finalized_head_header.number.into();
-                    println!("fork finalized block number {}", finalized_block_number);
 
                     // Apply fork_choice if specified
                     let target_block_number = match fork_choice {
@@ -253,7 +250,7 @@ pub fn new(
             .map_err(|e| ServiceError::Other(format!("fork fetch failed: {e}")))?;
 
         match storage_map {
-            Ok((genesis_number)) => {
+            Ok(genesis_number) => {
                 genesis_block_number = genesis_number;
             }
             _ => {
@@ -261,8 +258,6 @@ pub fn new(
             }
         }
     }
-
-    println!("genesis block number {}", genesis_block_number);
 
     let storage_overrides =
         Arc::new(Mutex::new(StorageOverrides::new(anvil_config.revive_rpc_block_limit)));
