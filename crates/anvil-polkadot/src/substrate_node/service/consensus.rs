@@ -2,10 +2,11 @@ use polkadot_sdk::{
     sc_consensus::BlockImportParams,
     sc_consensus_aura::CompatibleDigestItem,
     sc_consensus_manual_seal::{ConsensusDataProvider, Error},
+    sp_api::StorageProof,
     sp_consensus_aura::ed25519::AuthoritySignature,
     sp_consensus_babe::Slot,
     sp_inherents::InherentData,
-    sp_runtime::{Digest, DigestItem, traits::Block as BlockT},
+    sp_runtime::{traits::Block as BlockT, Digest, DigestItem},
 };
 use std::marker::PhantomData;
 
@@ -16,23 +17,20 @@ use std::marker::PhantomData;
 /// forking from an assethub chain, we expect an assethub runtime based on AURA,
 /// which will pick the author based on the slot given through the digest, which will
 /// also result in picking the AURA authority from index 0.
-pub struct SameSlotConsensusDataProvider<B, P> {
-    _phantom: PhantomData<(B, P)>,
+pub struct SameSlotConsensusDataProvider<B> {
+    _phantom: PhantomData<B>,
 }
 
-impl<B, P> SameSlotConsensusDataProvider<B, P> {
+impl<B> SameSlotConsensusDataProvider<B> {
     pub fn new() -> Self {
         Self { _phantom: PhantomData }
     }
 }
 
-impl<B, P> ConsensusDataProvider<B> for SameSlotConsensusDataProvider<B, P>
+impl<B> ConsensusDataProvider<B> for SameSlotConsensusDataProvider<B>
 where
     B: BlockT,
-    P: Send + Sync,
 {
-    type Proof = P;
-
     fn create_digest(
         &self,
         _parent: &B::Header,
@@ -50,7 +48,7 @@ where
         _parent: &B::Header,
         _params: &mut BlockImportParams<B>,
         _inherents: &InherentData,
-        _proof: Self::Proof,
+        _proof: StorageProof,
     ) -> Result<(), Error> {
         Ok(())
     }

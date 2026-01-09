@@ -451,3 +451,11 @@ op-revm = { git = "https://github.com/bluealloy/revm.git", rev = "409c2b3" }
 # solar-interface = { git = "https://github.com/paradigmxyz/solar.git", branch = "main" }
 # solar-sema = { git = "https://github.com/paradigmxyz/solar.git", branch = "main" }
 # solar-data-structures = { git = "https://github.com/paradigmxyz/solar.git", branch = "main" }
+
+# Uncomment to test against local checkout of polkadot-sdk
+# [patch."https://github.com/paritytech/polkadot-sdk"]
+# polkadot-sdk = { path = "../polkadot-sdk/umbrella" }
+# pallet-revive = { path = "../polkadot-sdk/substrate/frame/revive" }
+# pallet-revive-eth-rpc = { path = "../polkadot-sdk/substrate/frame/revive/rpc" }
+# revive-dev-runtime = { path = "../polkadot-sdk/substrate/frame/revive/dev-node/runtime" }
+# sp-runtime-interface = { path = "../polkadot-sdk/substrate/primitives/runtime-interface" }

@@ -1,13 +1,14 @@
-use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
+use alloy_primitives::{Address, Bytes, FixedBytes, B256, U256};
 use foundry_cheatcodes::{Ecx, Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
-        Executable, Pallet,
+        Executable, Pallet, ResourceMeter,
     },
     sp_core::{self, H160, H256},
     sp_externalities::Externalities,
     sp_io::TestExternalities,
+    sp_weights::Weight,
 };
 use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
 use std::{
@@ -161,11 +162,14 @@ impl TestEnv {
                 origin_account,
                 code,
                 code_type,
-                BalanceOf::<Runtime>::MAX,
+                &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                    weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                })
+                .unwrap(),
                 &ExecConfig::new_substrate_tx(),
             )
-            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
-            .0;
+            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?;
 
             let mut contract_info = if let Some(contract_info) =
                 AccountInfo::<Runtime>::load_contract(&target_address)

@@ -4,12 +4,12 @@ use expect_create::CreateTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker, ExpectedCreate};
 
 use polkadot_sdk::pallet_revive::{
-    Pallet, U256, Weight,
     evm::{
         CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
         PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
     },
-    tracing::{Tracing, trace as trace_revive},
+    tracing::{trace as trace_revive, Tracing},
+    Pallet, U256,
 };
 use revert_tracer::RevertTracer;
 use revive_env::Runtime;
@@ -20,7 +20,7 @@ mod expect_create;
 mod revert_tracer;
 pub mod storage_tracer;
 pub struct Tracer {
-    pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
+    pub call_tracer: CallTracer,
     pub prestate_tracer: PrestateTracer<Runtime>,
     pub storage_accesses: StorageTracer,
     pub revert_tracer: RevertTracer,
@@ -134,7 +134,7 @@ impl Tracing for Tracer {
         &mut self,
         contract_address: polkadot_sdk::sp_core::H160,
         beneficiary_address: polkadot_sdk::sp_core::H160,
-        gas_left: Weight,
+        gas_left: U256,
         value: U256,
     ) {
         self.prestate_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
@@ -148,65 +148,65 @@ impl Tracing for Tracer {
         &mut self,
         from: polkadot_sdk::sp_core::H160,
         to: polkadot_sdk::sp_core::H160,
-        is_delegate_call: bool,
+        delegate_call: Option<polkadot_sdk::sp_core::H160>,
         is_read_only: bool,
         value: U256,
         input: &[u8],
-        gas: Weight,
+        gas_limit: U256,
     ) {
         self.prestate_tracer.enter_child_span(
             from,
             to,
-            is_delegate_call,
+            delegate_call,
             is_read_only,
             value,
             input,
-            gas,
+            gas_limit,
         );
         self.call_tracer.enter_child_span(
             from,
             to,
-            is_delegate_call,
+            delegate_call,
             is_read_only,
             value,
             input,
-            gas,
+            gas_limit,
         );
         self.storage_accesses.enter_child_span(
             from,
             to,
-            is_delegate_call,
+            delegate_call,
             is_read_only,
             value,
             input,
-            gas,
+            gas_limit,
         );
         self.revert_tracer.enter_child_span(
             from,
             to,
-            is_delegate_call,
+            delegate_call,
             is_read_only,
             value,
             input,
-            gas,
+            gas_limit,
         );
         self.expect_call_tracer.enter_child_span(
             from,
             to,
-            is_delegate_call,
+            delegate_call,
             is_read_only,
             value,
             input,
-            gas,
+            gas_limit,
         );
         self.create_tracer.enter_child_span(
             from,
             to,
-            is_delegate_call,
+            delegate_call,
             is_read_only,
             value,
             input,
-            gas,
+            gas_limit,
         )
     }
 
@@ -268,26 +268,26 @@ impl Tracing for Tracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        gas_left: Weight,
+        gas_used: U256,
     ) {
-        self.prestate_tracer.exit_child_span(output, gas_left);
-        self.call_tracer.exit_child_span(output, gas_left);
-        self.storage_accesses.exit_child_span(output, gas_left);
-        self.revert_tracer.exit_child_span(output, gas_left);
-        self.expect_call_tracer.exit_child_span(output, gas_left);
-        self.create_tracer.exit_child_span(output, gas_left);
+        self.prestate_tracer.exit_child_span(output, gas_used);
+        self.call_tracer.exit_child_span(output, gas_used);
+        self.storage_accesses.exit_child_span(output, gas_used);
+        self.revert_tracer.exit_child_span(output, gas_used);
+        self.expect_call_tracer.exit_child_span(output, gas_used);
+        self.create_tracer.exit_child_span(output, gas_used);
     }
 
     fn exit_child_span_with_error(
         &mut self,
         error: polkadot_sdk::sp_runtime::DispatchError,
-        gas_left: Weight,
+        gas_used: U256,
     ) {
-        self.prestate_tracer.exit_child_span_with_error(error, gas_left);
-        self.call_tracer.exit_child_span_with_error(error, gas_left);
-        self.storage_accesses.exit_child_span_with_error(error, gas_left);
-        self.revert_tracer.exit_child_span_with_error(error, gas_left);
-        self.expect_call_tracer.exit_child_span_with_error(error, gas_left);
-        self.create_tracer.exit_child_span_with_error(error, gas_left);
+        self.prestate_tracer.exit_child_span_with_error(error, gas_used);
+        self.call_tracer.exit_child_span_with_error(error, gas_used);
+        self.storage_accesses.exit_child_span_with_error(error, gas_used);
+        self.revert_tracer.exit_child_span_with_error(error, gas_used);
+        self.expect_call_tracer.exit_child_span_with_error(error, gas_used);
+        self.create_tracer.exit_child_span_with_error(error, gas_used);
     }
 }

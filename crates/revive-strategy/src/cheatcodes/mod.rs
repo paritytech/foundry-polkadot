@@ -28,8 +28,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, DebugSettings,
-        ExecConfig, Pallet, evm::CallTrace,
+        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code,
+        ContractInfo, DebugSettings, ExecConfig, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160, H256},
@@ -738,7 +738,11 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     Pallet::<Runtime>::account_id(),
                                     code_bytes.clone(),
                                     code_type,
-                                    u64::MAX.into(),
+                                    &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                                    })
+                                    .unwrap(),
                                     &ExecConfig::new_substrate_tx(),
                                 );
                                 match upload_result {
@@ -776,7 +780,11 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 Pallet::<Runtime>::account_id(),
                                 code_bytes.clone(),
                                 BytecodeType::Evm,
-                                u64::MAX.into(),
+                                &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                    weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                                })
+                                .unwrap(),
                                 &ExecConfig::new_substrate_tx_without_bump(),
                             );
                             match upload_result {
@@ -1016,9 +1024,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Pallet::<Runtime>::bare_instantiate(
                     origin,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                        deposit_limit: BalanceOf::<Runtime>::MAX,
+                    },
                     code,
                     data,
                     salt,
@@ -1038,7 +1047,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.result.did_revert() {
@@ -1165,9 +1175,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     origin,
                     target,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                        deposit_limit: if call.is_static {
+                            0
+                        } else {
+                            BalanceOf::<Runtime>::MAX / 2
+                        },
+                    },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
                 )
@@ -1184,7 +1199,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.did_revert() {
