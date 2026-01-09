@@ -847,9 +847,8 @@ impl ApiServer {
         }
 
         if transaction.chain_id.is_none() {
-            transaction.chain_id = Some(sp_core::U256::from_big_endian(
-                &self.chain_id(latest_block).to_be_bytes(),
-            ));
+            transaction.chain_id =
+                Some(sp_core::U256::from_big_endian(&self.chain_id(latest_block).to_be_bytes()));
         }
 
         let tx = transaction

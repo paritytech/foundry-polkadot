@@ -25,10 +25,7 @@ use polkadot_sdk::{
     sp_blockchain,
     sp_core::storage::well_known_keys::CODE,
     sp_keystore::KeystorePtr,
-    sp_runtime::{
-        generic::SignedBlock,
-        traits::Header as HeaderT,
-    },
+    sp_runtime::{generic::SignedBlock, traits::Header as HeaderT},
     sp_storage::StorageKey,
 };
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -45,12 +42,12 @@ pub fn new_client(
 ) -> Result<(Arc<Client>, Arc<Backend>, KeystorePtr, TaskManager), sc_service::error::Error> {
     let fork_config: Option<(Arc<dyn RPCClient<Block>>, Block)> =
         if let Some(fork_url) = &anvil_config.eth_rpc_url {
-            let (rpc_client, checkpoint_block) = setup_fork(anvil_config, config, fork_url, genesis_num)?;
+            let (rpc_client, checkpoint_block) =
+                setup_fork(anvil_config, config, fork_url, genesis_num)?;
             Some((rpc_client, checkpoint_block))
         } else {
             None
         };
-
 
     let backend = new_lazy_loading_backend(fork_config.clone())?;
 
@@ -192,13 +189,13 @@ fn setup_fork(
         sp_blockchain::Error::Backend(format!("failed to fetch system_properties: {e}"))
     })?;
 
-     // TODO refactor this to account for fork choice
+    // TODO refactor this to account for fork choice
     // Get block hash from fork_choice config
     // If no fork_choice is specified, we need to fetch the latest block and use its hash
     // for all subsequent requests to avoid inconsistencies if a new block is mined between calls.
-    // let block_hash: <Block as BlockT>::Hash = if let Some(fork_choice) = &anvil_config.fork_choice {
-    //    // let block_num = resolve_fork_block_number(&rpc_client, fork_choice)?;
-    //     let block_num = genesis_num as u32;
+    // let block_hash: <Block as BlockT>::Hash = if let Some(fork_choice) =
+    // &anvil_config.fork_choice {    // let block_num = resolve_fork_block_number(&rpc_client,
+    // fork_choice)?;     let block_num = genesis_num as u32;
     //     rpc_client
     //         .block_hash(Some(block_num))
     //         .map_err(|e| {
@@ -207,8 +204,8 @@ fn setup_fork(
     //             ))
     //         })?
     //         .ok_or_else(|| {
-    //             sp_blockchain::Error::Backend(format!("block hash not found for block {block_num}"))
-    //         })?
+    //             sp_blockchain::Error::Backend(format!("block hash not found for block
+    // {block_num}"))         })?
     // } else {
     //     // No fork_choice specified, fetch the latest block header and use its hash
     //     let latest_header = rpc_client
@@ -226,15 +223,15 @@ fn setup_fork(
 
     let block_num = genesis_num as u32;
     let block_hash = rpc_client
-            .block_hash(Some(block_num))
-            .map_err(|e| {
-                sp_blockchain::Error::Backend(format!(
-                    "failed to fetch block hash for block {block_num}: {e}"
-                ))
-            })?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("block hash not found for block {block_num}"))
-            })?;
+        .block_hash(Some(block_num))
+        .map_err(|e| {
+            sp_blockchain::Error::Backend(format!(
+                "failed to fetch block hash for block {block_num}: {e}"
+            ))
+        })?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("block hash not found for block {block_num}"))
+        })?;
 
     let wasm_binary = rpc_client
         .storage(StorageKey(CODE.to_vec()), Some(block_hash))
