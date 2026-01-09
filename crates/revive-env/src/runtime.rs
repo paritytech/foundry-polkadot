@@ -13,7 +13,7 @@ use polkadot_sdk::{
         },
     },
     pallet_transaction_payment::{ConstFeeMultiplier, Multiplier},
-    parachains_common::{AccountId, Hash, Header, Nonce},
+    parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::prelude::*,
     sp_runtime::{AccountId32, generic},
     sp_weights::ConstantMultiplier,
@@ -41,7 +41,7 @@ parameter_types! {
 #[derive_impl(pallet_transaction_payment::config_preludes::TestDefaultConfig)]
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
-    type WeightToFee = BlockRatioFee<1, 1, Self>;
+    type WeightToFee = BlockRatioFee<1, 1, Self, Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
 }
@@ -92,7 +92,7 @@ impl frame_system::Config for Runtime {
 impl pallet_balances::Config for Runtime {
     type AccountStore = System;
     type Balance = Balance;
-    type ExistentialDeposit = ConstU128<{ currency::CENTS }>;
+    type ExistentialDeposit = ConstU128<1_000>;
 }
 
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
@@ -100,11 +100,14 @@ impl pallet_timestamp::Config for Runtime {}
 
 /// We assume that ~10% of the block weight is consumed by `on_initialize` handlers.
 /// This is used to limit the maximal weight of a single extrinsic.
+#[allow(unused)]
 const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(10);
 /// We allow `Normal` extrinsics to fill up the block up to 75%, the rest can be used
 /// by  Operational  extrinsics.
+#[allow(unused)]
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 /// We allow for 2 seconds of compute with a 6 second average block time, with maximum proof size.
+#[allow(unused)]
 const MAXIMUM_BLOCK_WEIGHT: Weight =
     Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
 
@@ -113,6 +116,9 @@ parameter_types! {
     pub const CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(0);
     pub const NativeToEthRatio: u32 = 1_000_000;
     pub const GasScale : u32 = 1_000_000;
+
+    pub const DepositPerByte: Balance = 1;
+    pub const DepositPerItem: Balance = 2;
     pub RuntimeBlockWeights: BlockWeights = BlockWeights::builder()
     .base_block(BlockExecutionWeight::get())
     .for_class(DispatchClass::all(), |weights| {
@@ -138,10 +144,11 @@ impl pallet_revive::Config for Runtime {
     type Time = Timestamp;
     type Balance = Balance;
     type Currency = Balances;
+    type DepositPerByte = DepositPerByte;
+    type DepositPerItem = DepositPerItem;
     type AddressMapper = AccountId32Mapper<Self>;
     type RuntimeMemory = ConstU32<{ 512 * 1024 * 1024 }>;
     type PVFMemory = ConstU32<{ 1024 * 1024 * 1024 }>;
-    type UnsafeUnstableInterface = UnstableInterface;
     type UploadOrigin = EnsureSigned<AccountId32>;
     type InstantiateOrigin = EnsureSigned<AccountId32>;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;

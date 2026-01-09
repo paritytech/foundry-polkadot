@@ -986,12 +986,27 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
+                let exists = AccountInfo::<Runtime>::load_contract(&caller_h160).is_some();
                 let origin_account_id =
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160);
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());
-
+                if !exists {
+                    let nonce = ecx
+                        .journaled_state
+                        .load_account(input.caller())
+                        .expect("to load caller account")
+                        .info
+                        .nonce;
+                    polkadot_sdk::frame_system::Account::<Runtime>::mutate(
+                        &origin_account_id,
+                        |a| {
+                            a.nonce =
+                                nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+                        },
+                    );
+                }
                 System::inc_account_nonce(&origin_account_id);
                 let code = Code::Upload(code_bytes.clone());
                 let data = constructor_args;
@@ -1017,7 +1032,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     // address computation, resulting in duplicate addresses.
                     bump_nonce: false,
                     collect_deposit_from_hold: None,
-                    effective_gas_price: None,
+                    effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };
@@ -1165,7 +1180,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let exec_config = ExecConfig {
                     bump_nonce: false, // only works for constructors
                     collect_deposit_from_hold: None,
-                    effective_gas_price: None,
+                    effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
                 };

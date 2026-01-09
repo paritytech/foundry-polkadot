@@ -4,7 +4,7 @@ use expect_create::CreateTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker, ExpectedCreate};
 
 use polkadot_sdk::pallet_revive::{
-    Pallet, U256, Weight,
+    AccountInfo, Pallet, U256,
     evm::{
         CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
         PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
@@ -79,6 +79,7 @@ impl Tracer {
             polkadot_sdk::pallet_revive::evm::PrestateTrace::DiffMode { pre: _digests, post } => {
                 for (key, PrestateTraceInfo { balance, nonce, code, storage }) in post {
                     let address = Address::from_slice(key.as_bytes());
+                    let is_create = !ecx.journaled_state.state.contains_key(&address);
 
                     ecx.journaled_state.load_account(address).expect("account could not be loaded");
 
@@ -92,7 +93,10 @@ impl Tracer {
                         account.info.nonce = nonce.into();
                     };
 
-                    if let Some(ref code) = code {
+                    if is_create
+                        && let Some(ref code) = code
+                        && let Some(info) = AccountInfo::<Runtime>::load_contract(&key)
+                    {
                         let code = code.clone();
                         let account =
                             ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
@@ -100,7 +104,6 @@ impl Tracer {
                         account.info.code_hash = info.code_hash.0.into();
                         account.info.code = Some(bytecode);
                     }
-                    let storage = { storage };
 
                     for (slot, entry) in storage {
                         let key = RU256::from_be_slice(&slot.0);
@@ -283,7 +286,6 @@ impl Tracing for Tracer {
         error: polkadot_sdk::sp_runtime::DispatchError,
         gas_left: U256,
     ) {
-        println!("ERROR: {:?}", error);
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);
         self.storage_accesses.exit_child_span_with_error(error, gas_left);
