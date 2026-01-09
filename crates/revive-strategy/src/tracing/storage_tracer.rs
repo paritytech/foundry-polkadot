@@ -3,7 +3,6 @@ use foundry_cheatcodes::Vm::{AccountAccessKind, StorageAccess};
 use polkadot_sdk::{
     pallet_revive::{self, AccountInfo, Code, tracing::Tracing},
     sp_core::{H160, U256},
-    sp_weights::Weight,
 };
 use revive_env::Runtime;
 

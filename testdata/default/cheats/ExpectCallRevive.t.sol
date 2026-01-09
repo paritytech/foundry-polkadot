@@ -196,7 +196,7 @@ contract ExpectCallTest is DSTest {
         vm.expectCallMinGas(address(inner), 0, 25_000, abi.encodeWithSelector(inner.add.selector, 1, 1));
         this.exposed_addHardGasLimit(target);
     }
-    
+
     /// Ensure expectCall works for Proxy DelegateCalls. Ref: <https://github.com/foundry-rs/foundry/issues/8015>
     function testExpectCallForProxyDelegateCall() public {
         ProxyWithDelegateCall proxyWithDelegateCall = new ProxyWithDelegateCall();
