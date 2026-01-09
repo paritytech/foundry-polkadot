@@ -26,7 +26,8 @@ COPY . .
 # Optionally switch to a specific git ref (tag/branch/commit) before building.
 # If RELEASE_REF is not set, the current workspace state is used.
 RUN if [ -n "$RELEASE_REF" ]; then \
-      git fetch --tags origin && \
+      git remote set-url origin https://github.com/paritytech/foundry-polkadot.git && \
+      git fetch --tags --force origin && \
       git checkout "$RELEASE_REF"; \
     fi
 
