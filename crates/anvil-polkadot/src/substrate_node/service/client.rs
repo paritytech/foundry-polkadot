@@ -27,7 +27,7 @@ use polkadot_sdk::{
     sp_keystore::KeystorePtr,
     sp_runtime::{
         generic::SignedBlock,
-        traits::{Block as BlockT, Header as HeaderT},
+        traits::Header as HeaderT,
     },
     sp_storage::StorageKey,
 };
@@ -43,7 +43,6 @@ pub fn new_client(
     storage_overrides: Arc<Mutex<StorageOverrides>>,
     genesis_num: u64,
 ) -> Result<(Arc<Client>, Arc<Backend>, KeystorePtr, TaskManager), sc_service::error::Error> {
-     println!("genesis_num {}", genesis_num);
     let fork_config: Option<(Arc<dyn RPCClient<Block>>, Block)> =
         if let Some(fork_url) = &anvil_config.eth_rpc_url {
             let (rpc_client, checkpoint_block) = setup_fork(anvil_config, config, fork_url, genesis_num)?;
@@ -58,7 +57,6 @@ pub fn new_client(
     // In fork mode, use the checkpoint block as genesis
     // In normal mode, create a new genesis block
     let genesis_block_builder = if let Some((_, checkpoint)) = &fork_config {
-        println!("checkpoint {}", checkpoint.header.number);
         // Fork mode: use checkpoint block as genesis
         DevelopmentGenesisBlockBuilder::new_with_checkpoint(
             config.chain_spec.as_storage_builder(),
@@ -131,6 +129,7 @@ pub fn new_client(
 
 /// Resolves the block number to fork from, handling both positive and negative block numbers.
 /// Negative numbers are subtracted from the latest block number.
+#[allow(dead_code)]
 fn resolve_fork_block_number(
     rpc_client: &Rpc<Block>,
     fork_choice: &ForkChoice,
@@ -170,7 +169,7 @@ fn resolve_fork_block_number(
 
 /// Fetches the checkpoint block and sets up the chain spec for forking
 fn setup_fork(
-    anvil_config: &AnvilNodeConfig,
+    _anvil_config: &AnvilNodeConfig,
     config: &mut sc_service::Configuration,
     fork_url: &str,
     genesis_num: u64,

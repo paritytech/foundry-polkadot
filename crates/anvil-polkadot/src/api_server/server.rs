@@ -524,7 +524,6 @@ impl ApiServer {
         // Subscribe to new best blocks.
         let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
         let awaited_hash = self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
-        println!("awaited hash {}", awaited_hash);
         self.wait_for_hash(receiver, awaited_hash).await?;
         Ok("0x0".to_string())
     }
@@ -634,16 +633,11 @@ impl ApiServer {
     }
 
     fn chain_id(&self, at: Hash) -> u64 {
-        let id_res = self.backend.read_chain_id(at);
-
-        let id = match id_res {
-            Ok(id) => id,
+        self.backend
+            .read_chain_id(at)
             // If chain_id is not found in the backend, we are forking so use the cached chain_id
             // from the forked network
-            Err(_) => self.hardcoded_chain_id,
-        };
-
-        id
+            .unwrap_or(self.hardcoded_chain_id)
     }
 
     // Eth RPCs
@@ -853,7 +847,6 @@ impl ApiServer {
         }
 
         if transaction.chain_id.is_none() {
-            println!("chain id is none");
             transaction.chain_id = Some(sp_core::U256::from_big_endian(
                 &self.chain_id(latest_block).to_be_bytes(),
             ));
@@ -1876,8 +1869,6 @@ async fn create_online_client(
             u32::MAX
         ))
     })?;
-
-    println!("genesis block num {}", genesis_block_number);
 
     let Some(genesis_hash) = substrate_service.client.hash(genesis_block_number).ok().flatten()
     else {

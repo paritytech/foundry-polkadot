@@ -32,7 +32,7 @@ use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio::runtime::Builder as TokioRtBuilder;
 
-use subxt::{PolkadotConfig, backend::rpc::RpcClient, ext::subxt_rpcs::rpc_params, utils::H256};
+use subxt::PolkadotConfig;
 
 pub use backend::{BackendError, BackendWithOverlay, StorageOverrides};
 pub use client::Client;
@@ -97,7 +97,6 @@ fn create_manual_seal_inherent_data_providers(
             Err(e) => return futures::future::ready(Err(Box::new(e))),
         };
 
-        println!("nex block num {}", next_block_number);
 
         let id = client
             .runtime_api()
@@ -120,10 +119,7 @@ fn create_manual_seal_inherent_data_providers(
         let last_block_number = backend
             .read_last_relay_chain_block_number(current_para_head.hash())
             .map_err(|e| ServiceError::Other(format!("reading last relay block number: {e}")));
-        let last_rc_block_number = match last_block_number {
-            Ok(last_block_number) => last_block_number,
-            Err(_) => 0, // For starting from genesis
-        };
+        let last_rc_block_number = last_block_number.unwrap_or_default();
 
         // Used to set the relay chain slot provided via the proof (which is represented
         // by a set of relay chain state keys). The slot is read from the proof at the moment
@@ -225,9 +221,7 @@ pub fn new(
                         .await
                         .unwrap()
                         .unwrap();
-                    println!("fork finalized block number {}", finalized_head_header.number);
-
-                    Ok(Ok((finalized_head_header.number.into())))
+                    Ok(Ok(finalized_head_header.number.into()))
                 })
             })
             .join()
@@ -235,7 +229,7 @@ pub fn new(
             .map_err(|e| ServiceError::Other(format!("fork fetch failed: {e}")))?;
 
         match storage_map {
-            Ok((genesis_number)) => {
+            Ok(genesis_number) => {
                 genesis_block_number = genesis_number;
             }
             _ => {
@@ -243,8 +237,6 @@ pub fn new(
             }
         }
     }
-
-    println!("genesis block number {}", genesis_block_number);
 
     let storage_overrides =
         Arc::new(Mutex::new(StorageOverrides::new(anvil_config.revive_rpc_block_limit)));
@@ -351,7 +343,7 @@ pub fn new(
             rpc_handlers,
             mining_engine,
             storage_overrides,
-            genesis_block_number: genesis_block_number,
+            genesis_block_number,
         },
         task_manager,
     ))
