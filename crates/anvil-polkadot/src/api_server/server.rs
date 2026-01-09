@@ -799,11 +799,8 @@ impl ApiServer {
         };
 
         let best_hash = self.latest_block();
-        let best_eth_hash =
-            self.eth_rpc_client.resolve_ethereum_hash(&best_hash).await.ok_or_else(|| {
-                Error::InternalError("Ethereum block hash of latest block not found".to_string())
-            })?;
-        let latest_block_id = Some(BlockId::hash(B256::from_slice(best_eth_hash.as_ref())));
+        let best_number = self.client.info().best_number;
+        let latest_block_id = Some(BlockId::Number(BlockNumberOrTag::Number(best_number as u64)));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {
