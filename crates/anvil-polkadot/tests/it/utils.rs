@@ -47,7 +47,9 @@ use std::{fmt::Debug, time::Duration};
 use subxt::utils::H160;
 use tempfile::TempDir;
 
-use crate::abi::{Multicall, SimpleStorage};
+use crate::abi::Multicall;
+#[cfg(feature = "forking-tests")]
+use crate::abi::SimpleStorage;
 
 pub struct BlockWaitTimeout {
     pub block_number: u32,
@@ -226,6 +228,7 @@ impl TestNode {
         self.eth_best_block().await.number.as_u32()
     }
 
+    #[cfg(feature = "forking-tests")]
     pub fn substrate_rpc_port(&self) -> u16 {
         self.service
             .rpc_handlers
@@ -532,6 +535,7 @@ pub fn to_hex_string(value: u64) -> String {
 }
 
 /// Helper function to call getValue() on a SimpleStorage contract
+#[cfg(feature = "forking-tests")]
 pub async fn simplestorage_get_value(
     node: &mut TestNode,
     contract_address: polkadot_sdk::pallet_revive::H160,

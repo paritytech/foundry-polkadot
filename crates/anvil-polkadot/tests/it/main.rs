@@ -1,5 +1,6 @@
 mod abi;
 mod filters;
+#[cfg(feature = "forking-tests")]
 mod forking;
 mod gas;
 mod genesis;

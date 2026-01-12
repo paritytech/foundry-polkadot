@@ -1,5 +1,6 @@
 use crate::{
     AnvilNodeConfig,
+    config::ForkChoice,
     substrate_node::{
         lazy_loading::backend::Backend as LazyLoadingBackend,
         mining_engine::{MiningEngine, MiningMode, run_mining_engine},
@@ -198,6 +199,7 @@ pub fn new(
     if let Some(ref fork_url) = anvil_config.eth_rpc_url {
         // TODO ws is for local host, wss for remote (aka prod)
         let http_url = fork_url.replacen("https://", "ws://", 1).replacen("http://", "ws://", 1);
+        let fork_choice = anvil_config.fork_choice.clone();
         let storage_map = std::thread::spawn(move || -> eyre::Result<Result<u64, ()>> {
             let rt = TokioRtBuilder::new_current_thread()
                 .enable_all()
@@ -217,7 +219,24 @@ pub fn new(
                     .await
                     .unwrap()
                     .unwrap();
-                Ok(Ok(finalized_head_header.number.into()))
+                let finalized_block_number: u64 = finalized_head_header.number.into();
+
+                // Apply fork_choice if specified
+                let target_block_number = match fork_choice {
+                    Some(ForkChoice::Block(block_num)) => {
+                        if block_num < 0 {
+                            // Negative offset from latest finalized block
+                            let offset = (-block_num) as u64;
+                            finalized_block_number.saturating_sub(offset)
+                        } else {
+                            // Specific block number
+                            block_num as u64
+                        }
+                    }
+                    None => finalized_block_number,
+                };
+
+                Ok(Ok(target_block_number))
             })
         })
         .join()

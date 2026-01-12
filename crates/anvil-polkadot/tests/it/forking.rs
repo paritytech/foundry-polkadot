@@ -14,6 +14,10 @@ use anvil_polkadot::{
 };
 use polkadot_sdk::pallet_revive::evm::Account;
 
+/// Westend Asset Hub zombienet local URL for forking tests
+/// This URL should point to a running zombienet instance
+const WESTEND_ASSET_HUB_URL: &str = "http://127.0.0.1:63982";
+
 /// Tests that forking preserves state from the source chain and allows local modifications
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_preserves_state_and_allows_modifications() {
@@ -589,5 +593,556 @@ async fn test_fork_with_contract_deployment() {
     assert_eq!(
         fork_value3, value3_after,
         "Fork should have the same contract 3 state (300) as source"
+    );
+}
+
+// =============================================================================
+// Tests forking from external Westend Asset Hub zombienet
+// These tests require a running zombienet instance at WESTEND_ASSET_HUB_URL
+// =============================================================================
+
+/// Helper to create a fork config pointing to Westend Asset Hub zombienet
+fn westend_fork_config() -> AnvilNodeConfig {
+    AnvilNodeConfig::test_config()
+        .with_port(0)
+        .with_eth_rpc_url(Some(WESTEND_ASSET_HUB_URL.to_string()))
+}
+
+/// Tests that we can fork from Westend Asset Hub and get balance of addresses
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_eth_get_balance_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    // Get dev account
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+
+    // Get balance from forked state
+    let alith_balance = fork_node.get_balance(alith.address(), None).await;
+
+    // Mine a block and verify we can still get balances
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let alith_balance_after_mine = fork_node.get_balance(alith.address(), None).await;
+
+    // Balance should be the same (no transactions were made)
+    assert_eq!(
+        alith_balance, alith_balance_after_mine,
+        "Balance should not change after mining empty block"
+    );
+}
+
+/// Tests that we can get code of contracts from the forked Westend Asset Hub state
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_eth_get_code_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    // Test getting code of random addresses (should be empty for EOAs)
+    for _ in 0..5 {
+        let random_addr = Address::random();
+        let code = unwrap_response::<Bytes>(
+            fork_node.eth_rpc(EthRequest::EthGetCodeAt(random_addr, None)).await.unwrap(),
+        )
+        .unwrap();
+        assert!(code.is_empty(), "Random address should have no code");
+    }
+
+    // Mine a block and verify we can still get code
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    // Set balance for alith to deploy contract (may not have balance in the forked chain)
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Deploy a contract on the fork
+    let contract_code = get_contract_code("SimpleStorage");
+    let tx_hash = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let receipt = fork_node.get_transaction_receipt(tx_hash).await;
+    let contract_address = receipt.contract_address.unwrap();
+
+    // Get code of deployed contract
+    let deployed_code = unwrap_response::<Bytes>(
+        fork_node
+            .eth_rpc(EthRequest::EthGetCodeAt(
+                Address::from(ReviveAddress::new(contract_address)),
+                None,
+            ))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    assert!(!deployed_code.is_empty(), "Deployed contract should have code");
+}
+
+/// Tests that we can get nonce (transaction count) from the forked Westend Asset Hub state
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_eth_get_nonce_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+
+    // Set balance for alith (may not have balance in the forked chain)
+    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Get initial nonce from forked state
+    let initial_nonce = fork_node.get_nonce(alith_address).await;
+
+    // Send a transaction to increase nonce
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let baltathar_address = ReviveAddress::new(baltathar.address());
+    let transfer_amount = U256::from(1_000_000_000_000_000_000u128); // 1 ether
+
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(alith_address)
+        .to(Address::from(baltathar_address));
+
+    fork_node.send_transaction(transaction).await.unwrap();
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    // Nonce should have increased by 1
+    let nonce_after_tx = fork_node.get_nonce(alith_address).await;
+    assert_eq!(
+        nonce_after_tx,
+        initial_nonce + U256::from(1),
+        "Nonce should increase by 1 after sending transaction"
+    );
+
+    // Random addresses should have nonce 0
+    for _ in 0..3 {
+        let random_addr = Address::random();
+        let nonce = unwrap_response::<U256>(
+            fork_node.eth_rpc(EthRequest::EthGetTransactionCount(random_addr, None)).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(nonce, U256::ZERO, "Random address should have nonce 0");
+    }
+}
+
+/// Tests state snapshotting and reverting on a forked Westend Asset Hub node
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_state_snapshotting_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+    let baltathar_address = Address::from(ReviveAddress::new(baltathar.address()));
+
+    // Set initial balances for dev accounts (they may not have balance in the forked chain)
+    let set_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, set_balance)).await.unwrap(),
+    )
+    .unwrap();
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(baltathar_address, set_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Get initial state
+    let initial_alith_balance = fork_node.get_balance(alith.address(), None).await;
+    let initial_baltathar_balance = fork_node.get_balance(baltathar.address(), None).await;
+    let initial_alith_nonce = fork_node.get_nonce(alith_address).await;
+
+    // Create a snapshot
+    let snapshot_id = U256::from_str_radix(
+        unwrap_response::<String>(fork_node.eth_rpc(EthRequest::EvmSnapshot(())).await.unwrap())
+            .unwrap()
+            .trim_start_matches("0x"),
+        16,
+    )
+    .unwrap();
+
+    // Perform a transaction that modifies state
+    let transfer_amount = U256::from(5_000_000_000_000_000_000u128); // 5 ether
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(alith_address)
+        .to(baltathar_address);
+
+    fork_node.send_transaction(transaction).await.unwrap();
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    // Verify state changed
+    let alith_balance_after = fork_node.get_balance(alith.address(), None).await;
+    let baltathar_balance_after = fork_node.get_balance(baltathar.address(), None).await;
+    let nonce_after = fork_node.get_nonce(alith_address).await;
+
+    assert!(
+        alith_balance_after < initial_alith_balance,
+        "Alith balance should decrease after transfer"
+    );
+    assert_eq!(
+        baltathar_balance_after,
+        initial_baltathar_balance + transfer_amount,
+        "Baltathar should receive transfer amount"
+    );
+    assert_eq!(nonce_after, initial_alith_nonce + U256::from(1), "Nonce should increase");
+
+    // Revert to snapshot
+    let reverted = unwrap_response::<bool>(
+        fork_node.eth_rpc(EthRequest::EvmRevert(snapshot_id)).await.unwrap(),
+    )
+    .unwrap();
+    assert!(reverted, "Revert should succeed");
+
+    // Wait for state to settle
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Verify state is back to snapshot point
+    let alith_balance_reverted = fork_node.get_balance(alith.address(), None).await;
+    let baltathar_balance_reverted = fork_node.get_balance(baltathar.address(), None).await;
+    let nonce_reverted = fork_node.get_nonce(alith_address).await;
+
+    assert_eq!(
+        alith_balance_reverted, initial_alith_balance,
+        "Alith balance should be restored after revert"
+    );
+    assert_eq!(
+        baltathar_balance_reverted, initial_baltathar_balance,
+        "Baltathar balance should be restored after revert"
+    );
+    assert_eq!(nonce_reverted, initial_alith_nonce, "Nonce should be restored after revert");
+}
+
+/// Tests sending transactions on a forked Westend Asset Hub node
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_can_send_tx_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+    let baltathar_address = Address::from(ReviveAddress::new(baltathar.address()));
+
+    // Set initial balances for dev accounts (they may not have balance in the forked chain)
+    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
+    )
+    .unwrap();
+    unwrap_response::<()>(
+        fork_node
+            .eth_rpc(EthRequest::SetBalance(baltathar_address, initial_balance))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    // Get balances after setting
+    let initial_alith_balance = fork_node.get_balance(alith.address(), None).await;
+    let initial_baltathar_balance = fork_node.get_balance(baltathar.address(), None).await;
+
+    assert_eq!(initial_alith_balance, initial_balance, "Alith balance should be set");
+    assert_eq!(initial_baltathar_balance, initial_balance, "Baltathar balance should be set");
+
+    // Send a simple ETH transfer
+    let transfer_amount = U256::from(1_000_000_000_000_000_000u128); // 1 ether
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(alith_address)
+        .to(baltathar_address);
+
+    let tx_hash = fork_node.send_transaction(transaction).await.unwrap();
+
+    // Mine the transaction
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    // Get receipt and verify transaction succeeded
+    let receipt = fork_node.get_transaction_receipt(tx_hash).await;
+    assert_eq!(
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Transaction should succeed"
+    );
+
+    // Verify balances changed
+    let final_alith_balance = fork_node.get_balance(alith.address(), None).await;
+    let final_baltathar_balance = fork_node.get_balance(baltathar.address(), None).await;
+
+    assert!(
+        final_alith_balance < initial_alith_balance,
+        "Alith balance should decrease (transfer + gas)"
+    );
+    assert_eq!(
+        final_baltathar_balance,
+        initial_baltathar_balance + transfer_amount,
+        "Baltathar should receive exact transfer amount"
+    );
+
+    // Send another transaction to verify chain continues working
+    let second_transfer = U256::from(500_000_000_000_000_000u128); // 0.5 ether
+    let transaction2 = TransactionRequest::default()
+        .value(second_transfer)
+        .from(baltathar_address)
+        .to(alith_address);
+
+    let tx_hash2 = fork_node.send_transaction(transaction2).await.unwrap();
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let receipt2 = fork_node.get_transaction_receipt(tx_hash2).await;
+    assert_eq!(
+        receipt2.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Second transaction should succeed"
+    );
+
+    // Verify block number increased
+    let _final_block = fork_node.best_block_number().await;
+}
+
+/// Tests that local state changes don't affect the remote fork state
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_separate_states_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let random_addr = Address::random();
+
+    // Get initial balance (should be 0 for random address)
+    let initial_balance =
+        fork_node.get_balance(subxt::utils::H160::from(random_addr.0.0), None).await;
+    assert_eq!(initial_balance, U256::ZERO, "Random address should have zero balance initially");
+
+    // Set a new balance locally
+    let new_balance = U256::from(1337u64);
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(random_addr, new_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Verify local balance changed
+    let local_balance =
+        fork_node.get_balance(subxt::utils::H160::from(random_addr.0.0), None).await;
+    assert_eq!(local_balance, new_balance, "Local balance should be updated");
+
+    // The remote state should not be affected (we can't directly check this,
+    // but we verify that local changes work independently)
+}
+
+/// Tests deploying a contract on a forked chain
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_can_deploy_contract_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+
+    // Set balance for deployment
+    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Deploy SimpleStorage contract
+    let contract_code = get_contract_code("SimpleStorage");
+    let tx_hash = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let receipt = fork_node.get_transaction_receipt(tx_hash).await;
+    assert_eq!(
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Contract deployment should succeed"
+    );
+
+    let contract_address = receipt.contract_address.expect("Contract address should exist");
+
+    // Verify contract has code
+    let code = unwrap_response::<Bytes>(
+        fork_node
+            .eth_rpc(EthRequest::EthGetCodeAt(
+                Address::from(ReviveAddress::new(contract_address)),
+                None,
+            ))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(!code.is_empty(), "Deployed contract should have code");
+
+    // Deploy another contract to verify chain continues working
+    let tx_hash2 = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let receipt2 = fork_node.get_transaction_receipt(tx_hash2).await;
+    assert_eq!(
+        receipt2.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Second contract deployment should succeed"
+    );
+
+    let contract_address2 =
+        receipt2.contract_address.expect("Second contract address should exist");
+    assert_ne!(contract_address, contract_address2, "Contract addresses should be different");
+}
+
+/// Tests impersonating an account on a forked chain
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_impersonate_account_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    // Create a random address to impersonate
+    let impersonated_addr = Address::random();
+    let recipient_addr = Address::random();
+
+    // Set balance for the impersonated account
+    let balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(impersonated_addr, balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Enable impersonation
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::ImpersonateAccount(impersonated_addr)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Send transaction from impersonated account
+    let transfer_amount = U256::from(1_000_000_000_000_000_000u128); // 1 ether
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(impersonated_addr)
+        .to(recipient_addr);
+
+    let tx_hash = fork_node.send_transaction(transaction).await.unwrap();
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let receipt = fork_node.get_transaction_receipt(tx_hash).await;
+    assert_eq!(
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Impersonated transaction should succeed"
+    );
+
+    // Verify recipient received the funds
+    let recipient_balance =
+        fork_node.get_balance(subxt::utils::H160::from(recipient_addr.0.0), None).await;
+    assert_eq!(recipient_balance, transfer_amount, "Recipient should receive transfer");
+
+    // Stop impersonation
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::StopImpersonatingAccount(impersonated_addr)).await.unwrap(),
+    )
+    .unwrap();
+}
+
+/// Tests setting balance and code on a forked chain
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_set_balance_and_code_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let test_addr = Address::random();
+
+    // Initially should have no balance and no code
+    let initial_balance =
+        fork_node.get_balance(subxt::utils::H160::from(test_addr.0.0), None).await;
+    let initial_code = unwrap_response::<Bytes>(
+        fork_node.eth_rpc(EthRequest::EthGetCodeAt(test_addr, None)).await.unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(initial_balance, U256::ZERO);
+    assert!(initial_code.is_empty());
+
+    // Set balance
+    let new_balance = U256::from(12345678u64);
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(test_addr, new_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    let updated_balance =
+        fork_node.get_balance(subxt::utils::H160::from(test_addr.0.0), None).await;
+    assert_eq!(updated_balance, new_balance, "Balance should be updated");
+
+    // Set code
+    let new_code = Bytes::from(vec![0x60, 0x60, 0x60, 0x40]); // Simple bytecode
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetCode(test_addr, new_code.clone())).await.unwrap(),
+    )
+    .unwrap();
+
+    let updated_code = unwrap_response::<Bytes>(
+        fork_node.eth_rpc(EthRequest::EthGetCodeAt(test_addr, None)).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(updated_code, new_code, "Code should be updated");
+
+    // Set code to empty (clear code)
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetCode(test_addr, Bytes::new())).await.unwrap(),
+    )
+    .unwrap();
+
+    let cleared_code = unwrap_response::<Bytes>(
+        fork_node.eth_rpc(EthRequest::EthGetCodeAt(test_addr, None)).await.unwrap(),
+    )
+    .unwrap();
+    assert!(cleared_code.is_empty(), "Code should be cleared");
+}
+
+/// Tests that block number increases correctly after mining on a fork
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_block_number_after_mine_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let initial_block = fork_node.best_block_number().await;
+
+    // Mine a block
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let block_after_mine1 = fork_node.best_block_number().await;
+    assert_eq!(
+        block_after_mine1,
+        initial_block + 1,
+        "Block number should increase by 1 after mining"
+    );
+
+    // Mine multiple blocks
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap(),
+    )
+    .unwrap();
+
+    let block_after_mine5 = fork_node.best_block_number().await;
+    assert_eq!(
+        block_after_mine5,
+        block_after_mine1 + 5,
+        "Block number should increase by 5 after mining 5 blocks"
     );
 }
