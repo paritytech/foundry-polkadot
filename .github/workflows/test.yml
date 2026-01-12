@@ -7,7 +7,7 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -16,26 +16,29 @@ env:
 
 jobs:
   nextest:
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/nextest.yml
     with:
       profile: default
     secrets: inherit
 
   docs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: parity-large-new
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+          components: rust-src
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev unzip build-essential
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@1.88.0
-        with:
-          target: wasm32-unknown-unknown
-          components: rust-src
-          toolchain: nightly-x86_64-unknown-linux-gnu
       - name: Install clang on ubuntu
         run: |
           sudo apt-get update
@@ -53,11 +56,12 @@ jobs:
           force_orphan: true
 
   doctest:
+    if: github.event_name == 'pull_request'
     runs-on: parity-large-new
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.89.0
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -66,7 +70,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
@@ -74,6 +78,7 @@ jobs:
       - run: cargo test --workspace --doc
 
   typos:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -81,13 +86,14 @@ jobs:
       - uses: crate-ci/typos@v1
 
   clippy:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.88.0
+          toolchain: 1.89.0
           components: clippy
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
@@ -97,7 +103,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang libclang-dev
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
@@ -107,6 +113,7 @@ jobs:
           RUSTFLAGS: -Dwarnings
 
   rustfmt:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -117,11 +124,12 @@ jobs:
       - run: cargo fmt --all --check
 
   forge-fmt:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.89.0
       - name: Install protobuf-compiler
         uses: arduino/setup-protoc@v3
         with:
@@ -135,6 +143,7 @@ jobs:
         run: ./.github/scripts/format.sh --check
 
   crate-checks:
+    if: github.event_name == 'pull_request'
     runs-on: parity-large-new
     timeout-minutes: 90
     steps:
@@ -146,7 +155,7 @@ jobs:
       - name: Install build-essential for tikv-jemalloc-sys
         run: |
           sudo apt-get install -y build-essential
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.89.0
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -155,7 +164,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
@@ -167,6 +176,7 @@ jobs:
       - run: cargo hack check -p substrate-runtime --each-feature --exclude-no-default-features
 
   deny:
+    if: github.event_name == 'pull_request'
     # Copy of ithacaxyz/ci/.github/workflows/deny.yml@main but without failing the CI
     name: cargo deny check
     runs-on: ubuntu-latest
@@ -184,8 +194,8 @@ jobs:
         run: cargo deny --all-features check all
 
   ci-success:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    if: always()
     needs:
       - nextest
       - docs

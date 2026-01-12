@@ -54,7 +54,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@1.89.0
         with:
           target: wasm32-unknown-unknown
           components: rust-src
@@ -85,12 +85,12 @@ jobs:
           shared-key: "test"
 
       - name: Build foundry-polkadot
-        run: cargo build
+        run: cargo build --profile=release
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
 
       - name: Add forge to PATH
-        run: echo "${{ github.workspace }}/target/debug" >> $GITHUB_PATH
+        run: echo "${{ github.workspace }}/target/release" >> $GITHUB_PATH
 
       - name: Test all external projects
         id: test-all
@@ -99,7 +99,7 @@ jobs:
 
       - name: Download master branch results
         if: github.ref != 'refs/heads/master'
-        uses: dawidd6/action-download-artifact@v3
+        uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
           workflow: test-external-projects.yml

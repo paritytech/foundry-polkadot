@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.30;
 
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
@@ -19,13 +19,14 @@ contract RollTest is DSTest {
 
     function testRoll() public {
         vm.pvm(true);
+        vm.polkadot(true);
         BlockNumber blockContract = new BlockNumber();
         vm.roll(10);
         assertEq(blockContract.number(), 10, "roll failed");
     }
 
     function testRollFuzzed(uint32 jump) public {
-        vm.pvm(true);
+        vm.polkadot(true);
         BlockNumber blockContract = new BlockNumber();
         uint256 pre = blockContract.number();
         vm.roll(pre + jump);
@@ -33,7 +34,7 @@ contract RollTest is DSTest {
     }
 
     function testRollHash() public {
-        vm.pvm(true);
+        vm.polkadot(true);
         BlockNumber blockContract = new BlockNumber();
         assertEq(blockContract.hash(blockContract.number()), 0x0, "initial block hash is incorrect");
         vm.roll(5);
@@ -43,5 +44,8 @@ contract RollTest is DSTest {
         assertTrue(blockContract.hash(5) != blockContract.hash(10), "block hash collision");
         vm.roll(5);
         assertEq(blockContract.hash(5), hash, "block 5 changed hash");
+        // Make sure blockhashes match the EVM's blockhashes
+        assertEq(blockContract.hash(5), blockhash(5));
+        assertEq(blockContract.hash(4), blockhash(4));
     }
 }

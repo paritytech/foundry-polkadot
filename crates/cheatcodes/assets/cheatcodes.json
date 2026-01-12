@@ -8018,6 +8018,66 @@
     },
     {
       "func": {
+        "id": "polkadotSkip",
+        "description": "When running in Polkadot context, skips the next CREATE or CALL, executing it on the Foundry EVM instead.\nAll `CREATE`s executed within this skip, will automatically have `CALL`s to their target addresses\nexecuted in the Foundry EVM, and need not be marked with this cheatcode at every usage location.",
+        "declaration": "function polkadotSkip() external pure;",
+        "visibility": "external",
+        "mutability": "pure",
+        "signature": "polkadotSkip()",
+        "selector": "0x24dcf923",
+        "selectorBytes": [
+          36,
+          220,
+          249,
+          35
+        ]
+      },
+      "group": "testing",
+      "status": "stable",
+      "safety": "safe"
+    },
+    {
+      "func": {
+        "id": "polkadot_0",
+        "description": "Enables or disables Polkadot execution mode with explicit backend selection.\nWhen enabled, contracts execute on pallet-revive runtime instead of standard EVM.\n@param enable true = switch to Polkadot environment, false = switch back to Foundry EVM\n@param backend Target backend: \"evm\" or \"pvm\"\nExample: vm.polkadot(true, \"evm\");  // Enable Polkadot EVM backend\nExample: vm.polkadot(true, \"pvm\");  // Enable Polkadot PVM backend",
+        "declaration": "function polkadot(bool enable, string calldata backend) external;",
+        "visibility": "external",
+        "mutability": "",
+        "signature": "polkadot(bool,string)",
+        "selector": "0xe2121d7d",
+        "selectorBytes": [
+          226,
+          18,
+          29,
+          125
+        ]
+      },
+      "group": "utilities",
+      "status": "stable",
+      "safety": "safe"
+    },
+    {
+      "func": {
+        "id": "polkadot_1",
+        "description": "Enables or disables Polkadot execution mode with auto-detected backend.\nAuto-detects backend based on CLI flags (--polkadot=evm or --polkadot=pvm).\n@param enable true = switch to Polkadot environment, false = switch back to Foundry EVM\nExample: vm.polkadot(true);   // Enable Polkadot mode (auto-detect backend)\nExample: vm.polkadot(false);  // Disable Polkadot mode (back to Foundry EVM)",
+        "declaration": "function polkadot(bool enable) external;",
+        "visibility": "external",
+        "mutability": "",
+        "signature": "polkadot(bool)",
+        "selector": "0xeabb7787",
+        "selectorBytes": [
+          234,
+          187,
+          119,
+          135
+        ]
+      },
+      "group": "utilities",
+      "status": "stable",
+      "safety": "safe"
+    },
+    {
+      "func": {
         "id": "prank_0",
         "description": "Sets the *next* call's `msg.sender` to be the input address.",
         "declaration": "function prank(address msgSender) external;",
@@ -8273,26 +8333,6 @@
         ]
       },
       "group": "crypto",
-      "status": "stable",
-      "safety": "safe"
-    },
-    {
-      "func": {
-        "id": "pvm",
-        "description": "Enables or disables PVM (PolkaVM) mode for contract execution.\nWhen enabled, only PVM-specific calls are intercepted; all other operations run on EVM.\nExample usage:\nvm.pvm(true);  // Enable PVM mode\nvm.pvm(false); // Disable PVM mode (use EVM)",
-        "declaration": "function pvm(bool enabled) external;",
-        "visibility": "external",
-        "mutability": "",
-        "signature": "pvm(bool)",
-        "selector": "0x82bd3ca3",
-        "selectorBytes": [
-          130,
-          189,
-          60,
-          163
-        ]
-      },
-      "group": "utilities",
       "status": "stable",
       "safety": "safe"
     },

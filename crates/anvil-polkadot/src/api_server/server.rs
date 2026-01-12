@@ -42,7 +42,7 @@ use alloy_rpc_types::{
     Filter, TransactionRequest,
     anvil::{Forking, Metadata as AnvilMetadata, MineOptions, NodeEnvironment, NodeInfo},
     trace::{
-        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace},
+        geth::{GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace, TraceResult},
         parity::LocalizedTransactionTrace,
     },
     txpool::{TxpoolContent, TxpoolInspect, TxpoolStatus},
@@ -414,6 +414,11 @@ impl ApiServer {
                 .debug_trace_call(request, block_number, geth_tracer_options)
                 .await
                 .to_rpc_result(),
+            // Non-standard anvil RPC, comes from Geth
+            EthRequest::DebugTraceBlockByNumber(block_number, geth_tracer_options) => self
+                .debug_trace_block_by_number(block_number, geth_tracer_options)
+                .await
+                .to_rpc_result(),
             EthRequest::TraceTransaction(tx_hash) => {
                 self.trace_transaction(tx_hash).await.to_rpc_result()
             }
@@ -684,14 +689,17 @@ impl ApiServer {
         Ok(code.into())
     }
 
+    /// Returns the EVM block with the given ethereum hash.
     async fn get_block_by_hash(
         &self,
         block_hash: B256,
         hydrated_transactions: bool,
     ) -> Result<Option<Block>> {
         node_info!("eth_getBlockByHash");
-        let Some(block) =
-            self.eth_rpc_client.block_by_hash(&H256::from_slice(block_hash.as_slice())).await?
+        let Some(block) = self
+            .eth_rpc_client
+            .block_by_ethereum_hash(&H256::from_slice(block_hash.as_slice()))
+            .await?
         else {
             return Ok(None);
         };
@@ -790,8 +798,12 @@ impl ApiServer {
             return Err(Error::ReviveRpc(EthRpcError::InvalidTransaction));
         };
 
-        let latest_block = self.latest_block();
-        let latest_block_id = Some(BlockId::hash(B256::from_slice(latest_block.as_ref())));
+        let best_hash = self.latest_block();
+        let best_eth_hash =
+            self.eth_rpc_client.resolve_ethereum_hash(&best_hash).await.ok_or_else(|| {
+                Error::InternalError("Ethereum block hash of latest block not found".to_string())
+            })?;
+        let latest_block_id = Some(BlockId::hash(B256::from_slice(best_eth_hash.as_ref())));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {
@@ -819,7 +831,7 @@ impl ApiServer {
 
         if transaction.chain_id.is_none() {
             transaction.chain_id =
-                Some(sp_core::U256::from_big_endian(&self.chain_id(latest_block).to_be_bytes()));
+                Some(sp_core::U256::from_big_endian(&self.chain_id(best_hash).to_be_bytes()));
         }
 
         let tx = transaction
@@ -930,27 +942,27 @@ impl ApiServer {
         node_info!("anvil_nodeInfo");
 
         let best_hash = self.latest_block();
-        let Some(current_block) =
-            self.get_block_by_hash(B256::from_slice(best_hash.as_ref()), false).await?
-        else {
+        let Some(latest_evm_block) = self.get_block_by_substrate_hash(best_hash).await? else {
             return Err(Error::InternalError("Latest block not found".to_string()));
         };
         let current_block_number: u64 =
-            current_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
+            latest_evm_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
         let current_block_timestamp: u64 =
-            current_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
+            latest_evm_block.timestamp.try_into().map_err(|_| EthRpcError::ConversionError)?;
         // This is both gas price and base fee, since pallet-revive does not support tips
         // https://github.com/paritytech/polkadot-sdk/blob/227c73b5c8810c0f34e87447f00e96743234fa52/substrate/frame/revive/rpc/src/lib.rs#L269
-        let base_fee: u128 =
-            current_block.base_fee_per_gas.try_into().map_err(|_| EthRpcError::ConversionError)?;
-        let gas_limit: u64 = current_block.gas_limit.try_into().unwrap_or(u64::MAX);
+        let base_fee: u128 = latest_evm_block
+            .base_fee_per_gas
+            .try_into()
+            .map_err(|_| EthRpcError::ConversionError)?;
+        let gas_limit: u64 = latest_evm_block.gas_limit.try_into().unwrap_or(u64::MAX);
         // pallet-revive should currently support all opcodes in PRAGUE.
         let hard_fork: &str = SpecId::PRAGUE.into();
 
         Ok(NodeInfo {
             current_block_number,
             current_block_timestamp,
-            current_block_hash: B256::from_slice(best_hash.as_ref()),
+            current_block_hash: B256::from_slice(latest_evm_block.hash.as_ref()),
             hard_fork: hard_fork.to_string(),
             // pallet-revive does not support tips
             transaction_order: "fifo".to_string(),
@@ -969,18 +981,16 @@ impl ApiServer {
         node_info!("anvil_metadata");
 
         let best_hash = self.latest_block();
-        let Some(latest_block) =
-            self.get_block_by_hash(B256::from_slice(best_hash.as_ref()), false).await?
-        else {
+        let Some(latest_evm_block) = self.get_block_by_substrate_hash(best_hash).await? else {
             return Err(Error::InternalError("Latest block not found".to_string()));
         };
         let latest_block_number: u64 =
-            latest_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
+            latest_evm_block.number.try_into().map_err(|_| EthRpcError::ConversionError)?;
 
         Ok(AnvilMetadata {
             client_version: CLIENT_VERSION.to_string(),
             chain_id: self.chain_id(best_hash),
-            latest_block_hash: B256::from_slice(best_hash.as_ref()),
+            latest_block_hash: B256::from_slice(latest_evm_block.hash.as_ref()),
             latest_block_number,
             instance_id: self.instance_id,
             // Forking is not supported yet in anvil-polkadot
@@ -1467,12 +1477,18 @@ impl ApiServer {
         Ok(())
     }
 
+    // This function translates a block ethereum hash to a substrate hash if needed.
     async fn maybe_get_block_hash_for_tag(
         &self,
         block_id: Option<BlockId>,
     ) -> Result<Option<H256>> {
         match ReviveBlockId::from(block_id).inner() {
-            BlockNumberOrTagOrHash::BlockHash(hash) => Ok(Some(hash)),
+            BlockNumberOrTagOrHash::BlockHash(hash) => {
+                // Translate the ethereum hash to a substrate hash.
+                Ok(Some(self.eth_rpc_client.resolve_substrate_hash(&hash).await.ok_or(
+                    Error::ReviveRpc(EthRpcError::ClientError(ClientError::EthereumBlockNotFound)),
+                )?))
+            }
             BlockNumberOrTagOrHash::BlockNumber(block_number) => {
                 let n = block_number.try_into().map_err(|_| {
                     Error::InvalidParams("Block number conversion failed".to_string())
@@ -1490,6 +1506,7 @@ impl ApiServer {
         }
     }
 
+    /// Returns the substrate block hash for a given block id.
     async fn get_block_hash_for_tag(&self, block_id: Option<BlockId>) -> Result<H256> {
         self.maybe_get_block_hash_for_tag(block_id)
             .await?
@@ -1509,6 +1526,19 @@ impl ApiServer {
 
     fn latest_block(&self) -> H256 {
         self.backend.blockchain().info().best_hash
+    }
+
+    /// Returns the EVM block for a given substrate block hash.
+    async fn get_block_by_substrate_hash(&self, block_hash: H256) -> Result<Option<Block>> {
+        let Some(substrate_block) = self.eth_rpc_client.block_by_hash(&block_hash).await? else {
+            return Ok(None);
+        };
+        let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await else {
+            return Err(Error::InternalError(
+                "EVM block not found for substrate block".to_string(),
+            ));
+        };
+        Ok(Some(evm_block))
     }
 
     fn set_frame_system_balance(
@@ -1693,6 +1723,28 @@ impl ApiServer {
             .trace_call(transaction, ReviveTracerType::from(geth_tracer_options).inner())
             .await?;
         Ok(ReviveTrace::new(trace).into())
+    }
+
+    async fn debug_trace_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+        geth_tracer_options: GethDebugTracingOptions,
+    ) -> Result<Vec<TraceResult>> {
+        node_info!("debug_traceBlockByNumber");
+
+        Ok(self
+            .eth_rpc_client
+            .trace_block_by_number(
+                ReviveBlockNumberOrTag::from(block_number).inner(),
+                ReviveTracerType::from(geth_tracer_options).inner(),
+            )
+            .await?
+            .into_iter()
+            .map(|tx_trace| TraceResult::Success {
+                result: ReviveTrace::new(tx_trace.trace).into(),
+                tx_hash: Some(B256::from_slice(tx_trace.tx_hash.as_ref())),
+            })
+            .collect::<Vec<_>>())
     }
 
     async fn trace_transaction(&self, tx_hash: B256) -> Result<Vec<LocalizedTransactionTrace>> {
@@ -1931,8 +1983,12 @@ async fn create_revive_rpc_client(
         EthRpcClient::new(api, rpc_client, rpc, block_provider, receipt_provider)
             .await
             .map_err(Error::from)?;
+    // Genesis block is not imported via block import notifications, so we need to subscribe and
+    // cache it manually.
+    let _ = eth_rpc_client.subscribe_and_cache_blocks(1).await;
 
-    eth_rpc_client.create_block_notifier();
+    // Capacity is chosen using random.org
+    eth_rpc_client.set_block_notifier(Some(tokio::sync::broadcast::channel::<H256>(50).0));
     let eth_rpc_client_clone = eth_rpc_client.clone();
     task_spawn_handle.spawn("block-subscription", "None", async move {
         let eth_rpc_client = eth_rpc_client_clone;

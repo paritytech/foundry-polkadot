@@ -7,14 +7,13 @@ use revive_strategy::ReviveRuntimeMode;
 use revm::primitives::hardfork::SpecId;
 use rstest::rstest;
 
-// Internal macro that accepts directory parameter
 macro_rules! revive_cheat_test_with_dir {
     ($test_name:ident, $file_pattern:expr, $dir:expr) => {
         #[rstest]
         #[case::evm(ReviveRuntimeMode::Evm)]
         #[tokio::test(flavor = "multi_thread")]
         async fn $test_name(#[case] runtime_mode: ReviveRuntimeMode) {
-            let filter = Filter::new(".*", ".*", &format!(".*/{}/{}.*", $dir, $file_pattern));
+            let filter = Filter::new(".*", ".*", &format!(".*/{}/{}.t.sol$", $dir, $file_pattern));
 
             let runner = TEST_DATA_REVIVE.runner_revive_with(runtime_mode, |config| {
                 use foundry_config::{FsPermissions, fs_permissions::PathPermission};
@@ -40,18 +39,12 @@ macro_rules! revive_cheat_test_original {
     };
 }
 
-revive_cheat_test_original!(test_nonce, "Nonce");
-revive_cheat_test!(test_coinbase, "CoinBase");
 revive_cheat_test!(test_warp, "Warp");
-// TOFIX Fails  blockhash
-revive_cheat_test!(test_roll, "Roll");
 revive_cheat_test!(test_chainid, "ChainId");
 revive_cheat_test!(test_deal, "Deal");
 revive_cheat_test!(test_get_block_timestamp, "GetBlockTimestamp");
 revive_cheat_test!(test_get_block_number, "getBlockNumber");
 revive_cheat_test_original!(test_expect_emit, "ExpectEmit");
-// TOFIX
-revive_cheat_test_original!(test_expect_revert, "ExpectRevert");
 // TOFIX
 revive_cheat_test_original!(test_expect_call, "ExpectCall");
 // vm.fee() doesn't work correctly in revive mode
@@ -98,7 +91,6 @@ revive_cheat_test_original!(test_deploy_code, "DeployCode");
 // revive_cheat_test_original!(test_env, "Env");
 // EXTCODECOPY compilation issue
 revive_cheat_test_original!(test_etch, "Etch");
-revive_cheat_test_original!(test_expect_create, "ExpectCreate");
 // revive_cheat_test_original!(test_ffi, "Ffi");
 // fork cheatcodes not supported
 // revive_cheat_test_original!(test_fork, "Fork");
@@ -138,7 +130,6 @@ revive_cheat_test!(test_get_raw_block_header, "GetRawBlockHeader");
 // revive_cheat_test_original!(test_random_uint, "RandomUint");
 // TODO: check if it is needed
 revive_cheat_test_original!(test_read_callers, "ReadCallers");
-revive_cheat_test_original!(test_record, "Record");
 revive_cheat_test_original!(test_record_account_accesses, "RecordAccountAccesses");
 revive_cheat_test_original!(test_record_debug_trace, "RecordDebugTrace");
 revive_cheat_test_original!(test_record_logs, "RecordLogs");
@@ -148,8 +139,6 @@ revive_cheat_test_original!(test_reset_nonce, "ResetNonce");
 // SKIP it should not affect pallet-revive execution
 // revive_cheat_test_original!(test_rpc_urls, "RpcUrls");
 revive_cheat_test_original!(test_seed, "Seed");
-revive_cheat_test!(test_set_blockhash, "SetBlockhash");
-revive_cheat_test_original!(test_set_blockhash2, "SetBlockhash");
 revive_cheat_test_original!(test_set_nonce, "SetNonce");
 revive_cheat_test_original!(test_set_nonce_unsafe, "SetNonceUnsafe");
 revive_cheat_test_original!(test_setup, "Setup");
@@ -175,3 +164,14 @@ revive_cheat_test!(test_chainid2, "Travel");
 revive_cheat_test_original!(test_dump_state, "dumpState");
 // revive_cheat_test_original!(test_load_allocs, "loadAllocs");
 revive_cheat_test_original!(test_gas_metering, "GasMetering");
+revive_cheat_test!(test_custom_nonce, "Nonce");
+revive_cheat_test_original!(test_nonce, "Nonce");
+revive_cheat_test_original!(test_expect_create, "ExpectCreate");
+revive_cheat_test_original!(test_record_accesses, "RecordAccessesRevive");
+revive_cheat_test_original!(test_record_rw, "Record");
+revive_cheat_test_original!(test_expect_revert, "ExpectRevert");
+revive_cheat_test_original!(test_expect_call, "ExpectCallRevive");
+revive_cheat_test!(test_coinbase, "CoinBase");
+revive_cheat_test!(test_set_custom_blockhash, "SetBlockhash");
+revive_cheat_test_original!(test_set_blockhash, "SetBlockhash");
+revive_cheat_test!(test_roll, "Roll");

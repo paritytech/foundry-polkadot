@@ -14,7 +14,6 @@ contract CoinbaseTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testCoinbase() public {
-        vm.pvm(true);
         BlockCoinBase coinbase = new BlockCoinBase();
         vm.coinbase(0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8);
         assertEq(coinbase.coinbase(), 0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8, "coinbase failed");

@@ -81,10 +81,15 @@ async fn test_get_block_by_hash() {
     let tx_hash2 = node.send_transaction(transaction.nonce(2)).await.unwrap();
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
-    let hash1 = node.block_hash_by_number(1).await.unwrap();
-    let hash2 = node.block_hash_by_number(2).await.unwrap();
+    let hash0 = node.eth_block_hash_by_number(0).await.unwrap();
+    let hash1 = node.eth_block_hash_by_number(1).await.unwrap();
+    let hash2 = node.eth_block_hash_by_number(2).await.unwrap();
+    let block0 = node.get_block_by_hash(hash0).await;
     let block1 = node.get_block_by_hash(hash1).await;
     let block2 = node.get_block_by_hash(hash2).await;
+    assert_eq!(block0.hash, hash0);
+    assert_eq!(block1.hash, hash1);
+    assert_eq!(block2.hash, hash2);
     assert!(is_transaction_in_block(&block1.transactions, tx_hash0));
     assert!(is_transaction_in_block(&block1.transactions, tx_hash1));
     assert!(is_transaction_in_block(&block2.transactions, tx_hash2));
@@ -902,7 +907,7 @@ async fn test_anvil_node_info() {
     assert_eq!(node_info.fork_config.fork_block_number, None);
     assert_eq!(node_info.fork_config.fork_retry_backoff, None);
 
-    let genesis_block_hash = node.block_hash_by_number(0).await.unwrap();
+    let genesis_block_hash = node.eth_block_hash_by_number(0).await.unwrap();
     assert_eq!(node_info.current_block_hash, B256::from_slice(genesis_block_hash.as_ref()));
     let block = node.get_block_by_hash(genesis_block_hash).await;
     assert_eq!(block.gas_limit, node_info.environment.gas_limit.into());
@@ -946,7 +951,7 @@ async fn test_anvil_metadata() {
     assert!(metadata.snapshots.is_empty());
 
     // Get current block hash for comparison
-    let block_hash = node.block_hash_by_number(0).await.unwrap();
+    let block_hash = node.eth_block_hash_by_number(0).await.unwrap();
     assert_eq!(metadata.latest_block_hash, B256::from_slice(block_hash.as_ref()));
 
     // Create a snapshot and verify it appears in metadata

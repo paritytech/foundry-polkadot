@@ -156,7 +156,8 @@ impl GenesisConfig {
                 "accounts": revive_genesis_accounts,
                 "debugSettings": {
                     "allow_unlimited_contract_size": true,
-                    "bypass_eip_3607": true
+                    "bypass_eip_3607": true,
+                    "pvm_logs": true
                 }
             },
             "transactionPayment": {

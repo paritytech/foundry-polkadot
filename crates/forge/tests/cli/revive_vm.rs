@@ -315,7 +315,7 @@ contract ChainIdTest is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvvv", "--polkadot"]).assert_success();
+    let res = cmd.args(["test", "-vvvv", "--polkadot=pvm"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -328,13 +328,13 @@ Ran 1 test for src/ChainId.t.sol:ChainIdTest
 [PASS] testChainIdRevive() ([GAS])
 Traces:
   [..] ChainIdTest::testChainIdRevive()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    ├─ [..] → new <unknown>@[..]
     │   └─ ← [Return] 2357 bytes of code
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::chain_id() [staticcall]
+    ├─ [..] [..]::chain_id() [staticcall]
     │   └─ ← [Return] 31337 [3.133e4]
     ├─ [0] VM::chainId(99)
     │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::chain_id() [staticcall]
+    ├─ [..] [..]::chain_id() [staticcall]
     │   └─ ← [Return] 99
     └─ ← [Stop]
 
@@ -451,384 +451,6 @@ contract CounterTest is DSTest {
 
     // Test with --polkadot flag (EVM backend on pallet-revive)
     cmd.args(["test", "--polkadot", "-vvv"]).assert_success();
-});
-
-forgetest!(trace_counter_test, |prj, cmd| {
-    prj.insert_ds_test();
-    prj.insert_vm();
-    prj.insert_console();
-    prj.add_source(
-        "Counter.sol",
-        r#"
-  // SPDX-License-Identifier: UNLICENSED
-  pragma solidity ^0.8.13;
-
-  contract Counter {
-      uint256 public number = 0;
-      event Increment(uint256 result);
-      event SetNumber(uint256 result);
-      error Revert(string text);
-
-      function setNumber(uint256 newNumber) public {
-          number = newNumber;
-          emit SetNumber(number);
-      }
-
-      function failed_call() public pure {
-        revert Revert("failure");
-      }
-
-      function increment() public {
-          number = number + 1;
-          emit Increment(number);
-
-      }
-      function setAndIncrement(uint256 newNumber) public {
-        setNumber(newNumber);
-        increment();
-      }
-      function setAndIncrementProxy(uint256 newNumber, Counter target) public {
-        setNumber(newNumber);
-        increment();
-        target.setAndIncrement(newNumber);
-      }
-  }
-  "#,
-    )
-    .unwrap();
-    prj.add_source(
-        "CounterTest.t.sol",
-        r#"
-import "./test.sol";
-import "./Vm.sol";
-import {Counter} from "./Counter.sol";
-import {console} from "./console.sol";
-
-contract CounterTest is DSTest {
-Vm constant vm = Vm(HEVM_ADDRESS);
-Counter public counter;
-Counter target;
-
-function setUp() public {
-  counter = new Counter(); 
-  target = new Counter(); 
-  vm.expectEmit(address(counter));
-  emit Counter.SetNumber(5);
-  counter.setNumber(5);
-  assertEq(counter.number(), 5);
-}
-
-function test_Increment() public {
-    assertEq(counter.number(), 5);
-    counter.setNumber(55); 
-    assertEq(counter.number(), 55);
-    counter.increment(); 
-    assertEq(counter.number(), 56);
-}
-
-function test_Seq() public {
-  vm.expectEmit(address(counter));
-  emit Counter.SetNumber(5);
-  vm.expectEmit(address(target));
-  emit Counter.Increment(6);
-  counter.setAndIncrementProxy(5, target);
-}
-
-function test_expectRevert() public {
-  vm.expectRevert(abi.encodeWithSelector(Counter.Revert.selector, "failure"));
-  counter.failed_call();
-}
-}
-"#,
-    )
-    .unwrap();
-    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
-
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
-    res.stderr_eq("").stdout_eq(str![[r#"
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-Ran 3 tests for src/CounterTest.t.sol:CounterTest
-[PASS] test_Increment() ([GAS])
-Traces:
-  [..] CounterTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
-    │   ├─ emit SetNumber(result: 5)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    └─ ← [Stop]
-
-  [..] CounterTest::test_Increment()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(55)
-    │   ├─ emit SetNumber(result: 55)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 55
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::increment()
-    │   ├─ emit Increment(result: 56)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 56
-    └─ ← [Stop]
-
-[PASS] test_Seq() ([GAS])
-Traces:
-  [..] CounterTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
-    │   ├─ emit SetNumber(result: 5)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    └─ ← [Stop]
-
-  [..] CounterTest::test_Seq()
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] VM::expectEmit(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   └─ ← [Return]
-    ├─ emit Increment(result: 6)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setAndIncrementProxy(5, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ emit SetNumber(result: 5)
-    │   ├─ emit Increment(result: 6)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::setAndIncrement(5)
-    │   │   ├─ emit SetNumber(result: 5)
-    │   │   ├─ emit Increment(result: 6)
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    └─ ← [Stop]
-
-[PASS] test_expectRevert() ([GAS])
-Traces:
-  [..] CounterTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::expectEmit(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return]
-    ├─ emit SetNumber(result: 5)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setNumber(5)
-    │   ├─ emit SetNumber(result: 5)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::number() [staticcall]
-    │   └─ ← [Return] 5
-    └─ ← [Stop]
-
-  [..] CounterTest::test_expectRevert()
-    ├─ [..] VM::expectRevert(custom error 0xf28dceb3: 0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000006456941a80000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000076661696c7572650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::failed_call() [staticcall]
-    │   └─ ← [Revert] Revert("failure")
-    └─ ← [Stop]
-
-Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
-
-"#]]);
-});
-
-forgetest!(record_rw, |prj, cmd| {
-    prj.insert_ds_test();
-    prj.insert_vm();
-    prj.insert_console();
-    prj.add_source(
-        "Contracts.sol",
-        r#"
-    
-    pragma solidity ^0.8.18;
-
-contract RecordAccess {
-    function record(NestedRecordAccess target) public {
-        assembly {
-            sstore(1, add(sload(1), 1))
-        }
-
-        target.record();
-    }
-}
-
-contract NestedRecordAccess {
-    function record() public {
-        assembly {
-            sstore(2, add(sload(2), 1))
-        }
-    }
-}
-"#,
-    )
-    .unwrap();
-    prj.add_source(
-        "Test.t.sol",
-        r#"
-        pragma solidity ^0.8.18;
-        import "./test.sol";
-        import "./Vm.sol";
-        import "./Contracts.sol";
-        import {console} from "./console.sol";
-contract RecordTest is DSTest {
-  Vm constant vm = Vm(HEVM_ADDRESS);
-
-  function testRecordAccess() public {
-      RecordAccess target = new RecordAccess();
-      NestedRecordAccess inner = new NestedRecordAccess();
-      // Start recording
-      vm.record();
-      target.record(inner);
-
-      // Verify Records
-      (bytes32[] memory reads, bytes32[] memory writes) = vm.accesses(address(target));
-      (bytes32[] memory innerReads, bytes32[] memory innerWrites) = vm.accesses(address(inner));
-
-      assertEq(reads.length, 2, "number of reads is incorrect");
-      assertEq(reads[0], bytes32(uint256(1)), "key for read 0 is incorrect");
-      assertEq(reads[1], bytes32(uint256(1)), "key for read 1 is incorrect");
-
-      assertEq(writes.length, 1, "number of writes is incorrect");
-      assertEq(writes[0], bytes32(uint256(1)), "key for write is incorrect");
-
-      assertEq(innerReads.length, 2, "number of nested reads is incorrect");
-      assertEq(innerReads[0], bytes32(uint256(2)), "key for nested read 0 is incorrect");
-      assertEq(innerReads[1], bytes32(uint256(2)), "key for nested read 1 is incorrect");
-
-      assertEq(innerWrites.length, 1, "number of nested writes is incorrect");
-      assertEq(innerWrites[0], bytes32(uint256(2)), "key for nested write is incorrect");
-  }
-
-  function testStopRecordAccess() public {
-    RecordAccess target = new RecordAccess();
-    NestedRecordAccess inner = new NestedRecordAccess();
-    // Start recording
-    vm.record();
-    target.record(inner);
-
-      // Verify Records
-      (bytes32[] memory reads, bytes32[] memory writes) = vm.accesses(address(target));
-
-      assertEq(reads.length, 2, "number of reads is incorrect");
-      assertEq(reads[0], bytes32(uint256(1)), "key for read 0 is incorrect");
-      assertEq(reads[1], bytes32(uint256(1)), "key for read 1 is incorrect");
-
-      assertEq(writes.length, 1, "number of writes is incorrect");
-      assertEq(writes[0], bytes32(uint256(1)), "key for write is incorrect");
-
-      vm.stopRecord();
-      target.record(inner);
-
-      // Verify that there are no new Records
-      (reads, writes) = vm.accesses(address(target));
-
-      assertEq(reads.length, 2, "number of reads is incorrect");
-      assertEq(reads[0], bytes32(uint256(1)), "key for read 0 is incorrect");
-      assertEq(reads[1], bytes32(uint256(1)), "key for read 1 is incorrect");
-
-      assertEq(writes.length, 1, "number of writes is incorrect");
-      assertEq(writes[0], bytes32(uint256(1)), "key for write is incorrect");
-
-      vm.record();
-      vm.stopRecord();
-
-      // verify reset all records
-      (reads, writes) = vm.accesses(address(target));
-
-      assertEq(reads.length, 0, "number of reads is incorrect");
-      assertEq(writes.length, 0, "number of writes is incorrect");
-  }
-}
-
-    "#,
-    )
-    .unwrap();
-    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
-
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
-    res.stdout_eq(str![[r#"
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-Ran 2 tests for src/Test.t.sol:RecordTest
-[PASS] testRecordAccess() ([GAS])
-Traces:
-  [..] RecordTest::testRecordAccess()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::record()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
-    ├─ [0] VM::accesses(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000002], [0x0000000000000000000000000000000000000000000000000000000000000002]
-    └─ ← [Stop]
-
-[PASS] testStopRecordAccess() ([GAS])
-Traces:
-  [..] RecordTest::testStopRecordAccess()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::record()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
-    ├─ [..] VM::stopRecord()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::record(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a)
-    │   ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::record()
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000001], [0x0000000000000000000000000000000000000000000000000000000000000001]
-    ├─ [..] VM::record()
-    │   └─ ← [Return]
-    ├─ [..] VM::stopRecord()
-    │   └─ ← [Return]
-    ├─ [..] VM::accesses(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)
-    │   └─ ← [Return] [], []
-    └─ ← [Stop]
-
-Suite result: ok. 2 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 1 test suite [ELAPSED]: 2 tests passed, 0 failed, 0 skipped (2 total tests)
-
-"#]]);
 });
 
 forgetest!(record_logs, |prj, cmd| {
@@ -1081,7 +703,7 @@ contract Emitterv2 {
     .unwrap();
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
+    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
     res.stderr_eq("").stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -1092,360 +714,15 @@ Compiler run successful!
 
 Ran 7 tests for src/Test.t.sol:RecordLogsTest
 [PASS] testEmitRecordEmit() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testEmitRecordEmit()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 2, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   ├─ emit LogTopic12(topic1: 1, topic2: 2, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   └─ ← [Stop]
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(3, 0x2e38edeff9493e0004540e975027a429)
-    │   ├─ emit LogTopic1(topic1: 3, data: 0x2e38edeff9493e0004540e975027a429)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x7c7d81fafce31d4330303f05da0ccb9d970101c475382b40aa072986ee4caaad, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000102e38edeff9493e0004540e975027a42900000000000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 [PASS] testRecordOffGetsNothing() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOffGetsNothing()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] []
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 [PASS] testRecordOnEmitDifferentDepths() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnEmitDifferentDepths()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ emit LogTopic(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   └─ ← [Stop]
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   ├─ [..] 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x61fb7db3625c10432927a76bb32400c33a94e9bb6374137c4cd59f6e465bfdcb, 0x0000000000000000000000000000000000000000000000000000000000000001], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001043a26051362b8040b289abe93334a5e300000000000000000000000000000000, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496), ([0x7af92d5e3102a27d908bb1859fdef71b723f3c438e5d84f3af49dab68e18dc6d, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001443a26051362b8040b289abe93334a5e3662751aa000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f), ([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000004, 0x0000000000000000000000000000000000000000000000000000000000000005, 0x0000000000000000000000000000000000000000000000000000000000000006], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001843a26051362b8040b289abe93334a5e3662751aa691185ae0000000000000000, 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2)]
-    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::getEmitterAddr() [staticcall]
-    │   └─ ← [Return] 0x4f81992FCe2E1846dD528eC0102e6eE1f61ed3e2
-    └─ ← [Stop]
-
 [PASS] testRecordOnNoLogs() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnNoLogs()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] []
-    └─ ← [Stop]
-
 [PASS] testRecordOnSingleLog() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnSingleLog()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 2, 3, 0x4576656e74204461746120696e20537472696e67)
-    │   ├─ emit LogTopic123(topic1: 1, topic2: 2, topic3: 3, data: 0x4576656e74204461746120696e20537472696e67)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000001, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000144576656e74204461746120696e20537472696e67000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    └─ ← [Stop]
-
 [PASS] testRecordOnSingleLogTopic0() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordOnSingleLogTopic0()
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a429)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x0a28c6fad56bcbad1788721e440963b3b762934a3134924733eaf8622cb44279], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003043a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c1693502e38edeff9493e0004540e975027a42900000000000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 [PASS] testRecordsConsumednAsRead() ([GAS])
-Traces:
-  [..] RecordLogsTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] RecordLogsTest::testRecordsConsumednAsRead()
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(1, 0x43a26051362b8040b289abe93334a5e3)
-    │   ├─ emit LogTopic1(topic1: 1, data: 0x43a26051362b8040b289abe93334a5e3)
-    │   └─ ← [Stop]
-    ├─ [..] VM::recordLogs()
-    │   └─ ← [Return]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] []
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(2, 3, 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   ├─ emit LogTopic12(topic1: 2, topic2: 3, data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0x7af92d5e3102a27d908bb1859fdef71b723f3c438e5d84f3af49dab68e18dc6d, 0x0000000000000000000000000000000000000000000000000000000000000002, 0x0000000000000000000000000000000000000000000000000000000000000003], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001843a26051362b8040b289abe93334a5e3662751aa691185ae0000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(4, 5, 6, 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   ├─ emit LogTopic123(topic1: 4, topic2: 5, topic3: 6, data: 0x43a26051362b8040b289abe93334a5e3662751aa)
-    │   └─ ← [Stop]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   ├─ emit LogTopic0(data: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000004, 0x0000000000000000000000000000000000000000000000000000000000000005, 0x0000000000000000000000000000000000000000000000000000000000000006], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001443a26051362b8040b289abe93334a5e3662751aa000000000000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f), ([0x0a28c6fad56bcbad1788721e440963b3b762934a3134924733eaf8622cb44279], 0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002043a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::emitEvent(7, 8, 9, 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
-    │   ├─ emit LogTopic123(topic1: 7, topic2: 8, topic3: 9, data: 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4)
-    │   └─ ← [Stop]
-    ├─ [..] VM::getRecordedLogs()
-    │   └─ ← [Return] [([0xb6d650e5d0bbc0e92ff784e346ada394e49aa2d74a5cee8b099fa1a469bdc452, 0x0000000000000000000000000000000000000000000000000000000000000007, 0x0000000000000000000000000000000000000000000000000000000000000008, 0x0000000000000000000000000000000000000000000000000000000000000009], 0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000182e38edeff9493e0004540e975027a429ee666d1289f2c7a40000000000000000, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f)]
-    ├─  storage changes:
-    │   @ 1: 0x43a26051362b8040b289abe93334a5e3662751aa691185ae9e9a2e1e0c169350 → 0x2e38edeff9493e0004540e975027a429ee666d1289f2c7a4232d03ee63e14e30
-    └─ ← [Stop]
-
 Suite result: ok. 7 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 7 tests passed, 0 failed, 0 skipped (7 total tests)
-
-"#]]);
-});
-
-forgetest!(record_accesses, |prj, cmd| {
-    prj.insert_ds_test();
-    prj.insert_vm();
-    prj.insert_console();
-
-    prj.add_source(
-        "Contracts.sol",
-        r#"
-        contract C {
-          uint256 internal _reserved;
-          uint256 public data;
-          constructor(uint _data) payable { data = _data; }
-          function setter(uint _data) public { data = _data; }
-      }
-
-      contract Proxy {
-        address target;
-        constructor(address _data) payable { target = _data; }
-        function proxyCall(uint _data) public {
-          (bool success,) = address(target).call(abi.encodeWithSelector(C.setter.selector, _data));
-          if (!success) {
-            assert(false);
-          }
-        }
-      }
-"#,
-    )
-    .unwrap();
-    prj.add_source(
-        "Test.t.sol",
-        r#"
-  pragma solidity ^0.8.18;
-  import "./test.sol";
-  import "./Vm.sol";
-  import "./Contracts.sol";
-  import {console} from "./console.sol";
-
-  contract StateDiffTest is DSTest {
-    Vm constant vm = Vm(HEVM_ADDRESS);
-    address existing;
-    address proxy;
-
-    function setUp() public {
-      existing = address(new C{value: 1 ether}(100));
-      proxy = address(new Proxy(existing));
-    }
-
-    function testCreateaccesses() public {
-      vm.startStateDiffRecording();
-      C target = new C{value: 1 ether}(100);
-      Vm.AccountAccess[] memory records = vm.stopAndReturnStateDiff();
-      assertEq(records.length, 1, "Records");
-      assertEq(records[0].account, address(target), "Account");
-      assertEq(records[0].accessor, address(this), "Accessor");
-      assertEq(records[0].initialized, true);
-      assertEq(records[0].oldBalance, 0, "oldBalance");
-      assertEq(records[0].newBalance, 1 ether, "newBalance");
-      assertEq(records[0].value, 1 ether, "value");
-      assertEq(records[0].data, abi.encode(uint(100)), "data");
-      assertEq(records[0].reverted, false);
-       
-      assertEq(records[0].storageAccesses.length, 2, "accesses"); // check the write
-      assertEq(records[0].storageAccesses[1].account, address(target), "access address");
-      assertEq(records[0].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
-      assertEq(records[0].storageAccesses[1].isWrite, true);
-      assertEq(records[0].storageAccesses[1].previousValue, bytes32(uint(0)), "previousValue");
-      assertEq(records[0].storageAccesses[1].newValue, bytes32(uint(100)), "newValue");
-      assertEq(records[0].storageAccesses[1].reverted, false);    
-    }
-
-    function testCallaccesses() public {
-      vm.startStateDiffRecording();
-      (bool success,) = address(existing).call(abi.encodeWithSelector(C.setter.selector, 55));
-      if (!success) {
-        assert(false);
-      }
-      Vm.AccountAccess[] memory records = vm.stopAndReturnStateDiff();
-      assertEq(records.length, 1, "records");
-      assertEq(records[0].account, address(existing), "Account");
-      assertEq(records[0].accessor, address(this), "Accessor");
-      assertEq(records[0].initialized, true);
-      assertEq(records[0].oldBalance, 1 ether, "oldBalance");
-      assertEq(records[0].newBalance, 1 ether, "newBalance");
-      assertEq(records[0].value, 0 ether, "value");
-      assertEq(records[0].data, abi.encodeWithSelector(C.setter.selector, 55), "data");
-      assertEq(records[0].reverted, false);
-       
-      assertEq(records[0].storageAccesses.length, 2, "accesses"); // check the write
-      assertEq(records[0].storageAccesses[1].account, address(existing), "access address");
-      assertEq(records[0].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
-      assertEq(records[0].storageAccesses[1].isWrite, true);
-      assertEq(records[0].storageAccesses[1].previousValue, bytes32(uint(100)), "previousValue");
-      assertEq(records[0].storageAccesses[1].newValue, bytes32(uint(55)), "newValue");
-      assertEq(records[0].storageAccesses[1].reverted, false);    
-    }
-    function testCallProxyaccesses() public {
-      vm.startStateDiffRecording();
-      (bool success,) = address(proxy).call(abi.encodeWithSelector(Proxy.proxyCall.selector, 55));
-      if (!success) {
-        assert(false);
-      }
-      Vm.AccountAccess[] memory records = vm.stopAndReturnStateDiff();
-      assertEq(records.length, 2, "records");
-      assertEq(records[1].account, address(existing), "Account"); // checks the access from Proxy to C
-      assertEq(records[1].accessor, address(proxy), "Accessor");
-      assertEq(records[1].initialized, true);
-      assertEq(records[1].oldBalance, 1 ether, "oldBalance");
-      assertEq(records[1].newBalance, 1 ether, "newBalance");
-      assertEq(records[1].value, 0 ether, "value");
-      assertEq(records[1].data, abi.encodeWithSelector(C.setter.selector, 55), "data");
-      assertEq(records[1].reverted, false);
-       
-      assertEq(records[1].storageAccesses.length, 2, "accesses"); // check the write
-      assertEq(records[1].storageAccesses[1].account, address(existing), "access address");
-      assertEq(records[1].storageAccesses[1].slot, bytes32(uint256(1)), "slot");
-      assertEq(records[1].storageAccesses[1].isWrite, true);
-      assertEq(records[1].storageAccesses[1].previousValue, bytes32(uint(100)), "previousValue");
-      assertEq(records[1].storageAccesses[1].newValue, bytes32(uint(55)), "newValue");
-      assertEq(records[1].storageAccesses[1].reverted, false);    
-    }
-  }
-  "#,
-    )
-    .unwrap();
-    prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
-
-    let res = cmd.args(["test", "--resolc", "--polkadot", "-vvvvv"]).assert_success();
-    res.stdout_eq(str![[r#"
-[COMPILING_FILES] with [SOLC_VERSION]
-[SOLC_VERSION] [ELAPSED]
-Compiler run successful!
-[COMPILING_FILES] with [RESOLC_VERSION]
-[RESOLC_VERSION] [ELAPSED]
-Compiler run successful!
-
-Ran 3 tests for src/Test.t.sol:StateDiffTest
-[PASS] testCallProxyaccesses() ([GAS])
-Traces:
-  [..] StateDiffTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] StateDiffTest::testCallProxyaccesses()
-    ├─ [..] VM::startStateDiffRecording()
-    │   └─ ← [Return]
-    ├─ [..] 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a::proxyCall(55)
-    │   ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setter(55)
-    │   │   └─ ← [Return]
-    │   └─ ← [Stop]
-    ├─ [..] VM::stopAndReturnStateDiff()
-    │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 0, 0xac1b14ff0000000000000000000000000000000000000000000000000000000000000037, false, [(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a, 0x0000000000000000000000000000000000000000000000000000000000000000, false, 0x0000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f, 0x0000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f, false)], 1), ((0, 31337 [3.133e4]), 0, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0xF62849F9A0B5Bf2913b396098F7c7019b51A820a, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 2)]
-    └─ ← [Stop]
-
-[PASS] testCallaccesses() ([GAS])
-Traces:
-  [..] StateDiffTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] StateDiffTest::testCallaccesses()
-    ├─ [..] VM::startStateDiffRecording()
-    │   └─ ← [Return]
-    ├─ [..] 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f::setter(55)
-    │   └─ ← [Stop]
-    ├─ [..] VM::stopAndReturnStateDiff()
-    │   └─ ← [Return] [((0, 31337 [3.133e4]), 0, 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 1000000000000000000 [1e18], 1000000000000000000 [1e18], 0x, 0, 0xd423740b0000000000000000000000000000000000000000000000000000000000000037, false, [(0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000064, false), (0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000064, 0x0000000000000000000000000000000000000000000000000000000000000037, false)], 1)]
-    └─ ← [Stop]
-
-[PASS] testCreateaccesses() ([GAS])
-Traces:
-  [..] StateDiffTest::setUp()
-    ├─ [..] → new <unknown>@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] → new <unknown>@0xF62849F9A0B5Bf2913b396098F7c7019b51A820a
-    │   └─ ← [Return] [..] bytes of code
-    └─ ← [Stop]
-
-  [..] StateDiffTest::testCreateaccesses()
-    ├─ [..] VM::startStateDiffRecording()
-    │   └─ ← [Return]
-    ├─ [..] → new <unknown>@0xc7183455a4C133Ae270771860664b6B7ec320bB1
-    │   └─ ← [Return] [..] bytes of code
-    ├─ [..] VM::stopAndReturnStateDiff()
-    │   └─ ← [Return] [((0, 31337 [3.133e4]), 4, 0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496, true, 0, 1000000000000000000 [1e18], 0x, 1000000000000000000 [1e18], 0x0000000000000000000000000000000000000000000000000000000000000064, false, [(0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x0000000000000000000000000000000000000000000000000000000000000001, false, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000000, false), (0xc7183455a4C133Ae270771860664b6B7ec320bB1, 0x0000000000000000000000000000000000000000000000000000000000000001, true, 0x0000000000000000000000000000000000000000000000000000000000000000, 0x0000000000000000000000000000000000000000000000000000000000000064, false)], 1)]
-    └─ ← [Stop]
-
-Suite result: ok. 3 passed; 0 failed; 0 skipped; [ELAPSED]
-
-Ran 1 test suite [ELAPSED]: 3 tests passed, 0 failed, 0 skipped (3 total tests)
 
 "#]]);
 });
@@ -1590,6 +867,353 @@ Ran 6 tests for src/CounterTest.t.sol:CounterTest
 Suite result: ok. 6 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 6 tests passed, 0 failed, 0 skipped (6 total tests)
+
+"#]]);
+});
+
+// Test --polkadot=evm flag: single compilation (solc only, no dual compilation)
+forgetest!(polkadot_evm_single_compilation, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    function test_EvmMode() public {
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Should compile with solc only (no resolc compilation)
+    let res = cmd.args(["test", "--polkadot=evm", "-vvv"]).assert_success();
+    let output = res.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify solc compiled
+    assert!(stdout.contains("Compiler run successful!"));
+    // Should only show one "Compiler run successful!" message (solc only, not resolc)
+    assert_eq!(stdout.matches("Compiler run successful!").count(), 1);
+});
+
+// Test --polkadot=pvm flag: dual compilation (automatic)
+forgetest!(polkadot_pvm_dual_compilation, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    function test_PvmMode() public {
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Should dual compile (solc + resolc)
+    let res = cmd.args(["test", "--polkadot=pvm", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/SimpleTest.t.sol:SimpleTest
+[PASS] test_PvmMode() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test --resolc flag alone: should auto-set polkadot=pvm and dual compile
+forgetest!(resolc_flag_auto_pvm, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    function test_Resolc() public {
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // --resolc alone should dual compile and use PVM runtime
+    let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/SimpleTest.t.sol:SimpleTest
+[PASS] test_Resolc() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test --polkadot=evm --resolc: dual compilation with EVM runtime
+forgetest!(polkadot_evm_with_resolc, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function test_EvmWithResolc() public {
+        // Can switch to PVM because we have dual compilation
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+
+        // Switch to PVM mode
+        vm.polkadot(true, "pvm");
+        Simple simple2 = new Simple();
+        assertEq(simple2.getValue(), 42);
+
+        // Switch back to EVM
+        vm.polkadot(true, "evm");
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Should dual compile and allow mode switching
+    let res = cmd.args(["test", "--polkadot=evm", "--resolc", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/SimpleTest.t.sol:SimpleTest
+[PASS] test_EvmWithResolc() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test explicit mode switching with vm.polkadot(bool, string)
+forgetest!(explicit_mode_switching, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+
+    // Add a simple contract to trigger dual compilation
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "ModeSwitch.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+
+contract ModeSwitchTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+    address alice = address(0x1111);
+
+    function setUp() public {
+        vm.deal(alice, 1 ether);
+        vm.makePersistent(alice);
+    }
+
+    function test_ExplicitModeSwitch() public {
+        // Start in PVM, switch to EVM explicitly
+        uint256 pvmBalance = alice.balance;
+        assertEq(pvmBalance, 1 ether);
+
+        vm.polkadot(true, "evm");
+        assertEq(alice.balance, pvmBalance, "Balance should migrate to EVM");
+
+        vm.deal(alice, 2 ether);
+        uint256 evmBalance = alice.balance;
+
+        vm.polkadot(true, "pvm");
+        assertEq(alice.balance, evmBalance, "Balance should migrate back to PVM");
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Requires dual compilation for mode switching
+    let res = cmd.args(["test", "--polkadot=pvm", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/ModeSwitch.t.sol:ModeSwitchTest
+[PASS] test_ExplicitModeSwitch() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test --polkadot flag without --resolc: attempting to switch to PVM should fail
+forgetest!(polkadot_pvm_requires_dual_compilation, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "PvmSwitchTest.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {Simple} from "./Simple.sol";
+contract PvmSwitchTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function test_PvmRequiresDualCompilation() public {
+        // Try to switch to PVM mode without dual compilation
+        // This should fail because we're running with --polkadot (defaults to evm)
+        // without --resolc flag
+        vm.polkadot(true, "pvm");
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Running with --polkadot alone (defaults to evm) and trying to switch to pvm should fail
+    cmd.args(["test", "--polkadot"]).assert_failure().stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/PvmSwitchTest.t.sol:PvmSwitchTest
+[FAIL: vm.polkadot: Backend switching to PVM requires running tests with --polkadot and --resolc flags] test_PvmRequiresDualCompilation() ([GAS])
+Suite result: FAILED. 0 passed; 1 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 0 tests passed, 1 failed, 0 skipped (1 total tests)
+
+Failing tests:
+Encountered 1 failing test in src/PvmSwitchTest.t.sol:PvmSwitchTest
+[FAIL: vm.polkadot: Backend switching to PVM requires running tests with --polkadot and --resolc flags] test_PvmRequiresDualCompilation() ([GAS])
+
+Encountered a total of 1 failing tests, 0 tests succeeded
 
 "#]]);
 });

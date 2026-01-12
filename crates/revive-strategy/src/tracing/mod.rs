@@ -1,29 +1,35 @@
-use std::{collections::BTreeMap, str::FromStr};
+use alloy_primitives::{Address, Bytes, U256 as RU256};
+use call_tracer::ExpectedCallTracer;
+use expect_create::CreateTracer;
+use foundry_cheatcodes::{Ecx, ExpectedCallTracker, ExpectedCreate};
 
-use alloy_primitives::{Address, B256, Bytes, U256 as RU256};
-use foundry_cheatcodes::Ecx;
-use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::pallet_revive::{
-    AccountInfo, Pallet, U256, Weight,
+    Pallet, U256, Weight,
     evm::{
-        Bytes as PBytes, CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
+        CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
         PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
     },
     tracing::{Tracing, trace as trace_revive},
 };
+use revert_tracer::RevertTracer;
 use revive_env::Runtime;
 use revm::{context::JournalTr, database::states::StorageSlot, state::Bytecode};
 use storage_tracer::{AccountAccess, StorageTracer};
+mod call_tracer;
+mod expect_create;
+mod revert_tracer;
 pub mod storage_tracer;
-
 pub struct Tracer {
     pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
     pub prestate_tracer: PrestateTracer<Runtime>,
-    pub storage_accesses: Option<StorageTracer>,
+    pub storage_accesses: StorageTracer,
+    pub revert_tracer: RevertTracer,
+    pub expect_call_tracer: ExpectedCallTracer,
+    pub create_tracer: CreateTracer,
 }
 
 impl Tracer {
-    pub fn new(is_recording: bool) -> Self {
+    pub fn new(data: ExpectedCallTracker, create_data: Vec<ExpectedCreate>) -> Self {
         let call_tracer =
             match Pallet::<revive_env::Runtime>::evm_tracer(TracerType::CallTracer(None)) {
                 ReviveTracer::CallTracer(tracer) => tracer,
@@ -37,9 +43,14 @@ impl Tracer {
                 disable_code: false,
             });
 
-        let storage_tracer = if is_recording { Some(Default::default()) } else { None };
-
-        Self { call_tracer, prestate_tracer, storage_accesses: storage_tracer }
+        Self {
+            call_tracer,
+            prestate_tracer,
+            storage_accesses: Default::default(),
+            revert_tracer: RevertTracer::new(),
+            expect_call_tracer: ExpectedCallTracer::new(data),
+            create_tracer: CreateTracer::new(create_data),
+        }
     }
 
     pub fn trace<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
@@ -58,22 +69,16 @@ impl Tracer {
 
     /// Collects recorded accesses
     pub fn get_recorded_accesses(&mut self) -> Vec<AccountAccess> {
-        self.storage_accesses.take().unwrap_or_default().get_records()
+        self.storage_accesses.get_records()
     }
 
     /// Applies `PrestateTrace` diffs to the revm state
-    pub fn apply_prestate_trace(
-        &mut self,
-        ecx: Ecx<'_, '_, '_>,
-        dual_compiled_contracts: &DualCompiledContracts,
-    ) {
+    pub fn apply_prestate_trace(&mut self, ecx: Ecx<'_, '_, '_>) {
         let prestate_trace = self.collect_prestate_traces();
         match prestate_trace {
             polkadot_sdk::pallet_revive::evm::PrestateTrace::DiffMode { pre: _digests, post } => {
-                for (key, PrestateTraceInfo { balance, nonce, code, mut storage }) in post {
+                for (key, PrestateTraceInfo { balance, nonce, code, storage }) in post {
                     let address = Address::from_slice(key.as_bytes());
-
-                    let is_create = !ecx.journaled_state.state.contains_key(&address);
 
                     ecx.journaled_state.load_account(address).expect("account could not be loaded");
 
@@ -87,7 +92,7 @@ impl Tracer {
                         account.info.nonce = nonce.into();
                     };
 
-                    if is_create && let Some(ref code) = code {
+                    if let Some(ref code) = code {
                         let code = code.clone();
                         let account =
                             ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
@@ -95,33 +100,7 @@ impl Tracer {
                         account.info.code_hash = bytecode.hash_slow();
                         account.info.code = Some(bytecode);
                     }
-                    use alloy_primitives::hex;
-                    let storage = if is_create
-                        && let Some(info) = AccountInfo::<Runtime>::load_contract(&key)
-                        && let hash = hex::encode(info.code_hash)
-                        && let Some((_, info)) = dual_compiled_contracts
-                            .find_by_resolc_bytecode_hash(hash.clone())
-                            .or_else(|| dual_compiled_contracts.find_by_evm_bytecode_hash(hash))
-                    {
-                        let mut init_storage: BTreeMap<PBytes, Option<PBytes>> = info
-                            .storage_slots
-                            .iter()
-                            .map(|slot| {
-                                let slot_key = B256::from(RU256::from_str(slot).unwrap());
-                                let slot = PBytes::from(slot_key.0.to_vec());
-                                (
-                                    slot,
-                                    Pallet::<Runtime>::get_storage(key, slot_key.0)
-                                        .unwrap_or(None)
-                                        .map(PBytes::from),
-                                )
-                            })
-                            .collect();
-                        init_storage.append(&mut storage);
-                        init_storage
-                    } else {
-                        storage
-                    };
+                    let storage = { storage };
 
                     for (slot, entry) in storage {
                         let key = RU256::from_be_slice(&slot.0);
@@ -146,9 +125,23 @@ impl Tracing for Tracer {
     fn watch_address(&mut self, addr: &polkadot_sdk::sp_core::H160) {
         self.prestate_tracer.watch_address(addr);
         self.call_tracer.watch_address(addr);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.watch_address(addr);
-        }
+        self.storage_accesses.watch_address(addr);
+        self.revert_tracer.watch_address(addr);
+        self.create_tracer.watch_address(addr);
+    }
+
+    fn terminate(
+        &mut self,
+        contract_address: polkadot_sdk::sp_core::H160,
+        beneficiary_address: polkadot_sdk::sp_core::H160,
+        gas_left: Weight,
+        value: U256,
+    ) {
+        self.prestate_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
+        self.call_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
+        self.storage_accesses.terminate(contract_address, beneficiary_address, gas_left, value);
+        self.revert_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
+        self.create_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
     }
 
     fn enter_child_span(
@@ -179,17 +172,42 @@ impl Tracing for Tracer {
             input,
             gas,
         );
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.enter_child_span(
-                from,
-                to,
-                is_delegate_call,
-                is_read_only,
-                value,
-                input,
-                gas,
-            )
-        }
+        self.storage_accesses.enter_child_span(
+            from,
+            to,
+            is_delegate_call,
+            is_read_only,
+            value,
+            input,
+            gas,
+        );
+        self.revert_tracer.enter_child_span(
+            from,
+            to,
+            is_delegate_call,
+            is_read_only,
+            value,
+            input,
+            gas,
+        );
+        self.expect_call_tracer.enter_child_span(
+            from,
+            to,
+            is_delegate_call,
+            is_read_only,
+            value,
+            input,
+            gas,
+        );
+        self.create_tracer.enter_child_span(
+            from,
+            to,
+            is_delegate_call,
+            is_read_only,
+            value,
+            input,
+            gas,
+        )
     }
 
     fn instantiate_code(
@@ -199,25 +217,26 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.instantiate_code(code, salt);
         self.call_tracer.instantiate_code(code, salt);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.instantiate_code(code, salt);
-        }
+        self.storage_accesses.instantiate_code(code, salt);
+        self.revert_tracer.instantiate_code(code, salt);
+        self.expect_call_tracer.instantiate_code(code, salt);
+        self.create_tracer.instantiate_code(code, salt);
     }
 
     fn balance_read(&mut self, addr: &polkadot_sdk::sp_core::H160, value: U256) {
         self.prestate_tracer.balance_read(addr, value);
         self.call_tracer.balance_read(addr, value);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.balance_read(addr, value);
-        }
+        self.storage_accesses.balance_read(addr, value);
+        self.revert_tracer.balance_read(addr, value);
+        self.create_tracer.balance_read(addr, value);
     }
 
     fn storage_read(&mut self, key: &polkadot_sdk::pallet_revive::Key, value: Option<&[u8]>) {
         self.prestate_tracer.storage_read(key, value);
         self.call_tracer.storage_read(key, value);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.storage_read(key, value);
-        }
+        self.storage_accesses.storage_read(key, value);
+        self.revert_tracer.storage_read(key, value);
+        self.create_tracer.storage_read(key, value);
     }
 
     fn storage_write(
@@ -228,9 +247,9 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.storage_write(key, old_value.clone(), new_value);
         self.call_tracer.storage_write(key, old_value.clone(), new_value);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.storage_write(key, old_value, new_value);
-        }
+        self.storage_accesses.storage_write(key, old_value.clone(), new_value);
+        self.revert_tracer.storage_write(key, old_value.clone(), new_value);
+        self.create_tracer.storage_write(key, old_value, new_value);
     }
 
     fn log_event(
@@ -241,9 +260,9 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.log_event(event, topics, data);
         self.call_tracer.log_event(event, topics, data);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.log_event(event, topics, data);
-        }
+        self.storage_accesses.log_event(event, topics, data);
+        self.revert_tracer.log_event(event, topics, data);
+        self.create_tracer.log_event(event, topics, data);
     }
 
     fn exit_child_span(
@@ -253,9 +272,10 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.exit_child_span(output, gas_left);
         self.call_tracer.exit_child_span(output, gas_left);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.exit_child_span(output, gas_left);
-        }
+        self.storage_accesses.exit_child_span(output, gas_left);
+        self.revert_tracer.exit_child_span(output, gas_left);
+        self.expect_call_tracer.exit_child_span(output, gas_left);
+        self.create_tracer.exit_child_span(output, gas_left);
     }
 
     fn exit_child_span_with_error(
@@ -265,8 +285,9 @@ impl Tracing for Tracer {
     ) {
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);
-        if let Some(storage_tracer) = &mut self.storage_accesses {
-            storage_tracer.exit_child_span_with_error(error, gas_left);
-        }
+        self.storage_accesses.exit_child_span_with_error(error, gas_left);
+        self.revert_tracer.exit_child_span_with_error(error, gas_left);
+        self.expect_call_tracer.exit_child_span_with_error(error, gas_left);
+        self.create_tracer.exit_child_span_with_error(error, gas_left);
     }
 }
