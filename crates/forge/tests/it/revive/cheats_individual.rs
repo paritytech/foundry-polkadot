@@ -8,12 +8,16 @@ use revm::primitives::hardfork::SpecId;
 use rstest::rstest;
 
 macro_rules! revive_cheat_test_with_dir {
-    ($test_name:ident, $file_pattern:expr, $dir:expr) => {
+    ($test_name:ident, $file_pattern:expr, $dir:expr, $exclude_option:expr) => {
         #[rstest]
         #[case::evm(ReviveRuntimeMode::Evm)]
         #[tokio::test(flavor = "multi_thread")]
         async fn $test_name(#[case] runtime_mode: ReviveRuntimeMode) {
-            let filter = Filter::new(".*", ".*", &format!(".*/{}/{}.t.sol$", $dir, $file_pattern));
+            let mut filter = Filter::new(".*", ".*", &format!(".*/{}/{}.t.sol$", $dir, $file_pattern));
+
+            if let Some(exclude_pattern) = $exclude_option {
+                filter = filter.exclude_tests(exclude_pattern);
+            }
 
             let runner = TEST_DATA_REVIVE.runner_revive_with(runtime_mode, |config| {
                 use foundry_config::{FsPermissions, fs_permissions::PathPermission};
@@ -28,14 +32,20 @@ macro_rules! revive_cheat_test_with_dir {
 // Public macro for revive-specific tests (default)
 macro_rules! revive_cheat_test {
     ($test_name:ident, $file_pattern:expr) => {
-        revive_cheat_test_with_dir!($test_name, $file_pattern, "revive");
+        revive_cheat_test_with_dir!($test_name, $file_pattern, "revive", None::<&str>);
+    };
+    ($test_name:ident, $file_pattern:expr, exclude: $exclude_pattern:expr) => {
+        revive_cheat_test_with_dir!($test_name, $file_pattern, "revive", Some($exclude_pattern));
     };
 }
 
 // Public macro for original cheatcode tests
 macro_rules! revive_cheat_test_original {
     ($test_name:ident, $file_pattern:expr) => {
-        revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats");
+        revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", None::<&str>);
+    };
+    ($test_name:ident, $file_pattern:expr, exclude: $exclude_pattern:expr) => {
+        revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", Some($exclude_pattern));
     };
 }
 
@@ -51,7 +61,8 @@ revive_cheat_test_original!(test_expect_call, "ExpectCall");
 // revive_cheat_test!(test_fee, "Fee");
 // vm.prevrandao() doesn't work correctly in revive mode
 // revive_cheat_test!(test_prevrandao, "Prevrandao");
-revive_cheat_test_original!(test_load, "Load");
+// Exclude test for precompile address
+revive_cheat_test_original!(test_load, "Load", exclude: "testLoadNotAvailableOnPrecompiles");
 // Not implemented
 // revive_cheat_test_original!(test_access_list, "AccessList");
 revive_cheat_test_original!(test_addr, "Addr");
