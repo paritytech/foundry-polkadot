@@ -627,7 +627,10 @@ async fn test_fork_eth_get_balance_from_westend() {
     let alith_balance_after_mine = fork_node.get_balance(alith.address(), None).await;
 
     // Balance should be the same (no transactions were made)
-    assert_eq!(alith_balance, alith_balance_after_mine, "Balance should not change after mining empty block");
+    assert_eq!(
+        alith_balance, alith_balance_after_mine,
+        "Balance should not change after mining empty block"
+    );
 }
 
 /// Tests that we can get code of contracts from the forked Westend Asset Hub state
@@ -641,10 +644,7 @@ async fn test_fork_eth_get_code_from_westend() {
     for _ in 0..5 {
         let random_addr = Address::random();
         let code = unwrap_response::<Bytes>(
-            fork_node
-                .eth_rpc(EthRequest::EthGetCodeAt(random_addr, None))
-                .await
-                .unwrap(),
+            fork_node.eth_rpc(EthRequest::EthGetCodeAt(random_addr, None)).await.unwrap(),
         )
         .unwrap();
         assert!(code.is_empty(), "Random address should have no code");
@@ -658,10 +658,7 @@ async fn test_fork_eth_get_code_from_westend() {
     let alith_address = Address::from(ReviveAddress::new(alith.address()));
     let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(alith_address, initial_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
     .unwrap();
 
@@ -701,10 +698,7 @@ async fn test_fork_eth_get_nonce_from_westend() {
     // Set balance for alith (may not have balance in the forked chain)
     let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(alith_address, initial_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
     .unwrap();
 
@@ -736,10 +730,7 @@ async fn test_fork_eth_get_nonce_from_westend() {
     for _ in 0..3 {
         let random_addr = Address::random();
         let nonce = unwrap_response::<U256>(
-            fork_node
-                .eth_rpc(EthRequest::EthGetTransactionCount(random_addr, None))
-                .await
-                .unwrap(),
+            fork_node.eth_rpc(EthRequest::EthGetTransactionCount(random_addr, None)).await.unwrap(),
         )
         .unwrap();
         assert_eq!(nonce, U256::ZERO, "Random address should have nonce 0");
@@ -761,17 +752,11 @@ async fn test_fork_state_snapshotting_from_westend() {
     // Set initial balances for dev accounts (they may not have balance in the forked chain)
     let set_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(alith_address, set_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, set_balance)).await.unwrap(),
     )
     .unwrap();
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(baltathar_address, set_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(baltathar_address, set_balance)).await.unwrap(),
     )
     .unwrap();
 
@@ -813,11 +798,7 @@ async fn test_fork_state_snapshotting_from_westend() {
         initial_baltathar_balance + transfer_amount,
         "Baltathar should receive transfer amount"
     );
-    assert_eq!(
-        nonce_after,
-        initial_alith_nonce + U256::from(1),
-        "Nonce should increase"
-    );
+    assert_eq!(nonce_after, initial_alith_nonce + U256::from(1), "Nonce should increase");
 
     // Revert to snapshot
     let reverted = unwrap_response::<bool>(
@@ -842,10 +823,7 @@ async fn test_fork_state_snapshotting_from_westend() {
         baltathar_balance_reverted, initial_baltathar_balance,
         "Baltathar balance should be restored after revert"
     );
-    assert_eq!(
-        nonce_reverted, initial_alith_nonce,
-        "Nonce should be restored after revert"
-    );
+    assert_eq!(nonce_reverted, initial_alith_nonce, "Nonce should be restored after revert");
 }
 
 /// Tests sending transactions on a forked Westend Asset Hub node
@@ -863,10 +841,7 @@ async fn test_fork_can_send_tx_from_westend() {
     // Set initial balances for dev accounts (they may not have balance in the forked chain)
     let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(alith_address, initial_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
     .unwrap();
     unwrap_response::<()>(
@@ -949,25 +924,20 @@ async fn test_fork_separate_states_from_westend() {
     let random_addr = Address::random();
 
     // Get initial balance (should be 0 for random address)
-    let initial_balance = fork_node
-        .get_balance(subxt::utils::H160::from(random_addr.0 .0), None)
-        .await;
+    let initial_balance =
+        fork_node.get_balance(subxt::utils::H160::from(random_addr.0.0), None).await;
     assert_eq!(initial_balance, U256::ZERO, "Random address should have zero balance initially");
 
     // Set a new balance locally
     let new_balance = U256::from(1337u64);
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(random_addr, new_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(random_addr, new_balance)).await.unwrap(),
     )
     .unwrap();
 
     // Verify local balance changed
-    let local_balance = fork_node
-        .get_balance(subxt::utils::H160::from(random_addr.0 .0), None)
-        .await;
+    let local_balance =
+        fork_node.get_balance(subxt::utils::H160::from(random_addr.0.0), None).await;
     assert_eq!(local_balance, new_balance, "Local balance should be updated");
 
     // The remote state should not be affected (we can't directly check this,
@@ -987,10 +957,7 @@ async fn test_fork_can_deploy_contract_from_westend() {
     // Set balance for deployment
     let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(alith_address, initial_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
     .unwrap();
 
@@ -1032,7 +999,8 @@ async fn test_fork_can_deploy_contract_from_westend() {
         "Second contract deployment should succeed"
     );
 
-    let contract_address2 = receipt2.contract_address.expect("Second contract address should exist");
+    let contract_address2 =
+        receipt2.contract_address.expect("Second contract address should exist");
     assert_ne!(contract_address, contract_address2, "Contract addresses should be different");
 }
 
@@ -1050,19 +1018,13 @@ async fn test_fork_impersonate_account_from_westend() {
     // Set balance for the impersonated account
     let balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(impersonated_addr, balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(impersonated_addr, balance)).await.unwrap(),
     )
     .unwrap();
 
     // Enable impersonation
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::ImpersonateAccount(impersonated_addr))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::ImpersonateAccount(impersonated_addr)).await.unwrap(),
     )
     .unwrap();
 
@@ -1084,17 +1046,13 @@ async fn test_fork_impersonate_account_from_westend() {
     );
 
     // Verify recipient received the funds
-    let recipient_balance = fork_node
-        .get_balance(subxt::utils::H160::from(recipient_addr.0 .0), None)
-        .await;
+    let recipient_balance =
+        fork_node.get_balance(subxt::utils::H160::from(recipient_addr.0.0), None).await;
     assert_eq!(recipient_balance, transfer_amount, "Recipient should receive transfer");
 
     // Stop impersonation
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::StopImpersonatingAccount(impersonated_addr))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::StopImpersonatingAccount(impersonated_addr)).await.unwrap(),
     )
     .unwrap();
 }
@@ -1109,14 +1067,10 @@ async fn test_fork_set_balance_and_code_from_westend() {
     let test_addr = Address::random();
 
     // Initially should have no balance and no code
-    let initial_balance = fork_node
-        .get_balance(subxt::utils::H160::from(test_addr.0 .0), None)
-        .await;
+    let initial_balance =
+        fork_node.get_balance(subxt::utils::H160::from(test_addr.0.0), None).await;
     let initial_code = unwrap_response::<Bytes>(
-        fork_node
-            .eth_rpc(EthRequest::EthGetCodeAt(test_addr, None))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::EthGetCodeAt(test_addr, None)).await.unwrap(),
     )
     .unwrap();
 
@@ -1126,51 +1080,35 @@ async fn test_fork_set_balance_and_code_from_westend() {
     // Set balance
     let new_balance = U256::from(12345678u64);
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetBalance(test_addr, new_balance))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetBalance(test_addr, new_balance)).await.unwrap(),
     )
     .unwrap();
 
-    let updated_balance = fork_node
-        .get_balance(subxt::utils::H160::from(test_addr.0 .0), None)
-        .await;
+    let updated_balance =
+        fork_node.get_balance(subxt::utils::H160::from(test_addr.0.0), None).await;
     assert_eq!(updated_balance, new_balance, "Balance should be updated");
 
     // Set code
     let new_code = Bytes::from(vec![0x60, 0x60, 0x60, 0x40]); // Simple bytecode
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetCode(test_addr, new_code.clone()))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetCode(test_addr, new_code.clone())).await.unwrap(),
     )
     .unwrap();
 
     let updated_code = unwrap_response::<Bytes>(
-        fork_node
-            .eth_rpc(EthRequest::EthGetCodeAt(test_addr, None))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::EthGetCodeAt(test_addr, None)).await.unwrap(),
     )
     .unwrap();
     assert_eq!(updated_code, new_code, "Code should be updated");
 
     // Set code to empty (clear code)
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::SetCode(test_addr, Bytes::new()))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::SetCode(test_addr, Bytes::new())).await.unwrap(),
     )
     .unwrap();
 
     let cleared_code = unwrap_response::<Bytes>(
-        fork_node
-            .eth_rpc(EthRequest::EthGetCodeAt(test_addr, None))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::EthGetCodeAt(test_addr, None)).await.unwrap(),
     )
     .unwrap();
     assert!(cleared_code.is_empty(), "Code should be cleared");
@@ -1197,10 +1135,7 @@ async fn test_fork_block_number_after_mine_from_westend() {
 
     // Mine multiple blocks
     unwrap_response::<()>(
-        fork_node
-            .eth_rpc(EthRequest::Mine(Some(U256::from(5)), None))
-            .await
-            .unwrap(),
+        fork_node.eth_rpc(EthRequest::Mine(Some(U256::from(5)), None)).await.unwrap(),
     )
     .unwrap();
 
