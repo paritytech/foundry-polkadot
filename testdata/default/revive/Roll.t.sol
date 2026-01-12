@@ -18,15 +18,12 @@ contract RollTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testRoll() public {
-        vm.pvm(true);
-        vm.polkadot(true);
         BlockNumber blockContract = new BlockNumber();
         vm.roll(10);
         assertEq(blockContract.number(), 10, "roll failed");
     }
 
     function testRollFuzzed(uint32 jump) public {
-        vm.polkadot(true);
         BlockNumber blockContract = new BlockNumber();
         uint256 pre = blockContract.number();
         vm.roll(pre + jump);
@@ -34,7 +31,6 @@ contract RollTest is DSTest {
     }
 
     function testRollHash() public {
-        vm.polkadot(true);
         BlockNumber blockContract = new BlockNumber();
         assertEq(blockContract.hash(blockContract.number()), 0x0, "initial block hash is incorrect");
         vm.roll(5);

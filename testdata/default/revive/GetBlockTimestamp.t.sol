@@ -14,13 +14,11 @@ contract GetBlockTimestampTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testGetTimestamp() public {
-        vm.pvm(true);
         BlockTimestamp blockTimestamp = new BlockTimestamp();
         assertEq(blockTimestamp.timestamp(), 1, "timestamp should be 1");
     }
 
     function testGetTimestampWithWarp() public {
-        vm.pvm(true);
         BlockTimestamp blockTimestamp = new BlockTimestamp();
         assertEq(blockTimestamp.timestamp(), 1, "timestamp should be 1");
         vm.warp(10);
@@ -28,7 +26,6 @@ contract GetBlockTimestampTest is DSTest {
     }
 
     function testGetTimestampWithWarpFuzzed(uint32 jump) public {
-        vm.pvm(true);
         BlockTimestamp blockTimestamp = new BlockTimestamp();
         uint256 pre = blockTimestamp.timestamp();
         vm.warp(pre + jump);

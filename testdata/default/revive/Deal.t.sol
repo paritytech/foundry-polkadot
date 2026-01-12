@@ -14,7 +14,6 @@ contract DealTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testDeal(uint128 amount) public {
-        vm.pvm(true);
         BalanceChecker checker = new BalanceChecker();
         address target = address(10);
         assertEq(checker.getBalance(target), 0, "initial balance incorrect");

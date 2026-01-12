@@ -14,14 +14,12 @@ contract WarpTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testWarp() public {
-        vm.pvm(true);
         BlockTimestamp timeContract = new BlockTimestamp();
         vm.warp(10);
         assertEq(timeContract.timestamp(), 10, "warp failed");
     }
 
     function testWarpFuzzed(uint32 jump) public {
-        vm.pvm(true);
         BlockTimestamp timeContract = new BlockTimestamp();
         uint256 pre = timeContract.timestamp();
         vm.warp(pre + jump);
@@ -29,7 +27,6 @@ contract WarpTest is DSTest {
     }
     
     function testWarp2() public {
-        vm.pvm(true);
         BlockTimestamp timeContract = new BlockTimestamp();
         assertEq(timeContract.timestamp(), 1);
         vm.warp(100);

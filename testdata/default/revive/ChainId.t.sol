@@ -14,7 +14,6 @@ contract ChainIdTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testChainId() public {
-        vm.pvm(true);
         BlockChainId chainContract = new BlockChainId();
         uint256 newChainId = 99;
         vm.chainId(newChainId);

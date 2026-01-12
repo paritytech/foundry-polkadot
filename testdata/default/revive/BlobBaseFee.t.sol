@@ -18,7 +18,6 @@
 //     Vm constant vm = Vm(HEVM_ADDRESS);
 
 //     function testBlobBaseFee() public {
-//         vm.pvm(true);
 //         BlockBlobBaseFee blobContract = new BlockBlobBaseFee();
 //         vm.blobBaseFee(6969);
 //         assertEq(vm.getBlobBaseFee(), 6969);

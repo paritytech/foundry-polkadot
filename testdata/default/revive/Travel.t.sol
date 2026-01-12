@@ -14,14 +14,12 @@ contract ChainIdTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testChainId() public {
-        vm.pvm(true);
         BlockChainId blockChainId = new BlockChainId();
         vm.chainId(10);
         assertEq(blockChainId.chainId(), 10, "chainId switch failed");
     }
 
     function testChainIdFuzzed(uint64 chainId) public {
-        vm.pvm(true);
         BlockChainId blockChainId = new BlockChainId();
         vm.chainId(chainId);
         assertEq(blockChainId.chainId(), chainId, "chainId switch failed");

@@ -18,7 +18,6 @@ contract PrevrandaoTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testPrevrandao() public {
-        vm.pvm(true);
         BlockPrevrandao randaoContract = new BlockPrevrandao();
         assertEq(randaoContract.prevrandao(), 0);
         vm.prevrandao(uint256(10));
@@ -26,7 +25,6 @@ contract PrevrandaoTest is DSTest {
     }
 
     // function testPrevrandaoFuzzed(uint256 newPrevrandao) public {
-    //     vm.pvm(true);
     //     BlockPrevrandao randaoContract = new BlockPrevrandao();
     //     vm.assume(newPrevrandao != randaoContract.prevrandao());
     //     assertEq(randaoContract.prevrandao(), 0);
@@ -35,7 +33,6 @@ contract PrevrandaoTest is DSTest {
     // }
 
     // function testPrevrandaoSnapshotFuzzed(uint256 newPrevrandao) public {
-    //     vm.pvm(true);
     //     BlockPrevrandao randaoContract = new BlockPrevrandao();
     //     vm.assume(newPrevrandao != randaoContract.prevrandao());
     //     uint256 oldPrevrandao = randaoContract.prevrandao();

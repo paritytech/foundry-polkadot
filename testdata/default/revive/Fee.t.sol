@@ -18,14 +18,12 @@ contract FeeTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testFee() public {
-        vm.pvm(true);
         BlockBaseFee feeContract = new BlockBaseFee();
         vm.fee(10);
         assertEq(feeContract.baseFee(), 10, "fee failed");
     }
 
     function testFeeFuzzed(uint64 fee) public {
-        vm.pvm(true);
         BlockBaseFee feeContract = new BlockBaseFee();
         vm.fee(fee);
         assertEq(feeContract.baseFee(), fee, "fee failed");
