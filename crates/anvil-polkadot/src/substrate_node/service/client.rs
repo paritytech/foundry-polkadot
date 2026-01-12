@@ -47,7 +47,6 @@ pub fn new_client(
             None
         };
 
-
     let backend = new_lazy_loading_backend(fork_config.clone())?;
 
     // In fork mode, use the checkpoint block as genesis
@@ -149,15 +148,15 @@ fn setup_fork(
 
     let block_num = genesis_num as u32;
     let block_hash = rpc_client
-            .block_hash(Some(block_num))
-            .map_err(|e| {
-                sp_blockchain::Error::Backend(format!(
-                    "failed to fetch block hash for block {block_num}: {e}"
-                ))
-            })?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("block hash not found for block {block_num}"))
-            })?;
+        .block_hash(Some(block_num))
+        .map_err(|e| {
+            sp_blockchain::Error::Backend(format!(
+                "failed to fetch block hash for block {block_num}: {e}"
+            ))
+        })?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("block hash not found for block {block_num}"))
+        })?;
 
     let wasm_binary = rpc_client
         .storage(StorageKey(CODE.to_vec()), Some(block_hash))

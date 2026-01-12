@@ -30,8 +30,8 @@ use polkadot_sdk::{
     sp_timestamp,
 };
 use std::sync::Arc;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio::runtime::Builder as TokioRtBuilder;
+use tokio_stream::wrappers::ReceiverStream;
 
 use subxt::PolkadotConfig;
 
@@ -119,10 +119,7 @@ fn create_manual_seal_inherent_data_providers(
         let last_block_number = backend
             .read_last_relay_chain_block_number(current_para_head.hash())
             .map_err(|e| ServiceError::Other(format!("reading last relay block number: {e}")));
-        let last_rc_block_number = match last_block_number {
-            Ok(last_block_number) => last_block_number,
-            Err(_) => 0, // For starting from genesis
-        };
+        let last_rc_block_number = last_block_number.unwrap_or_default();
 
         // Used to set the relay chain slot provided via the proof (which is represented
         // by a set of relay chain state keys). The slot is read from the proof at the moment
@@ -140,7 +137,7 @@ fn create_manual_seal_inherent_data_providers(
         // This helps with allowing greater block production velocity per relay chain slot.
         backend.inject_relay_slot_info(current_para_head.hash(), (slot_in_state, 0));
 
-         // Read the DMQ MQC head from parachain storage to avoid "DMQ head mismatch" errors
+        // Read the DMQ MQC head from parachain storage to avoid "DMQ head mismatch" errors
         // The storage key is: twox_128("ParachainSystem") + twox_128("LastDmqMqcHead")
         let pallet_prefix = polkadot_sdk::sp_core::twox_128(b"ParachainSystem");
         let storage_prefix = polkadot_sdk::sp_core::twox_128(b"LastDmqMqcHead");
@@ -198,56 +195,55 @@ pub fn new(
     anvil_config: &AnvilNodeConfig,
     mut config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
-
     let mut genesis_block_number = anvil_config.get_genesis_number();
     if let Some(ref fork_url) = anvil_config.eth_rpc_url {
         // TODO ws is for local host, wss for remote (aka prod)
-        let http_url = fork_url.replacen("https://", "ws://", 1)
+        let http_url = fork_url
+            .replacen("https://", "ws://", 1)
             .replacen("http://", "ws://", 1);
         let fork_choice = anvil_config.fork_choice.clone();
-        let storage_map =
-            std::thread::spawn(move || -> eyre::Result<Result<u64, ()>> {
-                let rt = TokioRtBuilder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .map_err(|e| eyre::eyre!("tokio rt build error: {e}"))?;
-                rt.block_on(async move {
-                    let client =
-                        subxt::client::OnlineClient::<PolkadotConfig>::from_url(http_url.clone())
-                            .await
-                            .unwrap();
-
-                    let finalized_block_ref =
-                        client.backend().latest_finalized_block_ref().await.unwrap();
-                    let finalized_head_header = client
-                        .backend()
-                        .block_header(finalized_block_ref.hash())
+        let storage_map = std::thread::spawn(move || -> eyre::Result<Result<u64, ()>> {
+            let rt = TokioRtBuilder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| eyre::eyre!("tokio rt build error: {e}"))?;
+            rt.block_on(async move {
+                let client =
+                    subxt::client::OnlineClient::<PolkadotConfig>::from_url(http_url.clone())
                         .await
-                        .unwrap()
                         .unwrap();
-                    let finalized_block_number: u64 = finalized_head_header.number.into();
 
-                    // Apply fork_choice if specified
-                    let target_block_number = match fork_choice {
-                        Some(ForkChoice::Block(block_num)) => {
-                            if block_num < 0 {
-                                // Negative offset from latest finalized block
-                                let offset = (-block_num) as u64;
-                                finalized_block_number.saturating_sub(offset)
-                            } else {
-                                // Specific block number
-                                block_num as u64
-                            }
+                let finalized_block_ref =
+                    client.backend().latest_finalized_block_ref().await.unwrap();
+                let finalized_head_header = client
+                    .backend()
+                    .block_header(finalized_block_ref.hash())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let finalized_block_number: u64 = finalized_head_header.number.into();
+
+                // Apply fork_choice if specified
+                let target_block_number = match fork_choice {
+                    Some(ForkChoice::Block(block_num)) => {
+                        if block_num < 0 {
+                            // Negative offset from latest finalized block
+                            let offset = (-block_num) as u64;
+                            finalized_block_number.saturating_sub(offset)
+                        } else {
+                            // Specific block number
+                            block_num as u64
                         }
-                        None => finalized_block_number,
-                    };
+                    }
+                    None => finalized_block_number,
+                };
 
-                    Ok(Ok(target_block_number))
-                })
+                Ok(Ok(target_block_number))
             })
-            .join()
-            .map_err(|_| ServiceError::Other("tokio thread panicked".into()))?
-            .map_err(|e| ServiceError::Other(format!("fork fetch failed: {e}")))?;
+        })
+        .join()
+        .map_err(|_| ServiceError::Other("tokio thread panicked".into()))?
+        .map_err(|e| ServiceError::Other(format!("fork fetch failed: {e}")))?;
 
         match storage_map {
             Ok(genesis_number) => {
@@ -263,8 +259,13 @@ pub fn new(
         Arc::new(Mutex::new(StorageOverrides::new(anvil_config.revive_rpc_block_limit)));
     let executor = sc_service::new_wasm_executor(&config.executor);
 
-    let (client, backend, keystore, mut task_manager) =
-        client::new_client(anvil_config, &mut config, executor, storage_overrides.clone(), genesis_block_number)?;
+    let (client, backend, keystore, mut task_manager) = client::new_client(
+        anvil_config,
+        &mut config,
+        executor,
+        storage_overrides.clone(),
+        genesis_block_number,
+    )?;
 
     let transaction_pool = Arc::from(
         sc_transaction_pool::Builder::new(
@@ -364,7 +365,7 @@ pub fn new(
             rpc_handlers,
             mining_engine,
             storage_overrides,
-            genesis_block_number: genesis_block_number,
+            genesis_block_number,
         },
         task_manager,
     ))
