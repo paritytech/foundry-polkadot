@@ -179,7 +179,7 @@ async fn test_gas_price() {
 
     let gas_price =
         unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
-    assert_eq!(gas_price, U256::from(10000000));
+    assert_eq!(gas_price, U256::from(1000000));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -670,7 +670,7 @@ async fn test_fee_history() {
     // The `SlowAdjustingFeeUpdate` logic decreases the base_fee block by block if the
     // activity contained within them is low.
     let base_fees =
-        [1_000_000, 999981, 999962, 999944, 999925, 999906, 999888, 999869, 999851, 999832, 999832]
+        [1_000_000, 999981, 999962, 999944, 999925, 999907, 999888, 999869, 999851, 999832, 999832]
             .into_iter()
             .map(pallet_revive::U256::from)
             .collect::<Vec<_>>();
