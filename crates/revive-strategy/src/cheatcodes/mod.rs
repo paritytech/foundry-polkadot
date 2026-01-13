@@ -443,10 +443,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
 
+                if ccx.is_precompile(target) {
+                    return Err(precompile_error(target));
+                }
+
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.externalities.etch_call(target, newRuntimeBytecode, ccx.ecx)?;
-                Ok(Default::default())
+
+                cheatcode.dyn_apply(ccx, executor)
             }
 
             t if is::<etchCall>(t) => {
