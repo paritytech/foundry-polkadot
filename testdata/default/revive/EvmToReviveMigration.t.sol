@@ -369,3 +369,17 @@ contract EvmReviveMigrationTest is DSTest {
         assertEq(evmContract.get(), 250, "EVM contract should update in PVM mode");
     }
 }
+contract InitialMigrationTest is DSTest {
+    Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    SimpleStorage storageContract = new SimpleStorage();
+
+    function setUp() public {
+        storageContract.set(42);
+        uint256 val = storageContract.get();
+        assertEq(val, 42);
+    }
+
+    function testInitialContractMigration() public {
+        assertEq(storageContract.get(), 42);
+    }
+}

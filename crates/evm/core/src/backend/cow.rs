@@ -287,6 +287,10 @@ impl DatabaseExt for CowBackend<'_> {
         self.backend.has_cheatcode_access(account)
     }
 
+    fn cached_accounts(&self) -> Vec<Address> {
+        self.backend.cached_accounts()
+    }
+
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
         self.backend.to_mut().set_blockhash(block_number, block_hash);
     }

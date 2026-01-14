@@ -353,6 +353,9 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit + Debug 
     /// Returns `true` if the given account is allowed to execute cheatcodes
     fn has_cheatcode_access(&self, account: &Address) -> bool;
 
+    /// Returns all accounts in the memory database cache
+    fn cached_accounts(&self) -> Vec<Address>;
+
     /// Ensures that `account` is allowed to execute cheatcodes
     ///
     /// Returns an error if [`Self::has_cheatcode_access`] returns `false`
@@ -1514,6 +1517,10 @@ impl DatabaseExt for Backend {
 
     fn has_cheatcode_access(&self, account: &Address) -> bool {
         self.inner.cheatcode_access_accounts.contains(account)
+    }
+
+    fn cached_accounts(&self) -> Vec<Address> {
+        self.mem_db.cache.accounts.keys().copied().collect()
     }
 
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
