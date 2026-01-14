@@ -1,12 +1,12 @@
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types::{
-    AccessList, FilterBlockOption, FilterSet, SignedAuthorization, Topic, TransactionRequest,
     trace::geth::{
         AccountState, CallFrame, CallLogFrame, DiffMode, GethDebugBuiltInTracerType,
         GethDebugTracerType, GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace,
         PreStateFrame, PreStateMode,
     },
+    AccessList, FilterBlockOption, FilterSet, SignedAuthorization, Topic, TransactionRequest,
 };
 use polkadot_sdk::{
     pallet_revive::evm::{
@@ -420,7 +420,7 @@ impl From<RevivePrestateTraceInfo> for AccountState {
                 .map(|(k, v)| {
                     (
                         B256::from_slice(k.0.as_slice()),
-                        B256::from_slice(v.unwrap_or_default().0.as_slice()),
+                        B256::from_slice(v.unwrap_or(Bytes(vec![0u8; 32])).0.as_slice()),
                     )
                 })
                 .collect(),

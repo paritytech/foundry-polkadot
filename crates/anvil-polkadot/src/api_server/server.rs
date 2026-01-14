@@ -849,7 +849,9 @@ impl ApiServer {
                 .sign_transaction(Address::from(ReviveAddress::new(addr)), tx)?
                 .signed_payload(),
             None => {
-                let mut fake_signature = [0; 65];
+                use crate::substrate_node::host::IMPERSONATION_MARKER;
+                let mut fake_signature = [IMPERSONATION_MARKER; 65];
+                fake_signature[..12].fill(0);
                 fake_signature[12..32].copy_from_slice(from.as_bytes());
                 tx.with_signature(fake_signature).signed_payload()
             }
