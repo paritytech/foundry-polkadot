@@ -12,7 +12,7 @@
 //! This module implements tweaked versions of the host functions from `sp-io`, which
 //! can recognize fake signatures used for impersonated transactions, and can recover
 //! the signer address from them, while expecting those fake signatures to be built in
-//! a certain way ([0; 12] + sender's Ethereum address + [IMPERSONATION_MARKER; 33]).
+//! a certain way ([0; 12] + sender's Ethereum address + [IMPERSONATION_MARKER; 32] + recovery_id).
 //!
 //! The tweaked host functions are especially useful in the context of overriding the
 //! same `sp-io` host functions in the wasm executor type.
@@ -34,9 +34,11 @@ pub const IMPERSONATION_MARKER: u8 = 0xDE;
 
 // The host functions in this module expect transactions
 // with fake signatures conforming the format checked in this function.
-// Format: [0; 12] + [20-byte address] + [IMPERSONATION_MARKER; 33]
+// Format: [0; 12] + [20-byte address] + [IMPERSONATION_MARKER; 32] + [recovery_id]
+// Note: We only check bytes 32..64 (the 's' component of ECDSA signature) for the marker.
+// Byte 64 (recovery_id/v) must be a valid value (0 or 1) for the transaction to be accepted.
 pub fn is_impersonated(sig: &[u8]) -> bool {
-    sig[..12] == [0; 12] && sig[32..].iter().all(|&b| b == IMPERSONATION_MARKER)
+    sig[..12] == [0; 12] && sig[32..64].iter().all(|&b| b == IMPERSONATION_MARKER)
 }
 
 /// Recover sender address from signed transaction, handling impersonated transactions.
