@@ -428,6 +428,14 @@ pub enum EthRequest {
         B256,
     ),
 
+    /// Sets the immutable data associated with a contract address
+    #[serde(rename = "anvil_setImmutableStorageAt")]
+    SetImmutableStorageAt(
+        Address,
+        /// immutable data
+        Bytes,
+    ),
+
     /// Sets the coinbase address
     #[serde(rename = "anvil_setCoinbase", alias = "hardhat_setCoinbase", with = "sequence")]
     SetCoinbase(Address),

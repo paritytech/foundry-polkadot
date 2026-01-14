@@ -207,6 +207,11 @@ impl BackendWithOverlay {
         overrides.set_code_info(at, code_hash, code_info);
     }
 
+    pub fn inject_immutable_data(&self, at: Hash, address: Address, data: Vec<u8>) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_immutable_data(at, address, data);
+    }
+
     pub fn inject_child_storage(
         &self,
         at: Hash,
@@ -348,6 +353,16 @@ impl StorageOverrides {
         changeset.top.insert(
             well_known_keys::code_info(code_hash),
             code_info.map(|code_info| code_info.encode()),
+        );
+
+        self.add(latest_block, changeset);
+    }
+
+    fn set_immutable_data(&mut self, latest_block: Hash, address: Address, data: Vec<u8>) {
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(
+            well_known_keys::immutable_data_of(H160::from_slice(address.as_slice())),
+            Some(data.encode()),
         );
 
         self.add(latest_block, changeset);

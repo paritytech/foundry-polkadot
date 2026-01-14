@@ -359,6 +359,9 @@ impl ApiServer {
             EthRequest::SetStorageAt(address, key, value) => {
                 self.set_storage_at(address, key, value).to_rpc_result()
             }
+            EthRequest::SetImmutableStorageAt(address, data) => {
+                self.set_immutable_storage_at(address, data).to_rpc_result()
+            }
             EthRequest::SetChainId(chain_id) => self.set_chain_id(chain_id).to_rpc_result(),
             // --- Revert ---
             EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
@@ -1312,6 +1315,20 @@ impl ApiServer {
 
         self.backend.inject_pristine_code(latest_block, code_hash, Some(bytes));
         self.backend.inject_code_info(latest_block, code_hash, Some(code_info));
+
+        Ok(())
+    }
+
+    fn set_immutable_storage_at(
+        &self,
+        address: Address,
+        data: alloy_primitives::Bytes,
+    ) -> Result<()> {
+        node_info!("anvil_setImmutableStorageAt");
+
+        let latest_block = self.latest_block();
+
+        self.backend.inject_immutable_data(latest_block, address, data.to_vec());
 
         Ok(())
     }
