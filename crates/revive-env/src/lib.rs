@@ -38,7 +38,7 @@ impl ExtBuilder {
                 .map(|(address, balance)| {
                     let acc: AccountId32 =
                         AccountId32Mapper::<Runtime>::to_fallback_account_id(address);
-                    (acc.into(), *balance)
+                    (acc, *balance)
                 })
                 .collect(),
         }
