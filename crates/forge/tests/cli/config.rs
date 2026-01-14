@@ -173,7 +173,7 @@ forgetest!(can_extract_config_values, |prj, cmd| {
         compilation_restrictions: Default::default(),
         script_execution_protection: true,
         _non_exhaustive: (),
-        resolc: Default::default(),
+        polkadot: Default::default(),
     };
     prj.write_config(input.clone());
     let config = cmd.config();
@@ -1063,7 +1063,7 @@ endpoints = "all"
 access = "read"
 path = "out"
 
-[profile.default.resolc]
+[profile.default.polkadot]
 resolc_compile = false
 polkadot = false
 
@@ -1343,7 +1343,7 @@ exclude = []
   "additional_compiler_profiles": [],
   "compilation_restrictions": [],
   "script_execution_protection": true,
-  "resolc": {
+  "polkadot": {
     "resolc_compile": false,
     "polkadot": false,
     "resolc": null,

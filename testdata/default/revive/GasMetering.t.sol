@@ -31,7 +31,6 @@ contract GasMeteringTest is DSTest {
     Worker public worker;
 
     function setUp() public {
-        vm.pvm(true);
         worker = new Worker();
     }
 

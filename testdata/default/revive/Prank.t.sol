@@ -71,17 +71,15 @@ contract NestedPranker {
     }
 
     function completePrank(NestedVictim victim) public {
-        vm.pvm(true);
-
         victim.assertCallerAndOrigin(
             newSender, "msg.sender was not set in nested prank", newOrigin, "tx.origin was not set in nested prank"
         );
 
-        vm.pvm(false);
+        vm.polkadot(false);
 
         vm.stopPrank();
 
-        vm.pvm(true);
+        vm.polkadot(true);
 
         // Ensure we cleaned up correctly
         victim.assertCallerAndOrigin(
@@ -119,7 +117,6 @@ contract PrankTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
     function testPrankDelegateCallPrank2() public {
-        vm.pvm(true);
         ProxyTest proxy = new ProxyTest();
         ImplementationTest impl = new ImplementationTest();
         vm.prank(address(proxy), true);
@@ -142,7 +139,6 @@ contract PrankTest is DSTest {
     }
 
     function testPrankDelegateCallStartPrank2() public {
-        vm.pvm(true);
         ProxyTest proxy = new ProxyTest();
         ImplementationTest impl = new ImplementationTest();
         vm.startPrank(address(proxy), true);
@@ -163,7 +159,6 @@ contract PrankTest is DSTest {
     function testPrankDelegateCallPrank3() public {
         address origin = address(999);
         vm.assume(isNotReserved(origin));
-        vm.pvm(true);
         ProxyTest proxy = new ProxyTest();
         ImplementationTest impl = new ImplementationTest();
         vm.prank(address(proxy), origin, true);
@@ -189,8 +184,6 @@ contract PrankTest is DSTest {
 
     function testPrankDelegateCallStartPrank3(address origin) public {
         vm.assume(isNotReserved(origin));
-        vm.pvm(true);
-
         ProxyTest proxy = new ProxyTest();
         ImplementationTest impl = new ImplementationTest();
         vm.startPrank(address(proxy), origin, true);
@@ -226,8 +219,6 @@ contract PrankTest is DSTest {
     function testPrankSender(address sender) public {
         vm.assume(isNotReserved(sender));
         // Perform the prank
-        vm.pvm(true);
-
         Victim victim = new Victim();
         vm.prank(sender);
         victim.assertCallerAndOrigin(
@@ -244,7 +235,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
         address oldOrigin = tx.origin;
-        vm.pvm(true);
 
         // Perform the prank
         Victim victim = new Victim();
@@ -264,7 +254,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(origin));
         // Perform the prank
         address oldOrigin = tx.origin;
-        vm.pvm(true);
 
         Victim victim = new Victim();
         vm.prank(sender);
@@ -307,7 +296,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(origin));
         // Perform the prank
         address oldOrigin = tx.origin;
-        vm.pvm(true);
         Victim victim = new Victim();
         console.log("Balance of sender before prank:", sender.balance);
         console.log("Balance of origin before prank:", origin.balance);
@@ -339,7 +327,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(origin));
 
         // Perform the prank
-        vm.pvm(true);
         address oldOrigin = tx.origin;
         Victim victim = new Victim();
         vm.startPrank(sender, origin);
@@ -363,8 +350,6 @@ contract PrankTest is DSTest {
     function testStartPrank1AfterStartPrank0(address sender, address origin) public {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
         // Perform the prank
         address oldOrigin = tx.origin;
         Victim victim = new Victim();
@@ -400,7 +385,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
         // Perform the prank
-        vm.pvm(true);
         address oldOrigin = tx.origin;
         Victim victim = new Victim();
         vm.startPrank(sender, origin);
@@ -416,7 +400,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(origin));
         // Set the prank, but not use it
         address oldOrigin = tx.origin;
-        vm.pvm(true);
         Victim victim = new Victim();
         vm.startPrank(sender, origin);
         victim.assertCallerAndOrigin(
@@ -434,7 +417,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
         // Perform the prank
-        vm.pvm(true);
         address oldOrigin = tx.origin;
         Victim victim = new Victim();
         vm.startPrank(sender, origin);
@@ -464,7 +446,6 @@ contract PrankTest is DSTest {
         // Set the prank, but not use it
         vm.assume(isNotReserved(sender));
         // Perform the prank
-        vm.pvm(true);
         vm.prank(sender);
         ConstructorVictim victim = new ConstructorVictim(
             sender, "msg.sender was not set during prank", tx.origin, "tx.origin invariant failed"
@@ -479,8 +460,6 @@ contract PrankTest is DSTest {
     function testPrankConstructorOrigin(address sender, address origin) public {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
-        // Perform the prank
-        vm.pvm(true);
         // Perform the prank
         vm.prank(sender, origin);
         ConstructorVictim victim = new ConstructorVictim(
@@ -497,7 +476,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
         // Perform the prank
-        vm.pvm(true);
         address oldOrigin = tx.origin;
 
         // Perform the prank
@@ -525,7 +503,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
         // Perform the prank
-        vm.pvm(true);
         vm.startPrank(sender, origin);
         ConstructorVictim victim = new ConstructorVictim(
             sender, "msg.sender was not set during prank", origin, "tx.origin was not set during prank"
@@ -611,13 +588,13 @@ contract PrankTest is DSTest {
 
     //     NestedPranker pranker = new NestedPranker(sender, origin);
 
-    //     vm.pvm(true);
+    //     vm.polkadot(true);
     //     Victim innerVictim = new Victim();
     //     NestedVictim victim = new NestedVictim(innerVictim);
 
-    //     vm.pvm(false);
+    //     vm.polkadot(false);
     //     pranker.incompletePrank();
-    //     vm.pvm(true);
+    //     vm.polkadot(true);
 
     //     victim.assertCallerAndOrigin(
     //         address(this),
@@ -636,7 +613,6 @@ contract PrankTest is DSTest {
         vm.assume(isNotReserved(sender));
         vm.assume(isNotReserved(origin));
         // Perform the prank
-        vm.pvm(true);
         address oldSender = msg.sender;
         address oldOrigin = tx.origin;
 

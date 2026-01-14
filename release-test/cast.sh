@@ -47,7 +47,7 @@ src = "src"
 out = "out"
 libs = ["lib"]
 
-[profile.default.resolc]
+[profile.default.polkadot]
 resolc_compile = true
 EOF
 

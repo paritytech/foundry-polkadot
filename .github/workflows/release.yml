@@ -93,14 +93,14 @@ jobs:
           # `target`: Rust build target triple
           # `platform` and `arch`: Used in tarball names
           # `svm`: target platform to use for the Solc binary: https://github.com/roynalnaruto/svm-rs/blob/84cbe0ac705becabdc13168bae28a45ad2299749/svm-builds/build.rs#L4-L24
-          - runner: ubuntu-24.04
+          - runner: parity-large-new
             target: x86_64-unknown-linux-musl
             svm_target_platform: linux-amd64
             platform: linux
             arch: amd64
           # This is pinned to `macos-13-large` to support old SDK versions.
           # If the runner is deprecated it should be pinned to the oldest available version of the runner.
-          - runner: macos-13-large
+          - runner: macos-14-large
             target: x86_64-apple-darwin
             svm_target_platform: macosx-amd64
             platform: darwin
@@ -119,11 +119,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89.0
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target }}, wasm32-unknown-unknown
+          components: rust-src
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
           cache-on-failure: true
+      - name: Install dependencies for building (Ubuntu)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev unzip build-essential musl-tools
 
       - name: Apple M1 setup
         if: matrix.target == 'aarch64-apple-darwin'
@@ -131,11 +137,18 @@ jobs:
           echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
           echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
 
-      - name: Linux setup musl x86_64
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+      - name: Install clang (macOS)
+        if: contains(matrix.runner, 'macos')
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y musl-tools
+          brew install llvm
+          brew link llvm
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build binaries
         env:
@@ -159,8 +172,11 @@ jobs:
 
           if [[ "$TARGET" == "x86_64-unknown-linux-musl" ]]; then
             docker run -v $PWD:/opt/revive $RUST_MUSL_CROSS_IMAGE /bin/bash -c "
+            apt-get update && apt-get install -y clang libclang-dev unzip build-essential protobuf-compiler
+            rustup default 1.89.0
+            rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown
+            rustup component add rust-src
             cd /opt/revive
-            rustup target add x86_64-unknown-linux-musl
             cargo build $flags
           "
           sudo chown -R $(id -u):$(id -g) .
@@ -176,7 +192,8 @@ jobs:
             du -h "$bin" || true
             ldd "$bin" || true
             $bin --version || true
-            echo "${name}_bin_path=${bin}" >> $GITHUB_ENV
+            var_name=$(echo "${name}" | tr '-' '_')
+            echo "${var_name}_bin_path=${bin}" >> $GITHUB_ENV
           done
 
       - name: Archive binaries

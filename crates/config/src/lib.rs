@@ -129,7 +129,7 @@ mod compilation;
 pub use compilation::{CompilationRestrictions, SettingsOverrides};
 
 pub mod revive;
-use revive::ResolcConfig;
+use revive::PolkadotConfig;
 
 /// Foundry configuration
 ///
@@ -553,8 +553,8 @@ pub struct Config {
     #[doc(hidden)]
     #[serde(skip)]
     pub _non_exhaustive: (),
-    /// Resolc Config/Settings
-    pub resolc: ResolcConfig,
+    /// Polkadot Config/Settings
+    pub polkadot: PolkadotConfig,
 }
 
 /// Mapping of fallback standalone sections. See [`FallbackProfileProvider`].
@@ -1023,8 +1023,8 @@ impl Config {
     /// Prefer using [`Self::project`] or [`Self::ephemeral_project`] instead.
     pub fn create_project(&self, cached: bool, no_artifacts: bool) -> Result<Project, SolcError> {
         let settings = self.compiler_settings()?;
-        let paths = if self.resolc.resolc_compile {
-            ResolcConfig::project_paths(self)
+        let paths = if self.polkadot.resolc_compile {
+            PolkadotConfig::project_paths(self)
         } else {
             self.project_paths()
         };
@@ -1213,7 +1213,7 @@ impl Config {
     /// Returns the [Resolc] compiler.
     pub fn resolc_compiler(&self) -> Result<Resolc, SolcError> {
         let solc_compiler = self.solc_compiler()?;
-        match &self.resolc.resolc {
+        match &self.polkadot.resolc {
             Some(SolcReq::Local(path)) => {
                 if !path.is_file() {
                     return Err(SolcError::msg(format!(
@@ -1249,7 +1249,7 @@ impl Config {
     /// Returns configuration for a compiler to use when setting up a [Project].
     pub fn compiler(&self) -> Result<MultiCompiler, SolcError> {
         Ok(MultiCompiler {
-            solidity: if self.resolc.resolc_compile {
+            solidity: if self.polkadot.resolc_compile {
                 SolidityCompiler::Resolc(self.resolc_compiler()?)
             } else {
                 SolidityCompiler::Solc(self.solc_compiler()?)
@@ -1261,8 +1261,8 @@ impl Config {
     /// Returns configured [MultiCompilerSettings].
     pub fn compiler_settings(&self) -> Result<MultiCompilerSettings, SolcError> {
         Ok(MultiCompilerSettings {
-            solc: if self.resolc.resolc_compile {
-                ResolcConfig::resolc_settings(self)?
+            solc: if self.polkadot.resolc_compile {
+                PolkadotConfig::resolc_settings(self)?
             } else {
                 self.solc_settings()?
             },
@@ -1603,7 +1603,7 @@ impl Config {
             evm_version: Some(self.evm_version),
             metadata: Some(SettingsMetadata {
                 use_literal_content: Some(self.use_literal_content),
-                bytecode_hash: if self.resolc.resolc_compile {
+                bytecode_hash: if self.polkadot.resolc_compile {
                     // Workaround for BytecodeHash issue https://github.com/paritytech/revive/issues/219
                     Some(BytecodeHash::None)
                 } else {
@@ -2510,7 +2510,7 @@ impl Default for Config {
             compilation_restrictions: Default::default(),
             script_execution_protection: true,
             _non_exhaustive: (),
-            resolc: Default::default(),
+            polkadot: Default::default(),
         }
     }
 }
@@ -3335,19 +3335,19 @@ mod tests {
                 r#"
                 [profile.default]
                 [rpc_endpoints]
-                polygonMumbai = "https://polygon-mumbai.g.alchemy.com/v2/${_RESOLVE_RPC_ALIAS}"
+                polygonAmoy = "https://polygon-amoy.g.alchemy.com/v2/${_RESOLVE_RPC_ALIAS}"
             "#,
             )?;
             let mut config = Config::load().unwrap();
-            config.eth_rpc_url = Some("polygonMumbai".to_string());
+            config.eth_rpc_url = Some("polygonAmoy".to_string());
             assert!(config.get_rpc_url().unwrap().is_err());
 
             jail.set_env("_RESOLVE_RPC_ALIAS", "123455");
 
             let mut config = Config::load().unwrap();
-            config.eth_rpc_url = Some("polygonMumbai".to_string());
+            config.eth_rpc_url = Some("polygonAmoy".to_string());
             assert_eq!(
-                "https://polygon-mumbai.g.alchemy.com/v2/123455",
+                "https://polygon-amoy.g.alchemy.com/v2/123455",
                 config.get_rpc_url().unwrap().unwrap()
             );
 
@@ -3597,7 +3597,7 @@ mod tests {
 
                 [etherscan]
                 optimism = { key = "https://etherscan-optimism.com/" }
-                mumbai = { key = "https://etherscan-mumbai.com/" }
+                amoy = { key = "https://etherscan-amoy.com/" }
             "#,
             )?;
 
@@ -3606,10 +3606,10 @@ mod tests {
             let optimism = config.get_etherscan_api_key(Some(NamedChain::Optimism.into()));
             assert_eq!(optimism, Some("https://etherscan-optimism.com/".to_string()));
 
-            config.etherscan_api_key = Some("mumbai".to_string());
+            config.etherscan_api_key = Some("amoy".to_string());
 
-            let mumbai = config.get_etherscan_api_key(Some(NamedChain::PolygonMumbai.into()));
-            assert_eq!(mumbai, Some("https://etherscan-mumbai.com/".to_string()));
+            let amoy = config.get_etherscan_api_key(Some(NamedChain::PolygonAmoy.into()));
+            assert_eq!(amoy, Some("https://etherscan-amoy.com/".to_string()));
 
             Ok(())
         });
@@ -3624,17 +3624,17 @@ mod tests {
                 [profile.default]
 
                 [etherscan]
-                mumbai = { key = "https://etherscan-mumbai.com/", chain = 80001 }
+                amoy = { key = "https://etherscan-amoy.com/", chain = 80002 }
             "#,
             )?;
 
             let config = Config::load().unwrap();
 
-            let mumbai = config
-                .get_etherscan_config_with_chain(Some(NamedChain::PolygonMumbai.into()))
+            let amoy = config
+                .get_etherscan_config_with_chain(Some(NamedChain::PolygonAmoy.into()))
                 .unwrap()
                 .unwrap();
-            assert_eq!(mumbai.key, "https://etherscan-mumbai.com/".to_string());
+            assert_eq!(amoy.key, "https://etherscan-amoy.com/".to_string());
 
             Ok(())
         });
@@ -3649,18 +3649,18 @@ mod tests {
                 [profile.default]
 
                 [etherscan]
-                mumbai = { key = "https://etherscan-mumbai.com/", chain = 80001 , url =  "https://verifier-url.com/"}
+                amoy = { key = "https://etherscan-amoy.com/", chain = 80002 , url =  "https://verifier-url.com/"}
             "#,
             )?;
 
             let config = Config::load().unwrap();
 
-            let mumbai = config
-                .get_etherscan_config_with_chain(Some(NamedChain::PolygonMumbai.into()))
+            let amoy = config
+                .get_etherscan_config_with_chain(Some(NamedChain::PolygonAmoy.into()))
                 .unwrap()
                 .unwrap();
-            assert_eq!(mumbai.key, "https://etherscan-mumbai.com/".to_string());
-            assert_eq!(mumbai.api_url, "https://verifier-url.com/".to_string());
+            assert_eq!(amoy.key, "https://etherscan-amoy.com/".to_string());
+            assert_eq!(amoy.api_url, "https://verifier-url.com/".to_string());
 
             Ok(())
         });
@@ -3673,23 +3673,23 @@ mod tests {
                 "foundry.toml",
                 r#"
                 [profile.default]
-                eth_rpc_url = "mumbai"
+                eth_rpc_url = "amoy"
 
                 [etherscan]
-                mumbai = { key = "https://etherscan-mumbai.com/" }
+                amoy = { key = "https://etherscan-amoy.com/" }
 
                 [rpc_endpoints]
-                mumbai = "https://polygon-mumbai.g.alchemy.com/v2/mumbai"
+                amoy = "https://polygon-amoy.g.alchemy.com/v2/amoy"
             "#,
             )?;
 
             let config = Config::load().unwrap();
 
-            let mumbai = config.get_etherscan_config_with_chain(None).unwrap().unwrap();
-            assert_eq!(mumbai.key, "https://etherscan-mumbai.com/".to_string());
+            let amoy = config.get_etherscan_config_with_chain(None).unwrap().unwrap();
+            assert_eq!(amoy.key, "https://etherscan-amoy.com/".to_string());
 
-            let mumbai_rpc = config.get_rpc_url().unwrap().unwrap();
-            assert_eq!(mumbai_rpc, "https://polygon-mumbai.g.alchemy.com/v2/mumbai");
+            let amoy_rpc = config.get_rpc_url().unwrap().unwrap();
+            assert_eq!(amoy_rpc, "https://polygon-amoy.g.alchemy.com/v2/amoy");
             Ok(())
         });
     }

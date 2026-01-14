@@ -315,7 +315,7 @@ contract ChainIdTest is DSTest {
     )
     .unwrap();
 
-    let res = cmd.args(["test", "--resolc", "-vvvv", "--polkadot"]).assert_success();
+    let res = cmd.args(["test", "-vvvv", "--polkadot=pvm"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
@@ -867,6 +867,353 @@ Ran 6 tests for src/CounterTest.t.sol:CounterTest
 Suite result: ok. 6 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 6 tests passed, 0 failed, 0 skipped (6 total tests)
+
+"#]]);
+});
+
+// Test --polkadot=evm flag: single compilation (solc only, no dual compilation)
+forgetest!(polkadot_evm_single_compilation, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    function test_EvmMode() public {
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Should compile with solc only (no resolc compilation)
+    let res = cmd.args(["test", "--polkadot=evm", "-vvv"]).assert_success();
+    let output = res.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify solc compiled
+    assert!(stdout.contains("Compiler run successful!"));
+    // Should only show one "Compiler run successful!" message (solc only, not resolc)
+    assert_eq!(stdout.matches("Compiler run successful!").count(), 1);
+});
+
+// Test --polkadot=pvm flag: dual compilation (automatic)
+forgetest!(polkadot_pvm_dual_compilation, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    function test_PvmMode() public {
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Should dual compile (solc + resolc)
+    let res = cmd.args(["test", "--polkadot=pvm", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/SimpleTest.t.sol:SimpleTest
+[PASS] test_PvmMode() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test --resolc flag alone: should auto-set polkadot=pvm and dual compile
+forgetest!(resolc_flag_auto_pvm, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    function test_Resolc() public {
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // --resolc alone should dual compile and use PVM runtime
+    let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/SimpleTest.t.sol:SimpleTest
+[PASS] test_Resolc() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test --polkadot=evm --resolc: dual compilation with EVM runtime
+forgetest!(polkadot_evm_with_resolc, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "SimpleTest.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {Simple} from "./Simple.sol";
+contract SimpleTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function test_EvmWithResolc() public {
+        // Can switch to PVM because we have dual compilation
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+
+        // Switch to PVM mode
+        vm.polkadot(true, "pvm");
+        Simple simple2 = new Simple();
+        assertEq(simple2.getValue(), 42);
+
+        // Switch back to EVM
+        vm.polkadot(true, "evm");
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Should dual compile and allow mode switching
+    let res = cmd.args(["test", "--polkadot=evm", "--resolc", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/SimpleTest.t.sol:SimpleTest
+[PASS] test_EvmWithResolc() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test explicit mode switching with vm.polkadot(bool, string)
+forgetest!(explicit_mode_switching, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+
+    // Add a simple contract to trigger dual compilation
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "ModeSwitch.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+
+contract ModeSwitchTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+    address alice = address(0x1111);
+
+    function setUp() public {
+        vm.deal(alice, 1 ether);
+        vm.makePersistent(alice);
+    }
+
+    function test_ExplicitModeSwitch() public {
+        // Start in PVM, switch to EVM explicitly
+        uint256 pvmBalance = alice.balance;
+        assertEq(pvmBalance, 1 ether);
+
+        vm.polkadot(true, "evm");
+        assertEq(alice.balance, pvmBalance, "Balance should migrate to EVM");
+
+        vm.deal(alice, 2 ether);
+        uint256 evmBalance = alice.balance;
+
+        vm.polkadot(true, "pvm");
+        assertEq(alice.balance, evmBalance, "Balance should migrate back to PVM");
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Requires dual compilation for mode switching
+    let res = cmd.args(["test", "--polkadot=pvm", "-vvv"]).assert_success();
+    res.stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/ModeSwitch.t.sol:ModeSwitchTest
+[PASS] test_ExplicitModeSwitch() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Test --polkadot flag without --resolc: attempting to switch to PVM should fail
+forgetest!(polkadot_pvm_requires_dual_compilation, |prj, cmd| {
+    prj.insert_ds_test();
+    prj.insert_vm();
+    prj.add_source(
+        "Simple.sol",
+        r#"
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+contract Simple {
+    function getValue() public pure returns (uint256) {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    prj.add_source(
+        "PvmSwitchTest.t.sol",
+        r#"
+import "./test.sol";
+import "./Vm.sol";
+import {Simple} from "./Simple.sol";
+contract PvmSwitchTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function test_PvmRequiresDualCompilation() public {
+        // Try to switch to PVM mode without dual compilation
+        // This should fail because we're running with --polkadot (defaults to evm)
+        // without --resolc flag
+        vm.polkadot(true, "pvm");
+        Simple simple = new Simple();
+        assertEq(simple.getValue(), 42);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Running with --polkadot alone (defaults to evm) and trying to switch to pvm should fail
+    cmd.args(["test", "--polkadot"]).assert_failure().stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for src/PvmSwitchTest.t.sol:PvmSwitchTest
+[FAIL: vm.polkadot: Backend switching to PVM requires running tests with --polkadot and --resolc flags] test_PvmRequiresDualCompilation() ([GAS])
+Suite result: FAILED. 0 passed; 1 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 0 tests passed, 1 failed, 0 skipped (1 total tests)
+
+Failing tests:
+Encountered 1 failing test in src/PvmSwitchTest.t.sol:PvmSwitchTest
+[FAIL: vm.polkadot: Backend switching to PVM requires running tests with --polkadot and --resolc flags] test_PvmRequiresDualCompilation() ([GAS])
+
+Encountered a total of 1 failing tests, 0 tests succeeded
 
 "#]]);
 });

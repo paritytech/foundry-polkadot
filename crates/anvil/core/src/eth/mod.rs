@@ -280,6 +280,13 @@ pub enum EthRequest {
         #[serde(default)] GethDebugTracingCallOptions,
     ),
 
+    /// geth's `debug_traceBlockByNumber` endpoint
+    #[serde(rename = "debug_traceBlockByNumber")]
+    DebugTraceBlockByNumber(
+        #[serde(deserialize_with = "lenient_block_number::lenient_block_number")] BlockNumber,
+        #[serde(default)] GethDebugTracingOptions,
+    ),
+
     /// reth's `debug_codeByHash` endpoint
     #[serde(rename = "debug_codeByHash")]
     DebugCodeByHash(B256, #[serde(default)] Option<BlockId>),

@@ -34,7 +34,7 @@ Running `foundryup-polkadot` will automatically install the latest version of th
 - **Configuration**: Alternatively, you can configure Resolc usage in the `foundry.toml` file by adding:
 
   ```toml
-  [profile.default.resolc]
+  [profile.default.polkadot]
   resolc_compile = true
   ```
 

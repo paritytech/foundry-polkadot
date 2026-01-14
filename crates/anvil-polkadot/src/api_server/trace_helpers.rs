@@ -11,8 +11,8 @@ use polkadot_sdk::pallet_revive::evm::{
 };
 
 /// Builds a Parity block trace from a vector of TransactionTrace objects returned by the
-/// debug_traceBlockByNumber endpoint of pallet revive and a Block object recovered from pallet
-/// revive. The block must be "hydrated" with all the transactions details.
+/// debug_traceBlockByNumber endpoint of pallet revive and a Substrate Block object recovered from
+/// pallet revive. The block must be "hydrated" with all the transactions details.
 /// This is used to build the output for Parity client's RPC method `trace_block`.
 pub fn parity_block_trace_builder(
     traces: Vec<ReviveTransactionTrace>,
