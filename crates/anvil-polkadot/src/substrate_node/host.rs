@@ -38,7 +38,7 @@ pub const IMPERSONATION_MARKER: u8 = 0xDE;
 // Note: We only check bytes 32..64 (the 's' component of ECDSA signature) for the marker.
 // Byte 64 (recovery_id/v) must be a valid value (0 or 1) for the transaction to be accepted.
 pub fn is_impersonated(sig: &[u8]) -> bool {
-    sig[..12] == [0; 12] && sig[32..64] = [IMPERSONATION_MARKER; 32]
+    sig[..12] == [0; 12] && sig[32..64] == [IMPERSONATION_MARKER; 32]
 }
 
 /// Recover sender address from signed transaction, handling impersonated transactions.
@@ -72,7 +72,6 @@ pub trait Crypto {
                 "impersonation for: {:?}",
                 &sig[12..32]
             );
-            // Create fake public key with marker: [0; 12] + [address] + [MARKER; 32]
             let mut res = [IMPERSONATION_MARKER; 64];
             res[..12].fill(0);
             res[12..32].copy_from_slice(&sig[12..32]);
@@ -94,7 +93,7 @@ pub trait Crypto {
                 "impersonation for: {:?}",
                 &sig[12..32]
             );
-            // Create fake public key with marker: [0; 12] + [address] + [MARKER; 32]
+
             let mut res = [IMPERSONATION_MARKER; 64];
             res[..12].fill(0);
             res[12..32].copy_from_slice(&sig[12..32]);
