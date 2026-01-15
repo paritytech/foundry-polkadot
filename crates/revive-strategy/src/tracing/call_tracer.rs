@@ -24,12 +24,16 @@ impl Tracing for ExpectedCallTracer {
         &mut self,
         _from: H160,
         to: H160,
-        _is_delegate_call: bool,
+        is_delegate_call: bool,
         _is_read_only: bool,
         value: U256,
         input: &[u8],
         _gas: Weight,
     ) {
+        if is_delegate_call {
+            return;
+        }
+
         if !self.is_create
             && let Some(expected_calls_for_target) = self.data.get_mut(&Address::from(to.0))
         {
