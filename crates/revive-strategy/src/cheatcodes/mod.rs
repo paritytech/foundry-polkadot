@@ -689,7 +689,7 @@ fn select_revive(
                         .cached_accounts()
                 );
             }
-            
+
             for address in accounts {
                 tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
