@@ -1520,7 +1520,17 @@ impl DatabaseExt for Backend {
     }
 
     fn cached_accounts(&self) -> Vec<Address> {
-        self.mem_db.cache.accounts.keys().copied().collect()
+        self.mem_db.cache.accounts
+            .iter()
+            .filter_map(|(addr, acc)| {
+                // Only include accounts with non-empty bytecode (actual contracts)
+                if acc.info.code.as_ref().is_some_and(|c| !c.is_empty()) {
+                    Some(*addr)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
