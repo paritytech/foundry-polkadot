@@ -66,7 +66,7 @@ pub use strategy::{
 mod string;
 
 mod test;
-pub use test::expect::{ExpectedCallTracker, handle_expect_emit};
+pub use test::expect::{ExpectedCallTracker, ExpectedCreate, handle_expect_emit};
 
 mod toml;
 

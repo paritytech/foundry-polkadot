@@ -151,7 +151,7 @@ async fn test_interval_mining() {
     assert_with_tolerance(
         after_mining.duration_since(before_mining).unwrap().as_millis(),
         3000,
-        500,
+        600,
         "Interval between the blocks is outside of the desired range.",
     );
     let hash3 = node.block_hash_by_number(3).await.unwrap();

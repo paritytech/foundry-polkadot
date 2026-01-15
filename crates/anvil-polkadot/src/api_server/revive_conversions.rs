@@ -460,7 +460,10 @@ impl From<ReviveCallTrace> for CallFrame {
                 .collect(),
             logs: call_trace.logs.into_iter().map(|c_l| ReviveCallLog::new(c_l).into()).collect(),
             value: call_trace.value.map(|v| AlloyU256::from(v).inner()),
-            typ: serde_json::to_string_pretty(&call_trace.call_type).unwrap_or_default(),
+            typ: serde_json::to_string(&call_trace.call_type)
+                .unwrap()
+                .trim_matches('"')
+                .to_string(),
         }
     }
 }

@@ -395,6 +395,8 @@ interface Vm {
     function pauseGasMetering() external;
     function pauseTracing() external view;
     function polkadotSkip() external pure;
+    function polkadot(bool enable, string calldata backend) external;
+    function polkadot(bool enable) external;
     function prank(address msgSender) external;
     function prank(address msgSender, address txOrigin) external;
     function prank(address msgSender, bool delegateCall) external;
@@ -408,7 +410,6 @@ interface Vm {
     function promptSecretUint(string calldata promptText) external returns (uint256);
     function promptUint(string calldata promptText) external returns (uint256);
     function publicKeyP256(uint256 privateKey) external pure returns (uint256 publicKeyX, uint256 publicKeyY);
-    function pvm(bool enabled) external;
     function randomAddress() external returns (address);
     function randomBool() external view returns (bool);
     function randomBytes(uint256 len) external view returns (bytes memory);

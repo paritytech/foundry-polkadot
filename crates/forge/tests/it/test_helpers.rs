@@ -197,6 +197,7 @@ impl ForgeTestData {
         install_crypto_provider();
         init_tracing();
         let mut config = profile.config();
+        config.out = profile.root().join("resolc-out").join(profile.to_string());
         config.extra_output.push(ContractOutputSelection::StorageLayout);
         let config = Arc::new(config);
 
@@ -209,7 +210,7 @@ impl ForgeTestData {
 
         // Create resolc config with resolc compilation enabled
         let mut resolc_config = (*config).clone();
-        resolc_config.resolc.resolc_compile = true;
+        resolc_config.polkadot.resolc_compile = true;
         let mut resolc_project = resolc_config.project().unwrap();
 
         // Filter files compatible with resolc

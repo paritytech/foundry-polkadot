@@ -15,7 +15,6 @@ contract StoreTest is DSTest {
     Storage store;
 
     function setUp() public {
-        vm.pvm(true);
         store = new Storage();
     }
 

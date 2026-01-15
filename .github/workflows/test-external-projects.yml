@@ -85,12 +85,12 @@ jobs:
           shared-key: "test"
 
       - name: Build foundry-polkadot
-        run: cargo build
+        run: cargo build --profile=release
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
 
       - name: Add forge to PATH
-        run: echo "${{ github.workspace }}/target/debug" >> $GITHUB_PATH
+        run: echo "${{ github.workspace }}/target/release" >> $GITHUB_PATH
 
       - name: Test all external projects
         id: test-all

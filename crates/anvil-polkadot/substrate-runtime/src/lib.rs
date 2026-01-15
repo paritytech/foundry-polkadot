@@ -239,7 +239,8 @@ impl frame_system::Config for Runtime {
 }
 
 parameter_types! {
-    pub const ExistentialDeposit: Balance = DOLLARS;
+    // As it is on Westend
+    pub const ExistentialDeposit: Balance = MILLICENTS;
 }
 
 // Implements the types required for the balances pallet.
