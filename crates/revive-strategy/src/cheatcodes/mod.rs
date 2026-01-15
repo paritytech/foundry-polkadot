@@ -445,7 +445,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     cheatcode.as_any().downcast_ref().unwrap();
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
 
-                ctx.externalities.etch_call(target, newRuntimeBytecode, ccx.ecx)?;
+                ctx.externalities.etch_call(target, newRuntimeBytecode)?;
                 Ok(Default::default())
             }
 
@@ -678,17 +678,19 @@ fn select_revive(
                 &data.cfg.chain_id,
             );
             let test_contract_addr = data.journaled_state.database.get_test_contract_address();
+            let mut accounts = data.journaled_state.database.persistent_accounts().clone();
+            accounts.insert(data.tx.caller);
+
+            if migrate_all {
+                // Migrate all cached contracts
+                accounts.extend(
+                    data.journaled_state
+                        .database
+                        .cached_accounts()
+                );
+            }
             
-            let accounts_to_migrate: Vec<Address> = if migrate_all {
-                // Migrate all accounts (including contract-level deployments)
-                // Get accounts from the database cache (includes all created/modified accounts)
-                data.journaled_state.database.cached_accounts()
-            } else {
-                let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
-                persistent_accounts.into_iter().chain([data.tx.caller]).collect()
-            };
-            
-            for address in accounts_to_migrate {
+            for address in accounts {
                 tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;

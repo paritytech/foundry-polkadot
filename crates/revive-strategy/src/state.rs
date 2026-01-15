@@ -1,5 +1,5 @@
 use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
-use foundry_cheatcodes::{Ecx, Error, Result};
+use foundry_cheatcodes::{Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
@@ -141,12 +141,7 @@ impl TestEnv {
         });
     }
 
-    pub fn etch_call(
-        &mut self,
-        target: &Address,
-        new_runtime_code: &Bytes,
-        ecx: Ecx<'_, '_, '_>,
-    ) -> Result {
+    pub fn etch_call(&mut self, target: &Address, new_runtime_code: &Bytes) -> Result {
         self.0.lock().unwrap().externalities.execute_with(|| {
             let target_address = H160::from_slice(target.as_slice());
             let target_account = AccountId::to_fallback_account_id(&target_address);

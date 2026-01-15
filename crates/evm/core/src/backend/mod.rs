@@ -1520,7 +1520,9 @@ impl DatabaseExt for Backend {
     }
 
     fn cached_accounts(&self) -> Vec<Address> {
-        self.mem_db.cache.accounts
+        self.mem_db
+            .cache
+            .accounts
             .iter()
             .filter_map(|(addr, acc)| {
                 // Only include accounts with non-empty bytecode (actual contracts)
