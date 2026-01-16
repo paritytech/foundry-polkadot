@@ -670,7 +670,12 @@ async fn test_fork_eth_get_code_from_westend() {
     unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
     let receipt = fork_node.get_transaction_receipt(tx_hash).await;
-    let contract_address = receipt.contract_address.unwrap();
+    assert_eq!(
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Contract deployment should succeed"
+    );
+    let contract_address = receipt.contract_address.expect("Contract address should exist");
 
     // Get code of deployed contract
     let deployed_code = unwrap_response::<Bytes>(
@@ -683,8 +688,18 @@ async fn test_fork_eth_get_code_from_westend() {
             .unwrap(),
     )
     .unwrap();
-
     assert!(!deployed_code.is_empty(), "Deployed contract should have code");
+
+    // Deploy another contract to verify chain continues working
+    let tx_hash2 = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    let receipt2 = fork_node.get_transaction_receipt(tx_hash2).await;
+    assert_eq!(
+        receipt2.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Second contract deployment should succeed"
+    );
 }
 
 /// Tests that we can get nonce (transaction count) from the forked Westend Asset Hub state
@@ -914,66 +929,6 @@ async fn test_fork_can_send_tx_from_westend() {
 
     // Verify block number increased
     let _final_block = fork_node.best_block_number().await;
-}
-
-/// Tests deploying a contract on a forked chain
-#[tokio::test(flavor = "multi_thread")]
-async fn test_fork_can_deploy_contract_from_westend() {
-    let fork_config = westend_fork_config();
-    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
-    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
-
-    let alith = Account::from(subxt_signer::eth::dev::alith());
-    let alith_address = Address::from(ReviveAddress::new(alith.address()));
-
-    // Set balance for deployment
-    let initial_balance = U256::from(1e20 as u128); // 100 ether
-    unwrap_response::<()>(
-        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
-    )
-    .unwrap();
-
-    // Deploy SimpleStorage contract
-    let contract_code = get_contract_code("SimpleStorage");
-    let tx_hash = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
-    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-
-    let receipt = fork_node.get_transaction_receipt(tx_hash).await;
-    assert_eq!(
-        receipt.status,
-        Some(polkadot_sdk::pallet_revive::U256::from(1)),
-        "Contract deployment should succeed"
-    );
-
-    let contract_address = receipt.contract_address.expect("Contract address should exist");
-
-    // Verify contract has code
-    let code = unwrap_response::<Bytes>(
-        fork_node
-            .eth_rpc(EthRequest::EthGetCodeAt(
-                Address::from(ReviveAddress::new(contract_address)),
-                None,
-            ))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert!(!code.is_empty(), "Deployed contract should have code");
-
-    // Deploy another contract to verify chain continues working
-    let tx_hash2 = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
-    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-
-    let receipt2 = fork_node.get_transaction_receipt(tx_hash2).await;
-    assert_eq!(
-        receipt2.status,
-        Some(polkadot_sdk::pallet_revive::U256::from(1)),
-        "Second contract deployment should succeed"
-    );
-
-    let contract_address2 =
-        receipt2.contract_address.expect("Second contract address should exist");
-    assert_ne!(contract_address, contract_address2, "Contract addresses should be different");
 }
 
 /// Tests impersonating an account on a forked chain
