@@ -2,7 +2,7 @@ use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
 use foundry_cheatcodes::{Ecx, Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, ContractInfo,
         ExecConfig, Executable, Pallet, ResourceMeter,
     },
     sp_core::{self, H160, H256},
