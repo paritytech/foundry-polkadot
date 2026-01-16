@@ -18,7 +18,7 @@ use foundry_cheatcodes::{
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use foundry_evm::constants::CHEATCODE_ADDRESS;
-use revive_env::{AccountId, Runtime, System, Timestamp};
+use revive_env::{Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
     sync::Arc,
@@ -28,12 +28,11 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, DebugSettings,
-        ExecConfig, Pallet, evm::CallTrace,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code,
+        ContractInfo, DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::{self, H160, H256},
-    sp_io,
+    sp_core::{self, H160},
     sp_weights::Weight,
 };
 
@@ -443,10 +442,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
 
+                if ccx.is_precompile(target) {
+                    return Err(precompile_error(target));
+                }
+
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.externalities.etch_call(target, newRuntimeBytecode)?;
-                Ok(Default::default())
+
+                cheatcode.dyn_apply(ccx, executor)
             }
 
             t if is::<etchCall>(t) => {
@@ -697,7 +701,7 @@ fn select_revive(
                 let nonce = acc.data.info.nonce;
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
-                    AccountId::to_fallback_account_id(&account);
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
                 let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
                 Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
                     .expect("failed to set evm balance");
@@ -753,12 +757,16 @@ fn select_revive(
                                     Pallet::<Runtime>::account_id(),
                                     code_bytes.clone(),
                                     code_type,
-                                    u64::MAX.into(),
+                                    &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                                        deposit_limit: 100_000_000_000_000,
+                                    })
+                                    .unwrap(),
                                     &ExecConfig::new_substrate_tx(),
                                 );
                                 match upload_result {
-                                    Ok(_) => {
-                                        let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
+                                    Ok(upload_res) => {
+                                        let code_hash = upload_res.code_hash().to_owned();
                                         let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
                                             .expect("Failed to create contract info");
                                         AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
@@ -791,13 +799,17 @@ fn select_revive(
                                 Pallet::<Runtime>::account_id(),
                                 code_bytes.clone(),
                                 BytecodeType::Evm,
-                                u64::MAX.into(),
+                                &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                    weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                                })
+                                .unwrap(),
                                 &ExecConfig::new_substrate_tx_without_bump(),
                             );
                             match upload_result {
-                                Ok(_) => {
-                                    let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
-                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                Ok(upload_res) => {
+                                    let code_hash = upload_res.code_hash();
+                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash.to_owned())
                                         .expect("Failed to create contract info");
                                     AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
                                 }
@@ -830,7 +842,7 @@ fn select_revive(
                     }
                 }
             }
-        })
+        });
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
@@ -994,10 +1006,27 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
-                let origin_account_id = AccountId::to_fallback_account_id(&caller_h160);
+                let exists = AccountInfo::<Runtime>::load_contract(&caller_h160).is_some();
+                let origin_account_id =
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160);
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
                 mock_handler.fund_pranked_accounts(input.caller());
+                if !exists {
+                    let nonce = ecx
+                        .journaled_state
+                        .load_account(input.caller())
+                        .expect("to load caller account")
+                        .info
+                        .nonce;
+                    polkadot_sdk::frame_system::Account::<Runtime>::mutate(
+                        &origin_account_id,
+                        |a| {
+                            a.nonce =
+                                nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+                        },
+                    );
+                }
                 System::inc_account_nonce(&origin_account_id);
                 let code = Code::Upload(code_bytes.clone());
                 let data = constructor_args;
@@ -1031,9 +1060,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Pallet::<Runtime>::bare_instantiate(
                     origin,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                        deposit_limit: 100_000_000_000_000,
+                    },
                     code,
                     data,
                     salt,
@@ -1053,7 +1083,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.result.did_revert() {
@@ -1147,7 +1178,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             Some(&call.bytecode_address),
             state,
         );
-
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         // Get nonce before execute_with closure
@@ -1160,8 +1190,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
-                let origin =
-                    OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));
+                let origin = OriginFor::<Runtime>::signed(
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
+                );
                 mock_handler.fund_pranked_accounts(call.caller);
 
                 let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
@@ -1174,15 +1205,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     is_dry_run: None,
                 };
                 if should_bump_nonce {
-                    System::inc_account_nonce(AccountId::to_fallback_account_id(&caller_h160));
+                    System::inc_account_nonce(
+                        AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
+                    );
                 }
                 Pallet::<Runtime>::bare_call(
                     origin,
                     target,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                        deposit_limit: if call.is_static { 0 } else { 100_000_000_000_000 },
+                    },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
                 )
@@ -1199,7 +1233,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.did_revert() {
@@ -1283,7 +1318,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 .journaled_state
                 .database
                 .get_test_contract_address()
-                .map(|addr| call.bytecode_address != addr && call.target_address != addr)
+                .map(|addr| call.bytecode_address != addr || call.target_address == addr)
                 .unwrap_or(true)
         {
             return;

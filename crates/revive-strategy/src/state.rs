@@ -2,14 +2,15 @@ use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
 use foundry_cheatcodes::{Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo, ExecConfig,
-        Executable, Pallet,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo,
+        ExecConfig, Executable, Pallet, ResourceMeter,
     },
     sp_core::{self, H160, H256},
     sp_externalities::Externalities,
     sp_io::TestExternalities,
+    sp_weights::Weight,
 };
-use revive_env::{AccountId, BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
+use revive_env::{BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
@@ -27,7 +28,10 @@ impl Default for Inner {
     fn default() -> Self {
         Self {
             externalities: ExtBuilder::default()
-                .balance_genesis_config(vec![(H160::from_low_u64_be(1), 1000)])
+                .balance_genesis_config(vec![(
+                    H160::from_low_u64_be(1),
+                    1_000_000_000_000_000_000_000_000_000_u128,
+                )])
                 .build(),
             depth: 0,
         }
@@ -76,16 +80,17 @@ impl TestEnv {
 
     pub fn get_nonce(&mut self, account: Address) -> u32 {
         self.0.lock().unwrap().externalities.execute_with(|| {
-            System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                account.as_slice(),
-            )))
+            System::account_nonce(AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                &H160::from_slice(account.as_slice()),
+            ))
         })
     }
 
     pub fn set_nonce(&mut self, address: Address, nonce: u64) {
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let account_id =
-                AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
+            let account_id = AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                &H160::from_slice(address.as_slice()),
+            );
 
             polkadot_sdk::frame_system::Account::<Runtime>::mutate(&account_id, |a| {
                 a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
@@ -110,7 +115,7 @@ impl TestEnv {
     ) {
         // Set block number in pallet-revive runtime.
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let new_block_number: u64 = new_height.try_into().expect("Block number exceeds u32");
+            let new_block_number: u64 = new_height.try_into().expect("Block number exceeds u64");
             let digest = System::digest();
             if System::block_hash(new_block_number) == H256::zero() {
                 // First initialize and finalize the parent block to set up correct hashes.
@@ -144,7 +149,8 @@ impl TestEnv {
     pub fn etch_call(&mut self, target: &Address, new_runtime_code: &Bytes) -> Result {
         self.0.lock().unwrap().externalities.execute_with(|| {
             let target_address = H160::from_slice(target.as_slice());
-            let target_account = AccountId::to_fallback_account_id(&target_address);
+            let target_account =
+                AccountId32Mapper::<Runtime>::to_fallback_account_id(&target_address);
 
             let code = new_runtime_code.to_vec();
             let code_type =
@@ -153,11 +159,14 @@ impl TestEnv {
                 Pallet::<Runtime>::account_id(),
                 code,
                 code_type,
-                BalanceOf::<Runtime>::MAX,
+                &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                    weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                })
+                .unwrap(),
                 &ExecConfig::new_substrate_tx(),
             )
-            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?
-            .0;
+            .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?;
 
             let mut contract_info = if let Some(contract_info) =
                 AccountInfo::<Runtime>::load_contract(&target_address)
@@ -173,7 +182,9 @@ impl TestEnv {
                     tracing::error!("Could not create contract info: {:?}", err);
                     <&str as Into<Error>>::into("Could not create contract info")
                 })?;
-                System::inc_account_nonce(AccountId::to_fallback_account_id(&target_address));
+                System::inc_account_nonce(AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                    &target_address,
+                ));
                 contract_info
             };
             contract_info.code_hash = *contract_blob.code_hash();
@@ -250,8 +261,9 @@ impl TestEnv {
 
     pub fn set_block_author(&mut self, new_author: Address) {
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let account_id32 =
-                AccountId::to_fallback_account_id(&H160::from_slice(new_author.as_slice()));
+            let account_id32 = AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                &H160::from_slice(new_author.as_slice()),
+            );
             BlockAuthor::set(&account_id32);
         });
     }
@@ -261,7 +273,7 @@ impl TestEnv {
             use polkadot_sdk::frame_system::BlockHash;
 
             let hash = sp_core::H256::from_slice(block_hash.as_slice());
-            BlockHash::<Runtime>::insert(block_number, hash);
+            BlockHash::<Runtime>::insert::<u64, _>(block_number, hash);
         });
     }
 
