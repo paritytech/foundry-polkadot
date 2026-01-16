@@ -15,7 +15,9 @@ use anvil_polkadot::{
 use polkadot_sdk::pallet_revive::evm::Account;
 
 /// Westend Asset Hub zombienet local URL for forking tests
-/// This URL should point to a running zombienet instance
+/// This URL should point to a running zombienet instance,
+/// so running the tests depending on it should be preceded
+/// by setting up a zombienet network with a running RPC.
 const WESTEND_ASSET_HUB_URL: &str = "http://127.0.0.1:63982";
 
 /// Tests that forking preserves state from the source chain and allows local modifications
