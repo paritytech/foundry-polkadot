@@ -81,6 +81,19 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         call_data: &[u8],
         value_transferred: polkadot_sdk::pallet_revive::U256,
     ) -> Option<pallet_revive::ExecReturnValue> {
+        // Check if trying to call cheatcode address from pallet-revive
+        const CHEATCODE_ADDRESS_BYTES: [u8; 20] = [
+            0x71, 0x09, 0x70, 0x9E, 0xCf, 0xa9, 0x1a, 0x80, 0x62, 0x6f, 0xF3, 0x98, 0x9D, 0x68,
+            0xf6, 0x7F, 0x5b, 0x1D, 0xD1, 0x2D,
+        ];
+
+        if callee.as_bytes() == &CHEATCODE_ADDRESS_BYTES {
+            return Some(ExecReturnValue {
+                flags: ReturnFlags::REVERT,
+                data: b"Cheatcodes are not available in polkadot runtime.".to_vec(),
+            });
+        }
+
         let mut mock_inner = self.inner.borrow_mut();
         let ctx = MockCallDataContext {
             calldata: call_data.to_vec().into(),
