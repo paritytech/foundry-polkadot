@@ -170,7 +170,7 @@ impl TestEnv {
                 code_type,
                 &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
                     weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                    deposit_limit: { 100_000_000_000_000 },
                 })
                 .unwrap(),
                 &ExecConfig::new_substrate_tx(),

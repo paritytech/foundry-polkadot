@@ -28,8 +28,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code,
-        ContractInfo, DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, Code, ContractInfo,
+        DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -786,7 +786,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 BytecodeType::Evm,
                                 &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
                                     weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                                    deposit_limit: 100_000_000_000_000,
                                 })
                                 .unwrap(),
                                 &ExecConfig::new_substrate_tx_without_bump(),
