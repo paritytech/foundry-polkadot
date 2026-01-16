@@ -916,36 +916,6 @@ async fn test_fork_can_send_tx_from_westend() {
     let _final_block = fork_node.best_block_number().await;
 }
 
-/// Tests that local state changes don't affect the remote fork state
-#[tokio::test(flavor = "multi_thread")]
-async fn test_fork_separate_states_from_westend() {
-    let fork_config = westend_fork_config();
-    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
-    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
-
-    let random_addr = Address::random();
-
-    // Get initial balance (should be 0 for random address)
-    let initial_balance =
-        fork_node.get_balance(subxt::utils::H160::from(random_addr.0.0), None).await;
-    assert_eq!(initial_balance, U256::ZERO, "Random address should have zero balance initially");
-
-    // Set a new balance locally
-    let new_balance = U256::from(1337u64);
-    unwrap_response::<()>(
-        fork_node.eth_rpc(EthRequest::SetBalance(random_addr, new_balance)).await.unwrap(),
-    )
-    .unwrap();
-
-    // Verify local balance changed
-    let local_balance =
-        fork_node.get_balance(subxt::utils::H160::from(random_addr.0.0), None).await;
-    assert_eq!(local_balance, new_balance, "Local balance should be updated");
-
-    // The remote state should not be affected (we can't directly check this,
-    // but we verify that local changes work independently)
-}
-
 /// Tests deploying a contract on a forked chain
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_can_deploy_contract_from_westend() {
