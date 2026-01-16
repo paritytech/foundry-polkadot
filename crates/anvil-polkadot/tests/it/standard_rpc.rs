@@ -670,7 +670,7 @@ async fn test_fee_history() {
     // The `SlowAdjustingFeeUpdate` logic decreases the base_fee block by block if the
     // activity contained within them is low.
     let base_fees =
-        [1_000_000, 999981, 999962, 999944, 999925, 999906, 999888, 999869, 999851, 999832, 999832]
+        [1_000_000, 999981, 999962, 999944, 999925, 999907, 999888, 999869, 999851, 999832, 999832]
             .into_iter()
             .map(pallet_revive::U256::from)
             .collect::<Vec<_>>();

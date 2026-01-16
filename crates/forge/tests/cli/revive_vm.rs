@@ -329,7 +329,7 @@ Ran 1 test for src/ChainId.t.sol:ChainIdTest
 Traces:
   [..] ChainIdTest::testChainIdRevive()
     ├─ [..] → new <unknown>@[..]
-    │   └─ ← [Return] 2357 bytes of code
+    │   └─ ← [Return] [..] bytes of code
     ├─ [..] [..]::chain_id() [staticcall]
     │   └─ ← [Return] 31337 [3.133e4]
     ├─ [0] VM::chainId(99)

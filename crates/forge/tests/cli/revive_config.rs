@@ -112,14 +112,16 @@ contract Greeter {}
     )
     .unwrap();
 
-    cmd.args(["build", "--resolc", "--force"]).assert_success();
+    cmd.args(["build", "--resolc", "--use-resolc", "resolc:0.5.0", "--force"]).assert_success();
 
     let artifact_path = prj.artifacts().join("Greeter.sol/Greeter.json");
     let artifact_no_debug = std::fs::read_to_string(&artifact_path).unwrap();
     let json_no_debug: serde_json::Value = serde_json::from_str(&artifact_no_debug).unwrap();
     let bytecode_no_debug = json_no_debug["bytecode"]["object"].as_str().unwrap();
 
-    cmd.forge_fuse().args(["build", "--resolc", "--debug-info", "--force"]).assert_success();
+    cmd.forge_fuse()
+        .args(["build", "--resolc", "--use-resolc", "resolc:0.5.0", "--debug-info", "--force"])
+        .assert_success();
 
     let artifact_with_debug = std::fs::read_to_string(&artifact_path).unwrap();
     let json_with_debug: serde_json::Value = serde_json::from_str(&artifact_with_debug).unwrap();
