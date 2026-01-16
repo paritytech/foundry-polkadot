@@ -658,7 +658,7 @@ async fn test_fork_eth_get_code_from_westend() {
     // Set balance for alith to deploy contract (may not have balance in the forked chain)
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let alith_address = Address::from(ReviveAddress::new(alith.address()));
-    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    let initial_balance = U256::from(1e20 as u128); // 100 ether
     unwrap_response::<()>(
         fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
@@ -698,7 +698,7 @@ async fn test_fork_eth_get_nonce_from_westend() {
     let alith_address = Address::from(ReviveAddress::new(alith.address()));
 
     // Set balance for alith (may not have balance in the forked chain)
-    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    let initial_balance = U256::from(1e20 as u128); // 100 ether
     unwrap_response::<()>(
         fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
@@ -710,7 +710,7 @@ async fn test_fork_eth_get_nonce_from_westend() {
     // Send a transaction to increase nonce
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
     let baltathar_address = ReviveAddress::new(baltathar.address());
-    let transfer_amount = U256::from(1_000_000_000_000_000_000u128); // 1 ether
+    let transfer_amount = U256::from(1e18 as u128); // 1 ether
 
     let transaction = TransactionRequest::default()
         .value(transfer_amount)
@@ -752,7 +752,7 @@ async fn test_fork_state_snapshotting_from_westend() {
     let baltathar_address = Address::from(ReviveAddress::new(baltathar.address()));
 
     // Set initial balances for dev accounts (they may not have balance in the forked chain)
-    let set_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    let set_balance = U256::from(1e20 as u128); // 100 ether
     unwrap_response::<()>(
         fork_node.eth_rpc(EthRequest::SetBalance(alith_address, set_balance)).await.unwrap(),
     )
@@ -777,7 +777,7 @@ async fn test_fork_state_snapshotting_from_westend() {
     .unwrap();
 
     // Perform a transaction that modifies state
-    let transfer_amount = U256::from(5_000_000_000_000_000_000u128); // 5 ether
+    let transfer_amount = U256::from(5e18 as u128); // 5 ether
     let transaction = TransactionRequest::default()
         .value(transfer_amount)
         .from(alith_address)
@@ -841,7 +841,7 @@ async fn test_fork_can_send_tx_from_westend() {
     let baltathar_address = Address::from(ReviveAddress::new(baltathar.address()));
 
     // Set initial balances for dev accounts (they may not have balance in the forked chain)
-    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    let initial_balance = U256::from(1e20 as u128); // 100 ether
     unwrap_response::<()>(
         fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
@@ -862,7 +862,7 @@ async fn test_fork_can_send_tx_from_westend() {
     assert_eq!(initial_baltathar_balance, initial_balance, "Baltathar balance should be set");
 
     // Send a simple ETH transfer
-    let transfer_amount = U256::from(1_000_000_000_000_000_000u128); // 1 ether
+    let transfer_amount = U256::from(1e18 as u128); // 1 ether
     let transaction = TransactionRequest::default()
         .value(transfer_amount)
         .from(alith_address)
@@ -896,7 +896,7 @@ async fn test_fork_can_send_tx_from_westend() {
     );
 
     // Send another transaction to verify chain continues working
-    let second_transfer = U256::from(500_000_000_000_000_000u128); // 0.5 ether
+    let second_transfer = U256::from(5e17 as u128); // 0.5 ether
     let transaction2 = TransactionRequest::default()
         .value(second_transfer)
         .from(baltathar_address)
@@ -957,7 +957,7 @@ async fn test_fork_can_deploy_contract_from_westend() {
     let alith_address = Address::from(ReviveAddress::new(alith.address()));
 
     // Set balance for deployment
-    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    let initial_balance = U256::from(1e20 as u128); // 100 ether
     unwrap_response::<()>(
         fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
     )
@@ -1018,7 +1018,7 @@ async fn test_fork_impersonate_account_from_westend() {
     let recipient_addr = Address::random();
 
     // Set balance for the impersonated account
-    let balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    let balance = U256::from(1e20 as u128); // 100 ether
     unwrap_response::<()>(
         fork_node.eth_rpc(EthRequest::SetBalance(impersonated_addr, balance)).await.unwrap(),
     )
@@ -1031,7 +1031,7 @@ async fn test_fork_impersonate_account_from_westend() {
     .unwrap();
 
     // Send transaction from impersonated account
-    let transfer_amount = U256::from(1_000_000_000_000_000_000u128); // 1 ether
+    let transfer_amount = U256::from(1e18 as u128); // 1 ether
     let transaction = TransactionRequest::default()
         .value(transfer_amount)
         .from(impersonated_addr)
