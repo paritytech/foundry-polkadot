@@ -347,3 +347,17 @@ contract ExpectCallMixedTest is DSTest {
         target.add(1, 2);
     }
 }
+
+contract ExpectCallDelegateSkipTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    function testExpectCallSkipsDelegateCalls() public {
+        ProxyWithDelegateCall proxy = new ProxyWithDelegateCall();
+        SimpleCall target = new SimpleCall();
+
+        vm.expectCall(address(target), abi.encodeWithSignature("call()"), 1);
+
+        target.call();
+        proxy.delegateCall(target);
+    }
+}
