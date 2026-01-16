@@ -30,7 +30,6 @@ use polkadot_sdk::{
     sp_timestamp,
 };
 use std::sync::Arc;
-use tokio::runtime::Builder as TokioRtBuilder;
 use tokio_stream::wrappers::ReceiverStream;
 
 use subxt::PolkadotConfig;
@@ -191,7 +190,7 @@ fn create_manual_seal_inherent_data_providers(
 }
 
 /// Builds a new service for a full client.
-pub fn new(
+pub async fn new(
     anvil_config: &AnvilNodeConfig,
     mut config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
@@ -201,57 +200,38 @@ pub fn new(
         // http:// -> ws:// (local/zombienet), https:// -> wss:// (production)
         let ws_url = fork_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
         let fork_choice = anvil_config.fork_choice;
-        let storage_map = std::thread::spawn(move || -> eyre::Result<Result<u64, ()>> {
-            let rt = TokioRtBuilder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| eyre::eyre!("tokio rt build error: {e}"))?;
-            rt.block_on(async move {
-                let client =
-                    subxt::client::OnlineClient::<PolkadotConfig>::from_url(ws_url.clone())
-                        .await
-                        .unwrap();
 
-                let finalized_block_ref =
-                    client.backend().latest_finalized_block_ref().await.unwrap();
-                let finalized_head_header = client
-                    .backend()
-                    .block_header(finalized_block_ref.hash())
-                    .await
-                    .unwrap()
-                    .unwrap();
-                let finalized_block_number: u64 = finalized_head_header.number.into();
+        let client = subxt::client::OnlineClient::<PolkadotConfig>::from_url(ws_url)
+            .await
+            .map_err(|e| ServiceError::Other(format!("fork connection failed: {e}")))?;
 
-                // Apply fork_choice if specified
-                let target_block_number = match fork_choice {
-                    Some(ForkChoice::Block(block_num)) => {
-                        if block_num < 0 {
-                            // Negative offset from latest finalized block
-                            let offset = (-block_num) as u64;
-                            finalized_block_number.saturating_sub(offset)
-                        } else {
-                            // Specific block number
-                            block_num as u64
-                        }
-                    }
-                    None => finalized_block_number,
-                };
+        let finalized_block_ref = client
+            .backend()
+            .latest_finalized_block_ref()
+            .await
+            .map_err(|e| ServiceError::Other(format!("failed to get finalized block: {e}")))?;
+        let finalized_head_header = client
+            .backend()
+            .block_header(finalized_block_ref.hash())
+            .await
+            .map_err(|e| ServiceError::Other(format!("failed to get block header: {e}")))?
+            .ok_or_else(|| ServiceError::Other("finalized block header not found".into()))?;
+        let finalized_block_number: u64 = finalized_head_header.number.into();
 
-                Ok(Ok(target_block_number))
-            })
-        })
-        .join()
-        .map_err(|_| ServiceError::Other("tokio thread panicked".into()))?
-        .map_err(|e| ServiceError::Other(format!("fork fetch failed: {e}")))?;
-
-        match storage_map {
-            Ok(genesis_number) => {
-                genesis_block_number = genesis_number;
+        // Apply fork_choice if specified
+        genesis_block_number = match fork_choice {
+            Some(ForkChoice::Block(block_num)) => {
+                if block_num < 0 {
+                    // Negative offset from latest finalized block
+                    let offset = (-block_num) as u64;
+                    finalized_block_number.saturating_sub(offset)
+                } else {
+                    // Specific block number
+                    block_num as u64
+                }
             }
-            _ => {
-                panic!("shouldn't happen")
-            }
-        }
+            None => finalized_block_number,
+        };
     }
 
     let storage_overrides =
