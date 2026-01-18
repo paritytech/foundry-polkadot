@@ -14,7 +14,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
-  RESOLC_VERSION: 0.3.0
+  RESOLC_VERSION: 0.6.0
   DLRP_API_KEY: ${{ secrets.DLRP_API_KEY }}
   ETHERSCAN_API_KEYS: ${{ secrets.ETHERSCAN_API_KEYS }}
   SNAPSHOTS: overwrite
