@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, ruint::aliases::U256};
+use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, map::HashSet, ruint::aliases::U256};
 use foundry_cheatcodes::{Ecx, MockCallDataContext, MockCallReturnData};
 use polkadot_sdk::{
     frame_system,
@@ -59,12 +59,17 @@ impl MockHandlerImpl {
         state.mocked_functions = mock_inner.mocked_functions.clone();
     }
 
+    /// Funds pranked fuzz addresses with u128::MAX so they can make calls in pallet-revive.
+    /// Skips accounts that were explicitly dealt to via vm.deal() to preserve balance assertions.
     pub(crate) fn fund_pranked_accounts(&self, account: Address) {
-        // Fuzzed prank addresses have no balance, so they won't exist in revive, and
-        // calls will fail, this is not a problem when running in REVM.
-        // TODO: Figure it out why this is still needed.
-        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
-        if balance == 0.into() {
+        let mock_inner = self.inner.borrow();
+
+        if mock_inner.dealt_accounts.contains(&account) {
+            return;
+        }
+
+        let pvm_balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
+        if pvm_balance == 0.into() {
             Pallet::<Runtime>::set_evm_balance(
                 &H160::from_slice(account.as_slice()),
                 u128::MAX.into(),
@@ -184,6 +189,7 @@ struct MockHandlerInner<T: frame_system::Config + pallet_revive::Config> {
 
     pub mocked_calls: HashMap<Address, BTreeMap<MockCallDataContext, VecDeque<MockCallReturnData>>>,
     pub mocked_functions: HashMap<Address, HashMap<Bytes, Address>>,
+    pub dealt_accounts: HashSet<Address>,
 }
 
 impl MockHandlerInner<Runtime> {
@@ -213,6 +219,7 @@ impl MockHandlerInner<Runtime> {
             mocked_calls: state.mocked_calls.clone(),
             callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
             mocked_functions: state.mocked_functions.clone(),
+            dealt_accounts: state.dealt_accounts.clone(),
         }
     }
 }
