@@ -111,14 +111,14 @@ jobs:
       - name: Parse and collect results
         run: |
           cd "${{ github.workspace }}"
-          for LOG in test-output-*.log; do
-            [ -f "$LOG" ] || continue
-            PROJECT_NAME="${LOG#test-output-}"
-            PROJECT_NAME="${PROJECT_NAME%.log}"
-            if [ -f "master-results/test-results-${PROJECT_NAME}.txt" ]; then
-              python3 .github/scripts/check-test-regression.py "$PROJECT_NAME" "$LOG" "master-results/test-results-${PROJECT_NAME}.txt"
+          for JSON_FILE in test-output-*.json; do
+            [ -f "$JSON_FILE" ] || continue
+            PROJECT_NAME="${JSON_FILE#test-output-}"
+            PROJECT_NAME="${PROJECT_NAME%.json}"
+            if [ -f "master-results/test-results-${PROJECT_NAME}.json" ]; then
+              python3 .github/scripts/check-test-regression.py "$PROJECT_NAME" "$JSON_FILE" "master-results/test-results-${PROJECT_NAME}.json"
             else
-              python3 .github/scripts/check-test-regression.py "$PROJECT_NAME" "$LOG"
+              python3 .github/scripts/check-test-regression.py "$PROJECT_NAME" "$JSON_FILE"
             fi
           done
 
@@ -128,6 +128,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: master-results
-          path: test-results-*.txt
+          path: test-results-*.json
           retention-days: 90
           overwrite: true
