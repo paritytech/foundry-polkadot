@@ -146,7 +146,18 @@ impl TestEnv {
         });
     }
 
-    pub fn etch_call(&mut self, target: &Address, new_runtime_code: &Bytes) -> Result {
+    pub fn etch_call(
+        &mut self,
+        target: &Address,
+        new_runtime_code: &Bytes,
+        target_balance: U256,
+    ) -> Result {
+        let balance_to_set = if target_balance.is_zero() {
+            sp_core::U256::from(u128::MAX)
+        } else {
+            sp_core::U256::from_little_endian(&target_balance.as_le_bytes()).min(u128::MAX.into())
+        };
+
         self.0.lock().unwrap().externalities.execute_with(|| {
             let target_address = H160::from_slice(target.as_slice());
             let target_account =
@@ -192,6 +203,10 @@ impl TestEnv {
                 &H160::from_slice(target.as_slice()),
                 contract_info,
             );
+
+            Pallet::<Runtime>::set_evm_balance(&target_address, balance_to_set)
+                .expect("failed to fund etched contract");
+
             Ok::<(), Error>(())
         })?;
         Ok(Default::default())

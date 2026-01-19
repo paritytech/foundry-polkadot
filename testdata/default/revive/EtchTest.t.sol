@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
+
 import "ds-test/test.sol";
 import "cheats/Vm.sol";
 import "../../default/logs/console.sol";
@@ -5,6 +8,14 @@ import "../../default/logs/console.sol";
 contract Adder {
     function add(uint256 a, uint256 b) public pure returns (uint256) {
         return a * b; // Intentional bug to verify etch works
+    }
+}
+
+contract StorageWriter {
+    uint256 public value;
+
+    function setValue(uint256 _value) public {
+        value = _value;
     }
 }
 
@@ -124,5 +135,13 @@ contract EtchTest is DSTest {
 
         uint256 nested_call_result2 = (new NestedAdder(1, 2)).nested_call(address(target2));
         assertEq(nested_call_result2, 3);
+    }
+
+    function testEtchContractCanWriteStorage() public {
+        bytes memory writerCode = vm.getDeployedCode("revive/EtchTest.t.sol:StorageWriter");
+        address target = address(0xBEEF);
+        vm.etch(target, writerCode);
+        StorageWriter(target).setValue(42);
+        assertEq(StorageWriter(target).value(), 42);
     }
 }

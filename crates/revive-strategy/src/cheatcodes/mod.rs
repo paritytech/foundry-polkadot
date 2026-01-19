@@ -447,8 +447,15 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     return Err(precompile_error(target));
                 }
 
+                let target_balance = ccx
+                    .ecx
+                    .journaled_state
+                    .load_account(*target)
+                    .map(|acc| acc.info.balance)
+                    .unwrap_or_default();
+
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                ctx.externalities.etch_call(target, newRuntimeBytecode)?;
+                ctx.externalities.etch_call(target, newRuntimeBytecode, target_balance)?;
 
                 cheatcode.dyn_apply(ccx, executor)
             }
