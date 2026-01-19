@@ -4,7 +4,6 @@
 import sys
 import re
 from pathlib import Path
-from collections import defaultdict
 
 
 def parse_forge_output(log_file):
@@ -17,21 +16,38 @@ def parse_forge_output(log_file):
 
     print(f"Parsing test results from {log_file}...")
 
+    current_contract = ""
+    in_summary = False
+
     with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
             line = line.strip()
 
-            # Match [PASS] lines
-            if line.startswith('[PASS]'):
-                match = re.search(r'^\[PASS\]\s+([^\s(]+)', line)
-                if match:
-                    results[match.group(1)] = 'PASS'
+            if line == 'Failing tests:':
+                in_summary = True
+                continue
 
-            # Match [FAIL lines
-            elif line.startswith('[FAIL'):
-                match = re.search(r'^\[FAIL[^\]]*\]\s+([^\s(]+)', line)
+            if in_summary:
+                continue
+
+            if line.startswith('Ran ') and ' tests for ' in line:
+                match = re.search(r'tests for [^:]+:(\w+)', line)
                 if match:
-                    results[match.group(1)] = 'FAIL'
+                    current_contract = match.group(1)
+
+            elif line.startswith('[PASS]'):
+                match = re.search(r'^\[PASS\]\s+(\w+\([^)]*\))', line)
+                if match:
+                    test_id = f"{current_contract}::{match.group(1)}" if current_contract else match.group(1)
+                    results[test_id] = 'PASS'
+
+            # Match [FAIL lines - use "] " to find end of bracket section
+            # This handles nested brackets in counterexamples like args=[1429579 [1.429e6]]
+            elif line.startswith('[FAIL'):
+                match = re.search(r'\]\s+(\w+\([^)]*\))', line)
+                if match:
+                    test_id = f"{current_contract}::{match.group(1)}" if current_contract else match.group(1)
+                    results[test_id] = 'FAIL'
 
     return results
 
