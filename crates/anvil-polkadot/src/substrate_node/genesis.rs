@@ -120,9 +120,7 @@ impl GenesisConfig {
                             .code
                             .clone()
                             .map(|code| code.to_vec())
-                            .unwrap_or_default()
-                            .into(),
-                        immutable_data: Default::default(),
+                            .unwrap_or_default(),
                         storage: account
                             .storage
                             .clone()

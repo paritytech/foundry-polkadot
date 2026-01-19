@@ -177,6 +177,7 @@ impl ApiServer {
             EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
             //------- Gas -----------
             EthRequest::SetNextBlockBaseFeePerGas(base_fee) => {
+                node_info!("evm_setNextBlockBaseFeePerGas");
                 let latest_block = self.latest_block();
                 // We inject in substrate storage an 1e18 denominated value after transforming it
                 // to a 1e12.
@@ -371,7 +372,10 @@ impl ApiServer {
                 self.reset(params.and_then(|p| p.params)).await.to_rpc_result()
             }
             // ------- Wallet ---------
-            EthRequest::EthSign(addr, content) => self.sign(addr, content).await.to_rpc_result(),
+            EthRequest::EthSign(addr, content) => {
+                node_info!("eth_sign");
+                self.sign(addr, content).await.to_rpc_result()
+            }
             EthRequest::EthSignTypedDataV4(addr, data) => {
                 self.sign_typed_data_v4(addr, data).await.to_rpc_result()
             }
@@ -385,6 +389,7 @@ impl ApiServer {
                 self.sign_transaction(*request).await.to_rpc_result()
             }
             EthRequest::PersonalSign(content, addr) => {
+                node_info!("personal_sign");
                 self.sign(addr, content).await.to_rpc_result()
             }
             EthRequest::EthGetAccount(addr, block) => {
@@ -523,7 +528,7 @@ impl ApiServer {
         &self,
         mine: Option<AnvilCoreParams<Option<MineOptions>>>,
     ) -> Result<Vec<Block>> {
-        node_info!("evm_mine_detailed");
+        node_info!("evm_mineDetailed");
 
         // Subscribe to new best blocks.
         let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
@@ -561,7 +566,7 @@ impl ApiServer {
     }
 
     fn set_next_block_timestamp(&self, time: U256) -> Result<()> {
-        node_info!("anvil_setBlockTimestampInterval");
+        node_info!("evm_setNextBlockTimeStamp");
 
         if time >= U256::from(u64::MAX) {
             return Err(Error::InvalidParams("The timestamp is too big".to_string()));
@@ -847,8 +852,14 @@ impl ApiServer {
                 .sign_transaction(Address::from(ReviveAddress::new(addr)), tx)?
                 .signed_payload(),
             None => {
-                let mut fake_signature = [0; 65];
+                // Create impersonated signature format:
+                // [0; 12] + [address; 20] + [IMPERSONATION_MARKER; 32] + [recovery_id; 1]
+                // The recovery_id (byte 64) must be 0 or 1 for valid ECDSA signatures
+                use crate::substrate_node::host::IMPERSONATION_MARKER;
+                let mut fake_signature = [IMPERSONATION_MARKER; 65];
+                fake_signature[..12].fill(0);
                 fake_signature[12..32].copy_from_slice(from.as_bytes());
+                fake_signature[64] = 0; // Valid recovery ID
                 tx.with_signature(fake_signature).signed_payload()
             }
         };
@@ -1335,7 +1346,6 @@ impl ApiServer {
 
     // ----- Wallet RPCs
     async fn sign(&self, address: Address, content: impl AsRef<[u8]>) -> Result<String> {
-        node_info!("eth_sign");
         Ok(alloy_primitives::hex::encode_prefixed(self.wallet.sign(address, content.as_ref())?))
     }
 

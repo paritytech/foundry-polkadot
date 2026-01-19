@@ -1065,7 +1065,6 @@ path = "out"
 
 [profile.default.polkadot]
 resolc_compile = false
-polkadot = false
 
 [fmt]
 line_length = 120
@@ -1345,7 +1344,7 @@ exclude = []
   "script_execution_protection": true,
   "polkadot": {
     "resolc_compile": false,
-    "polkadot": false,
+    "polkadot": null,
     "resolc": null,
     "optimizer_mode": null,
     "heap_size": null,

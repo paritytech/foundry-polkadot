@@ -25,7 +25,7 @@ env:
         "name": "wormhole",
         "repo": "wormhole-foundation/wormhole",
         "working_dir": "ethereum",
-        "setup": "(cd ethereum && npm install && forge install foundry-rs/forge-std)"
+        "setup": "(cd ethereum && npm install && forge install foundry-rs/forge-std@v1.5.5)"
       },
       {
         "name": "aave-v3",
