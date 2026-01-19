@@ -28,8 +28,8 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code,
-        ContractInfo, DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, Code, ContractInfo,
+        DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
     sp_core::{self, H160},
@@ -448,7 +448,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 }
 
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
-                ctx.externalities.etch_call(target, newRuntimeBytecode, ccx.ecx)?;
+                ctx.externalities.etch_call(target, newRuntimeBytecode)?;
 
                 cheatcode.dyn_apply(ccx, executor)
             }
@@ -564,7 +564,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
         if ctx.revive_startup_migration.is_allowed() && !ctx.using_revive {
             tracing::info!("startup pallet-revive migration initiated");
-            select_revive(ctx, ecx);
+            select_revive(ctx, ecx, true);
             ctx.revive_startup_migration.done();
             tracing::info!("startup pallet-revive migration completed");
         }
@@ -645,7 +645,7 @@ fn handle_polkadot_call(
         ctx.runtime_mode = target_mode;
         if !is_backend_switch {
             // Migrate to the target mode (from standard EVM to Polkadot)
-            select_revive(ctx, data);
+            select_revive(ctx, data, false);
         }
     } else if ctx.using_revive {
         // Switching BACK to Foundry EVM
@@ -654,7 +654,11 @@ fn handle_polkadot_call(
     Ok(Default::default())
 }
 
-fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
+fn select_revive(
+    ctx: &mut PvmCheatcodeInspectorStrategyContext,
+    data: Ecx<'_, '_, '_>,
+    migrate_all: bool,
+) {
     if ctx.using_revive {
         tracing::info!("already using pallet-revive");
         return;
@@ -677,9 +681,20 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
                 &data.cfg.chain_id,
             );
-            let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
             let test_contract_addr = data.journaled_state.database.get_test_contract_address();
-            for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
+            let mut accounts = data.journaled_state.database.persistent_accounts().clone();
+            accounts.insert(data.tx.caller);
+
+            if migrate_all {
+                // Migrate all cached contracts
+                accounts.extend(
+                    data.journaled_state
+                        .database
+                        .cached_accounts()
+                );
+            }
+
+            for address in accounts {
                 tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;
@@ -786,7 +801,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 BytecodeType::Evm,
                                 &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
                                     weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                                    deposit_limit: 100_000_000_000_000,
                                 })
                                 .unwrap(),
                                 &ExecConfig::new_substrate_tx_without_bump(),
