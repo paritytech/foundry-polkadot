@@ -697,6 +697,19 @@ fn select_revive(
             for address in accounts {
                 tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
+                
+                // For contracts, explicitly load storage slot 0 to trigger lazy loading of contract storage
+                // from the database into the journaled state cache. Without this, storage written during
+                // contract construction in EVM won't be visible during migration.
+                // Note: This loads slot 0 which triggers the storage loading mechanism. For contracts with
+                // storage in other slots, those will be loaded lazily when accessed.
+                if acc.data.info.code.is_some() {
+                    let slot_0 = alloy_primitives::U256::ZERO;
+                    let _ = data.journaled_state.sload(address, slot_0);
+                }
+                
+                // Reload account after sload to get the loaded storage
+                let acc = data.journaled_state.load_account(address).expect("failed to load account");
                 let amount = acc.data.info.balance;
                 let nonce = acc.data.info.nonce;
                 let account = H160::from_slice(address.as_slice());
@@ -991,7 +1004,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 (contract.resolc_bytecode.as_bytes().unwrap().to_vec(), constructor_args.to_vec())
             }
             crate::ReviveRuntimeMode::Evm => {
-                // EVM mode: use EVM bytecode directly
+                // EVM mode: use EVM bytecode directly (includes constructor args)
                 tracing::info!("running create in EVM mode with EVM bytecode");
                 (init_code.0.to_vec(), vec![])
             }
