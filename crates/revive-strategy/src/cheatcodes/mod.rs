@@ -1255,7 +1255,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Some(outcome)
             }
             Err(e) => {
-                tracing::error!("Contract call failed: {e:#?}");
+                tracing::info!("Contract call failed: {e:#?}");
                 Some(CallOutcome {
                     result: InterpreterResult {
                         result: InstructionResult::Revert,
