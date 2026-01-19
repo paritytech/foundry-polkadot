@@ -9,20 +9,20 @@ use alloy_primitives::{Address, U256};
 use codec::Encode;
 use polkadot_sdk::{
     pallet_revive::{evm::Account, genesis::ContractData},
-    sc_chain_spec::{resolve_state_version_from_wasm, BuildGenesisBlock},
-    sc_client_api::{backend::Backend, BlockImportOperation},
+    sc_chain_spec::{BuildGenesisBlock, resolve_state_version_from_wasm},
+    sc_client_api::{BlockImportOperation, backend::Backend},
     sc_executor::RuntimeVersionOf,
     sp_blockchain,
-    sp_core::{self, storage::Storage, H160},
+    sp_core::{self, H160, storage::Storage},
     sp_runtime::{
-        traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
         BuildStorage, FixedU128,
+        traits::{Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT},
     },
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
-use substrate_runtime::{constants::NATIVE_TO_ETH_RATIO, WASM_BINARY};
+use substrate_runtime::{WASM_BINARY, constants::NATIVE_TO_ETH_RATIO};
 use subxt_signer::eth::Keypair;
 
 /// Genesis settings
@@ -116,11 +116,7 @@ impl GenesisConfig {
                 let genesis_nonce: u64 = account.nonce.unwrap_or_default();
                 let contract_data: Option<ContractData> = if account.code.is_some() {
                     Some(ContractData {
-                        code: account
-                            .code
-                            .clone()
-                            .map(|code| code.to_vec())
-                            .unwrap_or_default(),
+                        code: account.code.clone().map(|code| code.to_vec()).unwrap_or_default(),
                         storage: account
                             .storage
                             .clone()
