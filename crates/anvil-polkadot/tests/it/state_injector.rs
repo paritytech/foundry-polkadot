@@ -1,5 +1,5 @@
 use crate::{
-    abi::SimpleStorage,
+    abi::{ImmutableStorage, SimpleStorage},
     utils::{ContractCode, TestNode, get_contract_code, unwrap_response},
 };
 use alloy_eips::BlockId;
@@ -775,4 +775,66 @@ async fn test_set_storage() {
         let stored_value = node.get_storage_at(U256::from(0), alith.address()).await;
         assert_eq!(stored_value, 511);
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_set_immutable_storage() {
+    use alloy_sol_types::SolValue;
+
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_addr = Address::from(ReviveAddress::new(alith.address()));
+    let initial_value = U256::from(12345);
+    let initial_address =
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::baltathar()).address()));
+
+    // Deploy contract with constructor args: (uint256 _value, address _addr)
+    let ContractCode { init: bytecode, .. } = get_contract_code("ImmutableStorage");
+    let deployment_bytecode =
+        [bytecode.as_slice(), (initial_value, initial_address).abi_encode().as_slice()].concat();
+    let tx_hash = node.deploy_contract(&deployment_bytecode, alith.address()).await;
+    unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    let contract_address = Address::from(ReviveAddress::new(
+        node.get_transaction_receipt(tx_hash).await.contract_address.unwrap(),
+    ));
+
+    // Read and verify initial immutable value
+    let call_tx = TransactionRequest::default()
+        .from(alith_addr)
+        .to(contract_address)
+        .input(TransactionInput::both(ImmutableStorage::getImmutableValueCall {}.abi_encode().into()));
+    let result = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthCall(call_tx.into(), None, None, None)).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(ImmutableStorage::getImmutableValueCall::abi_decode_returns(&result.0).unwrap(), initial_value);
+
+    // Read and verify initial immutable address
+    let call_tx = TransactionRequest::default()
+        .from(alith_addr)
+        .to(contract_address)
+        .input(TransactionInput::both(ImmutableStorage::getImmutableAddressCall {}.abi_encode().into()));
+    let result = unwrap_response::<Bytes>(
+        node.eth_rpc(EthRequest::EthCall(call_tx.into(), None, None, None)).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(ImmutableStorage::getImmutableAddressCall::abi_decode_returns(&result.0).unwrap(), initial_address);
+
+    // Test anvil_setImmutableStorageAt with new values
+    let new_value = U256::from(99999);
+    let new_address =
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::charleth()).address()));
+
+    unwrap_response::<()>(
+        node.eth_rpc(EthRequest::SetImmutableStorageAt(
+            contract_address,
+            Bytes::from((new_value, new_address).abi_encode_packed()),
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
 }
