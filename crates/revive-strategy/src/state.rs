@@ -2,7 +2,7 @@ use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
 use foundry_cheatcodes::{Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
-        self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, ContractInfo,
         ExecConfig, Executable, Pallet, ResourceMeter,
     },
     sp_core::{self, H160, H256},
@@ -161,7 +161,7 @@ impl TestEnv {
                 code_type,
                 &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
                     weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                    deposit_limit: BalanceOf::<Runtime>::MAX,
+                    deposit_limit: { 100_000_000_000_000 },
                 })
                 .unwrap(),
                 &ExecConfig::new_substrate_tx(),
