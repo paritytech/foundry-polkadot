@@ -1,5 +1,5 @@
 use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
-use foundry_cheatcodes::{Ecx, Error, Result};
+use foundry_cheatcodes::{Error, Result};
 use polkadot_sdk::{
     pallet_revive::{
         self, AccountId32Mapper, AccountInfo, AddressMapper, BalanceOf, BytecodeType, ContractInfo,
@@ -146,17 +146,8 @@ impl TestEnv {
         });
     }
 
-    pub fn etch_call(
-        &mut self,
-        target: &Address,
-        new_runtime_code: &Bytes,
-        ecx: Ecx<'_, '_, '_>,
-    ) -> Result {
+    pub fn etch_call(&mut self, target: &Address, new_runtime_code: &Bytes) -> Result {
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let origin_address = H160::from_slice(ecx.tx.caller.as_slice());
-            let origin_account =
-                AccountId32Mapper::<Runtime>::to_fallback_account_id(&origin_address);
-
             let target_address = H160::from_slice(target.as_slice());
             let target_account =
                 AccountId32Mapper::<Runtime>::to_fallback_account_id(&target_address);
@@ -165,7 +156,7 @@ impl TestEnv {
             let code_type =
                 if code.starts_with(b"PVM\0") { BytecodeType::Pvm } else { BytecodeType::Evm };
             let contract_blob = Pallet::<Runtime>::try_upload_code(
-                origin_account,
+                Pallet::<Runtime>::account_id(),
                 code,
                 code_type,
                 &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
