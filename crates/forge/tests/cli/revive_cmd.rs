@@ -71,12 +71,12 @@ Compiler run successful!
 });
 
 // checks that extra output works
-// TODO: Failing with resolc 0.4.0. Works with resolc 0.3.0.
+// TODO: Failing with resolc 0.4.0. Works with resolc 0.6.0.
 forgetest!(can_emit_extra_output_for_resolc, |prj, cmd| {
     prj.clear();
     init_prj(&prj);
 
-    cmd.args(["build", "--resolc", "--use-resolc", "0.3.0", "--extra-output", "metadata"])
+    cmd.args(["build", "--resolc", "--use-resolc", "0.6.0", "--extra-output", "metadata"])
         .assert_success()
         .stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
@@ -95,7 +95,7 @@ Compiler run successful!
             "build",
             "--resolc",
             "--use-resolc",
-            "0.3.0",
+            "0.6.0",
             "--extra-output-files",
             "metadata",
             "--force",
@@ -114,14 +114,14 @@ Compiler run successful!
 });
 
 // checks that extra output works
-// TODO: Failing with resolc 0.4.0. Works with resolc 0.3.0.
+// TODO: Failing with resolc 0.4.0. Works with resolc 0.6.0.
 forgetest!(can_emit_multiple_extra_output_for_resolc, |prj, cmd| {
     init_prj(&prj);
     cmd.args([
         "build",
         "--resolc",
         "--use-resolc",
-        "0.3.0",
+        "0.6.0",
         "--extra-output",
         "metadata",
         "ir-optimized",
@@ -148,7 +148,7 @@ Compiler run successful!
             "build",
             "--resolc",
             "--use-resolc",
-            "0.3.0",
+            "0.6.0",
             "--extra-output-files",
             "metadata",
             "ir-optimized",
@@ -625,30 +625,30 @@ Error: No source files found in specified build paths.
 forgetest!(can_build_sizes_repeatedly_for_resolc, |prj, cmd| {
     init_prj(&prj);
 
-    cmd.args(["build", "--resolc", "--sizes", "--use-resolc", "resolc:0.1.0-dev.16"])
+    cmd.args(["build", "--resolc", "--sizes", "--use-resolc", "resolc:0.6.0"])
         .assert_success()
         .stdout_eq(str![[r#"
 ...
 ╭----------+------------------+-------------------+--------------------+---------------------╮
 | Contract | Runtime Size (B) | Initcode Size (B) | Runtime Margin (B) | Initcode Margin (B) |
 +============================================================================================+
-| Foo      | 1,288            | 1,288             | 248,712            | 248,712             |
+| Foo      | 1,226            | 1,226             | 248,774            | 248,774             |
 ╰----------+------------------+-------------------+--------------------+---------------------╯
 
 
 "#]]);
 
     cmd.forge_fuse()
-        .args(["build", "--resolc", "--sizes", "--json", "--use-resolc", "resolc:0.1.0-dev.16"])
+        .args(["build", "--resolc", "--sizes", "--json", "--use-resolc", "resolc:0.6.0"])
         .assert_success()
         .stdout_eq(
             str![[r#"
 {
   "Foo": {
-    "runtime_size": 1288,
-    "init_size": 1288,
-    "runtime_margin": 248712,
-    "init_margin": 248712
+    "runtime_size": 1226,
+    "init_size": 1226,
+    "runtime_margin": 248774,
+    "init_margin": 248774
   }
 }
 "#]]
@@ -874,11 +874,10 @@ Error: Multiple contracts found in the same file, please specify the target <pat
     );
 });
 
-// TODO: Failing with resolc 0.4.0. Works with resolc 0.3.0.
 forgetest!(inspect_custom_counter_method_identifiers_for_resolc, |prj, cmd| {
     prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
 
-    cmd.args(["inspect", "--resolc", "--use-resolc", "0.3.0", "Counter", "method-identifiers"])
+    cmd.args(["inspect", "--resolc", "--use-resolc", "0.6.0", "Counter", "method-identifiers"])
         .assert_success()
         .stdout_eq(str![[r#"
 

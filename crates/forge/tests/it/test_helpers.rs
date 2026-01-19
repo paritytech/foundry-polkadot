@@ -21,6 +21,7 @@ use foundry_test_utils::{
 };
 use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 use revm::primitives::hardfork::SpecId;
+use semver::Version;
 use std::{
     env, fmt,
     io::Write,
@@ -212,7 +213,7 @@ impl ForgeTestData {
         let mut resolc_config = (*config).clone();
         resolc_config.polkadot.resolc_compile = true;
         resolc_config.polkadot.resolc =
-            Some(foundry_config::SolcReq::Version("0.4.1".parse().unwrap()));
+            Some(foundry_config::SolcReq::Version(Version::new(0, 6, 0)));
         let mut resolc_project = resolc_config.project().unwrap();
 
         // Filter files compatible with resolc
