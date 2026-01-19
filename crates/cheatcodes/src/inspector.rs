@@ -468,9 +468,6 @@ pub struct Cheatcodes {
     /// All recorded ETH `deal`s.
     pub eth_deals: Vec<DealRecord>,
 
-    /// Addresses that have been explicitly funded via `vm.deal()`.
-    pub dealt_accounts: HashSet<Address>,
-
     /// Gas metering state.
     pub gas_metering: GasMetering,
 
@@ -551,7 +548,6 @@ impl Cheatcodes {
             test_context: Default::default(),
             serialized_jsons: Default::default(),
             eth_deals: Default::default(),
-            dealt_accounts: Default::default(),
             gas_metering: Default::default(),
             gas_snapshots: Default::default(),
             mapping_slots: Default::default(),

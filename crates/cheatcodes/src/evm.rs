@@ -526,7 +526,6 @@ impl Cheatcode for dealCall {
         let old_balance = std::mem::replace(&mut account.info.balance, new_balance);
         let record = DealRecord { address, old_balance, new_balance };
         ccx.state.eth_deals.push(record);
-        ccx.state.dealt_accounts.insert(address);
         Ok(Default::default())
     }
 }

@@ -4,8 +4,8 @@ use std::{
     rc::Rc,
 };
 
-use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, map::HashSet, ruint::aliases::U256};
-use foundry_cheatcodes::{Ecx, MockCallDataContext, MockCallReturnData};
+use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, ruint::aliases::U256};
+use foundry_cheatcodes::{DealRecord, Ecx, MockCallDataContext, MockCallReturnData};
 use polkadot_sdk::{
     frame_system,
     pallet_revive::{
@@ -61,10 +61,16 @@ impl MockHandlerImpl {
 
     /// Funds pranked fuzz addresses with u128::MAX so they can make calls in pallet-revive.
     /// Skips accounts that were explicitly dealt to via vm.deal() to preserve balance assertions.
+    ///
+    /// Note: This only affects accounts that have never been dealt to. Accounts created from
+    /// within a test contract (e.g., via `self` calls) are not skipped and will be funded if
+    /// their balance is 0. This is intentional - vm.deal() is an explicit user action that
+    /// should be respected, while internal contract creations should still get auto-funding.
     pub(crate) fn fund_pranked_accounts(&self, account: Address) {
         let mock_inner = self.inner.borrow();
 
-        if mock_inner.dealt_accounts.contains(&account) {
+        // Skip accounts that were explicitly dealt to via vm.deal()
+        if mock_inner.eth_deals.iter().any(|deal| deal.address == account) {
             return;
         }
 
@@ -189,7 +195,8 @@ struct MockHandlerInner<T: frame_system::Config + pallet_revive::Config> {
 
     pub mocked_calls: HashMap<Address, BTreeMap<MockCallDataContext, VecDeque<MockCallReturnData>>>,
     pub mocked_functions: HashMap<Address, HashMap<Bytes, Address>>,
-    pub dealt_accounts: HashSet<Address>,
+    /// Records of accounts that were explicitly dealt to via vm.deal().
+    pub eth_deals: Vec<DealRecord>,
 }
 
 impl MockHandlerInner<Runtime> {
@@ -219,7 +226,7 @@ impl MockHandlerInner<Runtime> {
             mocked_calls: state.mocked_calls.clone(),
             callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
             mocked_functions: state.mocked_functions.clone(),
-            dealt_accounts: state.dealt_accounts.clone(),
+            eth_deals: state.eth_deals.clone(),
         }
     }
 }
