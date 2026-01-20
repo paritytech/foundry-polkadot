@@ -826,54 +826,67 @@ fn select_revive(
                             }
                         }
                     }
-                    if  AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
-                           // Migrate complete account state (storage) for newly created/existing contract
-                           // We need to merge storage from two sources:
-                           // 1. Database cache: storage written during contract construction (before startup migration)
-                           // 2. Journaled state: storage written during current execution (e.g., after vm.polkadot(false))
-
-                           // First, migrate storage from the database cache
-                           if let Some(cached_storage) = data.journaled_state.database.cached_storage(address) {
-                               for (slot, value) in cached_storage {
-                                    let slot_bytes = slot.to_be_bytes::<32>();
-                                    let value_bytes = value.to_be_bytes::<32>();
-
-                                    if !value.is_zero() {
-                                        let _ = Pallet::<Runtime>::set_storage(
-                                            account_h160,
-                                            slot_bytes,
-                                            Some(value_bytes.to_vec()),
-                                        );
-                                    }
-                               }
-                           }
-
-                           // Then, migrate storage from the journaled state (overwrites cached values if present)
-                           if let Some(account_state) = data.journaled_state.state.get(&address) {
-                               for (slot, storage_slot) in &account_state.storage {
-                                    let slot_bytes = slot.to_be_bytes::<32>();
-                                    let value_bytes = storage_slot.present_value.to_be_bytes::<32>();
-
-                                    if !storage_slot.present_value.is_zero() {
-                                        let _ = Pallet::<Runtime>::set_storage(
-                                            account_h160,
-                                            slot_bytes,
-                                            Some(value_bytes.to_vec()),
-                                        );
-                                    } else {
-                                        // Handle case where storage was cleared
-                                        let _ = Pallet::<Runtime>::set_storage(
-                                            account_h160,
-                                            slot_bytes,
-                                            None,
-                                        );
-                                    }
-                               }
-                           }
+                    if AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
+                        migrate_contract_storage(data, address, account_h160);
                     }
                 }
             }
         });
+}
+
+/// Migrates contract storage from REVM state to pallet-revive.
+///
+/// Merges storage from two sources:
+/// 1. Journaled state: most recent storage values from current execution
+/// 2. Database cache: storage written before startup migration, which is run as separate transaction, already commited to cache
+///
+/// The journaled state takes precedence - cache values are only used for slots
+/// not present in the journaled state.
+fn migrate_contract_storage(data: Ecx<'_, '_, '_>, address: Address, account_h160: H160) {
+    use std::collections::HashSet;
+
+    // Track which slots we've already migrated from the journaled state
+    let mut migrated_slots: HashSet<U256> = HashSet::new();
+
+    // First, migrate storage from the journaled state (most up-to-date values)
+    if let Some(account_state) = data.journaled_state.state.get(&address) {
+        for (slot, storage_slot) in &account_state.storage {
+            migrated_slots.insert(*slot);
+
+            let slot_bytes = slot.to_be_bytes::<32>();
+            let value = storage_slot.present_value;
+
+            if !value.is_zero() {
+                let _ = Pallet::<Runtime>::set_storage(
+                    account_h160,
+                    slot_bytes,
+                    Some(value.to_be_bytes::<32>().to_vec()),
+                );
+            } else {
+                // Handle case where storage was explicitly cleared
+                let _ = Pallet::<Runtime>::set_storage(account_h160, slot_bytes, None);
+            }
+        }
+    }
+
+    // Then, migrate storage from the database cache for slots NOT in journaled state
+    if let Some(cached_storage) = data.journaled_state.database.cached_storage(address) {
+        for (slot, value) in cached_storage {
+            // Skip slots already migrated from the journaled state
+            if migrated_slots.contains(&slot) {
+                continue;
+            }
+
+            if !value.is_zero() {
+                let slot_bytes = slot.to_be_bytes::<32>();
+                let _ = Pallet::<Runtime>::set_storage(
+                    account_h160,
+                    slot_bytes,
+                    Some(value.to_be_bytes::<32>().to_vec()),
+                );
+            }
+        }
+    }
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
