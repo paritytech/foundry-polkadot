@@ -385,7 +385,6 @@ contract InitialMigrationTest is DSTest {
     }
 }
 
-
 // Simple contract that stores a constructor argument
 contract SimpleAddrStorage {
     address public storedAddr;
@@ -398,7 +397,6 @@ contract SimpleAddrStorage {
 contract ContractArgsMigrationTest is DSTest {
     Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
     address myAddr = vm.addr(1900);
-
 
     // Expected address for private key 1900
     address constant EXPECTED = 0x6Af741AA4Ff39CF3De9A0Cb02A8Bab387E41abFB;
