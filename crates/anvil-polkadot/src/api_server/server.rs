@@ -1333,13 +1333,42 @@ impl ApiServer {
     fn set_immutable_storage_at(
         &self,
         address: Address,
-        data: alloy_primitives::Bytes,
+        immutables: Vec<alloy_primitives::Bytes>,
     ) -> Result<()> {
         node_info!("anvil_setImmutableStorageAt");
 
         let latest_block = self.latest_block();
 
-        self.backend.inject_immutable_data(latest_block, address, data.to_vec());
+        // Convert ABI-encoded immutable values (big-endian) to PVM format (little-endian).
+        //
+        // ## Data Format
+        //
+        // Each element in `immutables` is a single ABI-encoded immutable value:
+        // - Value in big-endian format (standard for Solidity ABI encoding)
+        // - Padded to 32 bytes
+        //
+        // Example: For a contract with immutables `uint256 value` and `address addr`:
+        //   immutables[0] = <32-byte big-endian uint256>
+        //   immutables[1] = <12 zeros + 20-byte address>
+        //
+        // ## Conversion
+        //
+        // This method converts each immutable value (32-byte chunk) from big-endian to
+        // little-endian, since PVM (Polkadot Virtual Machine) expects immutable data in
+        // little-endian format. The conversion is done by reversing each 32-byte word.
+        // Then all converted values are concatenated in order.
+        let pvm_data: Vec<u8> = immutables
+            .into_iter()
+            .flat_map(|immutable| {
+                let mut word = [0u8; 32];
+                let len = immutable.len().min(32);
+                word[..len].copy_from_slice(&immutable[..len]);
+                word.reverse();
+                word
+            })
+            .collect();
+
+        self.backend.inject_immutable_data(latest_block, address, pvm_data);
 
         Ok(())
     }

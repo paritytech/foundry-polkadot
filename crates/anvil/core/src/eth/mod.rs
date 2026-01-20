@@ -432,8 +432,8 @@ pub enum EthRequest {
     #[serde(rename = "anvil_setImmutableStorageAt")]
     SetImmutableStorageAt(
         Address,
-        /// immutable data
-        Bytes,
+        /// immutable values (each as ABI-encoded bytes)
+        Vec<Bytes>,
     ),
 
     /// Sets the coinbase address

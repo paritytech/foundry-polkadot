@@ -360,9 +360,14 @@ impl StorageOverrides {
 
     fn set_immutable_data(&mut self, latest_block: Hash, address: Address, data: Vec<u8>) {
         let mut changeset = BlockOverrides::default();
+
+        // SCALE-encode as BoundedVec<u8>: compact_length prefix followed by raw bytes
+        let mut encoded = codec::Compact(data.len() as u32).encode();
+        encoded.extend_from_slice(&data);
+
         changeset.top.insert(
             well_known_keys::immutable_data_of(H160::from_slice(address.as_slice())),
-            Some(data.encode()),
+            Some(encoded),
         );
 
         self.add(latest_block, changeset);
