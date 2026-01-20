@@ -878,13 +878,16 @@ fn migrate_contract_storage(data: Ecx<'_, '_, '_>, address: Address, account_h16
                 continue;
             }
 
+            let slot_bytes = slot.to_be_bytes::<32>();
             if !value.is_zero() {
-                let slot_bytes = slot.to_be_bytes::<32>();
                 let _ = Pallet::<Runtime>::set_storage(
                     account_h160,
                     slot_bytes,
                     Some(value.to_be_bytes::<32>().to_vec()),
                 );
+            } else {
+                // Handle case where storage was explicitly cleared
+                let _ = Pallet::<Runtime>::set_storage(account_h160, slot_bytes, None);
             }
         }
     }
