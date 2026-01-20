@@ -838,7 +838,8 @@ fn select_revive(
 ///
 /// Merges storage from two sources:
 /// 1. Journaled state: most recent storage values from current execution
-/// 2. Database cache: storage written before startup migration, which is run as separate transaction, already commited to cache
+/// 2. Database cache: storage written before startup migration, which is run as separate
+///    transaction, already commited to cache
 ///
 /// The journaled state takes precedence - cache values are only used for slots
 /// not present in the journaled state.
