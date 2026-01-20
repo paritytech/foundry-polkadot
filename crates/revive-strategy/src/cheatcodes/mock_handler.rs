@@ -89,6 +89,7 @@ impl MockHandler<Runtime> for MockHandlerImpl {
                 data: b"Cheatcodes are not available in polkadot runtime.".to_vec(),
             });
         }
+
         let mut mock_inner = self.inner.borrow_mut();
         let ctx = MockCallDataContext {
             calldata: call_data.to_vec().into(),
