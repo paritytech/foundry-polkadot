@@ -354,7 +354,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-                let new_block_number: u64 = newHeight.try_into().expect("Block number exceeds u32");
+                let new_block_number: u64 = newHeight.saturating_to();
 
                 // blockhash should be the same on both revive and revm sides, so fetch it before
                 // changing the block number.
@@ -362,7 +362,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     .ecx
                     .journaled_state
                     .database
-                    .block_hash(new_block_number - 1)
+                    .block_hash(new_block_number.saturating_sub(1))
                     .expect("Should not fail");
                 let new_height_hash = ccx
                     .ecx
@@ -695,23 +695,11 @@ fn select_revive(
             }
 
             for address in accounts {
-                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
+                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address)); 
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
-                
-                // For contracts, explicitly load storage slot 0 to trigger lazy loading of contract storage
-                // from the database into the journaled state cache. Without this, storage written during
-                // contract construction in EVM won't be visible during migration.
-                // Note: This loads slot 0 which triggers the storage loading mechanism. For contracts with
-                // storage in other slots, those will be loaded lazily when accessed.
-                if acc.data.info.code.is_some() {
-                    let slot_0 = alloy_primitives::U256::ZERO;
-                    let _ = data.journaled_state.sload(address, slot_0);
-                }
-                
-                // Reload account after sload to get the loaded storage
-                let acc = data.journaled_state.load_account(address).expect("failed to load account");
-                let amount = acc.data.info.balance;
-                let nonce = acc.data.info.nonce;
+
+                let amount = acc.info.balance;
+                let nonce = acc.info.nonce;
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
@@ -723,7 +711,7 @@ fn select_revive(
                     a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
                 });
 
-                if let Some(bytecode) = acc.data.info.code.as_ref() {
+                if let Some(bytecode) = acc.info.code.as_ref() {
                     let account_h160 = H160::from_slice(address.as_slice());
 
                     // Skip if contract already exists in pallet-revive
@@ -840,18 +828,48 @@ fn select_revive(
                     }
                     if  AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
                            // Migrate complete account state (storage) for newly created/existing contract
-                           for (slot, storage_slot) in &acc.data.storage {
-                            let slot_bytes = slot.to_be_bytes::<32>();
-                            let value_bytes = storage_slot.present_value.to_be_bytes::<32>();
+                           // We need to merge storage from two sources:
+                           // 1. Database cache: storage written during contract construction (before startup migration)
+                           // 2. Journaled state: storage written during current execution (e.g., after vm.polkadot(false))
 
-                            if !storage_slot.present_value.is_zero() {
-                                let _ = Pallet::<Runtime>::set_storage(
-                                    account_h160,
-                                    slot_bytes,
-                                    Some(value_bytes.to_vec()),
-                                );
-                            }
-                        }
+                           // First, migrate storage from the database cache
+                           if let Some(cached_storage) = data.journaled_state.database.cached_storage(address) {
+                               for (slot, value) in cached_storage {
+                                    let slot_bytes = slot.to_be_bytes::<32>();
+                                    let value_bytes = value.to_be_bytes::<32>();
+
+                                    if !value.is_zero() {
+                                        let _ = Pallet::<Runtime>::set_storage(
+                                            account_h160,
+                                            slot_bytes,
+                                            Some(value_bytes.to_vec()),
+                                        );
+                                    }
+                               }
+                           }
+
+                           // Then, migrate storage from the journaled state (overwrites cached values if present)
+                           if let Some(account_state) = data.journaled_state.state.get(&address) {
+                               for (slot, storage_slot) in &account_state.storage {
+                                    let slot_bytes = slot.to_be_bytes::<32>();
+                                    let value_bytes = storage_slot.present_value.to_be_bytes::<32>();
+
+                                    if !storage_slot.present_value.is_zero() {
+                                        let _ = Pallet::<Runtime>::set_storage(
+                                            account_h160,
+                                            slot_bytes,
+                                            Some(value_bytes.to_vec()),
+                                        );
+                                    } else {
+                                        // Handle case where storage was cleared
+                                        let _ = Pallet::<Runtime>::set_storage(
+                                            account_h160,
+                                            slot_bytes,
+                                            None,
+                                        );
+                                    }
+                               }
+                           }
                     }
                 }
             }

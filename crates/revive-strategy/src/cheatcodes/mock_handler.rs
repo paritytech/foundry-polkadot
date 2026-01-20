@@ -6,6 +6,7 @@ use std::{
 
 use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, ruint::aliases::U256};
 use foundry_cheatcodes::{Ecx, MockCallDataContext, MockCallReturnData};
+use foundry_evm::constants::CHEATCODE_ADDRESS;
 use polkadot_sdk::{
     frame_system,
     pallet_revive::{
@@ -81,6 +82,13 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         call_data: &[u8],
         value_transferred: polkadot_sdk::pallet_revive::U256,
     ) -> Option<pallet_revive::ExecReturnValue> {
+        // Check if trying to call cheatcode address from pallet-revive
+        if Address::from_slice(callee.as_bytes()) == CHEATCODE_ADDRESS {
+            return Some(ExecReturnValue {
+                flags: ReturnFlags::REVERT,
+                data: b"Cheatcodes are not available in polkadot runtime.".to_vec(),
+            });
+        }
         let mut mock_inner = self.inner.borrow_mut();
         let ctx = MockCallDataContext {
             calldata: call_data.to_vec().into(),
