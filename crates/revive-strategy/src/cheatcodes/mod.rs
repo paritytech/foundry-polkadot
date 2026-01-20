@@ -1301,7 +1301,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Some(outcome)
             }
             Err(e) => {
-                tracing::error!("Contract call failed: {e:#?}");
+                tracing::info!("Contract call failed: {e:#?}");
                 Some(CallOutcome {
                     result: InterpreterResult {
                         result: InstructionResult::Revert,
@@ -1349,7 +1349,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 .journaled_state
                 .database
                 .get_test_contract_address()
-                .map(|addr| call.bytecode_address != addr || call.target_address == addr)
+                .map(|addr| call.bytecode_address != addr || call.target_address != addr)
                 .unwrap_or(true)
         {
             return;

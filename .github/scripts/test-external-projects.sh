@@ -11,6 +11,7 @@ echo "$PROJECTS" | jq -c '.[]' | while read -r project; do
   WORKING_DIR=$(echo "$project" | jq -r '.working_dir // ""')
   WORKING_DIRS=$(echo "$project" | jq -r '.working_dirs // ""')
   SETUP=$(echo "$project" | jq -r '.setup // ""')
+  EXTRA_ARGS=$(echo "$project" | jq -r '.extraArgs // ""')
 
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "Testing: $PROJECT_NAME"
@@ -40,7 +41,7 @@ echo "$PROJECTS" | jq -c '.[]' | while read -r project; do
     if [ -n "$WORKING_DIR" ]; then
       cd "$WORKING_DIR"
     fi
-    forge test --polkadot 2>&1 | tee "${GITHUB_WORKSPACE}/test-output-${PROJECT_NAME}.log"
+    forge test --polkadot $EXTRA_ARGS 2>&1 | tee "${GITHUB_WORKSPACE}/test-output-${PROJECT_NAME}.log"
   fi
 
   cd "$GITHUB_WORKSPACE"
