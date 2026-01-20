@@ -376,6 +376,9 @@ impl ApiServer {
             EthRequest::SetStorageAt(address, key, value) => {
                 self.set_storage_at(address, key, value).to_rpc_result()
             }
+            EthRequest::SetImmutableStorageAt(address, data) => {
+                self.set_immutable_storage_at(address, data).to_rpc_result()
+            }
             EthRequest::SetChainId(chain_id) => self.set_chain_id(chain_id).to_rpc_result(),
             // --- Revert ---
             EthRequest::EvmSnapshot(()) => self.snapshot().await.to_rpc_result(),
@@ -1344,6 +1347,49 @@ impl ApiServer {
 
         self.backend.inject_pristine_code(latest_block, code_hash, Some(bytes));
         self.backend.inject_code_info(latest_block, code_hash, Some(code_info));
+
+        Ok(())
+    }
+
+    fn set_immutable_storage_at(
+        &self,
+        address: Address,
+        immutables: Vec<alloy_primitives::Bytes>,
+    ) -> Result<()> {
+        node_info!("anvil_setImmutableStorageAt");
+
+        let latest_block = self.latest_block();
+
+        // Convert ABI-encoded immutable values (big-endian) to PVM format (little-endian).
+        //
+        // ## Data Format
+        //
+        // Each element in `immutables` is a single ABI-encoded immutable value:
+        // - Value in big-endian format (standard for Solidity ABI encoding)
+        // - Padded to 32 bytes
+        //
+        // Example: For a contract with immutables `uint256 value` and `address addr`:
+        //   immutables[0] = <32-byte big-endian uint256>
+        //   immutables[1] = <12 zeros + 20-byte address>
+        //
+        // ## Conversion
+        //
+        // This method converts each immutable value (32-byte chunk) from big-endian to
+        // little-endian, since PVM (Polkadot Virtual Machine) expects immutable data in
+        // little-endian format. The conversion is done by reversing each 32-byte word.
+        // Then all converted values are concatenated in order.
+        let pvm_data: Vec<u8> = immutables
+            .into_iter()
+            .flat_map(|immutable| {
+                let mut word = [0u8; 32];
+                let len = immutable.len().min(32);
+                word[..len].copy_from_slice(&immutable[..len]);
+                word.reverse();
+                word
+            })
+            .collect();
+
+        self.backend.inject_immutable_data(latest_block, address, pvm_data);
 
         Ok(())
     }
