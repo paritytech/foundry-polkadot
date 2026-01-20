@@ -4,8 +4,8 @@ use foundry_test_utils::snapbox::IntoData;
 use semver::Version;
 
 use crate::utils::generate_large_init_contract;
-pub const OTHER_RESOLC_VERSION: &str = "0.1.0-dev.13";
-pub const NEWEST_RESOLC_VERSION: &str = "0.1.0-dev.16";
+pub const OTHER_RESOLC_VERSION: &str = "0.6.0";
+pub const NEWEST_RESOLC_VERSION: &str = "0.6.0";
 
 forgetest_init!(can_build_with_resolc, |prj, cmd| {
     cmd.args(["build", "--resolc-compile"]).assert_success().stdout_eq(str![[r#"
@@ -49,7 +49,7 @@ Compiler run successful!
 ╭---------------+------------------+-------------------+--------------------+---------------------╮
 | Contract      | Runtime Size (B) | Initcode Size (B) | Runtime Margin (B) | Initcode Margin (B) |
 +=================================================================================================+
-| LargeContract | 527,706          | 527,706           | -277,706           | -277,706            |
+| LargeContract | 258,026          | 258,026           | -8,026             | -8,026              |
 ╰---------------+------------------+-------------------+--------------------+---------------------╯
 
 
@@ -69,10 +69,10 @@ Compiler run successful!
             str![[r#"
 {
   "LargeContract": {
-    "runtime_size": 527706,
-    "init_size": 527706,
-    "runtime_margin": -277706,
-    "init_margin": -277706
+    "runtime_size": 258026,
+    "init_size": 258026,
+    "runtime_margin": -8026,
+    "init_margin": -8026
   }
 }
 "#]]
@@ -93,7 +93,7 @@ forgetest_init!(build_contracts_with_optimization, |prj, cmd| {
     ])
     .assert_success()
     .stdout_eq(str![[r#"
-{"Counter":{"runtime_size":11175,"init_size":11175,"runtime_margin":238825,"init_margin":238825}}
+{"Counter":{"runtime_size":11267,"init_size":11267,"runtime_margin":238733,"init_margin":238733}}
 
 
 "#]]);
@@ -111,7 +111,7 @@ forgetest_init!(build_contracts_with_optimization, |prj, cmd| {
         ])
         .assert_success()
         .stdout_eq(str![[r#"
-{"Counter":{"runtime_size":4994,"init_size":4994,"runtime_margin":245006,"init_margin":245006}}
+{"Counter":{"runtime_size":2628,"init_size":2628,"runtime_margin":247372,"init_margin":247372}}
 
 
 "#]]);
