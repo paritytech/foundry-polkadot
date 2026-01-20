@@ -178,7 +178,7 @@ async fn test_initial_contract_deployment(#[case] runtime_mode: ReviveRuntimeMod
 }
 
 #[rstest]
-//#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
 #[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_contract_with_constructor_deployment(#[case] runtime_mode: ReviveRuntimeMode) {
