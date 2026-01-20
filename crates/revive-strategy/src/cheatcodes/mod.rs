@@ -354,7 +354,18 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-                let new_block_number: u64 = newHeight.try_into().expect("Block number exceeds u32");
+                // Check if block number exceeds u64::MAX before proceeding
+                // pallet-revive uses u64 for block numbers, so values > u64::MAX will be truncated
+                let u64_max: U256 = U256::from(u64::MAX);
+                if newHeight > u64_max {
+                    tracing::warn!(
+                        newHeight = ?newHeight,
+                        max = ?u64_max,
+                        "Block number exceeds u64::MAX. pallet-revive uses u64 for block numbers."
+                    );
+                }
+
+                let new_block_number: u64 = newHeight.saturating_to();
 
                 // blockhash should be the same on both revive and revm sides, so fetch it before
                 // changing the block number.
@@ -398,6 +409,17 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
 
+                // Check if timestamp exceeds u64::MAX before proceeding
+                // pallet-revive uses u64 for timestamps, so values > u64::MAX will be truncated
+                let u64_max: U256 = U256::from(u64::MAX);
+                if newTimestamp > u64_max {
+                    tracing::warn!(
+                        newTimestamp = ?newTimestamp,
+                        max = ?u64_max,
+                        "Timestamp exceeds u64::MAX. pallet-revive uses u64 for timestamps."
+                    );
+                }
+
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 ctx.externalities.set_timestamp(newTimestamp);
 
@@ -426,6 +448,17 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
 
+                // Check if block number exceeds u64::MAX before proceeding
+                // pallet-revive uses u64 for block numbers, so values > u64::MAX will be truncated
+                let u64_max: U256 = U256::from(u64::MAX);
+                if blockNumber > u64_max {
+                    tracing::warn!(
+                        blockNumber = ?blockNumber,
+                        max = ?u64_max,
+                        "Block number exceeds u64::MAX. pallet-revive uses u64 for block numbers."
+                    );
+                }
+
                 // Validate blockNumber is not in the future
                 let current_block = ctx.externalities.get_block_number();
                 if blockNumber > current_block {
@@ -434,7 +467,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     ));
                 }
 
-                let block_num_u64 = blockNumber.to::<u64>();
+                let block_num_u64 = blockNumber.saturating_to::<u64>();
                 ctx.externalities.set_blockhash(block_num_u64, blockHash);
 
                 cheatcode.dyn_apply(ccx, executor)
@@ -702,6 +735,16 @@ fn select_revive(
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
+                let u128_max: U256 = U256::from(u128::MAX);
+                if amount > u128_max {
+                    tracing::warn!(
+                        address = ?address,
+                        requested = ?amount,
+                        actual = ?u128_max,
+                        "Migration: balance exceeds u128::MAX, clamping to u128::MAX. \
+                         pallet-revive uses u128 for balances."
+                    );
+                }
                 let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
                 Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
                     .expect("failed to set evm balance");
@@ -997,6 +1040,31 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             }
         };
 
+        // Check if create value exceeds u128::MAX before proceeding
+        let u128_max: U256 = U256::from(u128::MAX);
+        if input.value() > u128_max {
+            tracing::warn!(
+                caller = ?input.caller(),
+                value = ?input.value(),
+                max = ?u128_max,
+                "Create value exceeds u128::MAX. pallet-revive uses u128 for balances."
+            );
+            return Some(CreateOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::Revert,
+                    output: Bytes::from_iter(
+                        format!(
+                            "Create value {} exceeds u128::MAX ({}). pallet-revive uses u128 for balances.",
+                            input.value(),
+                            u128::MAX
+                        ).as_bytes(),
+                    ),
+                    gas: Gas::new(input.gas_limit()),
+                },
+                address: None,
+            });
+        }
+
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
@@ -1167,6 +1235,34 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
+
+        // Check if call value exceeds u128::MAX before proceeding
+        // pallet-revive uses u128 for balances, so values > u128::MAX will cause errors
+        let u128_max: U256 = U256::from(u128::MAX);
+        let call_value = call.call_value();
+        if call_value > u128_max {
+            tracing::warn!(
+                caller = ?call.caller,
+                target = ?call.target_address,
+                value = ?call_value,
+                max = ?u128_max,
+                "Call value exceeds u128::MAX. pallet-revive uses u128 for balances."
+            );
+            return Some(CallOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::Revert,
+                    output: Bytes::from_iter(
+                        format!(
+                            "Call value {} exceeds u128::MAX ({}). pallet-revive uses u128 for balances.",
+                            call_value,
+                            u128::MAX
+                        ).as_bytes(),
+                    ),
+                    gas: Gas::new(call.gas_limit),
+                },
+                memory_offset: call.return_memory_offset.clone(),
+            });
+        }
 
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
