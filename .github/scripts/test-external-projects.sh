@@ -37,7 +37,8 @@ echo "$PROJECTS" | jq -c '.[]' | while read -r project; do
       echo "Testing in: $dir"
       cd "$dir"
       TEMP_JSON=$(mktemp)
-      forge test --polkadot --json > "$TEMP_JSON" 2>&1 || true
+      # stdout goes to JSON file, stderr goes to console for debugging
+      forge test --polkadot --json > "$TEMP_JSON" || true
       # Merge JSON outputs using jq
       if [ -s "$TEMP_JSON" ] && jq empty "$TEMP_JSON" 2>/dev/null; then
         jq -s '.[0] * .[1]' "$OUTPUT_FILE" "$TEMP_JSON" > "${OUTPUT_FILE}.tmp" && mv "${OUTPUT_FILE}.tmp" "$OUTPUT_FILE"
@@ -50,7 +51,8 @@ echo "$PROJECTS" | jq -c '.[]' | while read -r project; do
     if [ -n "$WORKING_DIR" ]; then
       cd "$WORKING_DIR"
     fi
-    forge test --polkadot $EXTRA_ARGS --json > "$OUTPUT_FILE" 2>&1 || true
+    # stdout goes to JSON file, stderr goes to console for debugging
+    forge test --polkadot $EXTRA_ARGS --json > "$OUTPUT_FILE" || true
   fi
 
   cd "$GITHUB_WORKSPACE"

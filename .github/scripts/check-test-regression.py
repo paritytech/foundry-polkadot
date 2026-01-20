@@ -14,8 +14,22 @@ def parse_forge_json(json_file):
 
     print(f"Parsing test results from {json_file}...")
 
+    # Check for empty file
+    if json_file.stat().st_size == 0:
+        print(f"WARNING: {json_file} is empty (forge may have failed to compile or run)")
+        return {}
+
     with open(json_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+        content = f.read().strip()
+        if not content:
+            print(f"WARNING: {json_file} contains only whitespace")
+            return {}
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"WARNING: {json_file} contains invalid JSON: {e}")
+            print(f"File content (first 500 chars): {content[:500]}")
+            return {}
 
     for contract_key, contract_data in data.items():
         contract_name = contract_key.split(':')[-1] if ':' in contract_key else contract_key
