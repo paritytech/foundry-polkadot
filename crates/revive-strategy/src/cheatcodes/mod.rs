@@ -6,7 +6,7 @@ use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
+    CommonCreateInput, DynCheatcode, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         AccountAccessKind, chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall,
         polkadot_0Call, polkadot_1Call, polkadotSkipCall, resetNonceCall,
@@ -318,8 +318,28 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
-                ctx.externalities.set_balance(*account, *newBalance);
-                cheatcode.dyn_apply(ccx, executor)
+                // Clamp balance to u128::MAX since pallet-revive uses u128 for balances
+                let u128_max: U256 = U256::from(u128::MAX);
+                let clamped_balance = if *newBalance > u128_max {
+                    tracing::warn!(
+                        account = ?account,
+                        requested = ?newBalance,
+                        actual = ?u128_max,
+                        "vm.deal: balance exceeds u128::MAX, clamping to u128::MAX. \
+                         pallet-revive uses u128 for balances, values > {} are not supported.",
+                        u128::MAX
+                    );
+                    u128_max
+                } else {
+                    *newBalance
+                };
+
+                // Set clamped balance in pallet-revive
+                ctx.externalities.set_balance(*account, clamped_balance);
+
+                // Use dyn_apply with clamped balance to update REVM state
+                let clamped_deal = dealCall { account: *account, newBalance: clamped_balance };
+                clamped_deal.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<setNonceCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
@@ -482,6 +502,17 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.externalities.etch_call(target, newRuntimeBytecode)?;
+
+                // Fund the etched contract with a default balance for storage deposits.
+                // In pallet-revive, contracts need funds to pay for storage deposits when
+                // writing to storage. Without this, etched contracts would fail with
+                // "StorageDepositNotEnoughFunds" on any storage write operation.
+                let default_balance = U256::from(1_000_000_000_000_000_000u128);
+                ctx.externalities.set_balance(*target, default_balance);
+
+                // Also update REVM state to keep in sync
+                let revm_account = journaled_account(ccx.ecx, *target)?;
+                revm_account.info.balance = default_balance;
 
                 cheatcode.dyn_apply(ccx, executor)
             }
