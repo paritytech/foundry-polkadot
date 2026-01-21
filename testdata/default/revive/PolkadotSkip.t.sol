@@ -58,8 +58,7 @@ contract PolkadotSkipTest is DSTest {
     }
 
     function testreviveWhenUseCheatcodeWithoutSkip() external {
-        uint256 nonceBefore = vm.getNonce(address(helper));
+        vm.expectRevert("Cheatcodes are not available in polkadot runtime.");
         helper.exec();
-        assertEq(vm.getNonce(address(helper)), nonceBefore + 1);
     }
 }
