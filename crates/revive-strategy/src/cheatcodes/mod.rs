@@ -444,17 +444,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.externalities.etch_call(target, newRuntimeBytecode)?;
 
-                // Fund the etched contract with a default balance for storage deposits.
-                // In pallet-revive, contracts need funds to pay for storage deposits when
-                // writing to storage. Without this, etched contracts would fail with
-                // "StorageDepositNotEnoughFunds" on any storage write operation.
-                let default_balance = U256::from(1_000_000_000_000_000_000u128);
-                ctx.externalities.set_balance(*target, default_balance);
-
-                // Also update REVM state to keep in sync
-                let revm_account = journaled_account(ccx.ecx, *target)?;
-                revm_account.info.balance = default_balance;
-
                 cheatcode.dyn_apply(ccx, executor)
             }
 
