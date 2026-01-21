@@ -90,4 +90,13 @@ pub mod well_known_keys {
 
         key
     }
+
+    pub fn immutable_data_of(address: H160) -> Vec<u8> {
+        let mut key = Vec::new();
+        key.extend_from_slice(&twox_128("Revive".as_bytes()));
+        key.extend_from_slice(&twox_128("ImmutableDataOf".as_bytes()));
+        key.extend_from_slice(&address.encode());
+
+        key
+    }
 }

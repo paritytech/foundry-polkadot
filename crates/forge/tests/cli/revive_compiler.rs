@@ -1,7 +1,7 @@
 //! Tests for the `forge compiler` command.
 
 use foundry_test_utils::snapbox::IntoData;
-pub const OTHER_RESOLC_VERSION: &str = "0.1.0-dev.13";
+pub const OTHER_RESOLC_VERSION: &str = "0.6.0";
 
 const CONTRACT_A: &str = r#"
 // SPDX-license-identifier: MIT
@@ -82,7 +82,7 @@ forgetest!(can_list_resolved_compiler_versions_json, |prj, cmd| {
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "dependency": {
         "name": "Solc",
         "version": "0.8.4"
@@ -132,7 +132,7 @@ forgetest!(can_list_resolved_compiler_versions_verbose_json, |prj, cmd| {
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "paths": [
         "src/ContractC.sol",
         "src/ContractD.sol"
@@ -191,7 +191,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd|
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "paths": [
         "src/ContractD.sol"
       ],
@@ -254,7 +254,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "evm_version": "Istanbul",
       "paths": [
         "src/ContractA.sol"
@@ -266,7 +266,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
     },
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "evm_version": "London",
       "paths": [
         "src/ContractB.sol"
@@ -278,7 +278,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
     },
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "evm_version": "Cancun",
       "paths": [
         "src/ContractC.sol",

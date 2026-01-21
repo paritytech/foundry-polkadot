@@ -1,63 +1,54 @@
 #!/usr/bin/env python3
-"""Parse forge test output and compare with baseline."""
 
 import sys
-import re
+import json
 from pathlib import Path
-from collections import defaultdict
 
 
-def parse_forge_output(log_file):
-    """Parse forge test output and extract test results."""
+def parse_forge_json(json_file):
     results = {}
 
-    if not log_file.exists():
-        print(f"Error: Forge output log not found: {log_file}")
+    if not json_file.exists():
+        print(f"Error: Forge JSON output not found: {json_file}")
         sys.exit(1)
 
-    print(f"Parsing test results from {log_file}...")
+    print(f"Parsing test results from {json_file}...")
 
-    with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-        for line in f:
-            line = line.strip()
+    with open(json_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
 
-            # Match [PASS] lines
-            if line.startswith('[PASS]'):
-                match = re.search(r'^\[PASS\]\s+([^\s(]+)', line)
-                if match:
-                    results[match.group(1)] = 'PASS'
+    for contract_key, contract_data in data.items():
+        contract_name = contract_key.split(':')[-1] if ':' in contract_key else contract_key
 
-            # Match [FAIL lines
-            elif line.startswith('[FAIL'):
-                match = re.search(r'^\[FAIL[^\]]*\]\s+([^\s(]+)', line)
-                if match:
-                    results[match.group(1)] = 'FAIL'
+        test_results = contract_data.get('test_results', {})
+        for test_name, test_data in test_results.items():
+            status = test_data.get('status', 'Unknown')
+            if status == 'Success':
+                status = 'PASS'
+            elif status == 'Failure':
+                status = 'FAIL'
+            else:
+                status = 'FAIL'
+
+            test_id = f"{contract_name}::{test_name}"
+            results[test_id] = status
 
     return results
 
 
 def save_results(results, output_file):
-    """Save results to file."""
     with open(output_file, 'w') as f:
-        for test, status in sorted(results.items()):
-            f.write(f"{test}:{status}\n")
+        json.dump(results, f, indent=2, sort_keys=True)
 
 
 def load_results(file_path):
-    """Load results from file."""
-    results = {}
     if file_path.exists():
         with open(file_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if ':' in line:
-                    test, status = line.split(':', 1)
-                    results[test] = status
-    return results
+            return json.load(f)
+    return {}
 
 
 def print_summary(project_name, current_results, baseline_results=None):
-    """Print test results summary."""
     passing = [t for t, s in current_results.items() if s == 'PASS']
     failing = [t for t, s in current_results.items() if s == 'FAIL']
 
@@ -75,7 +66,7 @@ def print_summary(project_name, current_results, baseline_results=None):
             print(f"  - {test}")
         print()
 
-    print(f"Results saved to: test-results-{project_name}.txt")
+    print(f"Results saved to: test-results-{project_name}.json")
     print()
 
     if baseline_results is None:
@@ -85,23 +76,15 @@ def print_summary(project_name, current_results, baseline_results=None):
 
 
 def compare_with_baseline(project_name, current_results, baseline_results):
-    """Compare current results with baseline."""
     baseline_passing = {t for t, s in baseline_results.items() if s == 'PASS'}
     baseline_failing = {t for t, s in baseline_results.items() if s == 'FAIL'}
 
     current_passing = {t for t, s in current_results.items() if s == 'PASS'}
     current_failing = {t for t, s in current_results.items() if s == 'FAIL'}
 
-    # Find regressions (passed before, failing now)
     regressions = baseline_passing & current_failing
-
-    # Find improvements (failed before, passing now)
     improvements = baseline_failing & current_passing
-
-    # Find new tests
-    all_baseline = set(baseline_results.keys())
-    all_current = set(current_results.keys())
-    new_tests = all_current - all_baseline
+    new_tests = set(current_results.keys()) - set(baseline_results.keys())
 
     print("Comparing test results for", project_name)
     print("━" * 60)
@@ -141,26 +124,22 @@ def compare_with_baseline(project_name, current_results, baseline_results):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: check-test-regression.py PROJECT_NAME FORGE_OUTPUT_LOG [BASELINE_FILE]")
+        print("Usage: check-test-regression.py PROJECT_NAME FORGE_JSON_OUTPUT [BASELINE_FILE]")
         sys.exit(1)
 
     project_name = sys.argv[1]
-    log_file = Path(sys.argv[2])
+    json_file = Path(sys.argv[2])
     baseline_file = Path(sys.argv[3]) if len(sys.argv) > 3 else None
 
-    # Parse current results
-    current_results = parse_forge_output(log_file)
+    current_results = parse_forge_json(json_file)
 
-    # Check if any results were found
     if not current_results:
-        print(f"WARNING: No test results found in {log_file}")
+        print(f"WARNING: No test results found in {json_file}")
         print("This usually means tests failed to compile or run.")
 
-    # Save current results
-    output_file = f"test-results-{project_name}.txt"
+    output_file = f"test-results-{project_name}.json"
     save_results(current_results, output_file)
 
-    # If no baseline, just print summary and exit
     if not baseline_file or not baseline_file.exists():
         print_summary(project_name, current_results)
         if baseline_file and not baseline_file.exists():
@@ -169,7 +148,6 @@ def main():
             print("━" * 60)
         sys.exit(0)
 
-    # Load baseline and compare
     baseline_results = load_results(baseline_file)
     success = compare_with_baseline(project_name, current_results, baseline_results)
 
