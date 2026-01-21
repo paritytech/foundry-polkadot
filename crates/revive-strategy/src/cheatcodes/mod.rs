@@ -356,7 +356,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
 
-                // roll() handles hash retrieval, clamping, and returns clamped value
                 let clamped_height = ctx.externalities.roll(
                     newHeight,
                     &mut *ccx.ecx.journaled_state.database,
@@ -723,7 +722,6 @@ fn select_revive(
                     amount
                 };
 
-                // Set balance (already inside execute_with, so call pallet directly)
                 let amount_pvm = sp_core::U256::from_little_endian(&clamped_amount.as_le_bytes());
                 Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
                     .expect("failed to set evm balance");

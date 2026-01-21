@@ -130,12 +130,14 @@ impl TestEnv {
             let new_block_number: u64 = clamped_height.to();
             let digest = System::digest();
             if System::block_hash(new_block_number) == H256::zero() {
+                // First initialize and finalize the parent block to set up correct hashes.
                 if new_block_number > 0 {
                     System::set_block_number(new_block_number - 1);
                     let current_hash = H256::from_slice(prev_new_height_hash.0.as_slice());
                     System::initialize(&new_block_number, &current_hash, &digest);
                 }
 
+                // Now finalize the new block to set up its hash.
                 if new_block_number < u64::MAX {
                     System::set_block_number(new_block_number);
                     let current_hash = H256::from_slice(new_height_hash.0.as_slice());
