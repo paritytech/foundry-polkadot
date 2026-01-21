@@ -61,15 +61,17 @@ impl MockHandlerImpl {
     }
 
     pub(crate) fn fund_pranked_accounts(&self, account: Address) {
-        // Fuzzed prank addresses may have zero or very low balance, so they won't have
-        // enough funds for storage deposits in revive. Add a storage deposit reserve (0.1 ETH)
-        // to ensure storage operations work in the Polkadot runtime.
-        let account_h160 = H160::from_slice(account.as_slice());
-        let current_balance = Pallet::<Runtime>::evm_balance(&account_h160);
-        let new_balance = current_balance.saturating_add(100_000_000_000_000_000u128.into());
-
-        Pallet::<Runtime>::set_evm_balance(&account_h160, new_balance)
+        // Fuzzed prank addresses have no balance, so they won't exist in revive, and
+        // calls will fail, this is not a problem when running in REVM.
+        // TODO: Figure it out why this is still needed.
+        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
+        if balance == 0.into() {
+            Pallet::<Runtime>::set_evm_balance(
+                &H160::from_slice(account.as_slice()),
+                u128::MAX.into(),
+            )
             .expect("Could not fund pranked account");
+        }
     }
 }
 
