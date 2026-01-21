@@ -318,7 +318,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
-                // Clamp balance to u128::MAX since pallet-revive uses u128 for balances
                 let u128_max: U256 = U256::from(u128::MAX);
                 let clamped_balance = if *newBalance > u128_max {
                     tracing::warn!(
@@ -334,10 +333,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     *newBalance
                 };
 
-                // Set clamped balance in pallet-revive
                 ctx.externalities.set_balance(*account, clamped_balance);
-
-                // Use dyn_apply with clamped balance to update REVM state
                 let clamped_deal = dealCall { account: *account, newBalance: clamped_balance };
                 clamped_deal.dyn_apply(ccx, executor)
             }
@@ -374,21 +370,19 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-                // Check if block number exceeds u64::MAX before proceeding
-                // pallet-revive uses u64 for block numbers, so values > u64::MAX will be truncated
                 let u64_max: U256 = U256::from(u64::MAX);
-                if newHeight > u64_max {
+                let clamped_height = if newHeight > u64_max {
                     tracing::warn!(
                         newHeight = ?newHeight,
                         max = ?u64_max,
-                        "Block number exceeds u64::MAX. pallet-revive uses u64 for block numbers."
+                        "Block number exceeds u64::MAX. Clamping to u64::MAX."
                     );
-                }
+                    u64_max
+                } else {
+                    newHeight
+                };
 
-                let new_block_number: u64 = newHeight.saturating_to();
-
-                // blockhash should be the same on both revive and revm sides, so fetch it before
-                // changing the block number.
+                let new_block_number: u64 = clamped_height.to();
                 let prev_new_height_hash = ccx
                     .ecx
                     .journaled_state
@@ -402,12 +396,12 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     .block_hash(new_block_number)
                     .expect("Should not fail");
                 ctx.externalities.set_block_number(
-                    newHeight,
+                    clamped_height,
                     prev_new_height_hash,
                     new_height_hash,
                 );
 
-                cheatcode.dyn_apply(ccx, executor)
+                rollCall { newHeight: clamped_height }.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<snapshotStateCall>(t) => {
                 ctx.externalities.start_snapshotting();
@@ -428,22 +422,21 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
-
-                // Check if timestamp exceeds u64::MAX before proceeding
-                // pallet-revive uses u64 for timestamps, so values > u64::MAX will be truncated
                 let u64_max: U256 = U256::from(u64::MAX);
-                if newTimestamp > u64_max {
+                let clamped_timestamp = if newTimestamp > u64_max {
                     tracing::warn!(
                         newTimestamp = ?newTimestamp,
                         max = ?u64_max,
-                        "Timestamp exceeds u64::MAX. pallet-revive uses u64 for timestamps."
+                        "Timestamp exceeds u64::MAX. Clamping to u64::MAX."
                     );
-                }
+                    u64_max
+                } else {
+                    newTimestamp
+                };
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
-                ctx.externalities.set_timestamp(newTimestamp);
+                ctx.externalities.set_timestamp(clamped_timestamp);
 
-                cheatcode.dyn_apply(ccx, executor)
+                warpCall { newTimestamp: clamped_timestamp }.dyn_apply(ccx, executor)
             }
 
             t if using_revive && is::<chainIdCall>(t) => {
@@ -467,30 +460,29 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     cheatcode.as_any().downcast_ref().unwrap();
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
-
-                // Check if block number exceeds u64::MAX before proceeding
-                // pallet-revive uses u64 for block numbers, so values > u64::MAX will be truncated
                 let u64_max: U256 = U256::from(u64::MAX);
-                if blockNumber > u64_max {
+                let clamped_block_number = if blockNumber > u64_max {
                     tracing::warn!(
                         blockNumber = ?blockNumber,
                         max = ?u64_max,
-                        "Block number exceeds u64::MAX. pallet-revive uses u64 for block numbers."
+                        "Block number exceeds u64::MAX. Clamping to u64::MAX."
                     );
-                }
+                    u64_max
+                } else {
+                    blockNumber
+                };
 
                 // Validate blockNumber is not in the future
                 let current_block = ctx.externalities.get_block_number();
-                if blockNumber > current_block {
+                if clamped_block_number > current_block {
                     return Err(foundry_cheatcodes::Error::from(
                         "block number must be less than or equal to the current block number",
                     ));
                 }
 
-                let block_num_u64 = blockNumber.saturating_to::<u64>();
-                ctx.externalities.set_blockhash(block_num_u64, blockHash);
+                ctx.externalities.set_blockhash(clamped_block_number.to(), blockHash);
 
-                cheatcode.dyn_apply(ccx, executor)
+                setBlockhashCall { blockNumber: clamped_block_number, blockHash }.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
@@ -1071,7 +1063,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             }
         };
 
-        // Check if create value exceeds u128::MAX before proceeding
         let u128_max: U256 = U256::from(u128::MAX);
         if input.value() > u128_max {
             tracing::warn!(
@@ -1266,9 +1257,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
-
-        // Check if call value exceeds u128::MAX before proceeding
-        // pallet-revive uses u128 for balances, so values > u128::MAX will cause errors
+        
         let u128_max: U256 = U256::from(u128::MAX);
         let call_value = call.call_value();
         if call_value > u128_max {

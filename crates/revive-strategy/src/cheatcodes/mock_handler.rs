@@ -62,30 +62,16 @@ impl MockHandlerImpl {
 
     pub(crate) fn fund_pranked_accounts(&self, account: Address) {
         // Fuzzed prank addresses may have zero or very low balance, so they won't have
-        // enough funds for storage deposits in revive. This is not a problem when running
-        // in REVM since EVM doesn't have storage deposits.
-        //
-        // To maintain test semantics while ensuring storage deposits work:
-        // - If balance is 0, fund with u128::MAX (original behavior for unfunded accounts)
-        // - If balance is non-zero but too low for storage deposits, add storage deposit reserve
-        //
-        // This preserves the user's intended balance for value transfers while ensuring
-        // storage operations don't fail due to revive-specific deposit requirements.
+        // enough funds for storage deposits in revive. Add a storage deposit reserve
+        // to ensure storage operations work in the Polkadot runtime.
         let storage_deposit_reserve: SpU256 = SpU256::from(100_000_000_000_000_000u128); // 0.1 ETH
 
         let account_h160 = H160::from_slice(account.as_slice());
-        let balance = Pallet::<Runtime>::evm_balance(&account_h160);
+        let current_balance = Pallet::<Runtime>::evm_balance(&account_h160);
+        let new_balance = current_balance.saturating_add(storage_deposit_reserve);
 
-        if balance == SpU256::zero() {
-            // Original behavior: fund completely unfunded accounts with max balance
-            Pallet::<Runtime>::set_evm_balance(&account_h160, u128::MAX.into())
-                .expect("Could not fund pranked account");
-        } else if balance < storage_deposit_reserve {
-            // Add storage deposit reserve to existing low balance
-            let new_balance = balance.saturating_add(storage_deposit_reserve);
-            Pallet::<Runtime>::set_evm_balance(&account_h160, new_balance)
-                .expect("Could not add storage deposit reserve to account");
-        }
+        Pallet::<Runtime>::set_evm_balance(&account_h160, new_balance)
+            .expect("Could not fund pranked account");
     }
 }
 

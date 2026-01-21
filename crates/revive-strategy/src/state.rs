@@ -236,17 +236,6 @@ impl TestEnv {
     }
 
     pub fn set_balance(&mut self, address: Address, amount: U256) {
-        let u128_max: U256 = U256::from(u128::MAX);
-        if amount > u128_max {
-            tracing::warn!(
-                address = ?address,
-                requested = ?amount,
-                actual = ?u128_max,
-                "vm.deal: balance exceeds u128::MAX, clamping to u128::MAX. \
-                 pallet-revive uses u128 for balances, values > {} are not supported.",
-                u128::MAX
-            );
-        }
         let amount_pvm =
             sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
 
