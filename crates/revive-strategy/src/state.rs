@@ -115,8 +115,7 @@ impl TestEnv {
     ) {
         // Set block number in pallet-revive runtime.
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let mut new_block_number: u64 = new_height.saturating_to();
-            new_block_number = new_block_number.saturating_sub(1);
+            let new_block_number: u64 = new_height.saturating_to();
             let digest = System::digest();
             if System::block_hash(new_block_number) == H256::zero() {
                 // First initialize and finalize the parent block to set up correct hashes.
