@@ -318,22 +318,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
-                let u128_max: U256 = U256::from(u128::MAX);
-                let clamped_balance = if *newBalance > u128_max {
-                    tracing::warn!(
-                        account = ?account,
-                        requested = ?newBalance,
-                        actual = ?u128_max,
-                        "vm.deal: balance exceeds u128::MAX, clamping to u128::MAX. \
-                         pallet-revive uses u128 for balances, values > {} are not supported.",
-                        u128::MAX
-                    );
-                    u128_max
-                } else {
-                    *newBalance
-                };
-
-                ctx.externalities.set_balance(*account, clamped_balance);
+                let clamped_balance = ctx.externalities.set_balance(*account, *newBalance);
                 let clamped_deal = dealCall { account: *account, newBalance: clamped_balance };
                 clamped_deal.dyn_apply(ccx, executor)
             }
@@ -370,35 +355,11 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-                let u64_max: U256 = U256::from(u64::MAX);
-                let clamped_height = if newHeight > u64_max {
-                    tracing::warn!(
-                        newHeight = ?newHeight,
-                        max = ?u64_max,
-                        "Block number exceeds u64::MAX. Clamping to u64::MAX."
-                    );
-                    u64_max
-                } else {
-                    newHeight
-                };
 
-                let new_block_number: u64 = clamped_height.to();
-                let prev_new_height_hash = ccx
-                    .ecx
-                    .journaled_state
-                    .database
-                    .block_hash(new_block_number - 1)
-                    .expect("Should not fail");
-                let new_height_hash = ccx
-                    .ecx
-                    .journaled_state
-                    .database
-                    .block_hash(new_block_number)
-                    .expect("Should not fail");
-                ctx.externalities.set_block_number(
-                    clamped_height,
-                    prev_new_height_hash,
-                    new_height_hash,
+                // roll() handles hash retrieval, clamping, and returns clamped value
+                let clamped_height = ctx.externalities.roll(
+                    newHeight,
+                    &mut *ccx.ecx.journaled_state.database,
                 );
 
                 rollCall { newHeight: clamped_height }.dyn_apply(ccx, executor)
@@ -422,19 +383,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
-                let u64_max: U256 = U256::from(u64::MAX);
-                let clamped_timestamp = if newTimestamp > u64_max {
-                    tracing::warn!(
-                        newTimestamp = ?newTimestamp,
-                        max = ?u64_max,
-                        "Timestamp exceeds u64::MAX. Clamping to u64::MAX."
-                    );
-                    u64_max
-                } else {
-                    newTimestamp
-                };
 
-                ctx.externalities.set_timestamp(clamped_timestamp);
+                let clamped_timestamp = ctx.externalities.set_timestamp(newTimestamp);
 
                 warpCall { newTimestamp: clamped_timestamp }.dyn_apply(ccx, executor)
             }
@@ -725,6 +675,8 @@ fn select_revive(
 
     let block_number = data.block.number;
     let timestamp = data.block.timestamp;
+    ctx.externalities.set_timestamp(timestamp);
+    ctx.externalities.roll(block_number, &mut *data.journaled_state.database);
 
     ctx.externalities.execute_with(||{
             // Enable debug mode to bypass EIP-170 size checks during testing
@@ -732,8 +684,6 @@ fn select_revive(
                 let debug_settings = DebugSettings::new(true, true, true);
                 debug_settings.write_to_storage::<Runtime>();
             }
-            System::set_block_number(block_number.saturating_to());
-            Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
                 &data.cfg.chain_id,
             );
@@ -758,17 +708,23 @@ fn select_revive(
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
+
                 let u128_max: U256 = U256::from(u128::MAX);
-                if amount > u128_max {
-                    tracing::warn!(
+                let clamped_amount = if amount > u128_max {
+                    tracing::info!(
                         address = ?address,
                         requested = ?amount,
                         actual = ?u128_max,
                         "Migration: balance exceeds u128::MAX, clamping to u128::MAX. \
                          pallet-revive uses u128 for balances."
                     );
-                }
-                let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+                    u128_max
+                } else {
+                    amount
+                };
+
+                // Set balance (already inside execute_with, so call pallet directly)
+                let amount_pvm = sp_core::U256::from_little_endian(&clamped_amount.as_le_bytes());
                 Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
                     .expect("failed to set evm balance");
 

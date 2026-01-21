@@ -15,7 +15,7 @@ use polkadot_sdk::{
     },
     pallet_revive_uapi::ReturnFlags,
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::{H160, U256 as SpU256},
+    sp_core::H160,
 };
 use revive_env::Runtime;
 
@@ -62,13 +62,11 @@ impl MockHandlerImpl {
 
     pub(crate) fn fund_pranked_accounts(&self, account: Address) {
         // Fuzzed prank addresses may have zero or very low balance, so they won't have
-        // enough funds for storage deposits in revive. Add a storage deposit reserve
+        // enough funds for storage deposits in revive. Add a storage deposit reserve (0.1 ETH)
         // to ensure storage operations work in the Polkadot runtime.
-        let storage_deposit_reserve: SpU256 = SpU256::from(100_000_000_000_000_000u128); // 0.1 ETH
-
         let account_h160 = H160::from_slice(account.as_slice());
         let current_balance = Pallet::<Runtime>::evm_balance(&account_h160);
-        let new_balance = current_balance.saturating_add(storage_deposit_reserve);
+        let new_balance = current_balance.saturating_add(100_000_000_000_000_000u128.into());
 
         Pallet::<Runtime>::set_evm_balance(&account_h160, new_balance)
             .expect("Could not fund pranked account");
