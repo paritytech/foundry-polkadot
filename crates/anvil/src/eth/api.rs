@@ -392,6 +392,11 @@ impl EthApi {
             EthRequest::SetStorageAt(addr, slot, val) => {
                 self.anvil_set_storage_at(addr, slot, val).await.to_rpc_result()
             }
+            EthRequest::SetImmutableStorageAt(_, _) => {
+                return ResponseResult::Error(RpcError::invalid_params(
+                    "anvil_setImmutableStorageAt is not supported on EVM anvil",
+                ));
+            }
             EthRequest::SetCoinbase(addr) => self.anvil_set_coinbase(addr).await.to_rpc_result(),
             EthRequest::EthCoinbase(()) => self.author().to_rpc_result(),
             EthRequest::SetChainId(id) => self.anvil_set_chain_id(id).await.to_rpc_result(),
