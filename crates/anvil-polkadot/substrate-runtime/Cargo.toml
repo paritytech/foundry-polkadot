@@ -24,6 +24,7 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"runtime",
 	"sp-consensus-aura",
 	"with-tracing",
+	"cumulus-primitives-core",
 ] }
 scale-info = { version = "2.11.6", default-features = false }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }

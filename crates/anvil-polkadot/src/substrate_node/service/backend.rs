@@ -13,6 +13,7 @@ use polkadot_sdk::{
     parachains_common::{AccountId, Hash, opaque::Block},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sp_blockchain,
+    sp_consensus_slots::Slot,
     sp_core::{H160, H256},
     sp_io::hashing::blake2_256,
     sp_runtime::FixedU128,
@@ -39,6 +40,12 @@ pub enum BackendError {
     MissingNextFeeMultiplier,
     #[error("Could not find block number in the state")]
     MissingBlockNumber,
+    #[error("Could not find relay slot info in the state")]
+    MissingRelaySlotInfo,
+    #[error("Could not find last relay block number in the state")]
+    MissingLastRelayBlockNumber,
+    #[error("Could not find aura current slot in the state")]
+    MissingAuraCurrentSlot,
     #[error("Unable to decode total issuance {0}")]
     DecodeTotalIssuance(codec::Error),
     #[error("Unable to decode chain id {0}")]
@@ -59,6 +66,12 @@ pub enum BackendError {
     DecodeAuraAuthorities(codec::Error),
     #[error("Unable to decode the next fee multiplier: {0}")]
     DecodeNextFeeMultiplier(codec::Error),
+    #[error("Unable to decode relay slot info: {0}")]
+    DecodeRelaySlotInfo(codec::Error),
+    #[error("Unable to decode last relay block number: {0}")]
+    DecodeLastRelayBlockNumber(codec::Error),
+    #[error("Unable to decode aura current slot: {0}")]
+    DecodeAuraCurrentSlot(codec::Error),
 }
 
 type Result<T> = std::result::Result<T, BackendError>;
@@ -83,6 +96,31 @@ impl BackendWithOverlay {
         let value =
             self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingTimestamp)?;
         u64::decode(&mut &value[..]).map_err(BackendError::DecodeTimestamp)
+    }
+
+    pub fn read_relay_slot_info(&self, hash: Hash) -> Result<(Slot, u32)> {
+        let key = well_known_keys::RELAY_SLOT_INFO;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingRelaySlotInfo)?;
+        <(Slot, u32)>::decode(&mut &value[..]).map_err(BackendError::DecodeRelaySlotInfo)
+    }
+
+    pub fn read_last_relay_chain_block_number(&self, hash: Hash) -> Result<u32> {
+        let key = well_known_keys::LAST_RELAY_CHAIN_BLOCK_NUMBER;
+
+        let value = self
+            .read_top_state(hash, key.to_vec())?
+            .ok_or(BackendError::MissingLastRelayBlockNumber)?;
+        u32::decode(&mut &value[..]).map_err(BackendError::DecodeLastRelayBlockNumber)
+    }
+
+    pub fn read_aura_current_slot(&self, hash: Hash) -> Result<Slot> {
+        let key = well_known_keys::CURRENT_SLOT;
+
+        let value =
+            self.read_top_state(hash, key.to_vec())?.ok_or(BackendError::MissingAuraCurrentSlot)?;
+        Slot::decode(&mut &value[..]).map_err(BackendError::DecodeAuraCurrentSlot)
     }
 
     pub fn read_block_number(&self, hash: Hash) -> Result<u32> {
@@ -172,6 +210,21 @@ impl BackendWithOverlay {
     pub fn inject_timestamp(&self, at: Hash, timestamp: u64) {
         let mut overrides = self.overrides.lock();
         overrides.set_timestamp(at, timestamp);
+    }
+
+    pub fn inject_relay_slot_info(&self, at: Hash, slot_info: (Slot, u32)) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_relay_slot_info(at, slot_info);
+    }
+
+    pub fn inject_last_relay_chain_block_number(&self, at: Hash, number: u32) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_last_relay_chain_block_number(at, number);
+    }
+
+    pub fn inject_aura_current_slot(&self, at: Hash, slot: Slot) {
+        let mut overrides = self.overrides.lock();
+        overrides.set_aura_current_slot(at, slot);
     }
 
     pub fn inject_chain_id(&self, at: Hash, chain_id: u64) {
@@ -269,6 +322,29 @@ impl StorageOverrides {
     fn set_chain_id(&mut self, latest_block: Hash, id: u64) {
         let mut changeset = BlockOverrides::default();
         changeset.top.insert(well_known_keys::CHAIN_ID.to_vec(), Some(id.encode()));
+
+        self.add(latest_block, changeset);
+    }
+
+    fn set_relay_slot_info(&mut self, latest_block: Hash, slot_info: (Slot, u32)) {
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(well_known_keys::RELAY_SLOT_INFO.to_vec(), Some(slot_info.encode()));
+
+        self.add(latest_block, changeset);
+    }
+
+    fn set_last_relay_chain_block_number(&mut self, latest_block: Hash, number: u32) {
+        let mut changeset = BlockOverrides::default();
+        changeset
+            .top
+            .insert(well_known_keys::LAST_RELAY_CHAIN_BLOCK_NUMBER.to_vec(), Some(number.encode()));
+
+        self.add(latest_block, changeset);
+    }
+
+    fn set_aura_current_slot(&mut self, latest_block: Hash, slot: Slot) {
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(well_known_keys::CURRENT_SLOT.to_vec(), Some(slot.encode()));
 
         self.add(latest_block, changeset);
     }

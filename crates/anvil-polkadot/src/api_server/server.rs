@@ -77,6 +77,8 @@ use polkadot_sdk::{
     sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
     sp_api::{Metadata as _, ProvideRuntimeApi},
     sp_blockchain::Info,
+    sp_consensus_aura::AuraApi,
+    sp_consensus_slots::Slot,
     sp_core::{self, Hasher, keccak_256},
     sp_runtime::{FixedU128, traits::BlakeTwo256},
 };
@@ -110,6 +112,13 @@ pub struct ApiServer {
     instance_id: B256,
     /// Tracks all active filters
     filters: Filters,
+    hardcoded_chain_id: u64,
+}
+
+/// Fetch the chain ID from the substrate chain.
+async fn chain_id_from_metadata(api: &OnlineClient<SrcChainConfig>) -> Result<u64> {
+    let query = subxt_client::constants().revive().chain_id();
+    api.constants().at(&query).map_err(|err| err.into())
 }
 
 impl ApiServer {
@@ -138,6 +147,16 @@ impl ApiServer {
         )
         .await?;
 
+        let backend = BackendWithOverlay::new(
+            substrate_service.backend.clone(),
+            substrate_service.storage_overrides.clone(),
+        );
+
+        // When forking we need to use the chain ID of the forked network, but for non-forking we do
+        // not want to use this as we allow for the chain_id to be customized. So we will
+        // not write this to the backend, but cache it to use if we are forking.
+        let chain_id = chain_id_from_metadata(&api).await?;
+
         let filters_clone = filters.clone();
         substrate_service.spawn_handle.spawn("filter-eviction-task", "None", async move {
             eviction_task(filters_clone).await;
@@ -146,10 +165,7 @@ impl ApiServer {
             block_provider,
             req_receiver,
             logging_manager,
-            backend: BackendWithOverlay::new(
-                substrate_service.backend.clone(),
-                substrate_service.storage_overrides.clone(),
-            ),
+            backend,
             client: substrate_service.client.clone(),
             mining_engine: substrate_service.mining_engine.clone(),
             eth_rpc_client,
@@ -159,6 +175,7 @@ impl ApiServer {
             wallet: DevSigner::new(signers)?,
             instance_id: B256::random(),
             filters,
+            hardcoded_chain_id: chain_id,
         })
     }
 
@@ -589,6 +606,14 @@ impl ApiServer {
         // Inject the new time if the timestamp precedes last block time
         if time_ms < last_block_timestamp {
             self.backend.inject_timestamp(latest_block, time_ms);
+            let current_aura_slot = self.backend.read_aura_current_slot(latest_block)?;
+            let updated_aura_slot = time_ms
+                .saturating_div(self.client.runtime_api().slot_duration(latest_block)?.as_millis());
+            if current_aura_slot > updated_aura_slot {
+                self.backend.inject_aura_current_slot(latest_block, Slot::from(updated_aura_slot));
+                self.backend
+                    .inject_relay_slot_info(latest_block, (Slot::from(updated_aura_slot), 0));
+            }
         }
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
@@ -613,7 +638,11 @@ impl ApiServer {
     }
 
     fn chain_id(&self, at: Hash) -> u64 {
-        self.backend.read_chain_id(at).expect("Chain ID is populated on genesis")
+        self.backend
+            .read_chain_id(at)
+            // If chain_id is not found in the backend, we are forking so use the cached chain_id
+            // from the forked network
+            .unwrap_or(self.hardcoded_chain_id)
     }
 
     // Eth RPCs

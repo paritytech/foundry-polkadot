@@ -119,6 +119,7 @@ pub async fn spawn(
     // Spawn the substrate node.
     let (substrate_service, task_manager) =
         substrate_node::service::new(&anvil_config, substrate_config)
+            .await
             .map_err(sc_cli::Error::Service)?;
     let revert_manager =
         RevertManager::new(substrate_service.client.clone(), substrate_service.backend.clone());
