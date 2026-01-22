@@ -291,6 +291,10 @@ impl DatabaseExt for CowBackend<'_> {
         self.backend.cached_accounts()
     }
 
+    fn cached_storage(&self, address: Address) -> Option<Map<U256, U256>> {
+        self.backend.cached_storage(address)
+    }
+
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
         self.backend.to_mut().set_blockhash(block_number, block_hash);
     }
