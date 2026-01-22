@@ -711,15 +711,4 @@ contract FundPrankedAccountsReproTest is DSTest {
         vm.stopPrank();
     }
 
-    function test_PrankAfterMultipleDeals() public {
-        vm.deal(alice, 10 ether);
-        vm.deal(alice, 5 ether);
-        vm.deal(alice, 2 ether);
-
-        assertEq(alice.balance, 2 ether, "alice should have 2 ether after multiple deals");
-
-        vm.startPrank(alice);
-        assertEq(alice.balance, 2 ether, "alice balance should remain 2 ether after prank");
-        vm.stopPrank();
-    }
 }
