@@ -355,7 +355,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-
                 let clamped_height = ctx.externalities.roll(
                     newHeight,
                     &mut *ccx.ecx.journaled_state.database,
@@ -689,10 +688,11 @@ fn select_revive(
             }
 
             for address in accounts {
-                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
+                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address)); 
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
-                let amount = acc.data.info.balance;
-                let nonce = acc.data.info.nonce;
+
+                let amount = acc.info.balance;
+                let nonce = acc.info.nonce;
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
@@ -719,7 +719,7 @@ fn select_revive(
                     a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
                 });
 
-                if let Some(bytecode) = acc.data.info.code.as_ref() {
+                if let Some(bytecode) = acc.info.code.as_ref() {
                     let account_h160 = H160::from_slice(address.as_slice());
 
                     // Skip if contract already exists in pallet-revive
@@ -834,24 +834,71 @@ fn select_revive(
                             }
                         }
                     }
-                    if  AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
-                           // Migrate complete account state (storage) for newly created/existing contract
-                           for (slot, storage_slot) in &acc.data.storage {
-                            let slot_bytes = slot.to_be_bytes::<32>();
-                            let value_bytes = storage_slot.present_value.to_be_bytes::<32>();
-
-                            if !storage_slot.present_value.is_zero() {
-                                let _ = Pallet::<Runtime>::set_storage(
-                                    account_h160,
-                                    slot_bytes,
-                                    Some(value_bytes.to_vec()),
-                                );
-                            }
-                        }
+                    if AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
+                        migrate_contract_storage(data, address, account_h160);
                     }
                 }
             }
         });
+}
+
+/// Migrates contract storage from REVM state to pallet-revive.
+///
+/// Merges storage from two sources:
+/// 1. Journaled state: most recent storage values from current execution
+/// 2. Database cache: storage written before startup migration, which is run as separate
+///    transaction, already committed to cache
+///
+/// The journaled state takes precedence - cache values are only used for slots
+/// not present in the journaled state.
+fn migrate_contract_storage(data: Ecx<'_, '_, '_>, address: Address, account_h160: H160) {
+    use std::collections::HashSet;
+
+    // Track which slots we've already migrated from the journaled state
+    let mut migrated_slots: HashSet<U256> = HashSet::new();
+
+    // First, migrate storage from the journaled state (most up-to-date values)
+    if let Some(account_state) = data.journaled_state.state.get(&address) {
+        for (slot, storage_slot) in &account_state.storage {
+            migrated_slots.insert(*slot);
+
+            let slot_bytes = slot.to_be_bytes::<32>();
+            let value = storage_slot.present_value;
+
+            if !value.is_zero() {
+                let _ = Pallet::<Runtime>::set_storage(
+                    account_h160,
+                    slot_bytes,
+                    Some(value.to_be_bytes::<32>().to_vec()),
+                );
+            } else {
+                // Handle case where storage was explicitly cleared
+                let _ = Pallet::<Runtime>::set_storage(account_h160, slot_bytes, None);
+            }
+        }
+    }
+
+    // Then, migrate storage from the database cache for slots NOT in journaled state
+    if let Some(cached_storage) = data.journaled_state.database.cached_storage(address) {
+        for (slot, value) in cached_storage {
+            // Skip slots already migrated from the journaled state
+            if migrated_slots.contains(&slot) {
+                continue;
+            }
+
+            let slot_bytes = slot.to_be_bytes::<32>();
+            if !value.is_zero() {
+                let _ = Pallet::<Runtime>::set_storage(
+                    account_h160,
+                    slot_bytes,
+                    Some(value.to_be_bytes::<32>().to_vec()),
+                );
+            } else {
+                // Handle case where storage was explicitly cleared
+                let _ = Pallet::<Runtime>::set_storage(account_h160, slot_bytes, None);
+            }
+        }
+    }
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
@@ -1000,7 +1047,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 (contract.resolc_bytecode.as_bytes().unwrap().to_vec(), constructor_args.to_vec())
             }
             crate::ReviveRuntimeMode::Evm => {
-                // EVM mode: use EVM bytecode directly
+                // EVM mode: use EVM bytecode directly (includes constructor args)
                 tracing::info!("running create in EVM mode with EVM bytecode");
                 (init_code.0.to_vec(), vec![])
             }

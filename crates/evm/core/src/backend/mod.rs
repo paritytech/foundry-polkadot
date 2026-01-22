@@ -356,6 +356,11 @@ pub trait DatabaseExt: Database<Error = DatabaseError> + DatabaseCommit + Debug 
     /// Returns all accounts in the memory database cache
     fn cached_accounts(&self) -> Vec<Address>;
 
+    /// Returns the cached storage for an account from the memory database cache.
+    /// This returns storage that was written during contract construction before
+    /// startup migration, which may not yet be in the journaled state.
+    fn cached_storage(&self, address: Address) -> Option<Map<U256, U256>>;
+
     /// Ensures that `account` is allowed to execute cheatcodes
     ///
     /// Returns an error if [`Self::has_cheatcode_access`] returns `false`
@@ -1533,6 +1538,14 @@ impl DatabaseExt for Backend {
                 }
             })
             .collect()
+    }
+
+    fn cached_storage(&self, address: Address) -> Option<Map<U256, U256>> {
+        self.mem_db
+            .cache
+            .accounts
+            .get(&address)
+            .map(|acc| acc.storage.iter().map(|(k, v)| (*k, *v)).collect())
     }
 
     fn set_blockhash(&mut self, block_number: U256, block_hash: B256) {
