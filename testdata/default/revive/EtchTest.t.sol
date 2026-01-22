@@ -145,7 +145,7 @@ contract MinimalStorageDeposit is DSTest {
             "EtchTest.t.sol:StorageWriter"
         );
 
-        // Etch bytecode to a new unfounded address
+        // Etch bytecode to a new unfunded address
         address etched = address(0x1234567890123456789012345678901234567890);
         vm.etch(etched, code);
 
