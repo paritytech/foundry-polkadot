@@ -188,10 +188,23 @@ impl TestEnv {
                 contract_info
             };
             contract_info.code_hash = *contract_blob.code_hash();
+
+            // Calculate and set the base deposit for the contract.
+            let code_deposit = contract_blob.code_info().deposit();
+            let base_deposit = contract_info.update_base_deposit(code_deposit);
+
             AccountInfo::<Runtime>::insert_contract(
                 &H160::from_slice(target.as_slice()),
                 contract_info,
             );
+
+            // Fund the contract with the calculated base deposit.
+            let current_balance = Pallet::<Runtime>::evm_balance(&target_address);
+            let deposit_u256 = sp_core::U256::from(base_deposit);
+            if current_balance < deposit_u256 {
+                Pallet::<Runtime>::set_evm_balance(&target_address, deposit_u256)
+                    .map_err(|_| <&str as Into<Error>>::into("Could not fund etched contract"))?;
+            }
             Ok::<(), Error>(())
         })?;
         Ok(Default::default())

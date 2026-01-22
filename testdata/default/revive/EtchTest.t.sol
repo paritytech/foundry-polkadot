@@ -126,3 +126,31 @@ contract EtchTest is DSTest {
         assertEq(nested_call_result2, 3);
     }
 }
+
+// Simple contract that writes to storage
+contract StorageWriter {
+    uint256 public value;
+
+    function setValue(uint256 _value) external {
+        value = _value;
+    }
+}
+
+contract MinimalStorageDeposit is DSTest {
+    Vm constant vm = Vm(address(bytes20(uint160(uint256(keccak256("hevm cheat code"))))));
+
+    function testEtchAndCallWritesStorage() public {
+
+        bytes memory code = vm.getDeployedCode(
+            "EtchTest.t.sol:StorageWriter"
+        );
+
+        // Etch bytecode to a new address (this is what the failing test does)
+        address etched = address(0x1234567890123456789012345678901234567890);
+        vm.etch(etched, code);
+
+        // Try to call a function that writes to storage
+        StorageWriter(etched).setValue(42);
+        assertEq(StorageWriter(etched).value(), 42);
+    } 
+}
