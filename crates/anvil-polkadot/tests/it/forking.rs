@@ -850,6 +850,8 @@ async fn test_fork_can_send_tx_from_westend() {
     let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
     let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
 
+    let initial_block = fork_node.best_block_number().await;
+
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
     let alith_address = Address::from(ReviveAddress::new(alith.address()));
@@ -927,8 +929,13 @@ async fn test_fork_can_send_tx_from_westend() {
         "Second transaction should succeed"
     );
 
-    // Verify block number increased
-    let _final_block = fork_node.best_block_number().await;
+    // Verify block number increased (2 transactions = 2 blocks mined)
+    let final_block = fork_node.best_block_number().await;
+    assert_eq!(
+        final_block,
+        initial_block + 2,
+        "Block number should increase by 2 after two mined transactions"
+    );
 }
 
 /// Tests impersonating an account on a forked chain
