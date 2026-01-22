@@ -160,12 +160,9 @@ impl TestEnv {
         database: &mut DB,
     ) -> U256 {
         let block_num_u64 = new_height.saturating_to::<u64>();
-        let prev_block_hash = database
-            .block_hash(block_num_u64.saturating_sub(1))
-            .unwrap_or_default();
-        let current_block_hash = database
-            .block_hash(block_num_u64)
-            .unwrap_or_default();
+        let prev_block_hash =
+            database.block_hash(block_num_u64.saturating_sub(1)).unwrap_or_default();
+        let current_block_hash = database.block_hash(block_num_u64).unwrap_or_default();
 
         self.set_block_number(new_height, prev_block_hash, current_block_hash)
     }
@@ -295,8 +292,7 @@ impl TestEnv {
             amount
         };
 
-        let amount_pvm =
-            sp_core::U256::from_little_endian(&clamped_amount.as_le_bytes());
+        let amount_pvm = sp_core::U256::from_little_endian(&clamped_amount.as_le_bytes());
 
         self.0.lock().unwrap().externalities.execute_with(|| {
             let h160_addr = H160::from_slice(address.as_slice());

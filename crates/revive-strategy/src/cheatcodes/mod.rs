@@ -355,10 +355,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-                let clamped_height = ctx.externalities.roll(
-                    newHeight,
-                    &mut *ccx.ecx.journaled_state.database,
-                );
+                let clamped_height =
+                    ctx.externalities.roll(newHeight, &mut *ccx.ecx.journaled_state.database);
 
                 rollCall { newHeight: clamped_height }.dyn_apply(ccx, executor)
             }
@@ -430,7 +428,8 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 ctx.externalities.set_blockhash(clamped_block_number.to(), blockHash);
 
-                setBlockhashCall { blockNumber: clamped_block_number, blockHash }.dyn_apply(ccx, executor)
+                setBlockhashCall { blockNumber: clamped_block_number, blockHash }
+                    .dyn_apply(ccx, executor)
             }
             t if using_revive && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
@@ -1247,7 +1246,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
-        
+
         let u128_max: U256 = U256::from(u128::MAX);
         let call_value = call.call_value();
         if call_value > u128_max {
