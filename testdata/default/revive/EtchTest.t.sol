@@ -145,11 +145,10 @@ contract MinimalStorageDeposit is DSTest {
             "EtchTest.t.sol:StorageWriter"
         );
 
-        // Etch bytecode to a new address (this is what the failing test does)
+        // Etch bytecode to a new unfounded address
         address etched = address(0x1234567890123456789012345678901234567890);
         vm.etch(etched, code);
 
-        // Try to call a function that writes to storage
         StorageWriter(etched).setValue(42);
         assertEq(StorageWriter(etched).value(), 42);
     } 
