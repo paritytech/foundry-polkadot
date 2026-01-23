@@ -15,7 +15,7 @@ use polkadot_sdk::{
     },
     pallet_revive_uapi::ReturnFlags,
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::H160,
+    sp_core::{H160, U256 as SpU256},
 };
 use revive_env::Runtime;
 
@@ -60,28 +60,36 @@ impl MockHandlerImpl {
         state.mocked_functions = mock_inner.mocked_functions.clone();
     }
 
-    /// Funds pranked fuzz addresses with u128::MAX so they can make calls in pallet-revive.
-    /// Skips accounts that were explicitly dealt to via vm.deal() to preserve balance assertions.
+    /// Syncs balances for pranked accounts between REVM and pallet-revive.
     ///
-    /// Note: This only affects accounts that have never been dealt to. Accounts created from
-    /// within a test contract (e.g., via `self` calls) are not skipped and will be funded if
-    /// their balance is 0. This is intentional - vm.deal() is an explicit user action that
-    /// should be respected, while internal contract creations should still get auto-funding.
-    pub(crate) fn fund_pranked_accounts(&self, account: Address) {
-        let mock_inner = self.inner.borrow();
+    /// If the account was explicitly dealt to via vm.deal(), sync that balance to pallet-revive.
+    /// This handles cases where vm.deal() was called in a callback and pallet-revive's balance
+    /// diverged from REVM's balance.
+    ///
+    /// If the account was NOT dealt to and has 0 balance, fund with u128::MAX so fuzzed
+    /// prank addresses can make calls in pallet-revive.
+    pub(crate) fn fund_pranked_accounts(account: Address, eth_deals: &[DealRecord]) {
+        let account_h160 = H160::from_slice(account.as_slice());
 
-        // Skip accounts that were explicitly dealt to via vm.deal()
-        if mock_inner.eth_deals.iter().any(|deal| deal.address == account) {
+        // Check if account was explicitly dealt to via vm.deal()
+        // Use the most recent deal record for this account
+        if let Some(deal) = eth_deals.iter().rev().find(|d| d.address == account) {
+            // Sync the dealt balance to pallet-revive
+            let target_balance =
+                SpU256::from_little_endian(&deal.new_balance.as_le_bytes()).min(u128::MAX.into());
+            let pvm_balance = Pallet::<Runtime>::evm_balance(&account_h160);
+            if pvm_balance != target_balance {
+                Pallet::<Runtime>::set_evm_balance(&account_h160, target_balance)
+                    .expect("Could not sync dealt account balance");
+            }
             return;
         }
 
-        let pvm_balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
+        // Account was not dealt to - fund with u128::MAX if balance is 0
+        let pvm_balance = Pallet::<Runtime>::evm_balance(&account_h160);
         if pvm_balance == 0.into() {
-            Pallet::<Runtime>::set_evm_balance(
-                &H160::from_slice(account.as_slice()),
-                u128::MAX.into(),
-            )
-            .expect("Could not fund pranked account");
+            Pallet::<Runtime>::set_evm_balance(&account_h160, u128::MAX.into())
+                .expect("Could not fund pranked account");
         }
     }
 }
@@ -204,8 +212,6 @@ struct MockHandlerInner<T: frame_system::Config + pallet_revive::Config> {
 
     pub mocked_calls: HashMap<Address, BTreeMap<MockCallDataContext, VecDeque<MockCallReturnData>>>,
     pub mocked_functions: HashMap<Address, HashMap<Bytes, Address>>,
-    /// Records of accounts that were explicitly dealt to via vm.deal().
-    pub eth_deals: Vec<DealRecord>,
 }
 
 impl MockHandlerInner<Runtime> {
@@ -235,7 +241,6 @@ impl MockHandlerInner<Runtime> {
             mocked_calls: state.mocked_calls.clone(),
             callee: callee.map(|addr| H160::from_slice(addr.as_slice())).unwrap_or_default(),
             mocked_functions: state.mocked_functions.clone(),
-            eth_deals: state.eth_deals.clone(),
         }
     }
 }
