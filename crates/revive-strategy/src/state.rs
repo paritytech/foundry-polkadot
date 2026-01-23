@@ -157,7 +157,6 @@ impl TestEnv {
         contract_info: &mut ContractInfo<Runtime>,
         code_deposit: u128,
     ) -> foundry_cheatcodes::Result {
-        // Update contract_info with code deposit
         contract_info.update_base_deposit(code_deposit);
 
         let base_deposit: u128 = contract_info.storage_base_deposit();
@@ -221,7 +220,6 @@ impl TestEnv {
             let code_deposit = contract_blob.code_info().deposit();
             let code_hash = *contract_blob.code_hash();
 
-            // Create or load contract info
             let mut contract_info = if let Some(contract_info) =
                 AccountInfo::<Runtime>::load_contract(&target_address)
             {
@@ -242,7 +240,6 @@ impl TestEnv {
                 contract_info
             };
 
-            // Update code hash
             contract_info.code_hash = code_hash;
 
             // Update base deposit hold for both new and existing contracts
