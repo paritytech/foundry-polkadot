@@ -6,7 +6,7 @@ use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
+    CommonCreateInput, DynCheatcode, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         AccountAccessKind, chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall,
         polkadot_0Call, polkadot_1Call, polkadotSkipCall, resetNonceCall,
@@ -318,8 +318,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
-                ctx.externalities.set_balance(*account, *newBalance);
-                cheatcode.dyn_apply(ccx, executor)
+                let clamped_balance = ctx.externalities.set_balance(*account, *newBalance);
+                let clamped_deal = dealCall { account: *account, newBalance: clamped_balance };
+                clamped_deal.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<setNonceCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
@@ -354,29 +355,10 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-                let new_block_number: u64 = newHeight.saturating_to();
+                let clamped_height =
+                    ctx.externalities.roll(newHeight, &mut *ccx.ecx.journaled_state.database);
 
-                // blockhash should be the same on both revive and revm sides, so fetch it before
-                // changing the block number.
-                let prev_new_height_hash = ccx
-                    .ecx
-                    .journaled_state
-                    .database
-                    .block_hash(new_block_number.saturating_sub(1))
-                    .expect("Should not fail");
-                let new_height_hash = ccx
-                    .ecx
-                    .journaled_state
-                    .database
-                    .block_hash(new_block_number)
-                    .expect("Should not fail");
-                ctx.externalities.set_block_number(
-                    newHeight,
-                    prev_new_height_hash,
-                    new_height_hash,
-                );
-
-                cheatcode.dyn_apply(ccx, executor)
+                rollCall { newHeight: clamped_height }.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<snapshotStateCall>(t) => {
                 ctx.externalities.start_snapshotting();
@@ -398,10 +380,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
-                ctx.externalities.set_timestamp(newTimestamp);
+                let clamped_timestamp = ctx.externalities.set_timestamp(newTimestamp);
 
-                cheatcode.dyn_apply(ccx, executor)
+                warpCall { newTimestamp: clamped_timestamp }.dyn_apply(ccx, executor)
             }
 
             t if using_revive && is::<chainIdCall>(t) => {
@@ -425,19 +406,30 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     cheatcode.as_any().downcast_ref().unwrap();
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                let u64_max: U256 = U256::from(u64::MAX);
+                let clamped_block_number = if blockNumber > u64_max {
+                    tracing::warn!(
+                        blockNumber = ?blockNumber,
+                        max = ?u64_max,
+                        "Block number exceeds u64::MAX. Clamping to u64::MAX."
+                    );
+                    u64_max
+                } else {
+                    blockNumber
+                };
 
                 // Validate blockNumber is not in the future
                 let current_block = ctx.externalities.get_block_number();
-                if blockNumber > current_block {
+                if clamped_block_number > current_block {
                     return Err(foundry_cheatcodes::Error::from(
                         "block number must be less than or equal to the current block number",
                     ));
                 }
 
-                let block_num_u64 = blockNumber.to::<u64>();
-                ctx.externalities.set_blockhash(block_num_u64, blockHash);
+                ctx.externalities.set_blockhash(clamped_block_number.to(), blockHash);
 
-                cheatcode.dyn_apply(ccx, executor)
+                setBlockhashCall { blockNumber: clamped_block_number, blockHash }
+                    .dyn_apply(ccx, executor)
             }
             t if using_revive && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
@@ -669,6 +661,8 @@ fn select_revive(
 
     let block_number = data.block.number;
     let timestamp = data.block.timestamp;
+    ctx.externalities.set_timestamp(timestamp);
+    ctx.externalities.roll(block_number, &mut *data.journaled_state.database);
 
     ctx.externalities.execute_with(||{
             // Enable debug mode to bypass EIP-170 size checks during testing
@@ -676,8 +670,6 @@ fn select_revive(
                 let debug_settings = DebugSettings::new(true, true, true);
                 debug_settings.write_to_storage::<Runtime>();
             }
-            System::set_block_number(block_number.saturating_to());
-            Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
                 &data.cfg.chain_id,
             );
@@ -703,7 +695,22 @@ fn select_revive(
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
-                let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+
+                let u128_max: U256 = U256::from(u128::MAX);
+                let clamped_amount = if amount > u128_max {
+                    tracing::info!(
+                        address = ?address,
+                        requested = ?amount,
+                        actual = ?u128_max,
+                        "Migration: balance exceeds u128::MAX, clamping to u128::MAX. \
+                         pallet-revive uses u128 for balances."
+                    );
+                    u128_max
+                } else {
+                    amount
+                };
+
+                let amount_pvm = sp_core::U256::from_little_endian(&clamped_amount.as_le_bytes());
                 Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
                     .expect("failed to set evm balance");
 
@@ -1045,6 +1052,30 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             }
         };
 
+        let u128_max: U256 = U256::from(u128::MAX);
+        if input.value() > u128_max {
+            tracing::warn!(
+                caller = ?input.caller(),
+                value = ?input.value(),
+                max = ?u128_max,
+                "Create value exceeds u128::MAX. pallet-revive uses u128 for balances."
+            );
+            return Some(CreateOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::Revert,
+                    output: Bytes::from_iter(
+                        format!(
+                            "Create value {} exceeds u128::MAX ({}). pallet-revive uses u128 for balances.",
+                            input.value(),
+                            u128::MAX
+                        ).as_bytes(),
+                    ),
+                    gas: Gas::new(input.gas_limit()),
+                },
+                address: None,
+            });
+        }
+
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
@@ -1216,6 +1247,32 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         }
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
+
+        let u128_max: U256 = U256::from(u128::MAX);
+        let call_value = call.call_value();
+        if call_value > u128_max {
+            tracing::warn!(
+                caller = ?call.caller,
+                target = ?call.target_address,
+                value = ?call_value,
+                max = ?u128_max,
+                "Call value exceeds u128::MAX. pallet-revive uses u128 for balances."
+            );
+            return Some(CallOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::Revert,
+                    output: Bytes::from_iter(
+                        format!(
+                            "Call value {} exceeds u128::MAX ({}). pallet-revive uses u128 for balances.",
+                            call_value,
+                            u128::MAX
+                        ).as_bytes(),
+                    ),
+                    gas: Gas::new(call.gas_limit),
+                },
+                memory_offset: call.return_memory_offset.clone(),
+            });
+        }
 
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
