@@ -18,7 +18,10 @@ use polkadot_sdk::{
     sp_tracing,
 };
 
-pub use crate::runtime::{Balance, BlockAuthor, GasScale, Runtime, System, Timestamp};
+pub use crate::runtime::{
+    Balance, Balances, BlockAuthor, GasScale, NativeToEthRatio, Runtime, RuntimeHoldReason, System,
+    Timestamp,
+};
 pub use polkadot_sdk::parachains_common::AccountId;
 mod runtime;
 
