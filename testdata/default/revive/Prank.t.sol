@@ -675,3 +675,40 @@ contract Counter {
         number++;
     }
 }
+
+contract FundPrankedAccountsReproTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    address alice = address(0xA11CE);
+
+    function test_PrankDealtAccountWithZeroBalance() public {
+        vm.deal(alice, 3 ether);
+        assertEq(alice.balance, 3 ether, "alice should have 3 ether after deal");
+
+        vm.deal(alice, 0);
+        assertEq(alice.balance, 0, "alice should have 0 balance after second deal");
+
+        vm.startPrank(alice);
+        assertEq(alice.balance, 0, "alice balance should remain 0, not be reset to u128::MAX");
+        vm.stopPrank();
+    }
+
+    function test_PrankFuzzedAddressGetsFunded() public {
+        address fuzzedAddr = address(0xF022ED);
+        uint256 initialBalance = fuzzedAddr.balance;
+
+        vm.prank(fuzzedAddr);
+
+        assertTrue(fuzzedAddr.balance >= initialBalance, "fuzzed address should be auto-funded");
+    }
+
+    function test_PrankDealtAccountWithBalance() public {
+        vm.deal(alice, 5 ether);
+        assertEq(alice.balance, 5 ether, "alice should have 5 ether");
+
+        vm.startPrank(alice);
+        assertEq(alice.balance, 5 ether, "alice balance should remain 5 ether");
+        vm.stopPrank();
+    }
+
+}

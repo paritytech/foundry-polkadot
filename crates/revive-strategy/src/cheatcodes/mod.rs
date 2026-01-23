@@ -1049,6 +1049,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
         let caller_h160 = H160::from_slice(input.caller().as_slice());
+        let eth_deals = &state.eth_deals;
 
         let res = ctx.externalities.execute_with(|| {
             tracer.watch_address(&caller_h160);
@@ -1059,7 +1060,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160);
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
-                mock_handler.fund_pranked_accounts(input.caller());
+                MockHandlerImpl::fund_pranked_accounts(input.caller(), eth_deals);
                 if !exists {
                     let nonce = ecx
                         .journaled_state
@@ -1233,6 +1234,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let caller_h160 = H160::from_slice(call.caller.as_slice());
 
         let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
+        let eth_deals = &state.eth_deals;
         let res = ctx.externalities.execute_with(|| {
             // Watch the caller's address so its nonce changes get tracked in prestate trace
             tracer.watch_address(&caller_h160);
@@ -1241,7 +1243,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 let origin = OriginFor::<Runtime>::signed(
                     AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
                 );
-                mock_handler.fund_pranked_accounts(call.caller);
+                MockHandlerImpl::fund_pranked_accounts(call.caller, eth_deals);
 
                 let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
                 let target = H160::from_slice(call.target_address.as_slice());
