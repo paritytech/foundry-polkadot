@@ -210,7 +210,8 @@ impl TestEnv {
             Balances::release(&hold_reason, target_account, current_held, Precision::BestEffort)
                 .map_err(|_| <&str as Into<Error>>::into("Could not release old hold"))?;
 
-            // Decrease EVM balance by released amount (hold became free, so visible balance would increase)
+            // Decrease EVM balance by released amount (hold became free, so visible balance would
+            // increase)
             let current_evm_balance = Pallet::<Runtime>::evm_balance(target_address);
             let release_wei = sp_core::U256::from(current_held)
                 .saturating_mul(sp_core::U256::from(NativeToEthRatio::get() as u128));
