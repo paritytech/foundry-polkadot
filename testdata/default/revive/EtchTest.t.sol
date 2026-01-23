@@ -139,17 +139,38 @@ contract StorageWriter {
 contract MinimalStorageDeposit is DSTest {
     Vm constant vm = Vm(address(bytes20(uint160(uint256(keccak256("hevm cheat code"))))));
 
-    function testEtchAndCallWritesStorage() public {
+    // Test that etch with pre-funded address preserves the visible balance
+    function testEtchPreservesBalance() public {
+        bytes memory code = vm.getDeployedCode("EtchTest.t.sol:StorageWriter");
 
-        bytes memory code = vm.getDeployedCode(
-            "EtchTest.t.sol:StorageWriter"
-        );
+        // Fund an address with a specific balance BEFORE etching
+        address etched = address(0xABCDEF);
+        uint256 expectedBalance = 1 ether;
+        vm.deal(etched, expectedBalance);
+        assertEq(etched.balance, expectedBalance, "Initial balance should be 1 ether");
 
-        // Etch bytecode to a new unfunded address
-        address etched = address(0x1234567890123456789012345678901234567890);
         vm.etch(etched, code);
+
+        assertEq(etched.balance, expectedBalance, "Balance should be preserved after etch");
 
         StorageWriter(etched).setValue(42);
         assertEq(StorageWriter(etched).value(), 42);
-    } 
+
+        assertEq(etched.balance, expectedBalance, "Balance should be preserved after storage write");
+    }
+
+    // Test that etch to unfunded address keeps balance at 0
+    function testEtchUnfundedAddressZeroBalance() public {
+        bytes memory code = vm.getDeployedCode("EtchTest.t.sol:StorageWriter");
+
+        address etched = address(0x9999999999);
+        assertEq(etched.balance, 0, "Balance should be 0 before etch");
+
+        vm.etch(etched, code);
+
+        assertEq(etched.balance, 0, "Balance should still be 0 after etch");
+
+        StorageWriter(etched).setValue(123);
+        assertEq(StorageWriter(etched).value(), 123);
+    }
 }

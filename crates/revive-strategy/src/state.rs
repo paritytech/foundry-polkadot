@@ -1,16 +1,21 @@
 use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256};
 use foundry_cheatcodes::{Error, Result};
 use polkadot_sdk::{
+    frame_support::traits::{
+        fungible::{InspectHold, MutateHold},
+        tokens::Precision,
+    },
     pallet_revive::{
         self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, ContractInfo,
-        ExecConfig, Executable, Pallet, ResourceMeter,
+        ExecConfig, Executable, HoldReason, Pallet, ResourceMeter,
     },
     sp_core::{self, H160, H256},
     sp_externalities::Externalities,
     sp_io::TestExternalities,
+    sp_runtime::AccountId32,
     sp_weights::Weight,
 };
-use revive_env::{BlockAuthor, ExtBuilder, Runtime, System, Timestamp};
+use revive_env::{Balances, BlockAuthor, ExtBuilder, NativeToEthRatio, Runtime, System, Timestamp};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
@@ -146,6 +151,51 @@ impl TestEnv {
         });
     }
 
+    fn set_base_deposit_hold(
+        target_address: &H160,
+        target_account: &AccountId32,
+        contract_info: &mut ContractInfo<Runtime>,
+        code_deposit: u128,
+    ) -> foundry_cheatcodes::Result {
+        // Update contract_info with code deposit
+        contract_info.update_base_deposit(code_deposit);
+
+        let base_deposit: u128 = contract_info.storage_base_deposit();
+        let hold_reason: revive_env::RuntimeHoldReason = HoldReason::StorageDepositReserve.into();
+
+        // Release any existing hold
+        let current_held = Balances::balance_on_hold(&hold_reason, target_account);
+        if current_held > 0 {
+            Balances::release(&hold_reason, target_account, current_held, Precision::BestEffort)
+                .map_err(|_| <&str as Into<Error>>::into("Could not release old hold"))?;
+
+            // Decrease EVM balance by released amount (hold became free, so visible balance would increase)
+            let current_evm_balance = Pallet::<Runtime>::evm_balance(target_address);
+            let release_wei = sp_core::U256::from(current_held)
+                .saturating_mul(sp_core::U256::from(NativeToEthRatio::get() as u128));
+            let adjusted_balance = current_evm_balance.saturating_sub(release_wei);
+            Pallet::<Runtime>::set_evm_balance(target_address, adjusted_balance).map_err(|_| {
+                <&str as Into<Error>>::into("Could not adjust balance after release")
+            })?;
+        }
+
+        // Create new hold with correct amount
+        if base_deposit > 0 {
+            let current_evm_balance = Pallet::<Runtime>::evm_balance(target_address);
+            let hold_wei = sp_core::U256::from(base_deposit)
+                .saturating_mul(sp_core::U256::from(NativeToEthRatio::get() as u128));
+            let new_evm_balance = current_evm_balance.saturating_add(hold_wei);
+
+            Pallet::<Runtime>::set_evm_balance(target_address, new_evm_balance)
+                .map_err(|_| <&str as Into<Error>>::into("Could not set balance for new hold"))?;
+
+            Balances::hold(&hold_reason, target_account, base_deposit)
+                .map_err(|_| <&str as Into<Error>>::into("Could not create new hold"))?;
+        }
+
+        Ok(Default::default())
+    }
+
     pub fn etch_call(&mut self, target: &Address, new_runtime_code: &Bytes) -> Result {
         self.0.lock().unwrap().externalities.execute_with(|| {
             let target_address = H160::from_slice(target.as_slice());
@@ -168,6 +218,10 @@ impl TestEnv {
             )
             .map_err(|_| <&str as Into<Error>>::into("Could not upload PVM code"))?;
 
+            let code_deposit = contract_blob.code_info().deposit();
+            let code_hash = *contract_blob.code_hash();
+
+            // Create or load contract info
             let mut contract_info = if let Some(contract_info) =
                 AccountInfo::<Runtime>::load_contract(&target_address)
             {
@@ -175,8 +229,8 @@ impl TestEnv {
             } else {
                 let contract_info = ContractInfo::<Runtime>::new(
                     &target_address,
-                    System::account_nonce(target_account),
-                    *contract_blob.code_hash(),
+                    System::account_nonce(&target_account),
+                    code_hash,
                 )
                 .map_err(|err| {
                     tracing::error!("Could not create contract info: {:?}", err);
@@ -187,24 +241,24 @@ impl TestEnv {
                 ));
                 contract_info
             };
-            contract_info.code_hash = *contract_blob.code_hash();
 
-            // Calculate and set the base deposit for the contract.
-            let code_deposit = contract_blob.code_info().deposit();
-            let base_deposit = contract_info.update_base_deposit(code_deposit);
+            // Update code hash
+            contract_info.code_hash = code_hash;
+
+            // Update base deposit hold for both new and existing contracts
+            // Note: Code upload deposits are already held on the pallet account by try_upload_code
+            Self::set_base_deposit_hold(
+                &target_address,
+                &target_account,
+                &mut contract_info,
+                code_deposit,
+            )?;
 
             AccountInfo::<Runtime>::insert_contract(
                 &H160::from_slice(target.as_slice()),
-                contract_info,
+                contract_info.clone(),
             );
 
-            // Fund the contract with the calculated base deposit.
-            let current_balance = Pallet::<Runtime>::evm_balance(&target_address);
-            let deposit_u256 = sp_core::U256::from(base_deposit);
-            if current_balance < deposit_u256 {
-                Pallet::<Runtime>::set_evm_balance(&target_address, deposit_u256)
-                    .map_err(|_| <&str as Into<Error>>::into("Could not fund etched contract"))?;
-            }
             Ok::<(), Error>(())
         })?;
         Ok(Default::default())
