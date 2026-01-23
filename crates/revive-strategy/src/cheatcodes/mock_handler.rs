@@ -5,7 +5,7 @@ use std::{
 };
 
 use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, ruint::aliases::U256};
-use foundry_cheatcodes::{Ecx, MockCallDataContext, MockCallReturnData};
+use foundry_cheatcodes::{DealRecord, Ecx, MockCallDataContext, MockCallReturnData};
 use foundry_evm::constants::CHEATCODE_ADDRESS;
 use polkadot_sdk::{
     frame_system,
@@ -15,7 +15,7 @@ use polkadot_sdk::{
     },
     pallet_revive_uapi::ReturnFlags,
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::H160,
+    sp_core::{H160, U256 as SpU256},
 };
 use revive_env::Runtime;
 
@@ -60,17 +60,36 @@ impl MockHandlerImpl {
         state.mocked_functions = mock_inner.mocked_functions.clone();
     }
 
-    pub(crate) fn fund_pranked_accounts(&self, account: Address) {
-        // Fuzzed prank addresses have no balance, so they won't exist in revive, and
-        // calls will fail, this is not a problem when running in REVM.
-        // TODO: Figure it out why this is still needed.
-        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
-        if balance == 0.into() {
-            Pallet::<Runtime>::set_evm_balance(
-                &H160::from_slice(account.as_slice()),
-                u128::MAX.into(),
-            )
-            .expect("Could not fund pranked account");
+    /// Syncs balances for pranked accounts between REVM and pallet-revive.
+    ///
+    /// If the account was explicitly dealt to via vm.deal(), sync that balance to pallet-revive.
+    /// This handles cases where vm.deal() was called in a callback and pallet-revive's balance
+    /// diverged from REVM's balance.
+    ///
+    /// If the account was NOT dealt to and has 0 balance, fund with u128::MAX so fuzzed
+    /// prank addresses can make calls in pallet-revive.
+    pub(crate) fn fund_pranked_accounts(account: Address, eth_deals: &[DealRecord]) {
+        let account_h160 = H160::from_slice(account.as_slice());
+
+        // Check if account was explicitly dealt to via vm.deal()
+        // Use the most recent deal record for this account
+        if let Some(deal) = eth_deals.iter().rev().find(|d| d.address == account) {
+            // Sync the dealt balance to pallet-revive
+            let target_balance =
+                SpU256::from_little_endian(&deal.new_balance.as_le_bytes()).min(u128::MAX.into());
+            let pvm_balance = Pallet::<Runtime>::evm_balance(&account_h160);
+            if pvm_balance != target_balance {
+                Pallet::<Runtime>::set_evm_balance(&account_h160, target_balance)
+                    .expect("Could not sync dealt account balance");
+            }
+            return;
+        }
+
+        // Account was not dealt to - fund with u128::MAX if balance is 0
+        let pvm_balance = Pallet::<Runtime>::evm_balance(&account_h160);
+        if pvm_balance == 0.into() {
+            Pallet::<Runtime>::set_evm_balance(&account_h160, u128::MAX.into())
+                .expect("Could not fund pranked account");
         }
     }
 }

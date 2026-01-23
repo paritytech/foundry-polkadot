@@ -117,25 +117,41 @@ impl TestEnv {
         new_height: U256,
         prev_new_height_hash: B256,
         new_height_hash: B256,
-    ) {
+    ) -> U256 {
         // Set block number in pallet-revive runtime.
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let new_block_number: u64 = new_height.saturating_to();
+            let u64_max = U256::from(u64::MAX);
+            let clamped_height = if new_height > u64_max {
+                tracing::warn!(
+                    block_number = ?new_height,
+                    max = ?u64_max,
+                    "Block number exceeds u64::MAX. Clamping to u64::MAX."
+                );
+                u64_max
+            } else {
+                new_height
+            };
+
+            let new_block_number: u64 = clamped_height.to();
             let digest = System::digest();
             if System::block_hash(new_block_number) == H256::zero() {
                 // First initialize and finalize the parent block to set up correct hashes.
-                System::set_block_number(new_block_number - 1);
-                let current_hash = H256::from_slice(prev_new_height_hash.0.as_slice());
-                System::initialize(&new_block_number, &current_hash, &digest);
+                if new_block_number > 0 {
+                    System::set_block_number(new_block_number - 1);
+                    let current_hash = H256::from_slice(prev_new_height_hash.0.as_slice());
+                    System::initialize(&new_block_number, &current_hash, &digest);
+                }
 
                 // Now finalize the new block to set up its hash.
-                System::set_block_number(new_block_number);
-                let current_hash = H256::from_slice(new_height_hash.0.as_slice());
-
-                System::initialize(&(new_block_number + 1), &current_hash, &digest);
+                if new_block_number < u64::MAX {
+                    System::set_block_number(new_block_number);
+                    let current_hash = H256::from_slice(new_height_hash.0.as_slice());
+                    System::initialize(&(new_block_number + 1), &current_hash, &digest);
+                }
             }
             System::set_block_number(new_block_number);
-        });
+            clamped_height
+        })
     }
 
     pub fn get_block_number(&mut self) -> U256 {
@@ -143,12 +159,38 @@ impl TestEnv {
         self.0.lock().unwrap().externalities.execute_with(|| U256::from(System::block_number()))
     }
 
-    pub fn set_timestamp(&mut self, new_timestamp: U256) {
+    pub fn roll<DB: revm::Database + ?Sized>(
+        &mut self,
+        new_height: U256,
+        database: &mut DB,
+    ) -> U256 {
+        let block_num_u64 = new_height.saturating_to::<u64>();
+        let prev_block_hash =
+            database.block_hash(block_num_u64.saturating_sub(1)).unwrap_or_default();
+        let current_block_hash = database.block_hash(block_num_u64).unwrap_or_default();
+
+        self.set_block_number(new_height, prev_block_hash, current_block_hash)
+    }
+
+    pub fn set_timestamp(&mut self, new_timestamp: U256) -> U256 {
         // Set timestamp in pallet-revive runtime (milliseconds).
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let timestamp_ms = new_timestamp.saturating_to::<u64>().saturating_mul(1000);
+            let u64_max = U256::from(u64::MAX);
+            let clamped_timestamp = if new_timestamp > u64_max {
+                tracing::warn!(
+                    timestamp = ?new_timestamp,
+                    max = ?u64_max,
+                    "Timestamp exceeds u64::MAX. Clamping to u64::MAX."
+                );
+                u64_max
+            } else {
+                new_timestamp
+            };
+
+            let timestamp_ms = clamped_timestamp.saturating_to::<u64>().saturating_mul(1000);
             Timestamp::set_timestamp(timestamp_ms);
-        });
+            clamped_timestamp
+        })
     }
 
     fn set_base_deposit_hold(
@@ -299,16 +341,32 @@ impl TestEnv {
         Ok(())
     }
 
-    pub fn set_balance(&mut self, address: Address, amount: U256) {
-        let amount_pvm =
-            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+    pub fn set_balance(&mut self, address: Address, amount: U256) -> U256 {
+        let u128_max = U256::from(u128::MAX);
+        let clamped_amount = if amount > u128_max {
+            tracing::warn!(
+                address = ?address,
+                requested = ?amount,
+                actual = ?u128_max,
+                "Balance exceeds u128::MAX, clamping to u128::MAX. \
+                 pallet-revive uses u128 for balances."
+            );
+            u128_max
+        } else {
+            amount
+        };
+
+        let amount_pvm = sp_core::U256::from_little_endian(&clamped_amount.as_le_bytes());
 
         self.0.lock().unwrap().externalities.execute_with(|| {
             let h160_addr = H160::from_slice(address.as_slice());
             pallet_revive::Pallet::<Runtime>::set_evm_balance(&h160_addr, amount_pvm)
                 .expect("failed to set evm balance");
         });
+
+        clamped_amount
     }
+
     pub fn get_balance(&mut self, address: Address) -> U256 {
         U256::from_limbs(
             self.0
