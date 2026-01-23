@@ -465,16 +465,12 @@ fn load_contract_json(name: &str) -> Value {
     let contract_path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("test-data/{name}.json"));
 
-    serde_json::from_reader(std::io::BufReader::new(
-        std::fs::File::open(contract_path).unwrap(),
-    ))
-    .unwrap()
+    serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(contract_path).unwrap()))
+        .unwrap()
 }
 
 fn decode_hex_field(json: &Value, field: &str) -> Option<Vec<u8>> {
-    json.get(field)
-        .and_then(|v| v.as_str())
-        .map(|s| hex::decode(s).unwrap())
+    json.get(field).and_then(|v| v.as_str()).map(|s| hex::decode(s).unwrap())
 }
 
 pub fn get_contract_code(name: &str) -> ContractCode {
