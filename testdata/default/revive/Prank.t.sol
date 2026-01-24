@@ -710,5 +710,4 @@ contract FundPrankedAccountsReproTest is DSTest {
         assertEq(alice.balance, 5 ether, "alice balance should remain 5 ether");
         vm.stopPrank();
     }
-
 }
