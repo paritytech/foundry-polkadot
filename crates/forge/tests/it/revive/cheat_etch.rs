@@ -10,7 +10,7 @@ use rstest::rstest;
 #[tokio::test(flavor = "multi_thread")]
 async fn test_etch(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner: forge::MultiContractRunner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new(".*", "EtchTest", ".*/revive/EtchTest.t.sol");
+    let filter = Filter::new(".*", ".*", ".*/revive/EtchTest.t.sol");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
