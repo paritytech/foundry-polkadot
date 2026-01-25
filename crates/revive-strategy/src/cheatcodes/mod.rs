@@ -1082,7 +1082,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let caller_h160 = H160::from_slice(input.caller().as_slice());
         let eth_deals = &state.eth_deals;
 
-        let res = ctx.externalities.execute_with(|| {
+        let res = ctx.externalities.execute_with_transient_storage(|transient_storage| {
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
@@ -1135,9 +1135,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
+                    transient_storage: Some(transient_storage),
                 };
 
-                Pallet::<Runtime>::bare_instantiate(
+                let result = Pallet::<Runtime>::bare_instantiate(
                     origin,
                     evm_value,
                     pallet_revive::TransactionLimits::WeightAndDeposit {
@@ -1147,8 +1148,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     code,
                     data,
                     salt,
-                    exec_config,
-                )
+                    &exec_config,
+                );
+                (result, exec_config.transient_storage.expect("can't happen"))
             })
         });
         let mut gas = Gas::new(input.gas_limit());
@@ -1292,7 +1294,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
         let eth_deals = &state.eth_deals;
-        let res = ctx.externalities.execute_with(|| {
+        let res = ctx.externalities.execute_with_transient_storage(|transient_storage| {
             // Watch the caller's address so its nonce changes get tracked in prestate trace
             tracer.watch_address(&caller_h160);
 
@@ -1310,13 +1312,14 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
+                    transient_storage: Some(transient_storage),
                 };
                 if should_bump_nonce {
                     System::inc_account_nonce(
                         AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
                     );
                 }
-                Pallet::<Runtime>::bare_call(
+                let result = Pallet::<Runtime>::bare_call(
                     origin,
                     target,
                     evm_value,
@@ -1325,8 +1328,9 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         deposit_limit: if call.is_static { 0 } else { 100_000_000_000_000 },
                     },
                     call.input.bytes(ecx).to_vec(),
-                    exec_config,
-                )
+                    &exec_config,
+                );
+                (result, exec_config.transient_storage.expect("can't happen"))
             })
         });
         mock_handler.update_state_mocks(state);

@@ -7,7 +7,8 @@ use polkadot_sdk::{
     },
     pallet_revive::{
         self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, ContractInfo,
-        ExecConfig, Executable, HoldReason, Pallet, ResourceMeter,
+        ExecConfig, Executable, HoldReason, Pallet, ResourceMeter, TRANSIENT_STORAGE_LIMIT,
+        TransientStorage,
     },
     sp_core::{self, H160, H256},
     sp_externalities::Externalities,
@@ -17,6 +18,7 @@ use polkadot_sdk::{
 };
 use revive_env::{Balances, BlockAuthor, ExtBuilder, NativeToEthRatio, Runtime, System, Timestamp};
 use std::{
+    cell::RefCell,
     fmt::Debug,
     sync::{Arc, Mutex},
 };
@@ -24,6 +26,7 @@ use std::{
 pub(crate) struct Inner {
     pub externalities: TestExternalities,
     pub depth: usize,
+    pub transient_storage: TransientStorage<Runtime>,
 }
 
 #[derive(Default)]
@@ -39,6 +42,7 @@ impl Default for Inner {
                 )])
                 .build(),
             depth: 0,
+            transient_storage: TransientStorage::new(TRANSIENT_STORAGE_LIMIT),
         }
     }
 }
@@ -52,8 +56,10 @@ impl Debug for TestEnv {
 impl Clone for TestEnv {
     fn clone(&self) -> Self {
         let mut inner: Inner = Default::default();
-        inner.externalities.backend = self.0.lock().unwrap().externalities.as_backend();
-        inner.depth = self.0.lock().unwrap().depth;
+        let mut data = self.0.lock().unwrap();
+        inner.externalities.backend = data.externalities.as_backend();
+        inner.transient_storage = data.transient_storage.clone();
+        inner.depth = data.depth;
         Self(Arc::new(Mutex::new(inner)))
     }
 }
@@ -67,20 +73,41 @@ impl TestEnv {
         let mut state = self.0.lock().unwrap();
         state.depth += 1;
         state.externalities.ext().storage_start_transaction();
+        state.transient_storage.start_transaction();
     }
 
     pub fn revert(&mut self, depth: usize) {
         let mut state = self.0.lock().unwrap();
         while state.depth > depth + 1 {
             state.externalities.ext().storage_rollback_transaction().unwrap();
+            state.transient_storage.rollback_transaction();
             state.depth -= 1;
         }
         state.externalities.ext().storage_rollback_transaction().unwrap();
+        state.transient_storage.rollback_transaction();
         state.externalities.ext().storage_start_transaction();
+        state.transient_storage.start_transaction();
     }
 
     pub fn execute_with<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
         self.0.lock().unwrap().externalities.execute_with(f)
+    }
+
+    pub fn execute_with_transient_storage<
+        R,
+        F: FnOnce(RefCell<TransientStorage<Runtime>>) -> (R, RefCell<TransientStorage<Runtime>>),
+    >(
+        &mut self,
+        f: F,
+    ) -> R {
+        let mut data = self.0.lock().unwrap();
+        let mut temp = TransientStorage::new(0);
+        std::mem::swap(&mut data.transient_storage, &mut temp);
+        let transient_storage = RefCell::new(temp);
+        let to_use = transient_storage.clone();
+        let (result, transient_storage) = data.externalities.execute_with(|| f(to_use));
+        data.transient_storage = transient_storage.into_inner();
+        result
     }
 
     pub fn get_nonce(&mut self, account: Address) -> u32 {
