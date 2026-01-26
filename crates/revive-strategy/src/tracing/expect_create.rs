@@ -64,7 +64,7 @@ impl Tracing for CreateTracer {
         if self.calls.is_empty() {
             self.calls.push(_from);
         }
-        self.calls.push(if _is_delegate_call.is_some() { self.current_addr() } else { to });
+        self.calls.push(if let Some(delegate) = _is_delegate_call { delegate } else { to });
     }
 
     fn exit_child_span(

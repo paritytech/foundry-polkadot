@@ -84,8 +84,8 @@ impl Tracing for StorageTracer {
     ) {
         let code = self.is_create.take();
 
-        if is_delegate_call.is_some() {
-            self.calls.push(self.current_addr());
+        if let Some(delegate) = is_delegate_call {
+            self.calls.push(delegate);
         } else {
             self.calls.push(to);
         }
