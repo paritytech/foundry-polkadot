@@ -1,6 +1,7 @@
 //! Configuration for invariant testing
 
 use crate::fuzz::FuzzDictionaryConfig;
+use alloy_primitives::U256;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -45,6 +46,11 @@ pub struct InvariantConfig {
     pub show_solidity: bool,
     /// Whether to collect and display edge coverage metrics.
     pub show_edge_coverage: bool,
+    /// Maximum value for fuzzed integers (uint and int).
+    /// When set, generated integers will be clamped to this value.
+    /// Used for pallet-revive compatibility where balances are u128.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_fuzz_int: Option<U256>,
 }
 
 impl Default for InvariantConfig {
@@ -67,6 +73,7 @@ impl Default for InvariantConfig {
             timeout: None,
             show_solidity: false,
             show_edge_coverage: false,
+            max_fuzz_int: None,
         }
     }
 }
@@ -92,6 +99,7 @@ impl InvariantConfig {
             timeout: None,
             show_solidity: false,
             show_edge_coverage: false,
+            max_fuzz_int: None,
         }
     }
 }

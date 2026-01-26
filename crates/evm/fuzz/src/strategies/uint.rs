@@ -91,20 +91,25 @@ pub struct UintStrategy {
     fixtures_weight: usize,
     /// The weight for purely random values
     random_weight: usize,
+    /// Optional maximum value for generated integers.
+    /// When set, generated values will be clamped to this maximum.
+    max_value: Option<U256>,
 }
 
 impl UintStrategy {
     /// Create a new strategy.
-    /// #Arguments
+    /// # Arguments
     /// * `bits` - Size of uint in bits
     /// * `fixtures` - A set of fixed values to be generated (according to fixtures weight)
-    pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>) -> Self {
+    /// * `max_value` - Optional maximum value to clamp generated values
+    pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>, max_value: Option<U256>) -> Self {
         Self {
             bits,
             fixtures: Vec::from(fixtures.unwrap_or_default()),
             edge_weight: 10usize,
             fixtures_weight: 40usize,
             random_weight: 50usize,
+            max_value,
         }
     }
 
@@ -128,7 +133,8 @@ impl UintStrategy {
         if let Some(uint_fixture) = fixture.as_uint()
             && uint_fixture.1 == self.bits
         {
-            return Ok(UintValueTree::new(uint_fixture.0, false));
+            let value = uint_fixture.0.min(self.type_max());
+            return Ok(UintValueTree::new(value, false));
         }
 
         // If fixture is not a valid type, raise error and generate random value.
@@ -165,11 +171,16 @@ impl UintStrategy {
         inner[3] = (higher >> 64) as u64;
         let start: U256 = U256::from_limbs(inner);
 
+        // Clamp to max_value if set
+        let start = start.min(self.type_max());
+
         Ok(UintValueTree::new(start, false))
     }
 
     fn type_max(&self) -> U256 {
-        if self.bits < 256 { (U256::from(1) << self.bits) - U256::from(1) } else { U256::MAX }
+        let type_max =
+            if self.bits < 256 { (U256::from(1) << self.bits) - U256::from(1) } else { U256::MAX };
+        self.max_value.map(|m| type_max.min(m)).unwrap_or(type_max)
     }
 }
 

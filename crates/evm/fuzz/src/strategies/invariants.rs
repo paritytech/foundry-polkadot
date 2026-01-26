@@ -5,7 +5,7 @@ use crate::{
     strategies::{EvmFuzzState, fuzz_calldata_from_state, fuzz_param},
 };
 use alloy_json_abi::Function;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use parking_lot::RwLock;
 use proptest::prelude::*;
 use rand::seq::IteratorRandom;
@@ -17,6 +17,7 @@ pub fn override_call_strat(
     contracts: FuzzRunIdentifiedContracts,
     target: Arc<RwLock<Address>>,
     fuzz_fixtures: FuzzFixtures,
+    max_fuzz_int: Option<U256>,
 ) -> impl Strategy<Value = CallDetails> + Send + Sync + 'static {
     let contracts_ref = contracts.targets.clone();
     proptest::prop_oneof![
@@ -41,7 +42,13 @@ pub fn override_call_strat(
         };
 
         func.prop_flat_map(move |func| {
-            fuzz_contract_with_calldata(&fuzz_state, &fuzz_fixtures, target_address, func)
+            fuzz_contract_with_calldata(
+                &fuzz_state,
+                &fuzz_fixtures,
+                target_address,
+                func,
+                max_fuzz_int,
+            )
         })
     })
 }
@@ -62,6 +69,7 @@ pub fn invariant_strat(
     contracts: FuzzRunIdentifiedContracts,
     dictionary_weight: u32,
     fuzz_fixtures: FuzzFixtures,
+    max_fuzz_int: Option<U256>,
 ) -> impl Strategy<Value = BasicTxDetails> {
     let senders = Rc::new(senders);
     any::<prop::sample::Selector>()
@@ -69,12 +77,14 @@ pub fn invariant_strat(
             let contracts = contracts.targets.lock();
             let functions = contracts.fuzzed_functions();
             let (target_address, target_function) = selector.select(functions);
-            let sender = select_random_sender(&fuzz_state, senders.clone(), dictionary_weight);
+            let sender =
+                select_random_sender(&fuzz_state, senders.clone(), dictionary_weight, max_fuzz_int);
             let call_details = fuzz_contract_with_calldata(
                 &fuzz_state,
                 &fuzz_fixtures,
                 *target_address,
                 target_function.clone(),
+                max_fuzz_int,
             );
             (sender, call_details)
         })
@@ -88,14 +98,15 @@ fn select_random_sender(
     fuzz_state: &EvmFuzzState,
     senders: Rc<SenderFilters>,
     dictionary_weight: u32,
+    max_fuzz_int: Option<U256>,
 ) -> impl Strategy<Value = Address> + use<> {
     if !senders.targeted.is_empty() {
         any::<prop::sample::Index>().prop_map(move |index| *index.get(&senders.targeted)).boxed()
     } else {
         assert!(dictionary_weight <= 100, "dictionary_weight must be <= 100");
         proptest::prop_oneof![
-            100 - dictionary_weight => fuzz_param(&alloy_dyn_abi::DynSolType::Address),
-            dictionary_weight => fuzz_param_from_state(&alloy_dyn_abi::DynSolType::Address, fuzz_state),
+            100 - dictionary_weight => fuzz_param(&alloy_dyn_abi::DynSolType::Address, max_fuzz_int),
+            dictionary_weight => fuzz_param_from_state(&alloy_dyn_abi::DynSolType::Address, fuzz_state, max_fuzz_int),
         ]
         .prop_map(move |addr| {
             let mut addr = addr.as_address().unwrap();
@@ -122,13 +133,14 @@ pub fn fuzz_contract_with_calldata(
     fuzz_fixtures: &FuzzFixtures,
     target: Address,
     func: Function,
+    max_fuzz_int: Option<U256>,
 ) -> impl Strategy<Value = CallDetails> + use<> {
     // We need to compose all the strategies generated for each parameter in all possible
     // combinations.
     // `prop_oneof!` / `TupleUnion` `Arc`s for cheap cloning.
     prop_oneof![
-        60 => fuzz_calldata(func.clone(), fuzz_fixtures),
-        40 => fuzz_calldata_from_state(func, fuzz_state),
+        60 => fuzz_calldata(func.clone(), fuzz_fixtures, max_fuzz_int),
+        40 => fuzz_calldata_from_state(func, fuzz_state, max_fuzz_int),
     ]
     .prop_map(move |calldata| {
         trace!(input=?calldata);

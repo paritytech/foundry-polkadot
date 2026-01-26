@@ -152,6 +152,9 @@ pub struct TxCorpusManager {
     failed_replays: usize,
     // Corpus metrics.
     pub(crate) metrics: CorpusMetrics,
+    // Maximum value for fuzzed integers (uint and int).
+    // Used for pallet-revive compatibility where balances are u128.
+    max_fuzz_int: Option<U256>,
 }
 
 impl TxCorpusManager {
@@ -176,6 +179,7 @@ impl TxCorpusManager {
         let corpus_gzip = invariant_config.corpus_gzip;
         let corpus_min_mutations = invariant_config.corpus_min_mutations;
         let corpus_min_size = invariant_config.corpus_min_size;
+        let max_fuzz_int = invariant_config.max_fuzz_int;
         let mut failed_replays = 0;
 
         // Early return if corpus dir / coverage guided fuzzing not configured.
@@ -191,6 +195,7 @@ impl TxCorpusManager {
                 current_mutated: None,
                 failed_replays,
                 metrics: CorpusMetrics::default(),
+                max_fuzz_int,
             });
         };
 
@@ -273,6 +278,7 @@ impl TxCorpusManager {
             current_mutated: None,
             failed_replays,
             metrics,
+            max_fuzz_int,
         })
     }
 
@@ -495,10 +501,12 @@ impl TxCorpusManager {
                                 .expect("fuzzed_artifacts returned wrong sig");
                             // For now, only new inputs are generated, no existing inputs are
                             // mutated.
+                            let max_fuzz_int = self.max_fuzz_int;
                             let mut gen_input = |input: &alloy_json_abi::Param| {
                                 fuzz_param_from_state(
                                     &input.selector_type().parse().unwrap(),
                                     &test.fuzz_state,
+                                    max_fuzz_int,
                                 )
                                 .new_tree(test_runner)
                                 .expect("Could not generate case")

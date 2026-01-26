@@ -185,6 +185,12 @@ pub struct TestArgs {
     #[arg(long)]
     pub fuzz_input_file: Option<String>,
 
+    /// Maximum integer value for fuzz tests.
+    /// Accepts decimal, hex (0x...), or keywords: "u128", "u64".
+    /// Auto-set to u128::MAX when --polkadot is used (unless explicitly set).
+    #[arg(long, env = "FOUNDRY_FUZZ_INT_MAX", value_name = "VALUE")]
+    pub fuzz_int_max: Option<String>,
+
     /// Show test execution progress.
     #[arg(long, conflicts_with_all = ["quiet", "json"], help_heading = "Display options")]
     pub show_progress: bool,
@@ -320,6 +326,16 @@ impl TestArgs {
                 "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
             );
             config.polkadot.polkadot = Some(PolkadotMode::Pvm);
+        }
+
+        // Auto-set max_fuzz_int to u128::MAX for Polkadot mode if not explicitly set.
+        // This prevents overflow errors since Polkadot uses u128 for balances.
+        if config.polkadot.polkadot.is_some()
+            && config.fuzz.max_fuzz_int.is_none()
+            && self.fuzz_int_max.is_none()
+        {
+            config.fuzz.max_fuzz_int = Some(U256::from(u128::MAX));
+            tracing::info!("Auto-setting fuzz integer max to u128::MAX for Polkadot compatibility");
         }
 
         let mut strategy = utils::get_executor_strategy(&config);
@@ -959,6 +975,10 @@ impl Provider for TestArgs {
         if let Some(fuzz_input_file) = self.fuzz_input_file.clone() {
             fuzz_dict.insert("failure_persist_file".to_string(), fuzz_input_file.into());
         }
+        if let Some(ref fuzz_int_max) = self.fuzz_int_max
+            && let Ok(max_val) = parse_fuzz_int_max(fuzz_int_max) {
+                fuzz_dict.insert("max_fuzz_int".to_string(), max_val.to_string().into());
+            }
         dict.insert("fuzz".to_string(), fuzz_dict.into());
 
         if let Some(etherscan_api_key) =
@@ -1065,6 +1085,24 @@ fn junit_xml_report(results: &BTreeMap<String, SuiteResult>, verbosity: u8) -> R
     }
     junit_report.set_time(total_duration);
     junit_report
+}
+
+/// Parses the fuzz-int-max value from string to U256.
+/// Supports:
+/// - Decimal: "340282366920938463463374607431768211455"
+/// - Hex: "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+/// - Keywords: "u128", "u128_max", "u64", "u64_max"
+fn parse_fuzz_int_max(value: &str) -> Result<U256> {
+    let value = value.trim().to_lowercase();
+    match value.as_str() {
+        "u128" | "u128_max" => Ok(U256::from(u128::MAX)),
+        "u64" | "u64_max" => Ok(U256::from(u64::MAX)),
+        _ if value.starts_with("0x") => U256::from_str_radix(&value[2..], 16)
+            .map_err(|e| eyre::eyre!("Invalid hex value for --fuzz-int-max: {e}")),
+        _ => {
+            value.parse::<U256>().map_err(|e| eyre::eyre!("Invalid value for --fuzz-int-max: {e}"))
+        }
+    }
 }
 
 #[cfg(test)]

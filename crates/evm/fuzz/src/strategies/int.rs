@@ -103,6 +103,9 @@ pub struct IntStrategy {
     fixtures_weight: usize,
     /// The weight for purely random values
     random_weight: usize,
+    /// Optional maximum absolute value for generated integers.
+    /// When set, generated values will be clamped to [-max_value, max_value].
+    max_value: Option<U256>,
 }
 
 impl IntStrategy {
@@ -110,13 +113,32 @@ impl IntStrategy {
     /// #Arguments
     /// * `bits` - Size of uint in bits
     /// * `fixtures` - A set of fixed values to be generated (according to fixtures weight)
-    pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>) -> Self {
+    /// * `max_value` - Optional maximum absolute value to clamp generated values
+    pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>, max_value: Option<U256>) -> Self {
         Self {
             bits,
             fixtures: Vec::from(fixtures.unwrap_or_default()),
             edge_weight: 10usize,
             fixtures_weight: 40usize,
             random_weight: 50usize,
+            max_value,
+        }
+    }
+
+    fn effective_max(&self) -> U256 {
+        let type_max: U256 = (U256::from(1) << (self.bits - 1)) - U256::from(1);
+        self.max_value.map(|m| type_max.min(m)).unwrap_or(type_max)
+    }
+
+    fn clamp(&self, value: I256) -> I256 {
+        let max = self.effective_max();
+        let max_i256 = I256::from_raw(max);
+        if value > max_i256 {
+            max_i256
+        } else if value < -max_i256 {
+            -max_i256
+        } else {
+            value
         }
     }
 
@@ -124,19 +146,21 @@ impl IntStrategy {
         let rng = runner.rng();
 
         let offset = I256::from_raw(U256::from(rng.random_range(0..4)));
-        let umax: U256 = (U256::from(1) << (self.bits - 1)) - U256::from(1);
+        let umax = self.effective_max();
         // Choose if we want values around min, -0, +0, or max
         let kind = rng.random_range(0..4);
         let start = match kind {
             0 => {
-                I256::overflowing_from_sign_and_abs(Sign::Negative, umax + U256::from(1)).0 + offset
+                // Around min: -(max+1) + offset, but clamp to -max if max_value is set
+                let min_val = I256::overflowing_from_sign_and_abs(Sign::Negative, umax).0;
+                min_val + offset
             }
             1 => -offset - I256::ONE,
             2 => offset,
             3 => I256::overflowing_from_sign_and_abs(Sign::Positive, umax).0 - offset,
             _ => unreachable!(),
         };
-        Ok(IntValueTree::new(start, false))
+        Ok(IntValueTree::new(self.clamp(start), false))
     }
 
     fn generate_fixtures_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
@@ -150,7 +174,7 @@ impl IntStrategy {
         if let Some(int_fixture) = fixture.as_int()
             && int_fixture.1 == self.bits
         {
-            return Ok(IntValueTree::new(int_fixture.0, false));
+            return Ok(IntValueTree::new(self.clamp(int_fixture.0), false));
         }
 
         // If fixture is not a valid type, raise error and generate random value.
@@ -195,7 +219,7 @@ impl IntStrategy {
         let sign = if rng.random::<bool>() { Sign::Positive } else { Sign::Negative };
         let (start, _) = I256::overflowing_from_sign_and_abs(sign, U256::from_limbs(inner));
 
-        Ok(IntValueTree::new(start, false))
+        Ok(IntValueTree::new(self.clamp(start), false))
     }
 }
 
