@@ -84,11 +84,13 @@ impl Tracing for StorageTracer {
     ) {
         let code = self.is_create.take();
 
-        if let Some(delegate) = is_delegate_call {
-            self.calls.push(delegate);
+        let to = if let Some(delegate) = is_delegate_call {
+            self.calls.push(self.current_addr());
+            delegate
         } else {
             self.calls.push(to);
-        }
+            to
+        };
 
         let kind = if code.is_some() {
             AccountAccessKind::Create

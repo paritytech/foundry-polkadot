@@ -236,7 +236,7 @@ contract RecordAccountAccessesTest is DSTest {
         assertEq(called[0].account, address(proxy));
 
         assertEq(toUint(called[1].kind), toUint(Vm.AccountAccessKind.DelegateCall), "incorrect kind");
-        //  assertEq(called[1].account, address(one), "incorrect account"); incorrect account with DelegateCall
+        assertEq(called[1].account, address(one), "incorrect account");
         assertEq(called[1].accessor, address(this), "incorrect accessor");
 
         assertEq(
