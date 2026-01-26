@@ -79,11 +79,11 @@ impl TestEnv {
     pub fn revert(&mut self, depth: usize) {
         let mut state = self.0.lock().unwrap();
         while state.depth > depth + 1 {
-            state.externalities.ext().storage_rollback_transaction().unwrap();
+            let _ = state.externalities.ext().storage_rollback_transaction();
             state.transient_storage.rollback_transaction();
             state.depth -= 1;
         }
-        state.externalities.ext().storage_rollback_transaction().unwrap();
+        let _ = state.externalities.ext().storage_rollback_transaction();
         state.transient_storage.rollback_transaction();
         state.externalities.ext().storage_start_transaction();
         state.transient_storage.start_transaction();
