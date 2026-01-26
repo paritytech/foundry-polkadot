@@ -7,8 +7,7 @@ use polkadot_sdk::{
     },
     pallet_revive::{
         self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, ContractInfo,
-        ExecConfig, Executable, HoldReason, Pallet, ResourceMeter, TRANSIENT_STORAGE_LIMIT,
-        TransientStorage,
+        ExecConfig, Executable, HoldReason, Pallet, ResourceMeter, TransientStorage,
     },
     sp_core::{self, H160, H256},
     sp_externalities::Externalities,
@@ -42,7 +41,7 @@ impl Default for Inner {
                 )])
                 .build(),
             depth: 0,
-            transient_storage: TransientStorage::new(TRANSIENT_STORAGE_LIMIT),
+            transient_storage: TransientStorage::new(u32::MAX),
         }
     }
 }
@@ -101,7 +100,7 @@ impl TestEnv {
         f: F,
     ) -> R {
         let mut data = self.0.lock().unwrap();
-        let mut temp = TransientStorage::new(0);
+        let mut temp = TransientStorage::new(u32::MAX);
         std::mem::swap(&mut data.transient_storage, &mut temp);
         let transient_storage = RefCell::new(temp);
         let (result, transient_storage) = data.externalities.execute_with(|| f(transient_storage));
