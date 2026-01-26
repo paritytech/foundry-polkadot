@@ -104,8 +104,7 @@ impl TestEnv {
         let mut temp = TransientStorage::new(0);
         std::mem::swap(&mut data.transient_storage, &mut temp);
         let transient_storage = RefCell::new(temp);
-        let to_use = transient_storage.clone();
-        let (result, transient_storage) = data.externalities.execute_with(|| f(to_use));
+        let (result, transient_storage) = data.externalities.execute_with(|| f(transient_storage));
         data.transient_storage = transient_storage.into_inner();
         result
     }
