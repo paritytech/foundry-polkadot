@@ -1,12 +1,12 @@
 use crate::{
     AnvilNodeConfig,
-    config::ForkChoice,
     substrate_node::{
-        lazy_loading::backend::Backend as LazyLoadingBackend,
         mining_engine::{MiningEngine, MiningMode, run_mining_engine},
         rpc::spawn_rpc_server,
     },
 };
+#[cfg(feature = "forking-support")]
+use crate::{config::ForkChoice, substrate_node::lazy_loading::backend::Backend as LazyLoadingBackend};
 use anvil::eth::backend::time::TimeManager;
 use codec::Encode;
 use parking_lot::Mutex;
@@ -32,6 +32,7 @@ use polkadot_sdk::{
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
 
+#[cfg(feature = "forking-support")]
 use subxt::PolkadotConfig;
 
 pub use backend::{BackendError, BackendWithOverlay, StorageOverrides};
@@ -42,7 +43,11 @@ mod client;
 mod executor;
 pub mod storage;
 
+#[cfg(feature = "forking-support")]
 pub type Backend = LazyLoadingBackend<Block>;
+
+#[cfg(not(feature = "forking-support"))]
+pub type Backend = polkadot_sdk::sc_client_db::Backend<Block>;
 
 pub type TransactionPoolHandle = sc_transaction_pool::TransactionPoolHandle<Block, Client>;
 
@@ -194,7 +199,10 @@ pub async fn new(
     anvil_config: &AnvilNodeConfig,
     mut config: Configuration,
 ) -> Result<(Service, TaskManager), ServiceError> {
+    #[allow(unused_mut)] // mut needed when forking-support feature is enabled
     let mut genesis_block_number = anvil_config.get_genesis_number();
+
+    #[cfg(feature = "forking-support")]
     if let Some(ref fork_url) = anvil_config.eth_rpc_url {
         // Convert HTTP(S) URL to WebSocket URL for Substrate RPC
         // http:// -> ws:// (local/zombienet), https:// -> wss:// (production)
@@ -232,6 +240,14 @@ pub async fn new(
             }
             None => finalized_block_number,
         };
+    }
+
+    #[cfg(not(feature = "forking-support"))]
+    if anvil_config.eth_rpc_url.is_some() {
+        return Err(ServiceError::Other(
+            "Forking is not supported. Compile with 'forking-support' feature to enable forking."
+                .into(),
+        ));
     }
 
     let storage_overrides =

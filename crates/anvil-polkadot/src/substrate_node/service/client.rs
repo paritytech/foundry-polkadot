@@ -2,10 +2,6 @@ use crate::{
     AnvilNodeConfig,
     substrate_node::{
         genesis::DevelopmentGenesisBlockBuilder,
-        lazy_loading::{
-            backend::new_backend as new_lazy_loading_backend,
-            rpc_client::{RPCClient, Rpc},
-        },
         service::{
             Backend,
             backend::StorageOverrides,
@@ -13,25 +9,36 @@ use crate::{
         },
     },
 };
+#[cfg(feature = "forking-support")]
+use crate::substrate_node::lazy_loading::{
+    backend::new_backend as new_lazy_loading_backend,
+    rpc_client::{RPCClient, Rpc},
+};
 use parking_lot::Mutex;
 use polkadot_sdk::{
     parachains_common::opaque::Block,
-    sc_chain_spec::{NoExtension, get_extension},
+    sc_chain_spec::get_extension,
     sc_client_api::{BadBlocks, ForkBlocks, execution_extensions::ExecutionExtensions},
-    sc_service::{
-        self, ChainType, GenericChainSpec, KeystoreContainer, LocalCallExecutor, TaskManager,
-    },
+    sc_service::{self, KeystoreContainer, LocalCallExecutor, TaskManager},
+    sp_keystore::KeystorePtr,
+};
+#[cfg(feature = "forking-support")]
+use polkadot_sdk::{
+    sc_chain_spec::NoExtension,
+    sc_service::{ChainType, GenericChainSpec},
     sp_blockchain,
     sp_core::storage::well_known_keys::CODE,
-    sp_keystore::KeystorePtr,
     sp_runtime::generic::SignedBlock,
     sp_storage::StorageKey,
 };
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc};
+#[cfg(feature = "forking-support")]
+use std::time::Duration;
 use substrate_runtime::RuntimeApi;
 
 pub type Client = sc_service::client::Client<Backend, Executor, Block, RuntimeApi>;
 
+#[cfg(feature = "forking-support")]
 pub fn new_client(
     anvil_config: &AnvilNodeConfig,
     config: &mut sc_service::Configuration,
@@ -122,7 +129,79 @@ pub fn new_client(
     Ok((Arc::new(client), backend, keystore_container.keystore(), task_manager))
 }
 
+#[cfg(not(feature = "forking-support"))]
+pub fn new_client(
+    anvil_config: &AnvilNodeConfig,
+    config: &mut sc_service::Configuration,
+    executor: WasmExecutor,
+    storage_overrides: Arc<Mutex<StorageOverrides>>,
+    _genesis_num: u64,
+) -> Result<(Arc<Client>, Arc<Backend>, KeystorePtr, TaskManager), sc_service::error::Error> {
+    // Use the standard substrate database backend
+    let backend = sc_service::new_db_backend(config.db_config())?;
+
+    // Normal mode: create standard genesis
+    let genesis_block_builder = DevelopmentGenesisBlockBuilder::new(
+        anvil_config.get_genesis_number(),
+        config.chain_spec.as_storage_builder(),
+        !config.no_genesis(),
+        backend.clone(),
+        executor.clone(),
+    )?;
+
+    let keystore_container = KeystoreContainer::new(&config.keystore)?;
+
+    let task_manager = {
+        let registry = config.prometheus_config.as_ref().map(|cfg| &cfg.registry);
+        TaskManager::new(config.tokio_handle.clone(), registry)?
+    };
+
+    let chain_spec = &config.chain_spec;
+    let fork_blocks =
+        get_extension::<ForkBlocks<Block>>(chain_spec.extensions()).cloned().unwrap_or_default();
+
+    let bad_blocks =
+        get_extension::<BadBlocks<Block>>(chain_spec.extensions()).cloned().unwrap_or_default();
+
+    let execution_extensions = ExecutionExtensions::new(None, Arc::new(executor.clone()));
+
+    let wasm_runtime_substitutes = HashMap::new();
+
+    let client = {
+        let client_config = sc_service::ClientConfig {
+            offchain_worker_enabled: config.offchain_worker.enabled,
+            offchain_indexing_api: config.offchain_worker.indexing_enabled,
+            wasm_runtime_overrides: config.wasm_runtime_overrides.clone(),
+            no_genesis: config.no_genesis(),
+            wasm_runtime_substitutes,
+            enable_import_proof_recording: false,
+        };
+        let inner_executor = LocalCallExecutor::new(
+            backend.clone(),
+            executor,
+            client_config.clone(),
+            execution_extensions,
+        )?;
+        let executor = Executor::new(inner_executor, storage_overrides, backend.clone());
+
+        Client::new(
+            backend.clone(),
+            executor,
+            Box::new(task_manager.spawn_handle()),
+            genesis_block_builder,
+            fork_blocks,
+            bad_blocks,
+            None,
+            None,
+            client_config,
+        )?
+    };
+
+    Ok((Arc::new(client), backend, keystore_container.keystore(), task_manager))
+}
+
 /// Fetches the checkpoint block and sets up the chain spec for forking
+#[cfg(feature = "forking-support")]
 fn setup_fork(
     config: &mut sc_service::Configuration,
     fork_url: &str,
