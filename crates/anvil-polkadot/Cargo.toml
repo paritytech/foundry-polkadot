@@ -164,4 +164,3 @@ op-alloy-rpc-types.workspace = true
 [features]
 default = []
 asm-keccak = ["alloy-primitives/asm-keccak"]
-forking-tests = []

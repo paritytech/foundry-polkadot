@@ -47,9 +47,7 @@ use std::{fmt::Debug, time::Duration};
 use subxt::utils::H160;
 use tempfile::TempDir;
 
-use crate::abi::Multicall;
-#[cfg(feature = "forking-tests")]
-use crate::abi::SimpleStorage;
+use crate::abi::{Multicall, SimpleStorage};
 
 pub struct BlockWaitTimeout {
     pub block_number: u32,
@@ -149,6 +147,39 @@ impl TestNode {
         self.send_transaction_inner(transaction, None, false).await
     }
 
+    /// Execute an ethereum transaction and wait for its receipt.
+    /// This is useful for forking tests where transaction validation can take time
+    /// due to lazy loading of state from the remote chain.
+    pub async fn send_transaction_and_wait(
+        &mut self,
+        transaction: TransactionRequest,
+        timeout_secs: u64,
+    ) -> Result<ReceiptInfo, RpcError> {
+        let tx_hash = self.send_transaction(transaction).await?;
+
+        let start = std::time::Instant::now();
+        let timeout = Duration::from_secs(timeout_secs);
+
+        while start.elapsed() < timeout {
+            // Check if receipt is available
+            let receipt_result = self
+                .eth_rpc(EthRequest::EthGetTransactionReceipt(B256::from(tx_hash.to_fixed_bytes())))
+                .await;
+
+            if let Ok(ResponseResult::Success(val)) = receipt_result {
+                if !val.is_null() {
+                    return Ok(self.get_transaction_receipt(tx_hash).await);
+                }
+            }
+
+            // Mine a block and wait
+            let _ = self.eth_rpc(EthRequest::Mine(None, None)).await;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        Err(RpcError::new(ErrorCode::InternalError))
+    }
+
     /// Execute an impersonated ethereum transaction.
     pub async fn send_unsigned_transaction(
         &mut self,
@@ -228,7 +259,6 @@ impl TestNode {
         self.eth_best_block().await.number.as_u32()
     }
 
-    #[cfg(feature = "forking-tests")]
     pub fn substrate_rpc_port(&self) -> u16 {
         self.service
             .rpc_handlers
@@ -358,6 +388,21 @@ impl TestNode {
             .from(Address::from(ReviveAddress::new(deployer)))
             .input(TransactionInput::both(Bytes::copy_from_slice(code)));
         self.send_transaction(deploy_contract_tx).await.unwrap()
+    }
+
+    /// Deploy a contract and wait for its receipt.
+    /// This is useful for forking tests where transaction validation can take time
+    /// due to lazy loading of state from the remote chain.
+    pub async fn deploy_contract_and_wait(
+        &mut self,
+        code: &[u8],
+        deployer: H160,
+        timeout_secs: u64,
+    ) -> Result<ReceiptInfo, RpcError> {
+        let deploy_contract_tx = TransactionRequest::default()
+            .from(Address::from(ReviveAddress::new(deployer)))
+            .input(TransactionInput::both(Bytes::copy_from_slice(code)));
+        self.send_transaction_and_wait(deploy_contract_tx, timeout_secs).await
     }
 
     pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {
@@ -540,7 +585,6 @@ pub fn to_hex_string(value: u64) -> String {
 }
 
 /// Helper function to call getValue() on a SimpleStorage contract
-#[cfg(feature = "forking-tests")]
 pub async fn simplestorage_get_value(
     node: &mut TestNode,
     contract_address: polkadot_sdk::pallet_revive::H160,

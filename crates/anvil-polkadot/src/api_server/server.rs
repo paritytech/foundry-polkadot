@@ -87,9 +87,13 @@ use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
-    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
-    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
-    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    Metadata as SubxtMetadata, OnlineClient,
+    backend::rpc::RpcClient,
+    client::RuntimeVersion as SubxtRuntimeVersion,
+    config::substrate::H256,
+    dynamic::{Value as DynamicValue, tx as dynamic_tx},
+    ext::subxt_rpcs::LegacyRpcMethods,
+    utils::H160,
 };
 use subxt_signer::eth::Keypair;
 use tokio::try_join;
@@ -113,6 +117,12 @@ pub struct ApiServer {
     /// Tracks all active filters
     filters: Filters,
     hardcoded_chain_id: u64,
+    /// RPC methods for submitting transactions
+    rpc: LegacyRpcMethods<SrcChainConfig>,
+    /// Subxt OnlineClient for dynamic transaction building.
+    /// When forking, the metadata comes from the forked chain's WASM (loaded via lazy loading),
+    /// so pallet indices will be correct for the forked runtime.
+    api: OnlineClient<SrcChainConfig>,
 }
 
 /// Fetch the chain ID from the substrate chain.
@@ -140,7 +150,7 @@ impl ApiServer {
         let eth_rpc_client = create_revive_rpc_client(
             api.clone(),
             rpc_client.clone(),
-            rpc,
+            rpc.clone(),
             block_provider.clone(),
             substrate_service.spawn_handle.clone(),
             revive_rpc_block_limit,
@@ -176,6 +186,8 @@ impl ApiServer {
             instance_id: B256::random(),
             filters,
             hardcoded_chain_id: chain_id,
+            rpc,
+            api,
         })
     }
 
@@ -797,8 +809,32 @@ impl ApiServer {
 
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
         let hash = H256(keccak_256(&transaction.0));
-        let call = subxt_client::tx().revive().eth_transact(transaction.0);
-        self.eth_rpc_client.submit(call).await?;
+
+        // Prefetch storage keys for the sender to speed up transaction validation.
+        // This is especially important when forking from a remote chain, as each storage
+        // read would otherwise require a separate RPC call. When not forking, this is a no-op.
+        if let Ok(signed_tx) = TransactionSigned::decode(&transaction.0) {
+            if let Ok(sender) = recover_maybe_impersonated_address(&signed_tx) {
+                self.backend.prefetch_eth_transaction_keys(sender);
+            }
+        }
+
+        // Use dynamic transaction building to ensure the correct pallet index is used.
+        // The metadata in self.api comes from the runtime's WASM (via runtime API call),
+        // which is the forked chain's WASM when forking. This ensures correct pallet indices.
+        let payload_value = DynamicValue::from_bytes(transaction.0.clone());
+        let tx_payload = dynamic_tx("Revive", "eth_transact", vec![payload_value]);
+
+        let ext = self.api.tx().create_unsigned(&tx_payload).map_err(|e| {
+            Error::InternalError(format!("Failed to create unsigned extrinsic: {e}"))
+        })?;
+
+        // Submit the extrinsic to the transaction pool
+        self.rpc
+            .author_submit_extrinsic(ext.encoded())
+            .await
+            .map_err(|e| Error::InternalError(format!("Failed to submit transaction: {e}")))?;
+
         Ok(hash)
     }
 
