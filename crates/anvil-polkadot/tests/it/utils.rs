@@ -166,10 +166,10 @@ impl TestNode {
                 .eth_rpc(EthRequest::EthGetTransactionReceipt(B256::from(tx_hash.to_fixed_bytes())))
                 .await;
 
-            if let Ok(ResponseResult::Success(val)) = receipt_result {
-                if !val.is_null() {
-                    return Ok(self.get_transaction_receipt(tx_hash).await);
-                }
+            if let Ok(ResponseResult::Success(val)) = receipt_result
+                && !val.is_null()
+            {
+                return Ok(self.get_transaction_receipt(tx_hash).await);
             }
 
             // Mine a block and wait

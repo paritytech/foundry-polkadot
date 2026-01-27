@@ -813,10 +813,10 @@ impl ApiServer {
         // Prefetch storage keys for the sender to speed up transaction validation.
         // This is especially important when forking from a remote chain, as each storage
         // read would otherwise require a separate RPC call. When not forking, this is a no-op.
-        if let Ok(signed_tx) = TransactionSigned::decode(&transaction.0) {
-            if let Ok(sender) = recover_maybe_impersonated_address(&signed_tx) {
-                self.backend.prefetch_eth_transaction_keys(sender);
-            }
+        if let Ok(signed_tx) = TransactionSigned::decode(&transaction.0)
+            && let Ok(sender) = recover_maybe_impersonated_address(&signed_tx)
+        {
+            self.backend.prefetch_eth_transaction_keys(sender);
         }
 
         // Use dynamic transaction building to ensure the correct pallet index is used.
