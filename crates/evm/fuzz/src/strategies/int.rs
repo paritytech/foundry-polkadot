@@ -6,6 +6,20 @@ use proptest::{
     test_runner::TestRunner,
 };
 
+/// Clamps a signed integer to the range [-(max+1), max] to match real signed type ranges.
+/// For example, i128 range is [-2^127, 2^127-1], not [-2^127+1, 2^127-1].
+pub fn clamp(value: I256, max: U256) -> I256 {
+    let max_i256 = I256::from_raw(max);
+    let min_i256 = I256::overflowing_from_sign_and_abs(Sign::Negative, max + U256::from(1)).0;
+    if value > max_i256 {
+        max_i256
+    } else if value < min_i256 {
+        min_i256
+    } else {
+        value
+    }
+}
+
 /// Value tree for signed ints (up to int256).
 pub struct IntValueTree {
     /// Lower base (by absolute value)
@@ -103,17 +117,19 @@ pub struct IntStrategy {
     fixtures_weight: usize,
     /// The weight for purely random values
     random_weight: usize,
-    /// Optional maximum absolute value for generated integers.
-    /// When set, generated values will be clamped to [-max_value, max_value].
+    /// Optional maximum value for generated integers, used to simulate smaller signed types.
+    /// When set, generated values will be clamped to [-(max_value+1), max_value] to match
+    /// real signed integer type ranges (e.g., i128 range is [-2^127, 2^127-1]).
     max_value: Option<U256>,
 }
 
 impl IntStrategy {
     /// Create a new strategy.
-    /// #Arguments
-    /// * `bits` - Size of uint in bits
+    /// # Arguments
+    /// * `bits` - Size of int in bits
     /// * `fixtures` - A set of fixed values to be generated (according to fixtures weight)
-    /// * `max_value` - Optional maximum absolute value to clamp generated values
+    /// * `max_value` - Optional maximum value to simulate smaller signed types.
+    ///   Values will be clamped to [-(max_value+1), max_value].
     pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>, max_value: Option<U256>) -> Self {
         Self {
             bits,
@@ -130,18 +146,6 @@ impl IntStrategy {
         self.max_value.map(|m| type_max.min(m)).unwrap_or(type_max)
     }
 
-    fn clamp(&self, value: I256) -> I256 {
-        let max = self.effective_max();
-        let max_i256 = I256::from_raw(max);
-        if value > max_i256 {
-            max_i256
-        } else if value < -max_i256 {
-            -max_i256
-        } else {
-            value
-        }
-    }
-
     fn generate_edge_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
         let rng = runner.rng();
 
@@ -151,16 +155,14 @@ impl IntStrategy {
         let kind = rng.random_range(0..4);
         let start = match kind {
             0 => {
-                // Around min: -(max+1) + offset, but clamp to -max if max_value is set
-                let min_val = I256::overflowing_from_sign_and_abs(Sign::Negative, umax).0;
-                min_val + offset
+                I256::overflowing_from_sign_and_abs(Sign::Negative, umax + U256::from(1)).0 + offset
             }
             1 => -offset - I256::ONE,
             2 => offset,
             3 => I256::overflowing_from_sign_and_abs(Sign::Positive, umax).0 - offset,
             _ => unreachable!(),
         };
-        Ok(IntValueTree::new(self.clamp(start), false))
+        Ok(IntValueTree::new(clamp(start, self.effective_max()), false))
     }
 
     fn generate_fixtures_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
@@ -174,7 +176,7 @@ impl IntStrategy {
         if let Some(int_fixture) = fixture.as_int()
             && int_fixture.1 == self.bits
         {
-            return Ok(IntValueTree::new(self.clamp(int_fixture.0), false));
+            return Ok(IntValueTree::new(clamp(int_fixture.0, self.effective_max()), false));
         }
 
         // If fixture is not a valid type, raise error and generate random value.
@@ -219,7 +221,7 @@ impl IntStrategy {
         let sign = if rng.random::<bool>() { Sign::Positive } else { Sign::Negative };
         let (start, _) = I256::overflowing_from_sign_and_abs(sign, U256::from_limbs(inner));
 
-        Ok(IntValueTree::new(self.clamp(start), false))
+        Ok(IntValueTree::new(clamp(start, self.effective_max()), false))
     }
 }
 

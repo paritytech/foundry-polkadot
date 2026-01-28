@@ -152,8 +152,8 @@ pub struct TxCorpusManager {
     failed_replays: usize,
     // Corpus metrics.
     pub(crate) metrics: CorpusMetrics,
-    // Maximum value for fuzzed integers (uint and int).
-    // Used for pallet-revive compatibility where balances are u128.
+    // Maximum value for fuzzed integers, used to simulate smaller integer types.
+    // Unsigned: [0, max], Signed: [-(max+1), max].
     max_fuzz_int: Option<U256>,
 }
 

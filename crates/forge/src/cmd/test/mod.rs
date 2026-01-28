@@ -978,9 +978,10 @@ impl Provider for TestArgs {
             fuzz_dict.insert("failure_persist_file".to_string(), fuzz_input_file.into());
         }
         if let Some(ref fuzz_int_max) = self.fuzz_int_max
-            && let Ok(max_val) = parse_fuzz_int_max(fuzz_int_max) {
-                fuzz_dict.insert("max_fuzz_int".to_string(), max_val.to_string().into());
-            }
+            && let Ok(max_val) = parse_fuzz_int_max(fuzz_int_max)
+        {
+            fuzz_dict.insert("max_fuzz_int".to_string(), max_val.to_string().into());
+        }
         dict.insert("fuzz".to_string(), fuzz_dict.into());
 
         if let Some(etherscan_api_key) =

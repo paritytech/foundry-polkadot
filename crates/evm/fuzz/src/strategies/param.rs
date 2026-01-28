@@ -1,3 +1,4 @@
+use super::int::clamp;
 use super::state::EvmFuzzState;
 use alloy_dyn_abi::{DynSolType, DynSolValue};
 use alloy_primitives::{Address, B256, I256, U256};
@@ -182,9 +183,9 @@ pub fn fuzz_param_from_state(
         DynSolType::Int(n @ 8..=256) => match n / 8 {
             32 => value()
                 .prop_map(move |value| {
-                    let raw = U256::from_be_bytes(value.0);
-                    let raw = max_fuzz_int.map(|max| raw.min(max)).unwrap_or(raw);
-                    DynSolValue::Int(I256::from_raw(raw), 256)
+                    let num = I256::from_be_bytes(value.0);
+                    let num = max_fuzz_int.map(|max| clamp(num, max)).unwrap_or(num);
+                    DynSolValue::Int(num, 256)
                 })
                 .boxed(),
             1..=31 => value()
@@ -192,9 +193,9 @@ pub fn fuzz_param_from_state(
                     // Generate a uintN in the correct range, then shift it to the range of intN
                     // by subtracting 2^(N-1)
                     let uint = U256::from_be_bytes(value.0) % U256::from(1).wrapping_shl(n);
-                    let uint = max_fuzz_int.map(|max| uint.min(max)).unwrap_or(uint);
                     let max_int_plus1 = U256::from(1).wrapping_shl(n - 1);
                     let num = I256::from_raw(uint.wrapping_sub(max_int_plus1));
+                    let num = max_fuzz_int.map(|max| clamp(num, max)).unwrap_or(num);
                     DynSolValue::Int(num, n)
                 })
                 .boxed(),

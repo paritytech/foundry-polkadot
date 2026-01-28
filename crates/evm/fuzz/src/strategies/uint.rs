@@ -91,8 +91,8 @@ pub struct UintStrategy {
     fixtures_weight: usize,
     /// The weight for purely random values
     random_weight: usize,
-    /// Optional maximum value for generated integers.
-    /// When set, generated values will be clamped to this maximum.
+    /// Optional maximum value for generated integers, used to simulate smaller unsigned types.
+    /// When set, generated values will be clamped to [0, max_value].
     max_value: Option<U256>,
 }
 
@@ -101,7 +101,8 @@ impl UintStrategy {
     /// # Arguments
     /// * `bits` - Size of uint in bits
     /// * `fixtures` - A set of fixed values to be generated (according to fixtures weight)
-    /// * `max_value` - Optional maximum value to clamp generated values
+    /// * `max_value` - Optional maximum value to simulate smaller unsigned types.
+    ///   Values will be clamped to [0, max_value].
     pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>, max_value: Option<U256>) -> Self {
         Self {
             bits,
