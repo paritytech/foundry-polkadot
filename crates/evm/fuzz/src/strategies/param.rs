@@ -1,5 +1,4 @@
-use super::int::clamp;
-use super::state::EvmFuzzState;
+use super::{int::clamp, state::EvmFuzzState};
 use alloy_dyn_abi::{DynSolType, DynSolValue};
 use alloy_primitives::{Address, B256, I256, U256};
 use proptest::prelude::*;

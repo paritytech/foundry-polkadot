@@ -128,8 +128,8 @@ impl IntStrategy {
     /// # Arguments
     /// * `bits` - Size of int in bits
     /// * `fixtures` - A set of fixed values to be generated (according to fixtures weight)
-    /// * `max_value` - Optional maximum value to simulate smaller signed types.
-    ///   Values will be clamped to [-(max_value+1), max_value].
+    /// * `max_value` - Optional maximum value to simulate smaller signed types. Values will be
+    ///   clamped to [-(max_value+1), max_value].
     pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>, max_value: Option<U256>) -> Self {
         Self {
             bits,

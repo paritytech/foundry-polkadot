@@ -101,8 +101,8 @@ impl UintStrategy {
     /// # Arguments
     /// * `bits` - Size of uint in bits
     /// * `fixtures` - A set of fixed values to be generated (according to fixtures weight)
-    /// * `max_value` - Optional maximum value to simulate smaller unsigned types.
-    ///   Values will be clamped to [0, max_value].
+    /// * `max_value` - Optional maximum value to simulate smaller unsigned types. Values will be
+    ///   clamped to [0, max_value].
     pub fn new(bits: usize, fixtures: Option<&[DynSolValue]>, max_value: Option<U256>) -> Self {
         Self {
             bits,
