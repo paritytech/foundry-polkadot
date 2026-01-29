@@ -187,7 +187,6 @@ pub struct TestArgs {
 
     /// Maximum integer value for fuzz tests.
     /// Accepts decimal, hex (0x...), or keywords: "u128", "u64".
-    /// Auto-set to u64::MAX when --polkadot is used (unless explicitly set).
     #[arg(long, env = "FOUNDRY_FUZZ_INT_MAX", value_name = "VALUE")]
     pub fuzz_int_max: Option<String>,
 
@@ -326,18 +325,6 @@ impl TestArgs {
                 "Using 'pvm' backend is an experimental feature and may lead to unexpected behavior in tests."
             );
             config.polkadot.polkadot = Some(PolkadotMode::Pvm);
-        }
-
-        // Auto-set max_fuzz_int to u64::MAX for Polkadot mode if not explicitly set.
-        // This prevents overflow errors since Polkadot uses:
-        // - u64 for block numbers and timestamps (most restrictive)
-        // - u128 for balances (can still be tested up to u64::MAX)
-        if config.polkadot.polkadot.is_some()
-            && config.fuzz.max_fuzz_int.is_none()
-            && self.fuzz_int_max.is_none()
-        {
-            config.fuzz.max_fuzz_int = Some(U256::from(u64::MAX));
-            tracing::info!("Auto-setting fuzz integer max to u64::MAX for Polkadot compatibility");
         }
 
         let mut strategy = utils::get_executor_strategy(&config);
