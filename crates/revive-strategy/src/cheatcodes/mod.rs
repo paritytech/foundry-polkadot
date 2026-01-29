@@ -6,7 +6,7 @@ use alloy_sol_types::SolValue;
 use foundry_cheatcodes::{
     Broadcast, BroadcastableTransactions, CheatcodeInspectorStrategy,
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
-    CommonCreateInput, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
+    CommonCreateInput, DynCheatcode, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         AccountAccessKind, chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall,
         polkadot_0Call, polkadot_1Call, polkadotSkipCall, resetNonceCall,
@@ -18,7 +18,7 @@ use foundry_cheatcodes::{
 
 use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use foundry_evm::constants::CHEATCODE_ADDRESS;
-use revive_env::{AccountId, Runtime, System, Timestamp};
+use revive_env::{Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
     sync::Arc,
@@ -28,12 +28,11 @@ use tracing::warn;
 use alloy_eips::eip7702::SignedAuthorization;
 use polkadot_sdk::{
     pallet_revive::{
-        AccountInfo, AddressMapper, BalanceOf, BytecodeType, Code, ContractInfo, DebugSettings,
-        ExecConfig, Pallet, evm::CallTrace,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, Code, ContractInfo,
+        DebugSettings, ExecConfig, Executable, Pallet, ResourceMeter, evm::CallTrace,
     },
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::{self, H160, H256},
-    sp_io,
+    sp_core::{self, H160},
     sp_weights::Weight,
 };
 
@@ -319,8 +318,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
-                ctx.externalities.set_balance(*account, *newBalance);
-                cheatcode.dyn_apply(ccx, executor)
+                let clamped_balance = ctx.externalities.set_balance(*account, *newBalance);
+                let clamped_deal = dealCall { account: *account, newBalance: clamped_balance };
+                clamped_deal.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<setNonceCall>(t) => {
                 tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
@@ -363,29 +363,10 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if using_revive && is::<rollCall>(t) => {
                 let &rollCall { newHeight } = cheatcode.as_any().downcast_ref().unwrap();
-                let new_block_number: u64 = newHeight.try_into().expect("Block number exceeds u32");
+                let clamped_height =
+                    ctx.externalities.roll(newHeight, &mut *ccx.ecx.journaled_state.database);
 
-                // blockhash should be the same on both revive and revm sides, so fetch it before
-                // changing the block number.
-                let prev_new_height_hash = ccx
-                    .ecx
-                    .journaled_state
-                    .database
-                    .block_hash(new_block_number - 1)
-                    .expect("Should not fail");
-                let new_height_hash = ccx
-                    .ecx
-                    .journaled_state
-                    .database
-                    .block_hash(new_block_number)
-                    .expect("Should not fail");
-                ctx.externalities.set_block_number(
-                    newHeight,
-                    prev_new_height_hash,
-                    new_height_hash,
-                );
-
-                cheatcode.dyn_apply(ccx, executor)
+                rollCall { newHeight: clamped_height }.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<snapshotStateCall>(t) => {
                 ctx.externalities.start_snapshotting();
@@ -407,10 +388,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<warpCall>(t) => {
                 let &warpCall { newTimestamp } = cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
-                ctx.externalities.set_timestamp(newTimestamp);
+                let clamped_timestamp = ctx.externalities.set_timestamp(newTimestamp);
 
-                cheatcode.dyn_apply(ccx, executor)
+                warpCall { newTimestamp: clamped_timestamp }.dyn_apply(ccx, executor)
             }
 
             t if using_revive && is::<chainIdCall>(t) => {
@@ -434,27 +414,43 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                     cheatcode.as_any().downcast_ref().unwrap();
 
                 tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                let u64_max: U256 = U256::from(u64::MAX);
+                let clamped_block_number = if blockNumber > u64_max {
+                    tracing::warn!(
+                        blockNumber = ?blockNumber,
+                        max = ?u64_max,
+                        "Block number exceeds u64::MAX. Clamping to u64::MAX."
+                    );
+                    u64_max
+                } else {
+                    blockNumber
+                };
 
                 // Validate blockNumber is not in the future
                 let current_block = ctx.externalities.get_block_number();
-                if blockNumber > current_block {
+                if clamped_block_number > current_block {
                     return Err(foundry_cheatcodes::Error::from(
                         "block number must be less than or equal to the current block number",
                     ));
                 }
 
-                let block_num_u64 = blockNumber.to::<u64>();
-                ctx.externalities.set_blockhash(block_num_u64, blockHash);
+                ctx.externalities.set_blockhash(clamped_block_number.to(), blockHash);
 
-                cheatcode.dyn_apply(ccx, executor)
+                setBlockhashCall { blockNumber: clamped_block_number, blockHash }
+                    .dyn_apply(ccx, executor)
             }
             t if using_revive && is::<etchCall>(t) => {
                 let etchCall { target, newRuntimeBytecode } =
                     cheatcode.as_any().downcast_ref().unwrap();
-                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
 
-                ctx.externalities.etch_call(target, newRuntimeBytecode, ccx.ecx)?;
-                Ok(Default::default())
+                if ccx.is_precompile(target) {
+                    return Err(precompile_error(target));
+                }
+
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.externalities.etch_call(target, newRuntimeBytecode)?;
+
+                cheatcode.dyn_apply(ccx, executor)
             }
 
             t if is::<etchCall>(t) => {
@@ -568,7 +564,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
         if ctx.revive_startup_migration.is_allowed() && !ctx.using_revive {
             tracing::info!("startup pallet-revive migration initiated");
-            select_revive(ctx, ecx);
+            select_revive(ctx, ecx, true);
             ctx.revive_startup_migration.done();
             tracing::info!("startup pallet-revive migration completed");
         }
@@ -649,7 +645,7 @@ fn handle_polkadot_call(
         ctx.runtime_mode = target_mode;
         if !is_backend_switch {
             // Migrate to the target mode (from standard EVM to Polkadot)
-            select_revive(ctx, data);
+            select_revive(ctx, data, false);
         }
     } else if ctx.using_revive {
         // Switching BACK to Foundry EVM
@@ -658,7 +654,11 @@ fn handle_polkadot_call(
     Ok(Default::default())
 }
 
-fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
+fn select_revive(
+    ctx: &mut PvmCheatcodeInspectorStrategyContext,
+    data: Ecx<'_, '_, '_>,
+    migrate_all: bool,
+) {
     if ctx.using_revive {
         tracing::info!("already using pallet-revive");
         return;
@@ -669,6 +669,8 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
 
     let block_number = data.block.number;
     let timestamp = data.block.timestamp;
+    ctx.externalities.set_timestamp(timestamp);
+    ctx.externalities.roll(block_number, &mut *data.journaled_state.database);
 
     ctx.externalities.execute_with(||{
             // Enable debug mode to bypass EIP-170 size checks during testing
@@ -676,22 +678,47 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                 let debug_settings = DebugSettings::new(true, true, true);
                 debug_settings.write_to_storage::<Runtime>();
             }
-            System::set_block_number(block_number.saturating_to());
-            Timestamp::set_timestamp(timestamp.saturating_to::<u64>() * 1000);
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(
                 &data.cfg.chain_id,
             );
-            let persistent_accounts = data.journaled_state.database.persistent_accounts().clone();
             let test_contract_addr = data.journaled_state.database.get_test_contract_address();
-            for address in persistent_accounts.into_iter().chain([data.tx.caller]) {
-                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address));
+            let mut accounts = data.journaled_state.database.persistent_accounts().clone();
+            accounts.insert(data.tx.caller);
+
+            if migrate_all {
+                // Migrate all cached contracts
+                accounts.extend(
+                    data.journaled_state
+                        .database
+                        .cached_accounts()
+                );
+            }
+
+            for address in accounts {
+                tracing::info!("Migrating account {:?} (is_test_contract: {})", address, test_contract_addr == Some(address)); 
                 let acc = data.journaled_state.load_account(address).expect("failed to load account");
-                let amount = acc.data.info.balance;
-                let nonce = acc.data.info.nonce;
+
+                let amount = acc.info.balance;
+                let nonce = acc.info.nonce;
                 let account = H160::from_slice(address.as_slice());
                 let account_id =
-                    AccountId::to_fallback_account_id(&account);
-                let amount_pvm = sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&account);
+
+                let u128_max: U256 = U256::from(u128::MAX);
+                let clamped_amount = if amount > u128_max {
+                    tracing::info!(
+                        address = ?address,
+                        requested = ?amount,
+                        actual = ?u128_max,
+                        "Migration: balance exceeds u128::MAX, clamping to u128::MAX. \
+                         pallet-revive uses u128 for balances."
+                    );
+                    u128_max
+                } else {
+                    amount
+                };
+
+                let amount_pvm = sp_core::U256::from_little_endian(&clamped_amount.as_le_bytes());
                 Pallet::<Runtime>::set_evm_balance(&account, amount_pvm)
                     .expect("failed to set evm balance");
 
@@ -699,7 +726,7 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                     a.nonce = nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
                 });
 
-                if let Some(bytecode) = acc.data.info.code.as_ref() {
+                if let Some(bytecode) = acc.info.code.as_ref() {
                     let account_h160 = H160::from_slice(address.as_slice());
 
                     // Skip if contract already exists in pallet-revive
@@ -746,12 +773,16 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                     Pallet::<Runtime>::account_id(),
                                     code_bytes.clone(),
                                     code_type,
-                                    u64::MAX.into(),
+                                    &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                                        deposit_limit: 100_000_000_000_000,
+                                    })
+                                    .unwrap(),
                                     &ExecConfig::new_substrate_tx(),
                                 );
                                 match upload_result {
-                                    Ok(_) => {
-                                        let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
+                                    Ok(upload_res) => {
+                                        let code_hash = upload_res.code_hash().to_owned();
                                         let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
                                             .expect("Failed to create contract info");
                                         AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
@@ -784,13 +815,17 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                                 Pallet::<Runtime>::account_id(),
                                 code_bytes.clone(),
                                 BytecodeType::Evm,
-                                u64::MAX.into(),
+                                &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                    weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                                    deposit_limit: 100_000_000_000_000,
+                                })
+                                .unwrap(),
                                 &ExecConfig::new_substrate_tx_without_bump(),
                             );
                             match upload_result {
-                                Ok(_) => {
-                                    let code_hash = H256(sp_io::hashing::keccak_256(&code_bytes));
-                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash)
+                                Ok(upload_res) => {
+                                    let code_hash = upload_res.code_hash();
+                                    let contract_info = ContractInfo::<Runtime>::new(&account_h160, nonce as u32, code_hash.to_owned())
                                         .expect("Failed to create contract info");
                                     AccountInfo::<Runtime>::insert_contract(&account_h160, contract_info);
                                 }
@@ -806,24 +841,71 @@ fn select_revive(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '
                             }
                         }
                     }
-                    if  AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
-                           // Migrate complete account state (storage) for newly created/existing contract
-                           for (slot, storage_slot) in &acc.data.storage {
-                            let slot_bytes = slot.to_be_bytes::<32>();
-                            let value_bytes = storage_slot.present_value.to_be_bytes::<32>();
-
-                            if !storage_slot.present_value.is_zero() {
-                                let _ = Pallet::<Runtime>::set_storage(
-                                    account_h160,
-                                    slot_bytes,
-                                    Some(value_bytes.to_vec()),
-                                );
-                            }
-                        }
+                    if AccountInfo::<Runtime>::load_contract(&account_h160).is_some() {
+                        migrate_contract_storage(data, address, account_h160);
                     }
                 }
             }
-        })
+        });
+}
+
+/// Migrates contract storage from REVM state to pallet-revive.
+///
+/// Merges storage from two sources:
+/// 1. Journaled state: most recent storage values from current execution
+/// 2. Database cache: storage written before startup migration, which is run as separate
+///    transaction, already committed to cache
+///
+/// The journaled state takes precedence - cache values are only used for slots
+/// not present in the journaled state.
+fn migrate_contract_storage(data: Ecx<'_, '_, '_>, address: Address, account_h160: H160) {
+    use std::collections::HashSet;
+
+    // Track which slots we've already migrated from the journaled state
+    let mut migrated_slots: HashSet<U256> = HashSet::new();
+
+    // First, migrate storage from the journaled state (most up-to-date values)
+    if let Some(account_state) = data.journaled_state.state.get(&address) {
+        for (slot, storage_slot) in &account_state.storage {
+            migrated_slots.insert(*slot);
+
+            let slot_bytes = slot.to_be_bytes::<32>();
+            let value = storage_slot.present_value;
+
+            if !value.is_zero() {
+                let _ = Pallet::<Runtime>::set_storage(
+                    account_h160,
+                    slot_bytes,
+                    Some(value.to_be_bytes::<32>().to_vec()),
+                );
+            } else {
+                // Handle case where storage was explicitly cleared
+                let _ = Pallet::<Runtime>::set_storage(account_h160, slot_bytes, None);
+            }
+        }
+    }
+
+    // Then, migrate storage from the database cache for slots NOT in journaled state
+    if let Some(cached_storage) = data.journaled_state.database.cached_storage(address) {
+        for (slot, value) in cached_storage {
+            // Skip slots already migrated from the journaled state
+            if migrated_slots.contains(&slot) {
+                continue;
+            }
+
+            let slot_bytes = slot.to_be_bytes::<32>();
+            if !value.is_zero() {
+                let _ = Pallet::<Runtime>::set_storage(
+                    account_h160,
+                    slot_bytes,
+                    Some(value.to_be_bytes::<32>().to_vec()),
+                );
+            } else {
+                // Handle case where storage was explicitly cleared
+                let _ = Pallet::<Runtime>::set_storage(account_h160, slot_bytes, None);
+            }
+        }
+    }
 }
 
 fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, '_>) {
@@ -972,25 +1054,67 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 (contract.resolc_bytecode.as_bytes().unwrap().to_vec(), constructor_args.to_vec())
             }
             crate::ReviveRuntimeMode::Evm => {
-                // EVM mode: use EVM bytecode directly
+                // EVM mode: use EVM bytecode directly (includes constructor args)
                 tracing::info!("running create in EVM mode with EVM bytecode");
                 (init_code.0.to_vec(), vec![])
             }
         };
 
+        let u128_max: U256 = U256::from(u128::MAX);
+        if input.value() > u128_max {
+            tracing::warn!(
+                caller = ?input.caller(),
+                value = ?input.value(),
+                max = ?u128_max,
+                "Create value exceeds u128::MAX. pallet-revive uses u128 for balances."
+            );
+            return Some(CreateOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::Revert,
+                    output: Bytes::from_iter(
+                        format!(
+                            "Create value {} exceeds u128::MAX ({}). pallet-revive uses u128 for balances.",
+                            input.value(),
+                            u128::MAX
+                        ).as_bytes(),
+                    ),
+                    gas: Gas::new(input.gas_limit()),
+                },
+                address: None,
+            });
+        }
+
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
         let caller_h160 = H160::from_slice(input.caller().as_slice());
+        let eth_deals = &state.eth_deals;
 
         let res = ctx.externalities.execute_with(|| {
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
-                let origin_account_id = AccountId::to_fallback_account_id(&caller_h160);
+                let exists = AccountInfo::<Runtime>::load_contract(&caller_h160).is_some();
+                let origin_account_id =
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160);
                 let origin = OriginFor::<Runtime>::signed(origin_account_id.clone());
                 let evm_value = sp_core::U256::from_little_endian(&input.value().as_le_bytes());
-                mock_handler.fund_pranked_accounts(input.caller());
+                MockHandlerImpl::fund_pranked_accounts(input.caller(), eth_deals);
+                if !exists {
+                    let nonce = ecx
+                        .journaled_state
+                        .load_account(input.caller())
+                        .expect("to load caller account")
+                        .info
+                        .nonce;
+                    polkadot_sdk::frame_system::Account::<Runtime>::mutate(
+                        &origin_account_id,
+                        |a| {
+                            a.nonce =
+                                nonce.min(u32::MAX.into()).try_into().expect("shouldn't happen");
+                        },
+                    );
+                }
                 System::inc_account_nonce(&origin_account_id);
                 let code = Code::Upload(code_bytes.clone());
                 let data = constructor_args;
@@ -1024,9 +1148,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Pallet::<Runtime>::bare_instantiate(
                     origin,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                        deposit_limit: 100_000_000_000_000,
+                    },
                     code,
                     data,
                     salt,
@@ -1046,7 +1171,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.result.did_revert() {
@@ -1130,6 +1256,32 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
 
         tracing::info!("running call on pallet-revive with {} {:#?}", ctx.runtime_mode, call);
 
+        let u128_max: U256 = U256::from(u128::MAX);
+        let call_value = call.call_value();
+        if call_value > u128_max {
+            tracing::warn!(
+                caller = ?call.caller,
+                target = ?call.target_address,
+                value = ?call_value,
+                max = ?u128_max,
+                "Call value exceeds u128::MAX. pallet-revive uses u128 for balances."
+            );
+            return Some(CallOutcome {
+                result: InterpreterResult {
+                    result: InstructionResult::Revert,
+                    output: Bytes::from_iter(
+                        format!(
+                            "Call value {} exceeds u128::MAX ({}). pallet-revive uses u128 for balances.",
+                            call_value,
+                            u128::MAX
+                        ).as_bytes(),
+                    ),
+                    gas: Gas::new(call.gas_limit),
+                },
+                memory_offset: call.return_memory_offset.clone(),
+            });
+        }
+
         let gas_price_pvm =
             sp_core::U256::from_little_endian(&U256::from(ecx.tx.gas_price).as_le_bytes());
         let mock_handler = MockHandlerImpl::new(
@@ -1140,7 +1292,6 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
             Some(&call.bytecode_address),
             state,
         );
-
         let ctx = get_context_ref_mut(state.strategy.context.as_mut());
 
         // Get nonce before execute_with closure
@@ -1148,14 +1299,16 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let caller_h160 = H160::from_slice(call.caller.as_slice());
 
         let mut tracer = Tracer::new(state.expected_calls.clone(), state.expected_creates.clone());
+        let eth_deals = &state.eth_deals;
         let res = ctx.externalities.execute_with(|| {
             // Watch the caller's address so its nonce changes get tracked in prestate trace
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
-                let origin =
-                    OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&caller_h160));
-                mock_handler.fund_pranked_accounts(call.caller);
+                let origin = OriginFor::<Runtime>::signed(
+                    AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
+                );
+                MockHandlerImpl::fund_pranked_accounts(call.caller, eth_deals);
 
                 let evm_value = sp_core::U256::from_little_endian(&call.call_value().as_le_bytes());
                 let target = H160::from_slice(call.target_address.as_slice());
@@ -1167,15 +1320,18 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     is_dry_run: None,
                 };
                 if should_bump_nonce {
-                    System::inc_account_nonce(AccountId::to_fallback_account_id(&caller_h160));
+                    System::inc_account_nonce(
+                        AccountId32Mapper::<Runtime>::to_fallback_account_id(&caller_h160),
+                    );
                 }
                 Pallet::<Runtime>::bare_call(
                     origin,
                     target,
                     evm_value,
-                    Weight::MAX,
-                    // TODO: fixing.
-                    BalanceOf::<Runtime>::MAX,
+                    pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                        deposit_limit: if call.is_static { 0 } else { 100_000_000_000_000 },
+                    },
                     call.input.bytes(ecx).to_vec(),
                     exec_config,
                 )
@@ -1192,7 +1348,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 // Only record gas cost if gas metering is not paused.
                 // When paused, the gas counter should remain frozen.
                 if !state.gas_metering.paused {
-                    let _ = gas.record_cost(res.gas_required.ref_time());
+                    let _ =
+                        gas.record_cost(res.gas_consumed.min(u64::MAX.into()).try_into().unwrap());
                 }
 
                 let outcome = if result.did_revert() {
@@ -1228,7 +1385,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 Some(outcome)
             }
             Err(e) => {
-                tracing::error!("Contract call failed: {e:#?}");
+                tracing::info!("Contract call failed: {e:#?}");
                 Some(CallOutcome {
                     result: InterpreterResult {
                         result: InstructionResult::Revert,
@@ -1276,7 +1433,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                 .journaled_state
                 .database
                 .get_test_contract_address()
-                .map(|addr| call.bytecode_address != addr && call.target_address != addr)
+                .map(|addr| call.bytecode_address != addr || call.target_address != addr)
                 .unwrap_or(true)
         {
             return;

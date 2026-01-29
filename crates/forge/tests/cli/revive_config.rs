@@ -2,7 +2,7 @@
 
 use foundry_test_utils::util::OTHER_SOLC_VERSION;
 
-pub const OTHER_RESOLC_VERSION: &str = "resolc:0.1.0-dev.13";
+pub const OTHER_RESOLC_VERSION: &str = "resolc:0.6.0";
 
 // tests that `--use-resolc <resolc>` works
 forgetest!(can_use_resolc, |prj, cmd| {
@@ -112,14 +112,16 @@ contract Greeter {}
     )
     .unwrap();
 
-    cmd.args(["build", "--resolc", "--force"]).assert_success();
+    cmd.args(["build", "--resolc", "--use-resolc", "resolc:0.6.0", "--force"]).assert_success();
 
     let artifact_path = prj.artifacts().join("Greeter.sol/Greeter.json");
     let artifact_no_debug = std::fs::read_to_string(&artifact_path).unwrap();
     let json_no_debug: serde_json::Value = serde_json::from_str(&artifact_no_debug).unwrap();
     let bytecode_no_debug = json_no_debug["bytecode"]["object"].as_str().unwrap();
 
-    cmd.forge_fuse().args(["build", "--resolc", "--debug-info", "--force"]).assert_success();
+    cmd.forge_fuse()
+        .args(["build", "--resolc", "--use-resolc", "resolc:0.6.0", "--debug-info", "--force"])
+        .assert_success();
 
     let artifact_with_debug = std::fs::read_to_string(&artifact_path).unwrap();
     let json_with_debug: serde_json::Value = serde_json::from_str(&artifact_with_debug).unwrap();

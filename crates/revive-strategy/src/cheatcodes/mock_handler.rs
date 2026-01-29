@@ -5,17 +5,19 @@ use std::{
 };
 
 use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, ruint::aliases::U256};
-use foundry_cheatcodes::{Ecx, MockCallDataContext, MockCallReturnData};
+use foundry_cheatcodes::{DealRecord, Ecx, MockCallDataContext, MockCallReturnData};
+use foundry_evm::constants::CHEATCODE_ADDRESS;
 use polkadot_sdk::{
     frame_system,
     pallet_revive::{
-        self, AddressMapper, DelegateInfo, ExecOrigin, ExecReturnValue, Pallet, mock::MockHandler,
+        self, AccountId32Mapper, AddressMapper, DelegateInfo, ExecOrigin, ExecReturnValue, Pallet,
+        mock::MockHandler,
     },
     pallet_revive_uapi::ReturnFlags,
     polkadot_sdk_frame::prelude::OriginFor,
-    sp_core::H160,
+    sp_core::{H160, U256 as SpU256},
 };
-use revive_env::{AccountId, Runtime};
+use revive_env::Runtime;
 
 use revm::interpreter::InstructionResult;
 
@@ -42,7 +44,9 @@ impl MockHandlerImpl {
         Self {
             inner: Rc::new(RefCell::new(inject_env)),
             origin: ExecOrigin::<Runtime>::from_runtime_origin(OriginFor::<Runtime>::signed(
-                AccountId::to_fallback_account_id(&H160::from_slice(origin.as_slice())),
+                AccountId32Mapper::<Runtime>::to_fallback_account_id(&H160::from_slice(
+                    origin.as_slice(),
+                )),
             ))
             .expect("Could not create tx origin"),
         }
@@ -56,17 +60,36 @@ impl MockHandlerImpl {
         state.mocked_functions = mock_inner.mocked_functions.clone();
     }
 
-    pub(crate) fn fund_pranked_accounts(&self, account: Address) {
-        // Fuzzed prank addresses have no balance, so they won't exist in revive, and
-        // calls will fail, this is not a problem when running in REVM.
-        // TODO: Figure it out why this is still needed.
-        let balance = Pallet::<Runtime>::evm_balance(&H160::from_slice(account.as_slice()));
-        if balance == 0.into() {
-            Pallet::<Runtime>::set_evm_balance(
-                &H160::from_slice(account.as_slice()),
-                u128::MAX.into(),
-            )
-            .expect("Could not fund pranked account");
+    /// Syncs balances for pranked accounts between REVM and pallet-revive.
+    ///
+    /// If the account was explicitly dealt to via vm.deal(), sync that balance to pallet-revive.
+    /// This handles cases where vm.deal() was called in a callback and pallet-revive's balance
+    /// diverged from REVM's balance.
+    ///
+    /// If the account was NOT dealt to and has 0 balance, fund with u128::MAX so fuzzed
+    /// prank addresses can make calls in pallet-revive.
+    pub(crate) fn fund_pranked_accounts(account: Address, eth_deals: &[DealRecord]) {
+        let account_h160 = H160::from_slice(account.as_slice());
+
+        // Check if account was explicitly dealt to via vm.deal()
+        // Use the most recent deal record for this account
+        if let Some(deal) = eth_deals.iter().rev().find(|d| d.address == account) {
+            // Sync the dealt balance to pallet-revive
+            let target_balance =
+                SpU256::from_little_endian(&deal.new_balance.as_le_bytes()).min(u128::MAX.into());
+            let pvm_balance = Pallet::<Runtime>::evm_balance(&account_h160);
+            if pvm_balance != target_balance {
+                Pallet::<Runtime>::set_evm_balance(&account_h160, target_balance)
+                    .expect("Could not sync dealt account balance");
+            }
+            return;
+        }
+
+        // Account was not dealt to - fund with u128::MAX if balance is 0
+        let pvm_balance = Pallet::<Runtime>::evm_balance(&account_h160);
+        if pvm_balance == 0.into() {
+            Pallet::<Runtime>::set_evm_balance(&account_h160, u128::MAX.into())
+                .expect("Could not fund pranked account");
         }
     }
 }
@@ -78,6 +101,14 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         call_data: &[u8],
         value_transferred: polkadot_sdk::pallet_revive::U256,
     ) -> Option<pallet_revive::ExecReturnValue> {
+        // Check if trying to call cheatcode address from pallet-revive
+        if Address::from_slice(callee.as_bytes()) == CHEATCODE_ADDRESS {
+            return Some(ExecReturnValue {
+                flags: ReturnFlags::REVERT,
+                data: b"Cheatcodes are not available in polkadot runtime.".to_vec(),
+            });
+        }
+
         let mut mock_inner = self.inner.borrow_mut();
         let ctx = MockCallDataContext {
             calldata: call_data.to_vec().into(),
@@ -193,14 +224,15 @@ impl MockHandlerInner<Runtime> {
         callee: Option<&Address>,
         state: &mut foundry_cheatcodes::Cheatcodes,
     ) -> Self {
-        let pranked_caller = OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(
-            &H160::from_slice(caller.as_slice()),
-        ));
+        let pranked_caller =
+            OriginFor::<Runtime>::signed(AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                &H160::from_slice(caller.as_slice()),
+            ));
 
         let delegated_caller = target_address.map(|addr| {
-            OriginFor::<Runtime>::signed(AccountId::to_fallback_account_id(&H160::from_slice(
-                addr.as_slice(),
-            )))
+            OriginFor::<Runtime>::signed(AccountId32Mapper::<Runtime>::to_fallback_account_id(
+                &H160::from_slice(addr.as_slice()),
+            ))
         });
 
         Self {

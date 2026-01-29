@@ -420,7 +420,7 @@ impl From<RevivePrestateTraceInfo> for AccountState {
                 .map(|(k, v)| {
                     (
                         B256::from_slice(k.0.as_slice()),
-                        B256::from_slice(v.unwrap_or_default().0.as_slice()),
+                        B256::from_slice(v.unwrap_or(Bytes(vec![0u8; 32])).0.as_slice()),
                     )
                 })
                 .collect(),
