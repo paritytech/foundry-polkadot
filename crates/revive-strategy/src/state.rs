@@ -68,24 +68,30 @@ impl TestEnv {
         Self(self.0.clone())
     }
 
+    pub(crate) fn start_transaction(state: &mut impl std::ops::DerefMut<Target = Inner>) {
+        state.externalities.ext().storage_start_transaction();
+        state.transient_storage.start_transaction();
+    }
+
+    pub(crate) fn revert_transaction(state: &mut impl std::ops::DerefMut<Target = Inner>) {
+        let _ = state.externalities.ext().storage_rollback_transaction();
+        state.transient_storage.rollback_transaction();
+    }
+
     pub fn start_snapshotting(&mut self) {
         let mut state = self.0.lock().unwrap();
         state.depth += 1;
-        state.externalities.ext().storage_start_transaction();
-        state.transient_storage.start_transaction();
+        Self::start_transaction(&mut state);
     }
 
     pub fn revert(&mut self, depth: usize) {
         let mut state = self.0.lock().unwrap();
         while state.depth > depth + 1 {
-            let _ = state.externalities.ext().storage_rollback_transaction();
-            state.transient_storage.rollback_transaction();
+            Self::revert_transaction(&mut state);
             state.depth -= 1;
         }
-        let _ = state.externalities.ext().storage_rollback_transaction();
-        state.transient_storage.rollback_transaction();
-        state.externalities.ext().storage_start_transaction();
-        state.transient_storage.start_transaction();
+        Self::revert_transaction(&mut state);
+        Self::start_transaction(&mut state);
     }
 
     pub fn execute_with<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
