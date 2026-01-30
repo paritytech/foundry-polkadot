@@ -132,6 +132,7 @@ impl ForgeTestProfile {
             failure_persist_file: Some("testfailure".to_string()),
             show_logs: false,
             timeout: None,
+            max_fuzz_int: None,
         };
         config.invariant = InvariantConfig {
             runs: 256,
@@ -163,6 +164,7 @@ impl ForgeTestProfile {
             timeout: None,
             show_solidity: false,
             show_edge_coverage: false,
+            max_fuzz_int: None,
         };
 
         config.sanitized()

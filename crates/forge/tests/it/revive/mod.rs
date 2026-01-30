@@ -10,6 +10,7 @@ pub mod cheat_prank;
 mod cheat_snapshot;
 pub mod cheat_store;
 pub mod cheats_individual;
+pub mod fuzz_max_int;
 pub mod migration;
 pub mod record_accesses;
 pub mod transient_storage;
