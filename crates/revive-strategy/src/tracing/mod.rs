@@ -137,7 +137,7 @@ impl Tracing for Tracer {
         &mut self,
         contract_address: polkadot_sdk::sp_core::H160,
         beneficiary_address: polkadot_sdk::sp_core::H160,
-        gas_left: U256,
+        gas_left: u64,
         value: U256,
     ) {
         self.prestate_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
@@ -155,7 +155,7 @@ impl Tracing for Tracer {
         is_read_only: bool,
         value: U256,
         input: &[u8],
-        gas: U256,
+        gas: u64,
     ) {
         self.prestate_tracer.enter_child_span(
             from,
@@ -271,7 +271,7 @@ impl Tracing for Tracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        gas_left: U256,
+        gas_left: u64,
     ) {
         self.prestate_tracer.exit_child_span(output, gas_left);
         self.call_tracer.exit_child_span(output, gas_left);
@@ -284,7 +284,7 @@ impl Tracing for Tracer {
     fn exit_child_span_with_error(
         &mut self,
         error: polkadot_sdk::sp_runtime::DispatchError,
-        gas_left: U256,
+        gas_left: u64,
     ) {
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);

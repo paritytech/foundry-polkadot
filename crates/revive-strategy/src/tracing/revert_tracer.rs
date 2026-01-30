@@ -46,7 +46,7 @@ impl Tracing for RevertTracer {
         _is_read_only: bool,
         _value: U256,
         _input: &[u8],
-        _gas: U256,
+        _gas: u64,
     ) {
         self.call_types.push(if self.is_create { Type::Create } else { Type::Rest });
 
@@ -64,7 +64,7 @@ impl Tracing for RevertTracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        _gas_left: U256,
+        _gas_left: u64,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
 
@@ -82,7 +82,7 @@ impl Tracing for RevertTracer {
     fn exit_child_span_with_error(
         &mut self,
         _error: polkadot_sdk::sp_runtime::DispatchError,
-        _gas_used: U256,
+        _gas_used: u64,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
         if self.has_reverted.is_none() {

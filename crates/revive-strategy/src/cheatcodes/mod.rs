@@ -667,7 +667,12 @@ fn select_revive(
     ctx.externalities.execute_with(||{
             // Enable debug mode to bypass EIP-170 size checks during testing
             if data.cfg.limit_contract_code_size == Some(usize::MAX) {
-                let debug_settings = DebugSettings::new(true, true, true);
+                let debug_settings = {
+                     DebugSettings::default()
+                        .set_allow_unlimited_contract_size(true)
+                        .set_bypass_eip_3607(true)
+                        .set_enable_pvm_logs(true)
+                };
                 debug_settings.write_to_storage::<Runtime>();
             }
             <revive_env::Runtime as polkadot_sdk::pallet_revive::Config>::ChainId::set(

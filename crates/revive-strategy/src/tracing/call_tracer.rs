@@ -27,7 +27,7 @@ impl Tracing for ExpectedCallTracer {
         _is_read_only: bool,
         value: U256,
         input: &[u8],
-        _gas: U256,
+        _gas: u64,
     ) {
         let addr =
             is_delegate_call.map(|x| Address::from(x.0)).unwrap_or_else(|| Address::from(to.0));
@@ -54,7 +54,7 @@ impl Tracing for ExpectedCallTracer {
             }
         }
     }
-    fn exit_child_span(&mut self, _output: &pallet_revive::ExecReturnValue, _gas_left: U256) {
+    fn exit_child_span(&mut self, _output: &pallet_revive::ExecReturnValue, _gas_left: u64) {
         self.is_create = false;
     }
 
