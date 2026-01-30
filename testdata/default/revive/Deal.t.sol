@@ -17,10 +17,10 @@ contract DealTest is DSTest {
         BalanceChecker checker = new BalanceChecker();
         address target = address(10);
         assertEq(checker.getBalance(target), 0, "initial balance incorrect");
-            // // Give half the amount
+        // // Give half the amount
         vm.deal(target, amount / 2);
         assertEq(checker.getBalance(target), amount / 2, "half balance is incorrect");
-            // // Give the entire amount to check that deal is not additive
+        // // Give the entire amount to check that deal is not additive
         vm.deal(target, amount);
         assertEq(checker.getBalance(target), amount, "deal did not overwrite balance");
     }

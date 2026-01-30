@@ -25,7 +25,7 @@ contract WarpTest is DSTest {
         vm.warp(pre + jump);
         assertEq(timeContract.timestamp(), pre + jump, "warp failed");
     }
-    
+
     function testWarp2() public {
         BlockTimestamp timeContract = new BlockTimestamp();
         assertEq(timeContract.timestamp(), 1);
