@@ -163,7 +163,8 @@ impl GenesisConfig {
                 "debugSettings": {
                     "allow_unlimited_contract_size": true,
                     "bypass_eip_3607": true,
-                    "pvm_logs": true
+                    "pvm_logs": true,
+                    "disable_execution_tracing": false,
                 }
             },
             "transactionPayment": {
