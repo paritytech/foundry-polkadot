@@ -1,9 +1,6 @@
-use crate::substrate_node::{
-    lazy_loading::backend::Blockchain,
-    service::{
-        Backend,
-        storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
-    },
+use crate::substrate_node::service::{
+    Backend,
+    storage::{CodeInfo, ReviveAccountInfo, SystemAccountInfo, well_known_keys},
 };
 use alloy_primitives::{Address, Bytes};
 use codec::{Decode, Encode};
@@ -86,7 +83,7 @@ impl BackendWithOverlay {
         Self { backend, overrides }
     }
 
-    pub fn blockchain(&self) -> &Blockchain<Block> {
+    pub fn blockchain(&self) -> &<Backend as BackendT<Block>>::Blockchain {
         self.backend.blockchain()
     }
 
