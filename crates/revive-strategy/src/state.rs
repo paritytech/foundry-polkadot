@@ -118,13 +118,11 @@ impl TestEnv {
         state.depth = target_depth + 1;
     }
 
-    /// Deletes a snapshot without reverting to it.
     pub fn delete_snapshot(&mut self, snapshot_id: U256) {
         let mut state = self.0.lock().unwrap();
         state.snapshot_depths.remove(&snapshot_id);
     }
 
-    /// Deletes all snapshots.
     pub fn delete_all_snapshots(&mut self) {
         let mut state = self.0.lock().unwrap();
         state.snapshot_depths.clear();

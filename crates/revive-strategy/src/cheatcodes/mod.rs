@@ -377,7 +377,6 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.externalities.revert(snapshotId);
                 let result = cheatcode.dyn_apply(ccx, executor);
-                // Also delete from our tracking after REVM processes the delete
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.externalities.delete_snapshot(snapshotId);
                 result
