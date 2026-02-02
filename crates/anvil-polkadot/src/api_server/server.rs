@@ -746,6 +746,9 @@ impl ApiServer {
     ) -> Result<sp_core::U256> {
         node_info!("eth_estimateGas");
 
+        // Default to pending block, same as EDR and original Anvil
+        // See: https://github.com/paritytech/contract-issues/issues/261
+        let block = block.or(Some(BlockId::Number(BlockNumberOrTag::Pending)));
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
         let dry_run = runtime_api

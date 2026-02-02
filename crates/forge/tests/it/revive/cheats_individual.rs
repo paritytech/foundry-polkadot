@@ -13,7 +13,8 @@ macro_rules! revive_cheat_test_with_dir {
         #[case::evm(ReviveRuntimeMode::Evm)]
         #[tokio::test(flavor = "multi_thread")]
         async fn $test_name(#[case] runtime_mode: ReviveRuntimeMode) {
-            let mut filter = Filter::new(".*", ".*", &format!(".*/{}/{}.t.sol$", $dir, $file_pattern));
+            let mut filter =
+                Filter::new(".*", ".*", &format!(".*/{}/{}.t.sol$", $dir, $file_pattern));
 
             if let Some(exclude_pattern) = $exclude_option {
                 filter = filter.exclude_tests(exclude_pattern);
@@ -34,7 +35,7 @@ macro_rules! revive_cheat_test {
     ($test_name:ident, $file_pattern:expr) => {
         revive_cheat_test_with_dir!($test_name, $file_pattern, "revive", None::<&str>);
     };
-    ($test_name:ident, $file_pattern:expr, exclude: $exclude_pattern:expr) => {
+    ($test_name:ident, $file_pattern:expr,exclude: $exclude_pattern:expr) => {
         revive_cheat_test_with_dir!($test_name, $file_pattern, "revive", Some($exclude_pattern));
     };
 }
@@ -44,7 +45,7 @@ macro_rules! revive_cheat_test_original {
     ($test_name:ident, $file_pattern:expr) => {
         revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", None::<&str>);
     };
-    ($test_name:ident, $file_pattern:expr, exclude: $exclude_pattern:expr) => {
+    ($test_name:ident, $file_pattern:expr,exclude: $exclude_pattern:expr) => {
         revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", Some($exclude_pattern));
     };
 }
@@ -125,8 +126,8 @@ revive_cheat_test_original!(test_read_callers, "ReadCallers");
 // FAILS: State diff recording (startStateDiffRecording) doesn't capture all account accesses
 // (EXTCODESIZE, EXTCODEHASH, etc.) since these opcodes execute in pallet-revive, not REVM
 // revive_cheat_test_original!(test_record_account_accesses, "RecordAccountAccesses");
-// FAILS: Debug trace recording doesn't capture call depth correctly when execution happens in pallet-revive
-// revive_cheat_test_original!(test_record_debug_trace, "RecordDebugTrace");
+// FAILS: Debug trace recording doesn't capture call depth correctly when execution happens in
+// pallet-revive revive_cheat_test_original!(test_record_debug_trace, "RecordDebugTrace");
 revive_cheat_test_original!(test_record_logs, "RecordLogs");
 revive_cheat_test_original!(test_remember, "Remember");
 revive_cheat_test_original!(test_reset_nonce, "ResetNonce");
@@ -155,10 +156,10 @@ revive_cheat_test_original!(test_wallet, "Wallet");
 // FAILS: In Polkadot mode, vm.dumpState dumps all persistent accounts (14) instead of just the
 // explicitly created ones (expected 1). Test asserts account count which differs in pallet-revive.
 // revive_cheat_test_original!(test_dump_state, "dumpState");
-// FAILS: vm.loadAllocs() combined with vm.revertToState() causes panic in storage_rollback_transaction()
-// because vm.loadAllocs creates external accounts that get migrated to pallet-revive, and the snapshot/revert
-// mechanism doesn't properly handle rolling back cross-runtime state changes
-// revive_cheat_test_original!(test_load_allocs, "loadAllocs");
+// FAILS: vm.loadAllocs() combined with vm.revertToState() causes panic in
+// storage_rollback_transaction() because vm.loadAllocs creates external accounts that get migrated
+// to pallet-revive, and the snapshot/revert mechanism doesn't properly handle rolling back
+// cross-runtime state changes revive_cheat_test_original!(test_load_allocs, "loadAllocs");
 revive_cheat_test_original!(test_gas_metering, "GasMetering");
 revive_cheat_test!(test_custom_nonce, "Nonce");
 revive_cheat_test_original!(test_nonce, "Nonce");
