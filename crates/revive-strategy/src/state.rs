@@ -17,6 +17,7 @@ use polkadot_sdk::{
 };
 use revive_env::{Balances, BlockAuthor, ExtBuilder, NativeToEthRatio, Runtime, System, Timestamp};
 use std::{
+    collections::HashMap,
     fmt::Debug,
     sync::{Arc, Mutex},
 };
@@ -24,6 +25,8 @@ use std::{
 pub(crate) struct Inner {
     pub externalities: TestExternalities,
     pub depth: usize,
+    /// Maps REVM snapshot_id to the pallet-revive transaction depth at snapshot time.
+    pub snapshot_depths: HashMap<U256, usize>,
 }
 
 #[derive(Default)]
@@ -39,6 +42,7 @@ impl Default for Inner {
                 )])
                 .build(),
             depth: 0,
+            snapshot_depths: HashMap::new(),
         }
     }
 }
@@ -51,9 +55,14 @@ impl Debug for TestEnv {
 
 impl Clone for TestEnv {
     fn clone(&self) -> Self {
+        let mut state = self.0.lock().unwrap();
+        while state.depth > 0 {
+            let _ = state.externalities.ext().storage_commit_transaction();
+            state.depth -= 1;
+        }
+
         let mut inner: Inner = Default::default();
-        inner.externalities.backend = self.0.lock().unwrap().externalities.as_backend();
-        inner.depth = self.0.lock().unwrap().depth;
+        inner.externalities.backend = state.externalities.as_backend();
         Self(Arc::new(Mutex::new(inner)))
     }
 }
@@ -63,20 +72,64 @@ impl TestEnv {
         Self(self.0.clone())
     }
 
-    pub fn start_snapshotting(&mut self) {
+    pub fn start_snapshotting(&mut self, snapshot_id: U256) {
         let mut state = self.0.lock().unwrap();
-        state.depth += 1;
+        let current_depth = state.depth;
+        state.snapshot_depths.insert(snapshot_id, current_depth);
         state.externalities.ext().storage_start_transaction();
+        state.depth += 1;
     }
 
-    pub fn revert(&mut self, depth: usize) {
+    pub fn revert(&mut self, snapshot_id: U256) {
         let mut state = self.0.lock().unwrap();
-        while state.depth > depth + 1 {
-            state.externalities.ext().storage_rollback_transaction().unwrap();
-            state.depth -= 1;
+
+        let target_depth = match state.snapshot_depths.get(&snapshot_id) {
+            Some(&depth) => depth,
+            None => {
+                // Unknown snapshot - reset pallet-revive completely.
+                // This can happen with cross-function snapshots (Clone committed transactions)
+                // in setUp or test contract constructor call
+                tracing::warn!(
+                    snapshot_id = ?snapshot_id,
+                    current_depth = state.depth,
+                    "snapshot not found, resetting pallet-revive to sync with REVM"
+                );
+                while state.depth > 0 {
+                    let _ = state.externalities.ext().storage_rollback_transaction();
+                    state.depth -= 1;
+                }
+                state.snapshot_depths.clear();
+                return;
+            }
+        };
+
+        let rollbacks_needed = state.depth.saturating_sub(target_depth);
+        for _ in 0..rollbacks_needed {
+            if state.depth > 0 {
+                let _ = state.externalities.ext().storage_rollback_transaction();
+                state.depth -= 1;
+            }
         }
-        state.externalities.ext().storage_rollback_transaction().unwrap();
+
+        // Remove snapshots that are now invalid (taken after the target snapshot)
+        state.snapshot_depths.retain(|_, &mut depth| {
+            depth <= target_depth
+        });
+
         state.externalities.ext().storage_start_transaction();
+        state.depth = target_depth + 1;
+    }
+
+    /// Deletes a snapshot without reverting to it.
+    pub fn delete_snapshot(&mut self, snapshot_id: U256) {
+        let mut state = self.0.lock().unwrap();
+        state.snapshot_depths.remove(&snapshot_id);
+    }
+
+    /// Deletes all snapshots.
+    pub fn delete_all_snapshots(&mut self) {
+        let mut state = self.0.lock().unwrap();
+        state.snapshot_depths.clear();
     }
 
     pub fn execute_with<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
