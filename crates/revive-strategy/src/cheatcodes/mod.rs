@@ -9,10 +9,10 @@ use foundry_cheatcodes::{
     CommonCreateInput, DynCheatcode, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
         AccountAccessKind, chainIdCall, coinbaseCall, dealCall, deleteStateSnapshotCall,
-        deleteStateSnapshotsCall, etchCall, getNonce_0Call, loadCall,
-        polkadot_0Call, polkadot_1Call, polkadotSkipCall, resetNonceCall,
-        revertToStateAndDeleteCall, revertToStateCall, rollCall, setBlockhashCall, setNonceCall,
-        setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        deleteStateSnapshotsCall, etchCall, getNonce_0Call, loadCall, polkadot_0Call,
+        polkadot_1Call, polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall,
+        revertToStateCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall,
+        snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -363,7 +363,9 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if is::<snapshotStateCall>(t) => {
                 let result = cheatcode.dyn_apply(ccx, executor);
-                if let Ok(ref encoded) = result && let Ok(snapshot_id) = U256::abi_decode(encoded) {
+                if let Ok(ref encoded) = result
+                    && let Ok(snapshot_id) = U256::abi_decode(encoded)
+                {
                     let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                     ctx.externalities.start_snapshotting(snapshot_id);
                 }
@@ -381,8 +383,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 result
             }
             t if is::<revertToStateCall>(t) => {
-                let &revertToStateCall { snapshotId } =
-                    cheatcode.as_any().downcast_ref().unwrap();
+                let &revertToStateCall { snapshotId } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.externalities.revert(snapshotId);
                 cheatcode.dyn_apply(ccx, executor)

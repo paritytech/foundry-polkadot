@@ -112,9 +112,7 @@ impl TestEnv {
         }
 
         // Remove snapshots that are now invalid (taken after the target snapshot)
-        state.snapshot_depths.retain(|_, &mut depth| {
-            depth <= target_depth
-        });
+        state.snapshot_depths.retain(|_, &mut depth| depth <= target_depth);
 
         state.externalities.ext().storage_start_transaction();
         state.depth = target_depth + 1;
