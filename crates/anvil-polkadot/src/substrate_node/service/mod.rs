@@ -6,7 +6,9 @@ use crate::{
     },
 };
 #[cfg(feature = "forking-support")]
-use crate::{config::ForkChoice, substrate_node::lazy_loading::backend::Backend as LazyLoadingBackend};
+use crate::{
+    config::ForkChoice, substrate_node::lazy_loading::backend::Backend as LazyLoadingBackend,
+};
 use anvil::eth::backend::time::TimeManager;
 use codec::Encode;
 use parking_lot::Mutex;

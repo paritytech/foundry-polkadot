@@ -1,3 +1,8 @@
+#[cfg(feature = "forking-support")]
+use crate::substrate_node::lazy_loading::{
+    backend::new_backend as new_lazy_loading_backend,
+    rpc_client::{RPCClient, Rpc},
+};
 use crate::{
     AnvilNodeConfig,
     substrate_node::{
@@ -8,11 +13,6 @@ use crate::{
             executor::{Executor, WasmExecutor},
         },
     },
-};
-#[cfg(feature = "forking-support")]
-use crate::substrate_node::lazy_loading::{
-    backend::new_backend as new_lazy_loading_backend,
-    rpc_client::{RPCClient, Rpc},
 };
 use parking_lot::Mutex;
 use polkadot_sdk::{
@@ -31,9 +31,9 @@ use polkadot_sdk::{
     sp_runtime::generic::SignedBlock,
     sp_storage::StorageKey,
 };
-use std::{collections::HashMap, sync::Arc};
 #[cfg(feature = "forking-support")]
 use std::time::Duration;
+use std::{collections::HashMap, sync::Arc};
 use substrate_runtime::RuntimeApi;
 
 pub type Client = sc_service::client::Client<Backend, Executor, Block, RuntimeApi>;
