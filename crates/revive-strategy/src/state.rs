@@ -218,20 +218,21 @@ impl TestEnv {
 
     pub fn set_timestamp(&mut self, new_timestamp: U256) -> U256 {
         // Set timestamp in pallet-revive runtime (milliseconds).
+        // We clamp to u64::MAX / 1000 to prevent overflow when converting to milliseconds.
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let u64_max = U256::from(u64::MAX);
-            let clamped_timestamp = if new_timestamp > u64_max {
+            let max_timestamp_seconds = U256::from(u64::MAX / 1000);
+            let clamped_timestamp = if new_timestamp > max_timestamp_seconds {
                 tracing::warn!(
                     timestamp = ?new_timestamp,
-                    max = ?u64_max,
-                    "Timestamp exceeds u64::MAX. Clamping to u64::MAX."
+                    max = ?max_timestamp_seconds,
+                    "Timestamp exceeds maximum. Clamping to u64::MAX / 1000."
                 );
-                u64_max
+                max_timestamp_seconds
             } else {
                 new_timestamp
             };
 
-            let timestamp_ms = clamped_timestamp.saturating_to::<u64>().saturating_mul(1000);
+            let timestamp_ms = clamped_timestamp.saturating_to::<u64>() * 1000;
             Timestamp::set_timestamp(timestamp_ms);
             clamped_timestamp
         })

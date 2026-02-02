@@ -1,5 +1,5 @@
 mod int;
-pub use int::IntStrategy;
+pub use int::{IntStrategy, clamp};
 
 mod uint;
 pub use uint::UintStrategy;
