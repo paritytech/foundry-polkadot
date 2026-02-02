@@ -15757,7 +15757,6 @@ name = "revive-strategy"
 version = "1.3.6"
 dependencies = [
  "alloy-eips",
- "alloy-genesis",
  "alloy-primitives",
  "alloy-rpc-types",
  "alloy-sol-types",
