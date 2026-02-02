@@ -56,11 +56,6 @@ impl Debug for TestEnv {
 impl Clone for TestEnv {
     fn clone(&self) -> Self {
         let mut state = self.0.lock().unwrap();
-        while state.depth > 0 {
-            let _ = state.externalities.ext().storage_commit_transaction();
-            state.depth -= 1;
-        }
-
         let mut inner: Inner = Default::default();
         inner.externalities.backend = state.externalities.as_backend();
         Self(Arc::new(Mutex::new(inner)))
