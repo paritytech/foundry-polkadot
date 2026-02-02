@@ -162,7 +162,7 @@ rstest = "0.26.1"
 op-alloy-rpc-types.workspace = true
 
 [features]
-default = ["forking-support"]
+default = []
 asm-keccak = ["alloy-primitives/asm-keccak"]
 forking-support = []
 forking-tests = []
