@@ -1,11 +1,12 @@
+#[cfg(feature = "forking-support")]
+use crate::substrate_node::lazy_loading::{
+    backend::new_backend as new_lazy_loading_backend,
+    rpc_client::{RPCClient, Rpc},
+};
 use crate::{
     AnvilNodeConfig,
     substrate_node::{
         genesis::DevelopmentGenesisBlockBuilder,
-        lazy_loading::{
-            backend::new_backend as new_lazy_loading_backend,
-            rpc_client::{RPCClient, Rpc},
-        },
         service::{
             Backend,
             backend::StorageOverrides,
@@ -16,18 +17,23 @@ use crate::{
 use parking_lot::Mutex;
 use polkadot_sdk::{
     parachains_common::opaque::Block,
-    sc_chain_spec::{NoExtension, get_extension},
+    sc_chain_spec::get_extension,
     sc_client_api::{BadBlocks, ForkBlocks, execution_extensions::ExecutionExtensions},
-    sc_service::{
-        self, ChainType, GenericChainSpec, KeystoreContainer, LocalCallExecutor, TaskManager,
-    },
+    sc_service::{self, KeystoreContainer, LocalCallExecutor, TaskManager},
+    sp_keystore::KeystorePtr,
+};
+#[cfg(feature = "forking-support")]
+use polkadot_sdk::{
+    sc_chain_spec::NoExtension,
+    sc_service::{ChainType, GenericChainSpec},
     sp_blockchain,
     sp_core::storage::well_known_keys::CODE,
-    sp_keystore::KeystorePtr,
     sp_runtime::generic::SignedBlock,
     sp_storage::StorageKey,
 };
-use std::{collections::HashMap, sync::Arc, time::Duration};
+#[cfg(feature = "forking-support")]
+use std::time::Duration;
+use std::{collections::HashMap, sync::Arc};
 use substrate_runtime::RuntimeApi;
 
 pub type Client = sc_service::client::Client<Backend, Executor, Block, RuntimeApi>;
@@ -37,8 +43,10 @@ pub fn new_client(
     config: &mut sc_service::Configuration,
     executor: WasmExecutor,
     storage_overrides: Arc<Mutex<StorageOverrides>>,
-    genesis_num: u64,
+    #[cfg_attr(not(feature = "forking-support"), allow(unused_variables))] genesis_num: u64,
 ) -> Result<(Arc<Client>, Arc<Backend>, KeystorePtr, TaskManager), sc_service::error::Error> {
+    // Setup forking if enabled and configured
+    #[cfg(feature = "forking-support")]
     let fork_config: Option<(Arc<dyn RPCClient<Block>>, Block)> =
         if let Some(fork_url) = &anvil_config.eth_rpc_url {
             let (rpc_client, checkpoint_block) = setup_fork(config, fork_url, genesis_num)?;
@@ -47,10 +55,15 @@ pub fn new_client(
             None
         };
 
+    // Create backend based on feature and fork configuration
+    #[cfg(feature = "forking-support")]
     let backend = new_lazy_loading_backend(fork_config.clone())?;
 
-    // In fork mode, use the checkpoint block as genesis
-    // In normal mode, create a new genesis block
+    #[cfg(not(feature = "forking-support"))]
+    let backend = sc_service::new_db_backend(config.db_config())?;
+
+    // Create genesis block builder based on fork configuration
+    #[cfg(feature = "forking-support")]
     let genesis_block_builder = if let Some((_, checkpoint)) = &fork_config {
         // Fork mode: use checkpoint block as genesis
         DevelopmentGenesisBlockBuilder::new_with_checkpoint(
@@ -70,6 +83,15 @@ pub fn new_client(
             executor.clone(),
         )?
     };
+
+    #[cfg(not(feature = "forking-support"))]
+    let genesis_block_builder = DevelopmentGenesisBlockBuilder::new(
+        anvil_config.get_genesis_number(),
+        config.chain_spec.as_storage_builder(),
+        !config.no_genesis(),
+        backend.clone(),
+        executor.clone(),
+    )?;
 
     let keystore_container = KeystoreContainer::new(&config.keystore)?;
 
@@ -123,6 +145,7 @@ pub fn new_client(
 }
 
 /// Fetches the checkpoint block and sets up the chain spec for forking
+#[cfg(feature = "forking-support")]
 fn setup_fork(
     config: &mut sc_service::Configuration,
     fork_url: &str,

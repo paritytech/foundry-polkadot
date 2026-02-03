@@ -3,6 +3,7 @@ pub mod genesis;
 pub mod host;
 pub mod impersonation;
 pub mod in_mem_rpc;
+#[cfg(feature = "forking-support")]
 mod lazy_loading;
 pub mod mining_engine;
 pub mod revert;
