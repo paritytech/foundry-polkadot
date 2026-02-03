@@ -293,7 +293,7 @@ impl BackendWithOverlay {
     /// Prefetch multiple storage keys in a single batch RPC call.
     /// This significantly reduces latency when forking from a remote chain.
     /// Returns the number of keys actually fetched from remote.
-    pub fn prefetch_storage_keys(&self, keys: &[Vec<u8>]) -> usize {
+    fn prefetch_storage_keys(&self, keys: &[Vec<u8>]) -> usize {
         self.backend.prefetch_storage_keys(keys)
     }
 
