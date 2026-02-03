@@ -3535,7 +3535,7 @@ forgetest_init!(should_preserve_fork_state_setup, |prj, cmd| {
 
     prj.add_test(
         "Counter.t.sol",
-        r#"
+        &r#"
 import "forge-std/Test.sol";
 import {StdChains} from "forge-std/StdChains.sol";
 
