@@ -858,6 +858,7 @@ async fn test_fork_can_send_tx_from_westend() {
     let fork_config = westend_fork_config();
     let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
     let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+    let initial_block = fork_node.best_block_number().await;
 
     let alith = Account::from(subxt_signer::eth::dev::alith());
     let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
@@ -936,7 +937,8 @@ async fn test_fork_can_send_tx_from_westend() {
     );
 
     // Verify block number increased
-    let _final_block = fork_node.best_block_number().await;
+    let final_block = fork_node.best_block_number().await;
+    assert!(final_block > initial_block, "Block number should increase after transactions");
 }
 
 /// Tests that local state changes don't affect the remote fork state
