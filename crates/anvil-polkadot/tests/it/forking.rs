@@ -836,9 +836,6 @@ async fn test_fork_state_snapshotting_from_westend() {
     .unwrap();
     assert!(reverted, "Revert should succeed");
 
-    // Wait for state to settle
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
     // Verify state is back to snapshot point
     let alith_balance_reverted = fork_node.get_balance(alith.address(), None).await;
     let baltathar_balance_reverted = fork_node.get_balance(baltathar.address(), None).await;
