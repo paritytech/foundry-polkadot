@@ -11,6 +11,7 @@ use polkadot_sdk::{
 };
 use serde::de::DeserializeOwned;
 use std::{
+    collections::HashMap,
     marker::PhantomData,
     sync::{
         Arc,
@@ -354,8 +355,7 @@ impl<Block: BlockT + DeserializeOwned> RPCClient<Block> for Rpc<Block> {
         let mut results: Vec<(StorageKey, Option<StorageData>)> = Vec::with_capacity(keys.len());
 
         // Build a map from returned results
-        let mut result_map: std::collections::HashMap<Vec<u8>, Option<StorageData>> =
-            std::collections::HashMap::new();
+        let mut result_map: HashMap<Vec<u8>, Option<StorageData>> = HashMap::new();
 
         for change_set in result {
             for (key, value) in change_set.changes {

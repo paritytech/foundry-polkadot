@@ -157,8 +157,9 @@ impl<Block: BlockT + DeserializeOwned> Blockchain<Block> {
         }
 
         // Update leaves for all blocks including genesis.
-        // For genesis when forking, the parent_hash points to the previous block on the remote chain.
-        // That parent won't be in our leaf set, so this effectively adds genesis as a new leaf.
+        // For genesis when forking, the parent_hash points to the previous block on the remote
+        // chain. That parent won't be in our leaf set, so this effectively adds genesis as
+        // a new leaf.
         storage.leaves.import(hash, number, *header.parent_hash());
 
         // Finalize block only if explicitly requested via new_state
@@ -443,11 +444,7 @@ impl<Block: BlockT + DeserializeOwned> sp_blockchain::Backend<Block> for Blockch
             .blocks
             .iter()
             .filter_map(|(hash, block)| {
-                if *block.header().parent_hash() == parent_hash {
-                    Some(*hash)
-                } else {
-                    None
-                }
+                if *block.header().parent_hash() == parent_hash { Some(*hash) } else { None }
             })
             .collect();
         Ok(children)
