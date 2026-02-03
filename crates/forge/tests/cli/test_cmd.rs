@@ -3530,6 +3530,9 @@ contract InterceptInitcodeTest is DSTest {
 // <https://github.com/foundry-rs/foundry/issues/10552>
 forgetest_init!(should_preserve_fork_state_setup, |prj, cmd| {
     prj.wipe_contracts();
+
+    let endpoint = rpc::next_http_archive_rpc_url();
+
     prj.add_test(
         "Counter.t.sol",
         r#"
@@ -3594,7 +3597,8 @@ contract CounterTest is Test {
         assertEq(data[3].bridges.length, 2);
     }
 }
-    "#,
+    "#
+        .replace("<url>", &endpoint),
     )
     .unwrap();
 
