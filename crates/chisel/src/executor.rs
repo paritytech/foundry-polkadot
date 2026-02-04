@@ -348,9 +348,13 @@ impl SessionSource {
             .legacy_assertions(self.config.foundry_config.legacy_assertions)
             .build(env, backend, strategy);
 
-        // Create a [ChiselRunner] with a default balance of [U256::MAX] and
-        // the sender [Address::zero].
-        Ok(ChiselRunner::new(executor, U256::MAX, Address::ZERO, self.config.calldata.clone()))
+        // Create a [ChiselRunner] with max balance for the strategy and sender [Address::zero].
+        Ok(ChiselRunner::new(
+            executor,
+            executor.strategy.runner.max_balance(),
+            Address::ZERO,
+            self.config.calldata.clone(),
+        ))
     }
 }
 

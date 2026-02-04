@@ -205,11 +205,6 @@ impl ExecutorStrategy {
     pub fn new_evm() -> Self {
         Self { runner: &EvmExecutorStrategyRunner, context: Box::new(()) }
     }
-
-    /// Returns the maximum balance value for this strategy.
-    pub fn max_balance(&self) -> U256 {
-        self.runner.max_balance()
-    }
 }
 
 impl Clone for ExecutorStrategy {

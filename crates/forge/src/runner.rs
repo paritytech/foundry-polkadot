@@ -122,14 +122,14 @@ impl<'a> ContractRunner<'a> {
         self.apply_contract_inline_config()?;
 
         // We max out their balance so that they can deploy and make calls.
-        self.executor.set_balance(self.sender, self.executor.strategy.max_balance())?;
-        self.executor.set_balance(CALLER, self.executor.strategy.max_balance())?;
+        self.executor.set_balance(self.sender, self.executor.strategy.runner.max_balance())?;
+        self.executor.set_balance(CALLER, self.executor.strategy.runner.max_balance())?;
 
         // We set the nonce of the deployer accounts to 1 to get the same addresses as DappTools.
         self.executor.set_nonce(self.sender, 1)?;
 
         // Deploy libraries.
-        self.executor.set_balance(LIBRARY_DEPLOYER, self.executor.strategy.max_balance())?;
+        self.executor.set_balance(LIBRARY_DEPLOYER, self.executor.strategy.runner.max_balance())?;
 
         let mut result = TestSetup::default();
         for code in &self.mcr.libs_to_deploy {
