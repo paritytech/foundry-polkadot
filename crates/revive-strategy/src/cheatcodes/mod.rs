@@ -8,10 +8,11 @@ use foundry_cheatcodes::{
     CheatcodeInspectorStrategyContext, CheatcodeInspectorStrategyRunner, CheatsConfig, CheatsCtxt,
     CommonCreateInput, DynCheatcode, Ecx, EvmCheatcodeInspectorStrategyRunner, Result,
     Vm::{
-        AccountAccessKind, chainIdCall, coinbaseCall, dealCall, etchCall, getNonce_0Call, loadCall,
-        polkadot_0Call, polkadot_1Call, polkadotSkipCall, resetNonceCall,
-        revertToStateAndDeleteCall, revertToStateCall, rollCall, setBlockhashCall, setNonceCall,
-        setNonceUnsafeCall, snapshotStateCall, storeCall, warpCall,
+        AccountAccessKind, chainIdCall, coinbaseCall, dealCall, deleteStateSnapshotCall,
+        deleteStateSnapshotsCall, etchCall, getNonce_0Call, loadCall, polkadot_0Call,
+        polkadot_1Call, polkadotSkipCall, resetNonceCall, revertToStateAndDeleteCall,
+        revertToStateCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall,
+        snapshotStateCall, storeCall, warpCall,
     },
     journaled_account, precompile_error,
 };
@@ -368,21 +369,42 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
 
                 rollCall { newHeight: clamped_height }.dyn_apply(ccx, executor)
             }
-            t if using_revive && is::<snapshotStateCall>(t) => {
-                ctx.externalities.start_snapshotting();
-                cheatcode.dyn_apply(ccx, executor)
+            t if is::<snapshotStateCall>(t) => {
+                let result = cheatcode.dyn_apply(ccx, executor);
+                if let Ok(ref encoded) = result
+                    && let Ok(snapshot_id) = U256::abi_decode(encoded)
+                {
+                    let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                    ctx.externalities.start_snapshotting(snapshot_id);
+                }
+                result
             }
-            t if using_revive && is::<revertToStateAndDeleteCall>(t) => {
+            t if is::<revertToStateAndDeleteCall>(t) => {
                 let &revertToStateAndDeleteCall { snapshotId } =
                     cheatcode.as_any().downcast_ref().unwrap();
-
-                ctx.externalities.revert(snapshotId.try_into().unwrap());
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.externalities.revert(snapshotId);
+                let result = cheatcode.dyn_apply(ccx, executor);
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.externalities.delete_snapshot(snapshotId);
+                result
+            }
+            t if is::<revertToStateCall>(t) => {
+                let &revertToStateCall { snapshotId } = cheatcode.as_any().downcast_ref().unwrap();
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.externalities.revert(snapshotId);
                 cheatcode.dyn_apply(ccx, executor)
             }
-            t if using_revive && is::<revertToStateCall>(t) => {
-                let &revertToStateCall { snapshotId } = cheatcode.as_any().downcast_ref().unwrap();
-
-                ctx.externalities.revert(snapshotId.try_into().unwrap());
+            t if is::<deleteStateSnapshotCall>(t) => {
+                let &deleteStateSnapshotCall { snapshotId } =
+                    cheatcode.as_any().downcast_ref().unwrap();
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.externalities.delete_snapshot(snapshotId);
+                cheatcode.dyn_apply(ccx, executor)
+            }
+            t if is::<deleteStateSnapshotsCall>(t) => {
+                let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
+                ctx.externalities.delete_all_snapshots();
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<warpCall>(t) => {
