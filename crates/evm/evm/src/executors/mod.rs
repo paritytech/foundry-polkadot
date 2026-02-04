@@ -235,7 +235,7 @@ impl Executor {
 
             // Probably 0, but just in case.
             let initial_balance = self.get_balance(creator)?;
-            self.set_balance(creator, U256::MAX)?;
+            self.set_balance(creator, self.strategy.max_balance())?;
 
             let res =
                 self.deploy(creator, DEFAULT_CREATE2_DEPLOYER_CODE.into(), U256::ZERO, None)?;

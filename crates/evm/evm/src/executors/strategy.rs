@@ -94,8 +94,14 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync + ExecutorStrategyExt {
     ) -> Result<ResultAndState>;
 }
 
-/// Extended trait for Revive/PVM.
+/// Extended trait for Polkadot.
 pub trait ExecutorStrategyExt {
+    /// Returns the maximum balance value.
+    /// Standard EVM uses U256::MAX, Polkadot uses u128::MAX.
+    fn max_balance(&self) -> U256 {
+        U256::MAX
+    }
+
     /// Set [DualCompiledContracts] on the context.
     fn revive_set_dual_compiled_contracts(
         &self,
@@ -199,10 +205,34 @@ impl ExecutorStrategy {
     pub fn new_evm() -> Self {
         Self { runner: &EvmExecutorStrategyRunner, context: Box::new(()) }
     }
+
+    /// Returns the maximum balance value for this strategy.
+    pub fn max_balance(&self) -> U256 {
+        self.runner.max_balance()
+    }
 }
 
 impl Clone for ExecutorStrategy {
     fn clone(&self) -> Self {
         Self { runner: self.runner, context: self.context.clone() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_evm_max_balance() {
+        // EVM uses U256::MAX for balances
+        let evm_runner = EvmExecutorStrategyRunner;
+        assert_eq!(evm_runner.max_balance(), U256::MAX);
+    }
+
+    #[test]
+    fn test_executor_strategy_max_balance_evm() {
+        // ExecutorStrategy delegates to runner
+        let strategy = ExecutorStrategy::new_evm();
+        assert_eq!(strategy.max_balance(), U256::MAX);
     }
 }

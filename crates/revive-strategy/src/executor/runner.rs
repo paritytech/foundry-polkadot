@@ -137,6 +137,10 @@ fn get_context_ref_mut(
 }
 
 impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
+    fn max_balance(&self) -> U256 {
+        U256::from(u128::MAX)
+    }
+
     fn revive_set_dual_compiled_contracts(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
@@ -164,5 +168,28 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         let ctx = get_context_ref(ctx);
         let mut state = ctx.externalties.0.lock().unwrap();
         let _ = state.externalities.ext().storage_rollback_transaction();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_revive_max_balance() {
+        // Revive/Polkadot uses u128::MAX for balances (pallet-revive limitation)
+        let revive_runner = ReviveExecutorStrategyRunner;
+        assert_eq!(revive_runner.max_balance(), U256::from(u128::MAX));
+        // Verify it's NOT U256::MAX
+        assert_ne!(revive_runner.max_balance(), U256::MAX);
+    }
+
+    #[test]
+    fn test_revive_max_balance_value() {
+        // Verify exact value: 340282366920938463463374607431768211455
+        let revive_runner = ReviveExecutorStrategyRunner;
+        let expected = U256::from(u128::MAX);
+        assert_eq!(expected.to_string(), "340282366920938463463374607431768211455");
+        assert_eq!(revive_runner.max_balance(), expected);
     }
 }
