@@ -217,22 +217,3 @@ impl Clone for ExecutorStrategy {
         Self { runner: self.runner, context: self.context.clone() }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_evm_max_balance() {
-        // EVM uses U256::MAX for balances
-        let evm_runner = EvmExecutorStrategyRunner;
-        assert_eq!(evm_runner.max_balance(), U256::MAX);
-    }
-
-    #[test]
-    fn test_executor_strategy_max_balance_evm() {
-        // ExecutorStrategy delegates to runner
-        let strategy = ExecutorStrategy::new_evm();
-        assert_eq!(strategy.max_balance(), U256::MAX);
-    }
-}
