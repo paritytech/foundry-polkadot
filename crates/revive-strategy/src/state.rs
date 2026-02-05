@@ -18,6 +18,7 @@ use polkadot_sdk::{
 use revive_env::{Balances, BlockAuthor, ExtBuilder, NativeToEthRatio, Runtime, System, Timestamp};
 use std::{
     cell::RefCell,
+    collections::HashMap,
     fmt::Debug,
     sync::{Arc, Mutex},
 };
@@ -26,6 +27,8 @@ pub(crate) struct Inner {
     pub externalities: TestExternalities,
     pub depth: usize,
     pub transient_storage: TransientStorage<Runtime>,
+    /// Maps REVM snapshot_id to the pallet-revive transaction depth at snapshot time.
+    pub snapshot_depths: HashMap<U256, usize>,
 }
 
 #[derive(Default)]
@@ -42,6 +45,7 @@ impl Default for Inner {
                 .build(),
             depth: 0,
             transient_storage: TransientStorage::new(u32::MAX),
+            snapshot_depths: HashMap::new(),
         }
     }
 }
@@ -59,6 +63,7 @@ impl Clone for TestEnv {
         inner.externalities.backend = data.externalities.as_backend();
         inner.transient_storage = data.transient_storage.clone();
         inner.depth = data.depth;
+
         Self(Arc::new(Mutex::new(inner)))
     }
 }
@@ -78,20 +83,61 @@ impl TestEnv {
         state.transient_storage.rollback_transaction();
     }
 
-    pub fn start_snapshotting(&mut self) {
+
+    pub fn start_snapshotting(&mut self, snapshot_id: U256) {
         let mut state = self.0.lock().unwrap();
+        let current_depth = state.depth;
+        state.snapshot_depths.insert(snapshot_id, current_depth);
+        Self::start_transaction(state);
         state.depth += 1;
-        Self::start_transaction(&mut state);
     }
 
-    pub fn revert(&mut self, depth: usize) {
+    pub fn revert(&mut self, snapshot_id: U256) {
         let mut state = self.0.lock().unwrap();
-        while state.depth > depth + 1 {
-            Self::revert_transaction(&mut state);
-            state.depth -= 1;
+
+        let target_depth = match state.snapshot_depths.get(&snapshot_id) {
+            Some(&depth) => depth,
+            None => {
+                // Unknown snapshot - reset pallet-revive completely.
+                // This can happen with cross-function snapshots (Clone committed transactions)
+                // in setUp or test contract constructor call
+                tracing::warn!(
+                    snapshot_id = ?snapshot_id,
+                    current_depth = state.depth,
+                    "snapshot not found, resetting pallet-revive to sync with REVM"
+                );
+                while state.depth > 0 {
+                    Self::revert_transaction(state);
+                    state.depth -= 1;
+                }
+                state.snapshot_depths.clear();
+                return;
+            }
+        };
+
+        let rollbacks_needed = state.depth.saturating_sub(target_depth);
+        for _ in 0..rollbacks_needed {
+            if state.depth > 0 {
+                Self::revert_transaction(state);
+                state.depth -= 1;
+            }
         }
-        Self::revert_transaction(&mut state);
-        Self::start_transaction(&mut state);
+
+        // Remove snapshots that are now invalid (taken after the target snapshot)
+        state.snapshot_depths.retain(|_, &mut depth| depth <= target_depth);
+
+        Self::start_transaction(state);
+        state.depth = target_depth + 1;
+    }
+
+    pub fn delete_snapshot(&mut self, snapshot_id: U256) {
+        let mut state = self.0.lock().unwrap();
+        state.snapshot_depths.remove(&snapshot_id);
+    }
+
+    pub fn delete_all_snapshots(&mut self) {
+        let mut state = self.0.lock().unwrap();
+        state.snapshot_depths.clear();
     }
 
     pub fn execute_with<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
@@ -205,20 +251,21 @@ impl TestEnv {
 
     pub fn set_timestamp(&mut self, new_timestamp: U256) -> U256 {
         // Set timestamp in pallet-revive runtime (milliseconds).
+        // We clamp to u64::MAX / 1000 to prevent overflow when converting to milliseconds.
         self.0.lock().unwrap().externalities.execute_with(|| {
-            let u64_max = U256::from(u64::MAX);
-            let clamped_timestamp = if new_timestamp > u64_max {
+            let max_timestamp_seconds = U256::from(u64::MAX / 1000);
+            let clamped_timestamp = if new_timestamp > max_timestamp_seconds {
                 tracing::warn!(
                     timestamp = ?new_timestamp,
-                    max = ?u64_max,
-                    "Timestamp exceeds u64::MAX. Clamping to u64::MAX."
+                    max = ?max_timestamp_seconds,
+                    "Timestamp exceeds maximum. Clamping to u64::MAX / 1000."
                 );
-                u64_max
+                max_timestamp_seconds
             } else {
                 new_timestamp
             };
 
-            let timestamp_ms = clamped_timestamp.saturating_to::<u64>().saturating_mul(1000);
+            let timestamp_ms = clamped_timestamp.saturating_to::<u64>() * 1000;
             Timestamp::set_timestamp(timestamp_ms);
             clamped_timestamp
         })
