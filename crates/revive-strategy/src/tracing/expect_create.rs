@@ -54,7 +54,7 @@ impl Tracing for CreateTracer {
         _is_read_only: bool,
         _value: U256,
         _input: &[u8],
-        _gas: U256,
+        _gas: u64,
     ) {
         self.call_types.push(if let Some((_, salt)) = self.is_create.take() {
             Type::Create { salt }
@@ -64,13 +64,13 @@ impl Tracing for CreateTracer {
         if self.calls.is_empty() {
             self.calls.push(_from);
         }
-        self.calls.push(if _is_delegate_call.is_some() { self.current_addr() } else { to });
+        self.calls.push(if let Some(delegate) = _is_delegate_call { delegate } else { to });
     }
 
     fn exit_child_span(
         &mut self,
         _output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        _gas_left: U256,
+        _gas_left: u64,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
 

@@ -7,7 +7,7 @@ use polkadot_sdk::{
     },
     pallet_revive::{
         self, AccountId32Mapper, AccountInfo, AddressMapper, BytecodeType, ContractInfo,
-        ExecConfig, Executable, HoldReason, Pallet, ResourceMeter,
+        ExecConfig, Executable, HoldReason, Pallet, ResourceMeter, TransientStorage,
     },
     sp_core::{self, H160, H256},
     sp_externalities::Externalities,
@@ -17,6 +17,7 @@ use polkadot_sdk::{
 };
 use revive_env::{Balances, BlockAuthor, ExtBuilder, NativeToEthRatio, Runtime, System, Timestamp};
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::Debug,
     sync::{Arc, Mutex},
@@ -25,6 +26,7 @@ use std::{
 pub(crate) struct Inner {
     pub externalities: TestExternalities,
     pub depth: usize,
+    pub transient_storage: TransientStorage<Runtime>,
     /// Maps REVM snapshot_id to the pallet-revive transaction depth at snapshot time.
     pub snapshot_depths: HashMap<U256, usize>,
 }
@@ -42,6 +44,7 @@ impl Default for Inner {
                 )])
                 .build(),
             depth: 0,
+            transient_storage: TransientStorage::new(u32::MAX),
             snapshot_depths: HashMap::new(),
         }
     }
@@ -55,9 +58,12 @@ impl Debug for TestEnv {
 
 impl Clone for TestEnv {
     fn clone(&self) -> Self {
-        let mut state = self.0.lock().unwrap();
         let mut inner: Inner = Default::default();
-        inner.externalities.backend = state.externalities.as_backend();
+        let mut data = self.0.lock().unwrap();
+        inner.externalities.backend = data.externalities.as_backend();
+        inner.transient_storage = data.transient_storage.clone();
+        inner.depth = data.depth;
+
         Self(Arc::new(Mutex::new(inner)))
     }
 }
@@ -67,11 +73,21 @@ impl TestEnv {
         Self(self.0.clone())
     }
 
+    pub(crate) fn start_transaction(state: &mut impl std::ops::DerefMut<Target = Inner>) {
+        state.externalities.ext().storage_start_transaction();
+        state.transient_storage.start_transaction();
+    }
+
+    pub(crate) fn revert_transaction(state: &mut impl std::ops::DerefMut<Target = Inner>) {
+        let _ = state.externalities.ext().storage_rollback_transaction();
+        state.transient_storage.rollback_transaction();
+    }
+
     pub fn start_snapshotting(&mut self, snapshot_id: U256) {
         let mut state = self.0.lock().unwrap();
         let current_depth = state.depth;
         state.snapshot_depths.insert(snapshot_id, current_depth);
-        state.externalities.ext().storage_start_transaction();
+        Self::start_transaction(&mut state);
         state.depth += 1;
     }
 
@@ -90,7 +106,7 @@ impl TestEnv {
                     "snapshot not found, resetting pallet-revive to sync with REVM"
                 );
                 while state.depth > 0 {
-                    let _ = state.externalities.ext().storage_rollback_transaction();
+                    Self::revert_transaction(&mut state);
                     state.depth -= 1;
                 }
                 state.snapshot_depths.clear();
@@ -101,7 +117,7 @@ impl TestEnv {
         let rollbacks_needed = state.depth.saturating_sub(target_depth);
         for _ in 0..rollbacks_needed {
             if state.depth > 0 {
-                let _ = state.externalities.ext().storage_rollback_transaction();
+                Self::revert_transaction(&mut state);
                 state.depth -= 1;
             }
         }
@@ -109,7 +125,7 @@ impl TestEnv {
         // Remove snapshots that are now invalid (taken after the target snapshot)
         state.snapshot_depths.retain(|_, &mut depth| depth <= target_depth);
 
-        state.externalities.ext().storage_start_transaction();
+        Self::start_transaction(&mut state);
         state.depth = target_depth + 1;
     }
 
@@ -125,6 +141,22 @@ impl TestEnv {
 
     pub fn execute_with<R, F: FnOnce() -> R>(&mut self, f: F) -> R {
         self.0.lock().unwrap().externalities.execute_with(f)
+    }
+
+    pub fn execute_with_transient_storage<
+        R,
+        F: FnOnce(RefCell<TransientStorage<Runtime>>) -> (R, RefCell<TransientStorage<Runtime>>),
+    >(
+        &mut self,
+        f: F,
+    ) -> R {
+        let mut data = self.0.lock().unwrap();
+        let mut temp = TransientStorage::new(u32::MAX);
+        std::mem::swap(&mut data.transient_storage, &mut temp);
+        let transient_storage = RefCell::new(temp);
+        let (result, transient_storage) = data.externalities.execute_with(|| f(transient_storage));
+        data.transient_storage = transient_storage.into_inner();
+        result
     }
 
     pub fn get_nonce(&mut self, account: Address) -> u32 {
