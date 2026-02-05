@@ -349,12 +349,8 @@ impl SessionSource {
             .build(env, backend, strategy);
 
         // Create a [ChiselRunner] with max balance for the strategy and sender [Address::zero].
-        Ok(ChiselRunner::new(
-            executor,
-            executor.strategy.runner.max_balance(),
-            Address::ZERO,
-            self.config.calldata.clone(),
-        ))
+        let max_balance = executor.strategy.runner.max_balance();
+        Ok(ChiselRunner::new(executor, max_balance, Address::ZERO, self.config.calldata.clone()))
     }
 }
 
