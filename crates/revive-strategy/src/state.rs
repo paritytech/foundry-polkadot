@@ -83,12 +83,11 @@ impl TestEnv {
         state.transient_storage.rollback_transaction();
     }
 
-
     pub fn start_snapshotting(&mut self, snapshot_id: U256) {
         let mut state = self.0.lock().unwrap();
         let current_depth = state.depth;
         state.snapshot_depths.insert(snapshot_id, current_depth);
-        Self::start_transaction(state);
+        Self::start_transaction(&mut state);
         state.depth += 1;
     }
 
@@ -107,7 +106,7 @@ impl TestEnv {
                     "snapshot not found, resetting pallet-revive to sync with REVM"
                 );
                 while state.depth > 0 {
-                    Self::revert_transaction(state);
+                    Self::revert_transaction(&mut state);
                     state.depth -= 1;
                 }
                 state.snapshot_depths.clear();
@@ -118,7 +117,7 @@ impl TestEnv {
         let rollbacks_needed = state.depth.saturating_sub(target_depth);
         for _ in 0..rollbacks_needed {
             if state.depth > 0 {
-                Self::revert_transaction(state);
+                Self::revert_transaction(&mut state);
                 state.depth -= 1;
             }
         }
@@ -126,7 +125,7 @@ impl TestEnv {
         // Remove snapshots that are now invalid (taken after the target snapshot)
         state.snapshot_depths.retain(|_, &mut depth| depth <= target_depth);
 
-        Self::start_transaction(state);
+        Self::start_transaction(&mut state);
         state.depth = target_depth + 1;
     }
 
