@@ -3,9 +3,9 @@ use alloy_primitives::{Address, B256};
 use alloy_rpc_types::{
     AccessList, FilterBlockOption, FilterSet, SignedAuthorization, Topic, TransactionRequest,
     trace::geth::{
-        AccountState, CallFrame, CallLogFrame, DiffMode, GethDebugBuiltInTracerType,
+        AccountState, CallFrame, CallLogFrame, DefaultFrame, DiffMode, GethDebugBuiltInTracerType,
         GethDebugTracerType, GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace,
-        PreStateFrame, PreStateMode,
+        PreStateFrame, PreStateMode, StructLog,
     },
 };
 use polkadot_sdk::{
@@ -17,6 +17,7 @@ use polkadot_sdk::{
     },
     sp_core,
 };
+use revm::bytecode::OpCode;
 use serde::{Deserialize, Serialize};
 use subxt::utils::{H160, H256};
 
@@ -30,7 +31,11 @@ impl From<polkadot_sdk::sp_core::U256> for AlloyU256 {
         Self(alloy_primitives::U256::from_be_bytes(bytes))
     }
 }
-
+impl From<u64> for AlloyU256 {
+    fn from(value: u64) -> Self {
+        Self(alloy_primitives::U256::from(value))
+    }
+}
 impl AlloyU256 {
     pub fn inner(&self) -> alloy_primitives::U256 {
         self.0
@@ -484,6 +489,62 @@ impl ReviveTrace {
 impl From<ReviveTrace> for GethTrace {
     fn from(value: ReviveTrace) -> Self {
         match value.inner() {
+            Trace::Execution(execution_trace) => Self::Default(DefaultFrame {
+                failed: execution_trace.failed,
+                gas: execution_trace.gas,
+                return_value: execution_trace.return_value.0.into(),
+                struct_logs: execution_trace
+                    .struct_logs
+                    .into_iter()
+                    .filter_map(|struct_| match struct_.kind {
+                        evm::ExecutionStepKind::EVMOpcode { pc, op, stack, memory, storage } => {
+                            Some(StructLog {
+                                pc: pc.into(),
+                                op: OpCode::new(op).map(|x| x.as_str().into()).unwrap_or_default(),
+                                gas: struct_.gas,
+                                gas_cost: struct_.gas_cost,
+                                depth: struct_.depth.into(),
+                                error: struct_.error,
+                                stack: if stack.is_empty() {
+                                    None
+                                } else {
+                                    Some(
+                                        stack
+                                            .into_iter()
+                                            .map(|x| alloy_primitives::U256::from_be_slice(&x.0))
+                                            .collect(),
+                                    )
+                                },
+                                return_data: if struct_.return_data.is_empty() {
+                                    None
+                                } else {
+                                    Some(struct_.return_data.0.into())
+                                },
+                                memory: if memory.is_empty() {
+                                    None
+                                } else {
+                                    memory
+                                        .into_iter()
+                                        .map(|x| String::from_utf8(x.0))
+                                        .collect::<Result<Vec<String>, _>>()
+                                        .ok()
+                                        .or_else(|| None)
+                                },
+                                memory_size: None, // TODO: fixme
+                                storage: storage.map(|x| {
+                                    x.into_iter()
+                                        .map(|(k, v)| {
+                                            (B256::from_slice(&k.0), B256::from_slice(&v.0))
+                                        })
+                                        .collect()
+                                }),
+                                refund_counter: None,
+                            })
+                        }
+                        evm::ExecutionStepKind::PVMSyscall { op: _, args: _, returned: _ } => None,
+                    })
+                    .collect(),
+            }),
             Trace::Call(call_trace) => Self::CallTracer(ReviveCallTrace::new(call_trace).into()),
             Trace::Prestate(PrestateTrace::Prestate(prestate_map)) => {
                 Self::PreStateTracer(PreStateFrame::Default(PreStateMode(

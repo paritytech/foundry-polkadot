@@ -52,7 +52,7 @@ async fn test_traces() {
     let debug_resp = node
         .eth_rpc(EthRequest::DebugTraceTransaction(
             B256::from_slice(tx_hash.as_ref()),
-            GethDebugTracingOptions::default(),
+            GethDebugTracingOptions::call_tracer(Default::default()),
         ))
         .await
         .unwrap();
@@ -229,7 +229,7 @@ async fn test_trace_block() {
     let debug_block_traces: Vec<TraceResult> = unwrap_response(
         node.eth_rpc(EthRequest::DebugTraceBlockByNumber(
             alloy_eips::BlockNumberOrTag::Number(1),
-            GethDebugTracingOptions::default(),
+            GethDebugTracingOptions::call_tracer(Default::default()),
         ))
         .await
         .unwrap(),
