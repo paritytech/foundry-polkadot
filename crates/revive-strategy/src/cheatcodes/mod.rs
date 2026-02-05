@@ -1148,7 +1148,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
-                    transient_storage: Some(transient_storage),
+                    test_env_transient_storage: Some(transient_storage),
                 };
 
                 let result = Pallet::<Runtime>::bare_instantiate(
@@ -1163,7 +1163,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     salt,
                     &exec_config,
                 );
-                (result, exec_config.transient_storage.expect("can't happen"))
+                (result, exec_config.test_env_transient_storage.expect("can't happen"))
             })
         });
         let mut gas = Gas::new(input.gas_limit());
@@ -1325,7 +1325,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     effective_gas_price: Some(gas_price_pvm),
                     mock_handler: Some(Box::new(mock_handler.clone())),
                     is_dry_run: None,
-                    transient_storage: Some(transient_storage),
+                    test_env_transient_storage: Some(transient_storage),
                 };
                 if should_bump_nonce {
                     System::inc_account_nonce(
@@ -1343,7 +1343,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     call.input.bytes(ecx).to_vec(),
                     &exec_config,
                 );
-                (result, exec_config.transient_storage.expect("can't happen"))
+                (result, exec_config.test_env_transient_storage.expect("can't happen"))
             })
         });
         mock_handler.update_state_mocks(state);

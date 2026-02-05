@@ -21,12 +21,12 @@ path = "bin/main.rs"
 # foundry internal
 codec = { version = "3.7.5", default-features = true, package = "parity-scale-codec" }
 substrate-runtime = { path = "substrate-runtime" }
-pallet-revive-eth-rpc = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "pkhry/external_transient_storage"}
+pallet-revive-eth-rpc = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 secp256k1 = { version = "0.28.0", default-features = false }
 libsecp256k1 = { version = "0.7.0", default-features = false }
-sp-runtime-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "pkhry/external_transient_storage", default-features = false }
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "pkhry/external_transient_storage", default-features = false, features = [
-    "sc-allocator",
+sp-runtime-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false }
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = [
+	"sc-allocator",
 	"sc-basic-authorship",
 	"sc-block-builder",
 	"sc-chain-spec",
@@ -36,13 +36,13 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"sc-consensus",
 	"sc-consensus-aura",
 	"sc-consensus-manual-seal",
-    "sc-executor",
+	"sc-executor",
 	"sc-executor-common",
 	"sc-executor-wasmtime",
 	"sc-keystore",
 	"sc-network",
 	"sc-network-types",
-    "sc-rpc",
+	"sc-rpc",
 	"sc-rpc-api",
 	"sc-rpc-server",
 	"sc-rpc-spec-v2",
@@ -63,7 +63,7 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"sp-panic-handler",
 	"sp-rpc",
 	"std",
-    "substrate-frame-rpc-support",
+	"substrate-frame-rpc-support",
 	"substrate-frame-rpc-system",
 	"substrate-rpc-client",
 	"substrate-wasm-builder",
@@ -90,11 +90,11 @@ alloy-dyn-abi = { workspace = true, features = ["std", "eip712"] }
 alloy-rpc-types = { workspace = true, features = ["anvil", "trace", "txpool"] }
 alloy-serde.workspace = true
 alloy-provider = { workspace = true, features = [
-    "reqwest",
-    "ws",
-    "ipc",
-    "debug-api",
-    "trace-api",
+	"reqwest",
+	"ws",
+	"ipc",
+	"debug-api",
+	"trace-api",
 ] }
 alloy-transport.workspace = true
 alloy-chains.workspace = true
@@ -131,11 +131,7 @@ lru = "0.16.0"
 indexmap = "2.0"
 
 # cli
-clap = { version = "4", features = [
-    "derive",
-    "env",
-    "wrap_help",
-] }
+clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_complete = { version = "4" }
 chrono.workspace = true
 clap_complete_fig = "4"
