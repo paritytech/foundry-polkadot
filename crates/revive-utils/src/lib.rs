@@ -3,6 +3,7 @@ use foundry_evm_core::{Ecx, InspectorExt};
 use foundry_evm_traces::{
     CallTraceArena, GethTraceBuilder, ParityTraceBuilder, TracingInspector, TracingInspectorConfig,
 };
+use funty::Fundamental;
 use polkadot_sdk::pallet_revive::evm::{CallTrace, CallType};
 use revm::{
     Inspector,
@@ -13,7 +14,6 @@ use revm::{
         InterpreterResult,
     },
 };
-
 /// A Wrapper around [TracingInspector] to allow adding zkEVM traces.
 #[derive(Clone, Debug, Default)]
 pub struct TraceCollector {

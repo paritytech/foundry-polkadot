@@ -115,7 +115,7 @@ parameter_types! {
     pub const UnstableInterface: bool = true;
     pub const CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(0);
     pub const NativeToEthRatio: u32 = 1_000_000;
-    pub const GasScale : u32 = 1_000_000;
+    pub const GasScale : u32 = 100_000_000;
 
     pub const DepositPerByte: Balance = 1;
     pub const DepositPerItem: Balance = 2;

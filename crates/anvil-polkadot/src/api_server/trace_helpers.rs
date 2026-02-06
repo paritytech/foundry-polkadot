@@ -47,7 +47,7 @@ pub fn parity_transaction_trace_builder(
 ) -> Result<Vec<LocalizedTransactionTrace>, Error> {
     let call_trace = match trace {
         Trace::Call(call_trace) => call_trace,
-        Trace::Prestate(_) => {
+        Trace::Prestate(_) | Trace::Execution(_) => {
             return Err(Error::InternalError("Trace is not a call trace".to_string()));
         }
     };

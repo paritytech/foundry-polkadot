@@ -21,6 +21,8 @@ use revive_env::Runtime;
 
 use revm::interpreter::InstructionResult;
 
+pub const MOCK_CODE: [u8; 1] = [0x0];
+
 // Implementation object that holds the mock state and implements the MockHandler trait for Revive.
 // It is only purpose is to make transferring the mock state into the Revive EVM easier and then
 // synchronize whatever mocks got consumed back into the Cheatcodes state after the call.
@@ -158,6 +160,17 @@ impl MockHandler<Runtime> for MockHandlerImpl {
             return Some(mock_inner.caller.clone());
         }
         None
+    }
+
+    fn mocked_code(&self, address: H160) -> Option<&[u8]> {
+        let inner = self.inner.borrow();
+        if inner.mocked_calls.contains_key(&Address::from(&address.0))
+            || inner.mocked_functions.contains_key(&Address::from(address.0))
+        {
+            Some(&MOCK_CODE)
+        } else {
+            None
+        }
     }
 
     fn mock_origin(&self) -> Option<&ExecOrigin<Runtime>> {

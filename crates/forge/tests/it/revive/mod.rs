@@ -13,4 +13,5 @@ pub mod cheats_individual;
 pub mod fuzz_max_int;
 pub mod migration;
 pub mod record_accesses;
+pub mod transient_storage;
 pub mod tx_gas_price;
