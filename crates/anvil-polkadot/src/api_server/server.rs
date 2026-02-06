@@ -67,8 +67,8 @@ use polkadot_sdk::{
         ReviveApi,
         evm::{
             self, Block, BlockNumberOrTagOrHash, BlockTag, Bytes, CallTracerConfig,
-            FeeHistoryResult, FilterResults, Log, ReceiptInfo, TracerType, TransactionInfo,
-            TransactionSigned,
+            FeeHistoryResult, FilterResults, HashesOrTransactionInfos, Log, ReceiptInfo,
+            TracerType, TransactionInfo, TransactionSigned,
         },
     },
     parachains_common::{AccountId, Hash, Nonce},
@@ -680,6 +680,7 @@ impl ApiServer {
 
     async fn get_balance(&self, addr: Address, block: Option<BlockId>) -> Result<U256> {
         node_info!("eth_getBalance");
+        trace!(target: "backend", "get balance for {:?}", addr);
         let hash = self.get_block_hash_for_tag(block).await?;
 
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
@@ -694,6 +695,7 @@ impl ApiServer {
         block: Option<BlockId>,
     ) -> Result<B256> {
         node_info!("eth_getStorageAt");
+        trace!(target: "backend", "get storage for {:?} at {:?}", addr, slot);
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
         let bytes: B256 = match runtime_api
@@ -711,7 +713,7 @@ impl ApiServer {
 
     async fn get_code(&self, address: Address, block: Option<BlockId>) -> Result<Bytes> {
         node_info!("eth_getCode");
-
+        trace!(target: "backend", "get code for {:?}", address);
         let hash = self.get_block_hash_for_tag(block).await?;
         let code = self
             .eth_rpc_client
@@ -728,6 +730,7 @@ impl ApiServer {
         hydrated_transactions: bool,
     ) -> Result<Option<Block>> {
         node_info!("eth_getBlockByHash");
+        trace!(target: "backend", "get block by hash {:?}", block_hash);
         let Some(block) = self
             .eth_rpc_client
             .block_by_ethereum_hash(&H256::from_slice(block_hash.as_slice()))
@@ -795,6 +798,7 @@ impl ApiServer {
         block: Option<BlockId>,
     ) -> Result<sp_core::U256> {
         node_info!("eth_getTransactionCount");
+        trace!(target: "backend", "get nonce for {:?}", address);
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
         let nonce = runtime_api.nonce(address).await?;
@@ -888,7 +892,9 @@ impl ApiServer {
             }
         };
 
-        self.send_raw_transaction(Bytes(payload)).await
+        let hash = self.send_raw_transaction(Bytes(payload)).await?;
+        trace!(target: "node", "Added transaction: [{:?}] sender={:?}", hash, from);
+        Ok(hash)
     }
 
     async fn send_transaction_sync(
@@ -913,6 +919,7 @@ impl ApiServer {
         block_number: BlockNumberOrTag,
         hydrated_transactions: bool,
     ) -> Result<Option<Block>> {
+        trace!(target: "backend", "get block by number {:?}", block_number);
         let Some(block) = self
             .eth_rpc_client
             .block_by_number_or_tag(&ReviveBlockNumberOrTag::from(block_number).inner())
@@ -926,16 +933,30 @@ impl ApiServer {
 
     pub(crate) async fn snapshot(&mut self) -> Result<U256> {
         node_info!("evm_snapshot");
-        Ok(self.revert_manager.snapshot())
+        let id = self.revert_manager.snapshot();
+        // Retrieve the block number from the snapshot we just created
+        if let Some((block_num, _)) = self.revert_manager.list_snapshots().get(&id) {
+            trace!(target: "backend", "creating snapshot {} at {}", id, block_num);
+        }
+        Ok(id)
     }
 
     pub(crate) async fn revert(&mut self, id: U256) -> Result<bool> {
         node_info!("evm_revert");
+        // Get target block number before reverting
+        let target_block =
+            self.revert_manager.list_snapshots().get(&id).map(|(block_num, _)| *block_num);
         let res = self
             .revert_manager
             .revert(id)
             .map_err(|err| Error::Backend(BackendError::Client(err)))?;
         let Some(res) = res else { return Ok(false) };
+
+        if let Some(block_num) = target_block {
+            // Note: upstream anvil logs each block reverted in a loop; we revert atomically
+            // to a snapshot, so we log the target block once
+            trace!(target: "backend", "reverting to block {}", block_num);
+        }
 
         self.on_revert_update(res).await?;
 
@@ -950,6 +971,7 @@ impl ApiServer {
     pub(crate) async fn reset(&mut self, forking: Option<Forking>) -> Result<()> {
         self.instance_id = B256::random();
         node_info!("anvil_reset");
+        trace!(target: "backend", "reset to fresh in-memory state");
         // TODO: should be removed once forking feature is implemented and support is added in
         // revert manager to handle it
         if forking.is_some() {
@@ -1921,6 +1943,45 @@ impl ApiServer {
         let block_timestamp = self.backend.read_timestamp(block_hash)?;
         let block_number = self.backend.read_block_number(block_hash)?;
         let timestamp = utc_from_millis(block_timestamp)?;
+
+        // Get block with transaction hashes
+        if let Ok(Some(substrate_block)) = self.eth_rpc_client.block_by_hash(&block_hash).await {
+            if let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await {
+                // Extract transaction hashes
+                let tx_hashes: Vec<H256> = match &evm_block.transactions {
+                    HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
+                    // Considering that we called evm_block with hydrated set to false, we will
+                    // never receive TransactionInfos, but we handle it anyways.
+                    HashesOrTransactionInfos::TransactionInfos(infos) => {
+                        infos.iter().map(|i| i.hash).collect()
+                    }
+                };
+
+                if !tx_hashes.is_empty() {
+                    node_info!("");
+
+                    // Log each transaction
+                    for tx_hash in tx_hashes {
+                        if let Some(receipt) = self.eth_rpc_client.receipt(&tx_hash).await {
+                            node_info!("    Transaction: {:?}", receipt.transaction_hash);
+
+                            if let Some(contract) = &receipt.contract_address {
+                                node_info!("    Contract created: {contract}");
+                            }
+
+                            node_info!("    Gas used: {}", receipt.cumulative_gas_used);
+
+                            if receipt.status == Some(evm::U256::zero()) {
+                                node_info!("    Error: reverted");
+                            }
+
+                            node_info!("");
+                        }
+                    }
+                }
+            }
+        }
+
         node_info!("    Block Number: {}", block_number);
         node_info!("    Block Hash: {:?}", block_hash);
         if timestamp.year() > 9999 {
