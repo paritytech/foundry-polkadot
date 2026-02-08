@@ -116,6 +116,8 @@ def main():
                     name += f" ({s})"
                     flags += f" --partition count:{s}"
                 
+                if profile == "isolate":
+                    flags += " --features=isolate-by-default"
                 name += os_str
 
                 obj = Expanded(
