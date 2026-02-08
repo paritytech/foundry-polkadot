@@ -24,7 +24,7 @@ jobs:
     secrets: inherit
 
   docs:
-    runs-on: ubuntu-latest
+    runs-on: parity-large-new
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +60,7 @@ jobs:
 
   doctest:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: parity-large-new
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
