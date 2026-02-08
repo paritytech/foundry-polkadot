@@ -76,32 +76,20 @@ targets = [t_linux_x86, t_macos, t_windows] if is_pr else [t_linux_x86, t_macos,
 
 config = [
     Case(
-        name="unit",
-        filter="!kind(test)",
-        n_partitions=1,
-        pr_cross_platform=True,
-    ),
-    Case(
-        name="integration",
-        filter="kind(test) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
-        n_partitions=3,
-        pr_cross_platform=True,
-    ),
-    Case(
-        name="integration / issue-repros",
-        filter="package(=forge) & test(/\\bissue/)",
+        name="all",
+        filter="!test(/\\bext_integration|polkadot_localnode/)",
         n_partitions=2,
-        pr_cross_platform=False,
+        pr_cross_platform=True,
     ),
     Case(
-        name="integration / external",
+        name="external",
         filter="package(=forge) & test(/\\bext_integration/)",
-        n_partitions=2,
+        n_partitions=1,
         pr_cross_platform=False,
     ),
     # TODO: run the local node tests on polkadot-anvil
     # Case(
-    #     name="integration / polkadot_localnode",
+    #     name="polkadot_localnode",
     #     filter="(package(=cast) | package(=forge)) & test(/polkadot_localnode/)",
     #     n_partitions=1,
     #     pr_cross_platform=False,
@@ -122,7 +110,7 @@ def main():
                     os_str = f" ({target.target})"
 
                 name = case.name
-                flags = f"-E '{case.filter}'"
+                flags = f"--no-fail-fast -E '{case.filter}'"
                 if case.n_partitions > 1:
                     s = f"{partition}/{case.n_partitions}"
                     name += f" ({s})"
