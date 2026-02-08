@@ -41,16 +41,21 @@ jobs:
           echo "::debug::test-matrix=$output"
           echo "test-matrix=$output" >> $GITHUB_OUTPUT
 
-  test:
-    name: test ${{ matrix.name }}
+  build:
+    name: build (${{ matrix.target }})
     runs-on: ${{ matrix.runner_label }}
     timeout-minutes: 60
-    needs: [matrices]
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.matrices.outputs.test-matrix) }}
+      matrix:
+        include:
+          - runner_label: parity-large-new
+            target: x86_64-unknown-linux-gnu
+          - runner_label: macos-latest
+            target: aarch64-apple-darwin
+          - runner_label: windows-latest
+            target: x86_64-pc-windows-msvc
     env:
-      ETH_RPC_URL: https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
       CARGO_PROFILE_DEV_DEBUG: 0
     steps:
       - uses: actions/checkout@v4
@@ -59,10 +64,62 @@ jobs:
       - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
       - uses: taiki-e/install-action@nextest
       - name: Install dependencies for building (Ubuntu)
-        if: contains(matrix.runner_label, 'parity-large-new')
+        if: runner.os == 'Linux'
         run: |
-          sudo apt-get update 
+          sudo apt-get update
           sudo apt-get install -y clang libclang-dev unzip build-essential
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.89.0
+        with:
+          target: ${{ matrix.target }}, wasm32-unknown-unknown
+          components: rust-src
+      - name: Install clang (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm
+          brew link llvm
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+      - name: Install protobuf-compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          prefix-key: "v0-rust-after-merge"
+      - name: Build nextest archive
+        run: |
+          flags=""
+          if [ "${{ inputs.profile }}" = "isolate" ]; then
+            flags="--features=isolate-by-default"
+          fi
+          cargo nextest archive --archive-file nextest-archive.tar.zst $flags
+      - name: Upload nextest archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive-${{ matrix.target }}
+          path: nextest-archive.tar.zst
+          retention-days: 1
+
+  test:
+    name: test ${{ matrix.name }}
+    runs-on: ${{ matrix.runner_label }}
+    timeout-minutes: 60
+    needs: [matrices, build]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrices.outputs.test-matrix) }}
+    env:
+      ETH_RPC_URL: https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@nextest
+
+      - name: Download nextest archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive-${{ matrix.target }}
 
       - name: Setup Node.js
         if: contains(matrix.name, 'external')
@@ -82,23 +139,11 @@ jobs:
         run: pip --version && pip install vyper==0.4.3
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
-        with:
-          target: ${{ matrix.target }}, wasm32-unknown-unknown
-          components: rust-src
-
-      - name: Install clang (macOS)
-        if: contains(matrix.runner_label, 'macos')
-        run: |
-          brew install llvm
-          brew link llvm
-          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
       - name: Install Resolc
         run: |
           cargo install rvm-rs
           rvm install ${{ env.RESOLC_VERSION }}
           rvm use ${{ env.RESOLC_VERSION }}
-
       - name: Check Resolc Version
         run: resolc --version
 
@@ -114,26 +159,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-foundry-${{ matrix.name }}-
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-          prefix-key: "v0-rust-after-merge"
-
       - name: Setup Git config
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "<>"
           git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-      # Install dependencies for building
-      - name: Install protobuf-compiler
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Test
         env:
           SVM_TARGET_PLATFORM: ${{ matrix.svm_target_platform }}
           HTTP_ARCHIVE_URLS: ${{ secrets.HTTP_ARCHIVE_URLS }}
           WS_ARCHIVE_URLS: ${{ secrets.WS_ARCHIVE_URLS }}
-        run: cargo nextest run ${{ matrix.flags }}
+        run: cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap . ${{ matrix.flags }}
