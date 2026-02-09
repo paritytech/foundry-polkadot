@@ -106,7 +106,7 @@ impl CallExecutor<Block> for Executor {
         method: &str,
         call_data: &[u8],
         changes: &RefCell<OverlayedChanges<HashingFor<Block>>>,
-        recorder: &Option<ProofRecorder<Block>>,
+        _recorder: &Option<ProofRecorder<Block>>,
         call_context: CallContext,
         extensions: &RefCell<sp_externalities::Extensions>,
     ) -> Result<Vec<u8>, sp_blockchain::Error> {
@@ -118,12 +118,13 @@ impl CallExecutor<Block> for Executor {
             self.apply_overrides(&at_hash, &mut changes.borrow_mut());
         }
 
+        // Always pass None for the recorder to avoid calling as_trie_backend which is not supported by ForkedLazyBackend.
         self.inner.contextual_call(
             at_hash,
             method,
             call_data,
             changes,
-            recorder,
+            &None,
             call_context,
             extensions,
         )

@@ -3,6 +3,7 @@ use crate::{
     substrate_node::{
         mining_engine::{MiningEngine, MiningMode, run_mining_engine},
         rpc::spawn_rpc_server,
+        service::consensus::SameSlotConsensusDataProvider,
     },
 };
 #[cfg(feature = "forking-support")]
@@ -14,13 +15,11 @@ use codec::Encode;
 use parking_lot::Mutex;
 use polkadot_sdk::{
     cumulus_client_parachain_inherent::MockValidationDataInherentDataProvider,
-    cumulus_primitives_core::{GetParachainInfo, relay_chain},
+    cumulus_primitives_core::{ParaId, relay_chain},
     parachains_common::{Hash, opaque::Block},
     polkadot_primitives::HeadData,
     sc_basic_authorship, sc_consensus,
-    sc_consensus_manual_seal::{
-        ManualSealParams, consensus::aura::AuraConsensusDataProvider, run_manual_seal,
-    },
+    sc_consensus_manual_seal::{self},
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
@@ -42,6 +41,7 @@ pub use client::Client;
 
 mod backend;
 mod client;
+mod consensus;
 mod executor;
 pub mod storage;
 
@@ -104,14 +104,8 @@ fn create_manual_seal_inherent_data_providers(
             Err(e) => return futures::future::ready(Err(Box::new(e))),
         };
 
-        let id = client
-            .runtime_api()
-            .parachain_id(current_para_head.hash())
-            .map_err(|e| ServiceError::Other(format!("retrieving para id from runtime: {e}")));
-        let para_id = match id {
-            Ok(id) => id,
-            Err(e) => return futures::future::ready(Err(Box::new(e))),
-        };
+        // The usual paraId for assethub
+        let para_id = ParaId::new(1000);
 
         let next_time = time_manager.next_timestamp();
         let parachain_slot = next_time.saturating_div(slot_duration.as_millis());
@@ -327,7 +321,7 @@ pub async fn new(
         None,
     );
 
-    let aura_digest_provider = AuraConsensusDataProvider::new(client.clone());
+    let aura_digest_provider = SameSlotConsensusDataProvider::new();
     let backend_with_overlay = BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
     let create_inherent_data_providers = create_manual_seal_inherent_data_providers(
         backend_with_overlay,
@@ -335,7 +329,7 @@ pub async fn new(
         time_manager,
     );
 
-    let params = ManualSealParams {
+    let params = sc_consensus_manual_seal::ManualSealParams {
         block_import: client.clone(),
         env: proposer,
         client: client.clone(),
@@ -345,7 +339,7 @@ pub async fn new(
         consensus_data_provider: Some(Box::new(aura_digest_provider)),
         create_inherent_data_providers,
     };
-    let authorship_future = run_manual_seal(params);
+    let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);
 
     task_manager.spawn_essential_handle().spawn_blocking(
         "manual-seal",
