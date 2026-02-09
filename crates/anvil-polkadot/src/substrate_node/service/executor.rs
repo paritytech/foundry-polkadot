@@ -118,7 +118,8 @@ impl CallExecutor<Block> for Executor {
             self.apply_overrides(&at_hash, &mut changes.borrow_mut());
         }
 
-        // Always pass None for the recorder to avoid calling as_trie_backend which is not supported by ForkedLazyBackend.
+        // Always pass None for the recorder to avoid calling as_trie_backend which is not supported
+        // by ForkedLazyBackend.
         self.inner.contextual_call(
             at_hash,
             method,
