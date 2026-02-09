@@ -325,6 +325,7 @@ pub async fn new(
         None,
     );
 
+    // Slot duration is irrelevant for manual-seal; hardcoded to avoid AuraApi sr25519/ed25519 mismatch.
     let aura_digest_provider =
         AuraConsensusDataProvider::new_with_slot_duration(SlotDuration::from_millis(6000));
     let backend_with_overlay = BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
