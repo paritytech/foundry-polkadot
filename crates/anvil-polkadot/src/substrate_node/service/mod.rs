@@ -3,7 +3,6 @@ use crate::{
     substrate_node::{
         mining_engine::{MiningEngine, MiningMode, run_mining_engine},
         rpc::spawn_rpc_server,
-        service::consensus::SameSlotConsensusDataProvider,
     },
 };
 #[cfg(feature = "forking-support")]
@@ -19,7 +18,7 @@ use polkadot_sdk::{
     parachains_common::{Hash, opaque::Block},
     polkadot_primitives::HeadData,
     sc_basic_authorship, sc_consensus,
-    sc_consensus_manual_seal::{self},
+    sc_consensus_manual_seal::{self, consensus::aura::AuraConsensusDataProvider},
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
@@ -27,7 +26,7 @@ use polkadot_sdk::{
     sc_transaction_pool,
     sp_api::ProvideRuntimeApi,
     sp_arithmetic::traits::UniqueSaturatedInto,
-    sp_consensus_aura::{AuraApi, Slot},
+    sp_consensus_aura::{AuraApi, Slot, SlotDuration},
     sp_timestamp,
 };
 use std::sync::Arc;
@@ -41,7 +40,6 @@ pub use client::Client;
 
 mod backend;
 mod client;
-mod consensus;
 mod executor;
 pub mod storage;
 
@@ -321,7 +319,8 @@ pub async fn new(
         None,
     );
 
-    let aura_digest_provider = SameSlotConsensusDataProvider::new();
+    let aura_digest_provider =
+        AuraConsensusDataProvider::new_with_slot_duration(SlotDuration::from_millis(6000));
     let backend_with_overlay = BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
     let create_inherent_data_providers = create_manual_seal_inherent_data_providers(
         backend_with_overlay,
