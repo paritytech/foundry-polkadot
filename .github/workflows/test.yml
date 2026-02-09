@@ -93,7 +93,7 @@ jobs:
   clippy:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878
@@ -154,7 +154,7 @@ jobs:
   crate-checks:
     if: github.event_name == 'pull_request'
     runs-on: parity-large-new
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878
