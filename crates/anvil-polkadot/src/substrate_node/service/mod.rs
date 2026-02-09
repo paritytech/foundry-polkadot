@@ -14,7 +14,7 @@ use codec::Encode;
 use parking_lot::Mutex;
 use polkadot_sdk::{
     cumulus_client_parachain_inherent::MockValidationDataInherentDataProvider,
-    cumulus_primitives_core::{ParaId, relay_chain},
+    cumulus_primitives_core::{GetParachainInfo, relay_chain},
     parachains_common::{Hash, opaque::Block},
     polkadot_primitives::HeadData,
     sc_basic_authorship, sc_consensus,
@@ -102,8 +102,14 @@ fn create_manual_seal_inherent_data_providers(
             Err(e) => return futures::future::ready(Err(Box::new(e))),
         };
 
-        // The usual paraId for assethub
-        let para_id = ParaId::new(1000);
+        let id = client
+            .runtime_api()
+            .parachain_id(current_para_head.hash())
+            .map_err(|e| ServiceError::Other(format!("retrieving para id from runtime: {e}")));
+        let para_id = match id {
+            Ok(id) => id,
+            Err(e) => return futures::future::ready(Err(Box::new(e))),
+        };
 
         let next_time = time_manager.next_timestamp();
         let parachain_slot = next_time.saturating_div(slot_duration.as_millis());
