@@ -94,8 +94,14 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync + ExecutorStrategyExt {
     ) -> Result<ResultAndState>;
 }
 
-/// Extended trait for Revive/PVM.
+/// Extended trait for Polkadot.
 pub trait ExecutorStrategyExt {
+    /// Returns the maximum balance value.
+    /// Standard EVM uses U256::MAX, Polkadot uses u128::MAX.
+    fn max_balance(&self) -> U256 {
+        U256::MAX
+    }
+
     /// Set [DualCompiledContracts] on the context.
     fn revive_set_dual_compiled_contracts(
         &self,

@@ -135,6 +135,10 @@ fn get_context_ref_mut(
 }
 
 impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
+    fn max_balance(&self) -> U256 {
+        U256::from(u128::MAX)
+    }
+
     fn revive_set_dual_compiled_contracts(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
