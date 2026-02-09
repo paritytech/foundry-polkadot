@@ -32,7 +32,7 @@ pub fn trie_storage(storage: &HashMap<U256, U256>) -> Vec<(Nibbles, Vec<u8>)> {
             (Nibbles::unpack(keccak256(key.to_be_bytes::<32>())), data)
         })
         .collect::<Vec<_>>();
-    storage.sort_by(|(key1, _), (key2, _)| key1.cmp(key2));
+    storage.sort_by_key(|(key1, _)| *key1);
 
     storage
 }
@@ -46,7 +46,7 @@ pub fn trie_accounts(accounts: &HashMap<Address, DbAccount>) -> Vec<(Nibbles, Ve
             (Nibbles::unpack(keccak256(*address)), data)
         })
         .collect::<Vec<_>>();
-    accounts.sort_by(|(key1, _), (key2, _)| key1.cmp(key2));
+    accounts.sort_by_key(|(key1, _)| *key1);
 
     accounts
 }
