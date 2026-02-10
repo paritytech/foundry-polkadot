@@ -215,6 +215,50 @@ contract MockCallTest is DSTest {
     }
 }
 
+contract MockCallExtcodeTest is DSTest {
+    Vm constant vm = Vm(HEVM_ADDRESS);
+
+    // mockCall on EOA: makes it appear as contract with MOCK_CODE [0x00]
+    function test_mockCall_on_eoa() public {
+        address eoa = address(0xBEEF);
+
+        uint256 sizeBefore;
+        assembly {
+            sizeBefore := extcodesize(eoa)
+        }
+        assertEq(sizeBefore, 0, "EOA has no code");
+
+        vm.mockCall(eoa, abi.encodeWithSignature("foo()"), abi.encode(42));
+
+        uint256 sizeAfter;
+        assembly {
+            sizeAfter := extcodesize(eoa)
+        }
+        assertEq(sizeAfter, 1, "Mocked EOA has size 1");
+        assertEq(eoa.codehash, keccak256(hex"00"), "Mocked EOA has hash of [0x00]");
+    }
+
+    function test_mockCall_on_contract_preserves_code() public {
+        Mock target = new Mock();
+
+        uint256 originalSize;
+        assembly {
+            originalSize := extcodesize(target)
+        }
+        bytes32 originalHash = address(target).codehash;
+        assertTrue(originalSize > 1, "Should have real code");
+
+        vm.mockCall(address(target), abi.encodeWithSelector(target.numberA.selector), abi.encode(999));
+
+        uint256 sizeAfter;
+        assembly {
+            sizeAfter := extcodesize(target)
+        }
+        assertEq(sizeAfter, originalSize, "EXTCODESIZE preserved");
+        assertEq(address(target).codehash, originalHash, "EXTCODEHASH preserved");
+    }
+}
+
 contract MockCallRevertTest is DSTest {
     Vm constant vm = Vm(HEVM_ADDRESS);
 
