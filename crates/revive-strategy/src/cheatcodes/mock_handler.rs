@@ -10,8 +10,8 @@ use foundry_evm::constants::CHEATCODE_ADDRESS;
 use polkadot_sdk::{
     frame_system,
     pallet_revive::{
-        self, AccountId32Mapper, AddressMapper, DelegateInfo, ExecOrigin, ExecReturnValue, Pallet,
-        mock::MockHandler,
+        self, AccountId32Mapper, AccountInfo, AddressMapper, DelegateInfo, ExecOrigin,
+        ExecReturnValue, Pallet, mock::MockHandler,
     },
     pallet_revive_uapi::ReturnFlags,
     polkadot_sdk_frame::prelude::OriginFor,
@@ -164,10 +164,14 @@ impl MockHandler<Runtime> for MockHandlerImpl {
 
     fn mocked_code(&self, address: H160) -> Option<&[u8]> {
         let inner = self.inner.borrow();
-        if inner.mocked_calls.contains_key(&Address::from(&address.0))
-            || inner.mocked_functions.contains_key(&Address::from(address.0))
-        {
-            Some(&MOCK_CODE)
+        // Only return mock code for mocked_calls that have no real contract.
+        // If address has real code in pallet-revive, let it use that instead.
+        if inner.mocked_calls.contains_key(&Address::from(&address.0)) {
+            if AccountInfo::<Runtime>::is_contract(&address) {
+                None // Let pallet-revive use real code
+            } else {
+                Some(&MOCK_CODE)
+            }
         } else {
             None
         }
