@@ -26,7 +26,8 @@ use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
     cumulus_primitives_core::ParaId,
     parachains_common::{
-        AccountId, AuraId, BlockNumber, Hash as CommonHash, Header, Nonce, Signature,
+        AccountId, AssetHubPolkadotAuraId as AuraId, BlockNumber, Hash as CommonHash, Header,
+        Nonce, Signature,
     },
     polkadot_runtime_common::SlowAdjustingFeeUpdate,
     polkadot_sdk_frame::{
@@ -267,6 +268,7 @@ pub type WeightToFee = BlockRatioFee<
     // q
     { 100 * ExtrinsicBaseWeight::get().ref_time() as u128 },
     Runtime,
+    Balance,
 >;
 
 // Implements the types required for the transaction payment pallet.
@@ -311,6 +313,7 @@ impl pallet_revive::Config for Runtime {
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;
+    type GasScale = ConstU32<1>;
     type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
     type DebugEnabled = ConstBool<true>;
 }
@@ -387,7 +390,7 @@ pallet_revive::impl_runtime_apis_plus_revive_traits!(
     }
 
     impl apis::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(_seed: Option<Vec<u8>>) -> Vec<u8> {
+        fn generate_session_keys(_owner: Vec<u8>, _seed: Option<Vec<u8>>) -> apis::OpaqueGeneratedSessionKeys {
             Default::default()
         }
 

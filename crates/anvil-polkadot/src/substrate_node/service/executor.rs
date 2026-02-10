@@ -100,6 +100,7 @@ impl CallExecutor<Block> for Executor {
         )
     }
 
+    #[allow(unused_variables)]
     fn contextual_call(
         &self,
         at_hash: Hash,
@@ -117,6 +118,11 @@ impl CallExecutor<Block> for Executor {
         if apply_overrides {
             self.apply_overrides(&at_hash, &mut changes.borrow_mut());
         }
+
+        // Skip the recorder when forking is enabled to avoid calling as_trie_backend
+        // which is not supported by ForkedLazyBackend.
+        #[cfg(feature = "forking-support")]
+        let recorder = &None;
 
         self.inner.contextual_call(
             at_hash,

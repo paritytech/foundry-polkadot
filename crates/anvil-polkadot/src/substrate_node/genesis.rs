@@ -116,7 +116,13 @@ impl GenesisConfig {
                 let genesis_nonce: u64 = account.nonce.unwrap_or_default();
                 let contract_data: Option<ContractData> = if account.code.is_some() {
                     Some(ContractData {
-                        code: account.code.clone().map(|code| code.to_vec()).unwrap_or_default(),
+                        code: account
+                            .code
+                            .clone()
+                            .map(|code| {
+                                polkadot_sdk::pallet_revive::evm::Bytes::from(code.to_vec())
+                            })
+                            .unwrap_or_default(),
                         storage: account
                             .storage
                             .clone()
@@ -157,7 +163,8 @@ impl GenesisConfig {
                 "debugSettings": {
                     "allow_unlimited_contract_size": true,
                     "bypass_eip_3607": true,
-                    "pvm_logs": true
+                    "pvm_logs": true,
+                    "disable_execution_tracing": false,
                 }
             },
             "transactionPayment": {

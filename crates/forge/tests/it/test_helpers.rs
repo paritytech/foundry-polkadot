@@ -21,6 +21,7 @@ use foundry_test_utils::{
 };
 use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 use revm::primitives::hardfork::SpecId;
+use semver::Version;
 use std::{
     env, fmt,
     io::Write,
@@ -131,6 +132,7 @@ impl ForgeTestProfile {
             failure_persist_file: Some("testfailure".to_string()),
             show_logs: false,
             timeout: None,
+            max_fuzz_int: None,
         };
         config.invariant = InvariantConfig {
             runs: 256,
@@ -162,6 +164,7 @@ impl ForgeTestProfile {
             timeout: None,
             show_solidity: false,
             show_edge_coverage: false,
+            max_fuzz_int: None,
         };
 
         config.sanitized()
@@ -211,6 +214,8 @@ impl ForgeTestData {
         // Create resolc config with resolc compilation enabled
         let mut resolc_config = (*config).clone();
         resolc_config.polkadot.resolc_compile = true;
+        resolc_config.polkadot.resolc =
+            Some(foundry_config::SolcReq::Version(Version::new(0, 6, 0)));
         let mut resolc_project = resolc_config.project().unwrap();
 
         // Filter files compatible with resolc

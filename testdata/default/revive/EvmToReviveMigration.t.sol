@@ -369,3 +369,45 @@ contract EvmReviveMigrationTest is DSTest {
         assertEq(evmContract.get(), 250, "EVM contract should update in PVM mode");
     }
 }
+
+contract InitialMigrationTest is DSTest {
+    Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    SimpleStorage storageContract = new SimpleStorage();
+
+    function setUp() public {
+        storageContract.set(42);
+        uint256 val = storageContract.get();
+        assertEq(val, 42);
+    }
+
+    function testInitialContractMigration() public {
+        assertEq(storageContract.get(), 42);
+    }
+}
+
+// Simple contract that stores a constructor argument
+contract SimpleAddrStorage {
+    address public storedAddr;
+
+    constructor(address _addr) {
+        storedAddr = _addr;
+    }
+}
+
+contract ContractArgsMigrationTest is DSTest {
+    Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    address myAddr = vm.addr(1900);
+
+    // Expected address for private key 1900
+    address constant EXPECTED = 0x6Af741AA4Ff39CF3De9A0Cb02A8Bab387E41abFB;
+    SimpleAddrStorage store = new SimpleAddrStorage(myAddr);
+
+    function testConstructorArgPreserved() public {
+        emit log_named_address("myAddr (from vm.addr)", myAddr);
+        emit log_named_address("store.storedAddr()", store.storedAddr());
+        emit log_named_address("EXPECTED", EXPECTED);
+
+        assertEq(myAddr, EXPECTED, "vm.addr(1900) should return correct address");
+        assertEq(store.storedAddr(), myAddr, "Constructor arg should be preserved");
+    }
+}

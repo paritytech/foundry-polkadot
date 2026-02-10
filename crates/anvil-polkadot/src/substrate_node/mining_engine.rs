@@ -177,11 +177,13 @@ impl MiningEngine {
     /// # Arguments
     /// * `interval` - Block production interval in seconds (0 to disable)
     pub fn set_interval_mining(&self, interval: Duration) {
+        let old_mode = *self.mining_mode.read();
         let new_mode = if interval.as_secs() == 0 {
             MiningMode::None
         } else {
             MiningMode::Interval { tick: interval }
         };
+        trace!(target: "miner", "updated mining mode from {:?} to {:?}", old_mode, new_mode);
         *self.mining_mode.write() = new_mode;
         self.wake();
     }
@@ -221,13 +223,15 @@ impl MiningEngine {
     /// # Arguments
     /// * `enabled` - True to enable auto-mining, false to disable
     pub fn set_auto_mine(&self, enabled: bool) {
-        let mining_mode = match (self.is_automine(), enabled) {
+        let old_mode = *self.mining_mode.read();
+        let new_mode = match (self.is_automine(), enabled) {
             (true, false) => Some(MiningMode::None),
             (false, true) => Some(MiningMode::AutoMining),
             _ => None,
         };
-        if let Some(mining_mode) = mining_mode {
-            *self.mining_mode.write() = mining_mode;
+        if let Some(new_mode) = new_mode {
+            trace!(target: "miner", "updated mining mode from {:?} to {:?}", old_mode, new_mode);
+            *self.mining_mode.write() = new_mode;
             self.wake();
         }
     }
@@ -451,8 +455,13 @@ pub async fn run_mining_engine(engine: Arc<MiningEngine>) {
                 combined_stream = build_streams_for_mode(new_mode, &engine);
             }
             Some(_) = combined_stream.next(), if !combined_stream.is_empty() => {
+                let tx_count = engine.transaction_pool.ready().count();
+                trace!(target: "miner", "creating new block");
+                trace!(target: "backend", "creating new block with {} transactions", tx_count);
                 match seal_now(&engine.seal_command_sender).await {
                     Ok(block) => {
+                        // Note: upstream anvil logs block_number here, but CreatedBlock only has hash
+                        trace!(target: "miner", "created new block: {:?}", block.hash);
                         debug!(hash=?block.hash, "sealed");
                     }
                     Err(MiningError::ClosedChannel) => {

@@ -23,3 +23,9 @@ sol!(
     SimpleStorageCaller,
     "test-data/SimpleStorageCaller.json"
 );
+
+sol!(
+    #[derive(Debug)]
+    ImmutableStorage,
+    "test-data/ImmutableStorage.json"
+);
