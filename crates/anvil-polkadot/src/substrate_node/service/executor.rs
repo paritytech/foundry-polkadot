@@ -100,6 +100,7 @@ impl CallExecutor<Block> for Executor {
         )
     }
 
+    #[allow(unused_variables)]
     fn contextual_call(
         &self,
         at_hash: Hash,

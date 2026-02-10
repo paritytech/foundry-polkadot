@@ -1945,8 +1945,9 @@ impl ApiServer {
         let timestamp = utc_from_millis(block_timestamp)?;
 
         // Get block with transaction hashes
-        if let Ok(Some(substrate_block)) = self.eth_rpc_client.block_by_hash(&block_hash).await {
-            if let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await {
+        if let Ok(Some(substrate_block)) = self.eth_rpc_client.block_by_hash(&block_hash).await
+            && let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await
+        {
                 // Extract transaction hashes
                 let tx_hashes: Vec<H256> = match &evm_block.transactions {
                     HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
@@ -1979,7 +1980,6 @@ impl ApiServer {
                         }
                     }
                 }
-            }
         }
 
         node_info!("    Block Number: {}", block_number);

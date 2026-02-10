@@ -52,8 +52,10 @@ impl Tracing for RevertTracer {
 
         self.calls.push(if self.call_types.last().is_some_and(|x| matches!(x, Type::Create)) {
             self.current_addr()
+        } else if let Some(delegate) = _is_delegate_call {
+            delegate
         } else {
-            if let Some(delegate) = _is_delegate_call { delegate } else { to }
+            to
         });
 
         if self.has_reverted.is_none() {
