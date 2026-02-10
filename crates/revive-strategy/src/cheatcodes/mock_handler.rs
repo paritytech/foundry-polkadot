@@ -166,12 +166,10 @@ impl MockHandler<Runtime> for MockHandlerImpl {
         let inner = self.inner.borrow();
         // Only return mock code for mocked_calls that have no real contract.
         // If address has real code in pallet-revive, let it use that instead.
-        if inner.mocked_calls.contains_key(&Address::from(&address.0)) {
-            if AccountInfo::<Runtime>::is_contract(&address) {
-                None // Let pallet-revive use real code
-            } else {
-                Some(&MOCK_CODE)
-            }
+        if inner.mocked_calls.contains_key(&Address::from(&address.0))
+            && !AccountInfo::<Runtime>::is_contract(&address)
+        {
+            Some(&MOCK_CODE)
         } else {
             None
         }
