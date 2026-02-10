@@ -21,7 +21,7 @@ async fn test_mock_call(#[case] runtime_mode: ReviveRuntimeMode) {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mock_call_on_eoa(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
-    let filter = Filter::new(".*", "MockCallExtcode", ".*/revive/MockCall.t.sol");
+    let filter = Filter::new(".*", "MockCallExtcodeTest", ".*/revive/MockCall.t.sol");
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
