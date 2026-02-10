@@ -1,3 +1,7 @@
+use crate::{
+    backend::ReviveBackendStrategyBuilder, cheatcodes::PvmCheatcodeInspectorStrategyBuilder,
+    executor::context::ReviveExecutorStrategyContext, state::TestEnv,
+};
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
 use foundry_compilers::{
@@ -11,13 +15,7 @@ use foundry_evm::{
         strategy::ExecutorStrategyExt,
     },
 };
-use polkadot_sdk::sp_externalities::Externalities;
 use revm::context::result::ResultAndState;
-
-use crate::{
-    backend::ReviveBackendStrategyBuilder, cheatcodes::PvmCheatcodeInspectorStrategyBuilder,
-    executor::context::ReviveExecutorStrategyContext,
-};
 
 /// Defines the [ExecutorStrategyRunner] strategy for Revive.
 #[derive(Debug, Default, Clone)]
@@ -156,13 +154,13 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
     }
     fn start_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
         let ctx = get_context_ref(ctx);
-        let mut externalities = ctx.externalties.0.lock().unwrap();
-        externalities.externalities.ext().storage_start_transaction();
+        let mut state = ctx.externalties.0.lock().unwrap();
+        TestEnv::start_transaction(&mut state);
     }
 
     fn rollback_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
         let ctx = get_context_ref(ctx);
         let mut state = ctx.externalties.0.lock().unwrap();
-        let _ = state.externalities.ext().storage_rollback_transaction();
+        TestEnv::revert_transaction(&mut state);
     }
 }

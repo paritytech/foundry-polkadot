@@ -3,7 +3,6 @@ use foundry_cheatcodes::Vm::{AccountAccessKind, StorageAccess};
 use polkadot_sdk::{
     pallet_revive::{self, AccountInfo, Code, tracing::Tracing},
     sp_core::{H160, U256},
-    sp_weights::Weight,
 };
 use revive_env::Runtime;
 
@@ -77,25 +76,27 @@ impl Tracing for StorageTracer {
         &mut self,
         from: H160,
         to: H160,
-        is_delegate_call: bool,
+        is_delegate_call: Option<H160>,
         is_read_only: bool,
         value: U256,
         input: &[u8],
-        _gas: Weight,
+        _gas: u64,
     ) {
         let code = self.is_create.take();
 
-        if is_delegate_call {
+        let to = if let Some(delegate) = is_delegate_call {
             self.calls.push(self.current_addr());
+            delegate
         } else {
             self.calls.push(to);
-        }
+            to
+        };
 
         let kind = if code.is_some() {
             AccountAccessKind::Create
         } else if is_read_only {
             AccountAccessKind::StaticCall
-        } else if is_delegate_call {
+        } else if is_delegate_call.is_some() {
             AccountAccessKind::DelegateCall
         } else {
             AccountAccessKind::Call
@@ -138,7 +139,7 @@ impl Tracing for StorageTracer {
         &mut self,
         contract_address: H160,
         beneficiary_address: H160,
-        _gas_left: Weight,
+        _gas_left: u64,
         value: U256,
     ) {
         let last_depth = if !self.pending.is_empty() {
@@ -170,7 +171,7 @@ impl Tracing for StorageTracer {
     fn exit_child_span_with_error(
         &mut self,
         _error: polkadot_sdk::sp_runtime::DispatchError,
-        _gas_left: Weight,
+        _gas_left: u64,
     ) {
         self.calls.pop();
 
@@ -212,7 +213,7 @@ impl Tracing for StorageTracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        _gas_left: Weight,
+        _gas_left: u64,
     ) {
         self.calls.pop();
 

@@ -90,9 +90,10 @@ impl FuzzedExecutor {
         let execution_data = RefCell::new(FuzzTestData::default());
         let state = self.build_fuzz_state(deployed_libs);
         let dictionary_weight = self.config.dictionary.dictionary_weight.min(100);
+        let max_fuzz_int = self.config.max_fuzz_int;
         let strategy = proptest::prop_oneof![
-            100 - dictionary_weight => fuzz_calldata(func.clone(), fuzz_fixtures),
-            dictionary_weight => fuzz_calldata_from_state(func.clone(), &state),
+            100 - dictionary_weight => fuzz_calldata(func.clone(), fuzz_fixtures, max_fuzz_int),
+            dictionary_weight => fuzz_calldata_from_state(func.clone(), &state, max_fuzz_int),
         ];
         // We want to collect at least one trace which will be displayed to user.
         let max_traces_to_collect = std::cmp::max(1, self.config.gas_report_samples) as usize;

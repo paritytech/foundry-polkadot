@@ -16,6 +16,7 @@ foundry-evm-core.workspace = true
 foundry-evm-traces.workspace = true
 polkadot-sdk.workspace = true
 revive-env.workspace = true
+funty = "^2.0.0"
 
 alloy-primitives.workspace = true
 revm.workspace = true

@@ -3530,9 +3530,12 @@ contract InterceptInitcodeTest is DSTest {
 // <https://github.com/foundry-rs/foundry/issues/10552>
 forgetest_init!(should_preserve_fork_state_setup, |prj, cmd| {
     prj.wipe_contracts();
+
+    let endpoint = rpc::next_http_archive_rpc_url();
+
     prj.add_test(
         "Counter.t.sol",
-        r#"
+        &r#"
 import "forge-std/Test.sol";
 import {StdChains} from "forge-std/StdChains.sol";
 
@@ -3559,7 +3562,7 @@ contract CounterTest is Test {
         // Temporary workaround for `https://eth.llamarpc.com/` being down
         setChain("mainnet", ChainData({
             name: "mainnet",
-            rpcUrl: "https://reth-ethereum.ithaca.xyz/rpc",
+            rpcUrl: "<url>",
             chainId: 1
         }));
 
@@ -3594,7 +3597,8 @@ contract CounterTest is Test {
         assertEq(data[3].bridges.length, 2);
     }
 }
-    "#,
+    "#
+        .replace("<url>", &endpoint),
     )
     .unwrap();
 
@@ -3905,21 +3909,21 @@ forgetest_init!(build_with_selectors_cache, |prj, cmd| {
     prj.add_source(
         "LocalProjectContract.sol",
         r#"
-contract LocalProjectContract {
-    error AnotherValueTooHigh(uint256, address);
-    event MyUniqueEventWithinLocalProject(uint256 a, address b);
-}
-   "#,
+    contract LocalProjectContract {
+        error AnotherValueTooHigh(uint256, address);
+        event MyUniqueEventWithinLocalProject(uint256 a, address b);
+    }
+       "#,
     )
     .unwrap();
     // Build and cache project selectors.
-    cmd.forge_fuse().args(["build"]).assert_success();
+    cmd.forge_fuse().args(["build", "--force"]).assert_success();
 
     // Assert cast can decode custom error with local cache.
     cmd.cast_fuse()
-        .args(["decode-error", "0x7191bc6200000000000000000000000000000000000000000000000000000000000000650000000000000000000000000000000000000000000000000000000000D0004F"])
-        .assert_success()
-        .stdout_eq(str![[r#"
+            .args(["decode-error", "0x7191bc6200000000000000000000000000000000000000000000000000000000000000650000000000000000000000000000000000000000000000000000000000D0004F"])
+            .assert_success()
+            .stdout_eq(str![[r#"
 AnotherValueTooHigh(uint256,address)
 101
 0x0000000000000000000000000000000000D0004F
@@ -3927,9 +3931,9 @@ AnotherValueTooHigh(uint256,address)
 "#]]);
     // Assert cast can decode event with local cache.
     cmd.cast_fuse()
-        .args(["decode-event", "0xbd3699995dcc867b64dbb607be2c33be38df9134bef1178df13bfb9446e73104000000000000000000000000000000000000000000000000000000000000004e00000000000000000000000000000000000000000000000000000dd00000004e"])
-        .assert_success()
-        .stdout_eq(str![[r#"
+            .args(["decode-event", "0xbd3699995dcc867b64dbb607be2c33be38df9134bef1178df13bfb9446e73104000000000000000000000000000000000000000000000000000000000000004e00000000000000000000000000000000000000000000000000000dd00000004e"])
+            .assert_success()
+            .stdout_eq(str![[r#"
 MyUniqueEventWithinLocalProject(uint256,address)
 78
 0x00000000000000000000000000000DD00000004e

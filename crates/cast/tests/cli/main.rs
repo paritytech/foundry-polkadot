@@ -1744,7 +1744,7 @@ casttest!(
     #[ignore = "reth is currently slightly broken"]
     tx_using_sender_and_nonce,
     |_prj, cmd| {
-        let rpc = "https://reth-ethereum.ithaca.xyz/rpc";
+        let rpc = "https://ethereum.reth.rs/rpc";
         // <https://etherscan.io/tx/0x5bcd22734cca2385dc25b2d38a3d33a640c5961bd46d390dff184c894204b594>
         let args = vec![
             "tx",

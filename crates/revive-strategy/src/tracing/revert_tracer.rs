@@ -1,7 +1,6 @@
 use polkadot_sdk::{
     pallet_revive::{Code, tracing::Tracing},
     sp_core::{H160, U256},
-    sp_weights::Weight,
 };
 
 #[derive(Debug)]
@@ -43,16 +42,18 @@ impl Tracing for RevertTracer {
         &mut self,
         _from: H160,
         to: H160,
-        _is_delegate_call: bool,
+        _is_delegate_call: Option<H160>,
         _is_read_only: bool,
         _value: U256,
         _input: &[u8],
-        _gas: Weight,
+        _gas: u64,
     ) {
         self.call_types.push(if self.is_create { Type::Create } else { Type::Rest });
 
         self.calls.push(if self.call_types.last().is_some_and(|x| matches!(x, Type::Create)) {
             self.current_addr()
+        } else if let Some(delegate) = _is_delegate_call {
+            delegate
         } else {
             to
         });
@@ -65,11 +66,28 @@ impl Tracing for RevertTracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        _gas_left: Weight,
+        _gas_left: u64,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
 
         if output.did_revert() && self.has_reverted.is_none() {
+            self.has_reverted = Some(addr);
+        }
+        let typ = self.call_types.pop();
+        if typ.is_some_and(|x| matches!(x, Type::Create)) {
+            self.is_create = false;
+        }
+        if self.has_reverted.is_none() {
+            self.max_depth -= 1;
+        }
+    }
+    fn exit_child_span_with_error(
+        &mut self,
+        _error: polkadot_sdk::sp_runtime::DispatchError,
+        _gas_used: u64,
+    ) {
+        let addr = self.calls.pop().unwrap_or_default();
+        if self.has_reverted.is_none() {
             self.has_reverted = Some(addr);
         }
         let typ = self.call_types.pop();

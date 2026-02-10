@@ -4,7 +4,7 @@ use expect_create::CreateTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker, ExpectedCreate};
 
 use polkadot_sdk::pallet_revive::{
-    Pallet, U256, Weight,
+    AccountInfo, Pallet, U256,
     evm::{
         CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
         PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
@@ -20,7 +20,7 @@ mod expect_create;
 mod revert_tracer;
 pub mod storage_tracer;
 pub struct Tracer {
-    pub call_tracer: CallTracer<U256, fn(Weight) -> U256>,
+    pub call_tracer: CallTracer,
     pub prestate_tracer: PrestateTracer<Runtime>,
     pub storage_accesses: StorageTracer,
     pub revert_tracer: RevertTracer,
@@ -79,6 +79,7 @@ impl Tracer {
             polkadot_sdk::pallet_revive::evm::PrestateTrace::DiffMode { pre: _digests, post } => {
                 for (key, PrestateTraceInfo { balance, nonce, code, storage }) in post {
                     let address = Address::from_slice(key.as_bytes());
+                    let is_create = !ecx.journaled_state.state.contains_key(&address);
 
                     ecx.journaled_state.load_account(address).expect("account could not be loaded");
 
@@ -92,15 +93,17 @@ impl Tracer {
                         account.info.nonce = nonce.into();
                     };
 
-                    if let Some(ref code) = code {
+                    if is_create
+                        && let Some(ref code) = code
+                        && let Some(info) = AccountInfo::<Runtime>::load_contract(&key)
+                    {
                         let code = code.clone();
                         let account =
                             ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
                         let bytecode = Bytecode::new_raw(Bytes::from(code.0));
-                        account.info.code_hash = bytecode.hash_slow();
+                        account.info.code_hash = info.code_hash.0.into();
                         account.info.code = Some(bytecode);
                     }
-                    let storage = { storage };
 
                     for (slot, entry) in storage {
                         let key = RU256::from_be_slice(&slot.0);
@@ -134,7 +137,7 @@ impl Tracing for Tracer {
         &mut self,
         contract_address: polkadot_sdk::sp_core::H160,
         beneficiary_address: polkadot_sdk::sp_core::H160,
-        gas_left: Weight,
+        gas_left: u64,
         value: U256,
     ) {
         self.prestate_tracer.terminate(contract_address, beneficiary_address, gas_left, value);
@@ -148,11 +151,11 @@ impl Tracing for Tracer {
         &mut self,
         from: polkadot_sdk::sp_core::H160,
         to: polkadot_sdk::sp_core::H160,
-        is_delegate_call: bool,
+        is_delegate_call: Option<polkadot_sdk::sp_core::H160>,
         is_read_only: bool,
         value: U256,
         input: &[u8],
-        gas: Weight,
+        gas: u64,
     ) {
         self.prestate_tracer.enter_child_span(
             from,
@@ -268,7 +271,7 @@ impl Tracing for Tracer {
     fn exit_child_span(
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
-        gas_left: Weight,
+        gas_left: u64,
     ) {
         self.prestate_tracer.exit_child_span(output, gas_left);
         self.call_tracer.exit_child_span(output, gas_left);
@@ -281,7 +284,7 @@ impl Tracing for Tracer {
     fn exit_child_span_with_error(
         &mut self,
         error: polkadot_sdk::sp_runtime::DispatchError,
-        gas_left: Weight,
+        gas_left: u64,
     ) {
         self.prestate_tracer.exit_child_span_with_error(error, gas_left);
         self.call_tracer.exit_child_span_with_error(error, gas_left);

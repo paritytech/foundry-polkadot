@@ -597,6 +597,7 @@ impl<'a> InvariantExecutor<'a> {
             targeted_contracts.clone(),
             self.config.dictionary.dictionary_weight,
             fuzz_fixtures.clone(),
+            self.config.max_fuzz_int,
         )
         .no_shrink();
 
@@ -614,6 +615,7 @@ impl<'a> InvariantExecutor<'a> {
                     targeted_contracts.clone(),
                     target_contract_ref.clone(),
                     fuzz_fixtures.clone(),
+                    self.config.max_fuzz_int,
                 ),
                 target_contract_ref,
             ));

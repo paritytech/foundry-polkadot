@@ -18,9 +18,7 @@ use polkadot_sdk::{
     parachains_common::{Hash, opaque::Block},
     polkadot_primitives::HeadData,
     sc_basic_authorship, sc_consensus,
-    sc_consensus_manual_seal::{
-        ManualSealParams, consensus::aura::AuraConsensusDataProvider, run_manual_seal,
-    },
+    sc_consensus_manual_seal::{self, consensus::aura::AuraConsensusDataProvider},
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
@@ -28,7 +26,7 @@ use polkadot_sdk::{
     sc_transaction_pool,
     sp_api::ProvideRuntimeApi,
     sp_arithmetic::traits::UniqueSaturatedInto,
-    sp_consensus_aura::{AuraApi, Slot},
+    sp_consensus_aura::{AuraApi, Slot, SlotDuration},
     sp_timestamp,
 };
 use std::sync::Arc;
@@ -327,7 +325,10 @@ pub async fn new(
         None,
     );
 
-    let aura_digest_provider = AuraConsensusDataProvider::new(client.clone());
+    // Slot duration is irrelevant for manual-seal; hardcoded to avoid AuraApi sr25519/ed25519
+    // mismatch.
+    let aura_digest_provider =
+        AuraConsensusDataProvider::new_with_slot_duration(SlotDuration::from_millis(6000));
     let backend_with_overlay = BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
     let create_inherent_data_providers = create_manual_seal_inherent_data_providers(
         backend_with_overlay,
@@ -335,7 +336,7 @@ pub async fn new(
         time_manager,
     );
 
-    let params = ManualSealParams {
+    let params = sc_consensus_manual_seal::ManualSealParams {
         block_import: client.clone(),
         env: proposer,
         client: client.clone(),
@@ -345,7 +346,7 @@ pub async fn new(
         consensus_data_provider: Some(Box::new(aura_digest_provider)),
         create_inherent_data_providers,
     };
-    let authorship_future = run_manual_seal(params);
+    let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);
 
     task_manager.spawn_essential_handle().spawn_blocking(
         "manual-seal",

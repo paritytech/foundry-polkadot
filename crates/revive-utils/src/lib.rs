@@ -3,6 +3,7 @@ use foundry_evm_core::{Ecx, InspectorExt};
 use foundry_evm_traces::{
     CallTraceArena, GethTraceBuilder, ParityTraceBuilder, TracingInspector, TracingInspectorConfig,
 };
+use funty::Fundamental;
 use polkadot_sdk::pallet_revive::evm::{CallTrace, CallType};
 use revm::{
     Inspector,
@@ -13,7 +14,6 @@ use revm::{
         InterpreterResult,
     },
 };
-
 /// A Wrapper around [TracingInspector] to allow adding zkEVM traces.
 #[derive(Clone, Debug, Default)]
 pub struct TraceCollector {
@@ -176,7 +176,7 @@ impl InspectorExt for TraceCollector {
         ) -> u64 {
             let inputs = &mut CallInputs {
                 input: revm::interpreter::CallInput::Bytes(call.input.0.clone().into()),
-                gas_limit: call.gas.try_into().unwrap_or(u64::MAX),
+                gas_limit: call.gas,
                 scheme: revm::interpreter::CallScheme::Call,
                 caller: call.from.0.into(),
                 value: revm::interpreter::CallValue::Transfer(RU256::from_be_bytes(

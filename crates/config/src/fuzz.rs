@@ -32,6 +32,12 @@ pub struct FuzzConfig {
     pub show_logs: bool,
     /// Optional timeout (in seconds) for each property test
     pub timeout: Option<u32>,
+    /// Maximum value for fuzzed integers, used to simulate smaller integer types.
+    /// When set, unsigned integers are clamped to [0, max_fuzz_int] and signed integers
+    /// are clamped to [-(max_fuzz_int+1), max_fuzz_int] to match real signed type ranges.
+    /// Useful for Polkadot compatibility where balances are u128.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_fuzz_int: Option<U256>,
 }
 
 impl Default for FuzzConfig {
@@ -47,6 +53,7 @@ impl Default for FuzzConfig {
             failure_persist_file: None,
             show_logs: false,
             timeout: None,
+            max_fuzz_int: None,
         }
     }
 }

@@ -482,20 +482,30 @@ pub struct ContractCode {
     pub runtime: Option<Vec<u8>>,
 }
 
-pub fn get_contract_code(name: &str) -> ContractCode {
+fn load_contract_json(name: &str) -> Value {
     let contract_path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("test-data/{name}.json"));
 
-    let contract_json: Value = serde_json::from_reader(std::io::BufReader::new(
-        std::fs::File::open(contract_path).unwrap(),
-    ))
-    .unwrap();
+    serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(contract_path).unwrap()))
+        .unwrap()
+}
 
-    let init = hex::decode(contract_json.get("bin").unwrap().as_str().unwrap()).unwrap();
-    let runtime =
-        contract_json.get("bin-runtime").map(|code| hex::decode(code.as_str().unwrap()).unwrap());
+fn decode_hex_field(json: &Value, field: &str) -> Option<Vec<u8>> {
+    json.get(field).and_then(|v| v.as_str()).map(|s| hex::decode(s).unwrap())
+}
+
+pub fn get_contract_code(name: &str) -> ContractCode {
+    let contract_json = load_contract_json(name);
+
+    let init = decode_hex_field(&contract_json, "bin").expect("missing 'bin' field");
+    let runtime = decode_hex_field(&contract_json, "bin-runtime");
 
     ContractCode { init, runtime }
+}
+
+pub fn get_contract_pvm_code(name: &str) -> Vec<u8> {
+    let contract_json = load_contract_json(name);
+    decode_hex_field(&contract_json, "bin-pvm").expect("missing 'bin-pvm' field")
 }
 
 /// Gets contract code with constructor arguments encoded and appended to bytecode.
