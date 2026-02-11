@@ -47,6 +47,12 @@ impl From<subxt::Error> for Error {
     }
 }
 
+impl From<subxt::ext::subxt_rpcs::Error> for Error {
+    fn from(err: subxt::ext::subxt_rpcs::Error) -> Self {
+        Self::from(subxt::Error::from(err))
+    }
+}
+
 impl From<ClientError> for Error {
     fn from(err: ClientError) -> Self {
         match err {

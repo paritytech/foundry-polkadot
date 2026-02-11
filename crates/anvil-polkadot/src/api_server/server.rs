@@ -831,10 +831,7 @@ impl ApiServer {
         })?;
 
         // Submit the extrinsic to the transaction pool
-        self.rpc
-            .author_submit_extrinsic(ext.encoded())
-            .await
-            .map_err(|e| Error::InternalError(format!("Failed to submit transaction: {e}")))?;
+        self.rpc.author_submit_extrinsic(ext.encoded()).await?;
 
         Ok(hash)
     }
