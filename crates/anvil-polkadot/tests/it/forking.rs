@@ -1007,6 +1007,25 @@ async fn test_fork_can_deploy_contract_from_westend() {
     let contract_address2 =
         receipt2.contract_address.expect("Second contract address should exist");
     assert_ne!(contract_address, contract_address2, "Contract addresses should be different");
+
+    // Verify contract methods work: set a value and read it back
+    let set_value = SimpleStorage::setValueCall::new((U256::from(42),)).abi_encode();
+    let set_tx = TransactionRequest::default()
+        .from(alith_address)
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(Bytes::from(set_value)));
+    fork_node
+        .send_transaction_and_wait(set_tx, 120)
+        .await
+        .expect("setValue transaction should succeed");
+
+    let stored_value = simplestorage_get_value(
+        &mut fork_node,
+        contract_address,
+        alith_address,
+    )
+    .await;
+    assert_eq!(stored_value, U256::from(42), "getValue should return the value we set");
 }
 
 /// Tests impersonating an account on a forked chain
