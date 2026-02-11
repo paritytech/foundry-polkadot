@@ -169,7 +169,8 @@ impl TestNode {
             if let Ok(ResponseResult::Success(val)) = receipt_result
                 && !val.is_null()
             {
-                return Ok(self.get_transaction_receipt(tx_hash).await);
+                return serde_json::from_value(val)
+                    .map_err(|_| RpcError::new(ErrorCode::InternalError));
             }
 
             // Mine a block and wait
