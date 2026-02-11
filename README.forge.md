@@ -508,7 +508,7 @@ This format ensures clarity and ease of navigation, with the color scheme provid
   ```
   </details>
 
-#### ❌ <span style="color: red;">snapshot</span>
+#### ✅ <span style="color: red;">snapshot</span>
 - **Command**: `forge snapshot`
 - **Additional Flags**:
   - `--resolc`: Use the Resolc compiler.
@@ -521,7 +521,7 @@ This format ensures clarity and ease of navigation, with the color scheme provid
   ```
   </details>
 
-#### ❌ <span style="color: red;">test</span>
+#### ✅ <span style="color: red;">test</span>
 - **Command**: `forge test`
 - **Example**:
   <details>
