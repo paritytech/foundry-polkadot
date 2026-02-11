@@ -689,7 +689,11 @@ async fn test_fork_eth_get_code_from_westend() {
             .unwrap(),
     )
     .unwrap();
-    assert!(!deployed_code.is_empty(), "Deployed contract should have code");
+    assert_eq!(
+        deployed_code.as_ref(),
+        contract_code.runtime.as_deref().expect("missing runtime bytecode"),
+        "Deployed code should match contract runtime bytecode"
+    );
 
     // Deploy another contract to verify chain continues working
     let tx_hash2 = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
@@ -983,7 +987,11 @@ async fn test_fork_can_deploy_contract_from_westend() {
             .unwrap(),
     )
     .unwrap();
-    assert!(!code.is_empty(), "Deployed contract should have code");
+    assert_eq!(
+        code.as_ref(),
+        contract_code.runtime.as_deref().expect("missing runtime bytecode"),
+        "Deployed code should match contract runtime bytecode"
+    );
 
     // Deploy another contract to verify chain continues working
     let receipt2 = fork_node
