@@ -291,36 +291,6 @@ impl BackendWithOverlay {
             .storage(key.as_slice())
             .map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?)
     }
-
-    /// Prefetch multiple storage keys in a single batch RPC call.
-    /// This significantly reduces latency when forking from a remote chain.
-    /// Returns the number of keys actually fetched from remote.
-    fn prefetch_storage_keys(&self, keys: &[Vec<u8>]) -> usize {
-        self.backend.prefetch_storage_keys(keys)
-    }
-
-    /// Prefetch storage keys needed for validating an Ethereum transaction.
-    /// This includes account info for the sender address.
-    pub fn prefetch_eth_transaction_keys(&self, sender: H160) {
-        // Build list of keys to prefetch
-        let mut keys = Vec::new();
-
-        // 1. Sender's Revive account info (AccountInfoOf)
-        keys.push(well_known_keys::revive_account_info(sender));
-
-        // 2. Sender's System account info (for balance/nonce if mapping exists)
-        // The AccountId is derived from H160 in pallet-revive
-        let sender_account_id: AccountId = {
-            // pallet-revive uses AccountId32 derived from H160 by padding with zeros
-            let mut account_bytes = [0u8; 32];
-            account_bytes[..20].copy_from_slice(sender.as_bytes());
-            account_bytes.into()
-        };
-        keys.push(well_known_keys::system_account_info(sender_account_id));
-
-        // Prefetch all keys in a single batch
-        self.prefetch_storage_keys(&keys);
-    }
 }
 
 pub type Storage = HashMap<StorageKey, Option<StorageValue>>;

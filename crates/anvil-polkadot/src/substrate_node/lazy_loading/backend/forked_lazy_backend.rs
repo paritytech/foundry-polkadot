@@ -9,8 +9,8 @@ use polkadot_sdk::{
         traits::{Block as BlockT, HashingFor},
     },
     sp_state_machine::{
-        self, Backend as StateMachineBackend, BackendTransaction, InMemoryBackend, IterArgs,
-        StorageCollection, StorageValue, TrieBackend, backend::AsTrieBackend,
+        self, BackendTransaction, InMemoryBackend, IterArgs, StorageCollection, StorageValue,
+        TrieBackend, backend::AsTrieBackend,
     },
     sp_storage::ChildInfo,
     sp_trie::{self, PrefixedMemoryDB},
@@ -98,63 +98,6 @@ impl<Block: BlockT + DeserializeOwned> ForkedLazyBackend<Block> {
     #[inline]
     pub(crate) fn rpc(&self) -> Option<&dyn RPCClient<Block>> {
         self.rpc_client.as_deref()
-    }
-
-    /// Prefetch multiple storage keys in a single RPC batch call.
-    /// This significantly reduces latency when we know which keys will be needed.
-    /// Keys that are already cached or marked as removed will be skipped.
-    /// Returns the number of keys actually fetched from remote.
-    pub fn prefetch_keys(&self, keys: &[Vec<u8>]) -> usize {
-        if keys.is_empty() {
-            return 0;
-        }
-
-        let rpc = match self.rpc() {
-            Some(rpc) => rpc,
-            None => return 0,
-        };
-
-        // Filter out keys that are already cached or removed
-        let db = self.db.read();
-        let removed = self.removed_keys.read();
-
-        let keys_to_fetch: Vec<polkadot_sdk::sp_storage::StorageKey> = keys
-            .iter()
-            .filter(|key| {
-                // Skip if already in cache
-                if StateMachineBackend::storage(&*db, key).ok().flatten().is_some() {
-                    return false;
-                }
-                // Skip if marked as removed
-                if removed.contains(*key) {
-                    return false;
-                }
-                true
-            })
-            .map(|key| polkadot_sdk::sp_storage::StorageKey(key.clone()))
-            .collect();
-
-        drop(db);
-        drop(removed);
-
-        if keys_to_fetch.is_empty() {
-            return 0;
-        }
-
-        let fetch_count = keys_to_fetch.len();
-
-        // Use the batch RPC call
-        let block_to_query = if self.before_fork { self.block_hash } else { self.fork_block };
-
-        match rpc.storage_batch(keys_to_fetch, block_to_query) {
-            Ok(results) => {
-                for (key, value) in results {
-                    self.update_storage(&key.0, &value.map(|v| v.0));
-                }
-                fetch_count
-            }
-            Err(_) => 0,
-        }
     }
 }
 

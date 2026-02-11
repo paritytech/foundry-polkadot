@@ -12,8 +12,8 @@ mod tests;
 use parking_lot::RwLock;
 use polkadot_sdk::{
     sc_client_api::{
-        HeaderBackend, TrieCacheContext, UsageInfo,
-        backend::{self, AuxStore, Backend as ClientBackend},
+        TrieCacheContext, UsageInfo,
+        backend::{self, AuxStore},
     },
     sp_blockchain,
     sp_core::{H256, offchain::storage::InMemOffchainStorage},
@@ -58,22 +58,6 @@ impl<Block: BlockT + DeserializeOwned> Backend<Block> {
     #[inline]
     fn fork_checkpoint(&self) -> Option<&Block::Header> {
         self.fork_config.as_ref().map(|(_, checkpoint)| checkpoint)
-    }
-
-    /// Prefetch multiple storage keys in a single batch RPC call.
-    /// This significantly reduces latency when we know which keys will be needed
-    /// (e.g., before transaction validation).
-    /// Returns the number of keys actually fetched from remote.
-    pub fn prefetch_storage_keys(&self, keys: &[Vec<u8>]) -> usize {
-        // Get the best block hash to find the current state
-        let best_hash = HeaderBackend::info(&self.blockchain).best_hash;
-
-        // Try to get the state for the best block
-        if let Ok(state) = ClientBackend::state_at(self, best_hash, TrieCacheContext::Trusted) {
-            state.prefetch_keys(keys)
-        } else {
-            0
-        }
     }
 }
 

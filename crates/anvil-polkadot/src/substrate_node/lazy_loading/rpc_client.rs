@@ -11,7 +11,6 @@ use polkadot_sdk::{
 };
 use serde::de::DeserializeOwned;
 use std::{
-    collections::HashMap,
     marker::PhantomData,
     sync::{
         Arc,
@@ -85,14 +84,6 @@ pub trait RPCClient<Block: BlockT + DeserializeOwned>: Send + Sync + std::fmt::D
         start_key: Option<StorageKey>,
         at: Option<Block::Hash>,
     ) -> Result<Vec<sp_state_machine::StorageKey>, ClientError>;
-
-    /// Fetch multiple storage keys in a single RPC call using state_queryStorageAt.
-    /// Returns a vector of (key, optional_value) pairs.
-    fn storage_batch(
-        &self,
-        keys: Vec<StorageKey>,
-        at: Option<Block::Hash>,
-    ) -> Result<Vec<(StorageKey, Option<StorageData>)>, ClientError>;
 }
 
 #[derive(Debug, Clone)]
@@ -330,46 +321,6 @@ impl<Block: BlockT + DeserializeOwned> RPCClient<Block> for Rpc<Block> {
             Ok(result) => Ok(result.iter().map(|item| item.0.clone()).collect()),
             Err(err) => Err(err),
         }
-    }
-
-    fn storage_batch(
-        &self,
-        keys: Vec<StorageKey>,
-        at: Option<Block::Hash>,
-    ) -> Result<Vec<(StorageKey, Option<StorageData>)>, ClientError> {
-        if keys.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let client = self.http_client.clone();
-        let keys_clone = keys.clone();
-
-        let result = self.block_on(async move {
-            substrate_rpc_client::StateApi::<Block::Hash>::query_storage_at(&client, keys_clone, at)
-                .await
-        })?;
-
-        // query_storage_at returns Vec<StorageChangeSet<Hash>>
-        // Each StorageChangeSet contains changes: Vec<(StorageKey, Option<StorageData>)>
-        // For a single block query, we get one StorageChangeSet with all results
-        let mut results: Vec<(StorageKey, Option<StorageData>)> = Vec::with_capacity(keys.len());
-
-        // Build a map from returned results
-        let mut result_map: HashMap<Vec<u8>, Option<StorageData>> = HashMap::new();
-
-        for change_set in result {
-            for (key, value) in change_set.changes {
-                result_map.insert(key.0, value);
-            }
-        }
-
-        // Return results in the same order as input keys
-        for key in keys {
-            let value = result_map.get(&key.0).cloned().flatten();
-            results.push((key, value));
-        }
-
-        Ok(results)
     }
 }
 

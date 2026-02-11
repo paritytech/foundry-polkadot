@@ -2,7 +2,7 @@ use super::*;
 use mock_rpc::{Rpc, TestBlock, TestHeader};
 use parking_lot::RwLock;
 use polkadot_sdk::{
-    sc_client_api::{Backend as BackendT, StateBackend},
+    sc_client_api::{Backend as BackendT, HeaderBackend, StateBackend},
     sp_runtime::{
         OpaqueExtrinsic,
         traits::{BlakeTwo256, Header as HeaderT},
@@ -275,22 +275,6 @@ mod mock_rpc {
 
             let take = min(filtered.len(), count as usize);
             Ok(filtered.into_iter().take(take).map(|k| k.0).collect())
-        }
-
-        fn storage_batch(
-            &self,
-            keys: Vec<StorageKey>,
-            at: Option<Block::Hash>,
-        ) -> Result<Vec<(StorageKey, Option<StorageData>)>, jsonrpsee::core::ClientError> {
-            // Simple implementation: just call storage for each key
-            let results = keys
-                .into_iter()
-                .map(|key| {
-                    let value = self.storage(key.clone(), at).ok().flatten();
-                    (key, value)
-                })
-                .collect();
-            Ok(results)
         }
     }
 }

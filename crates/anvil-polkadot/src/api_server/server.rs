@@ -820,15 +820,6 @@ impl ApiServer {
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
         let hash = H256(keccak_256(&transaction.0));
 
-        // Prefetch storage keys for the sender to speed up transaction validation.
-        // This is especially important when forking from a remote chain, as each storage
-        // read would otherwise require a separate RPC call. When not forking, this is a no-op.
-        if let Ok(signed_tx) = TransactionSigned::decode(&transaction.0)
-            && let Ok(sender) = recover_maybe_impersonated_address(&signed_tx)
-        {
-            self.backend.prefetch_eth_transaction_keys(sender);
-        }
-
         // Use dynamic transaction building to ensure the correct pallet index is used.
         // The metadata in self.api comes from the runtime's WASM (via runtime API call),
         // which is the forked chain's WASM when forking. This ensures correct pallet indices.
@@ -1984,38 +1975,38 @@ impl ApiServer {
         if let Ok(Some(substrate_block)) = self.eth_rpc_client.block_by_hash(&block_hash).await
             && let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await
         {
-                // Extract transaction hashes
-                let tx_hashes: Vec<H256> = match &evm_block.transactions {
-                    HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
-                    // Considering that we called evm_block with hydrated set to false, we will
-                    // never receive TransactionInfos, but we handle it anyways.
-                    HashesOrTransactionInfos::TransactionInfos(infos) => {
-                        infos.iter().map(|i| i.hash).collect()
-                    }
-                };
+            // Extract transaction hashes
+            let tx_hashes: Vec<H256> = match &evm_block.transactions {
+                HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
+                // Considering that we called evm_block with hydrated set to false, we will
+                // never receive TransactionInfos, but we handle it anyways.
+                HashesOrTransactionInfos::TransactionInfos(infos) => {
+                    infos.iter().map(|i| i.hash).collect()
+                }
+            };
 
-                if !tx_hashes.is_empty() {
-                    node_info!("");
+            if !tx_hashes.is_empty() {
+                node_info!("");
 
-                    // Log each transaction
-                    for tx_hash in tx_hashes {
-                        if let Some(receipt) = self.eth_rpc_client.receipt(&tx_hash).await {
-                            node_info!("    Transaction: {:?}", receipt.transaction_hash);
+                // Log each transaction
+                for tx_hash in tx_hashes {
+                    if let Some(receipt) = self.eth_rpc_client.receipt(&tx_hash).await {
+                        node_info!("    Transaction: {:?}", receipt.transaction_hash);
 
-                            if let Some(contract) = &receipt.contract_address {
-                                node_info!("    Contract created: {contract}");
-                            }
-
-                            node_info!("    Gas used: {}", receipt.cumulative_gas_used);
-
-                            if receipt.status == Some(evm::U256::zero()) {
-                                node_info!("    Error: reverted");
-                            }
-
-                            node_info!("");
+                        if let Some(contract) = &receipt.contract_address {
+                            node_info!("    Contract created: {contract}");
                         }
+
+                        node_info!("    Gas used: {}", receipt.cumulative_gas_used);
+
+                        if receipt.status == Some(evm::U256::zero()) {
+                            node_info!("    Error: reverted");
+                        }
+
+                        node_info!("");
                     }
                 }
+            }
         }
 
         node_info!("    Block Number: {}", block_number);
