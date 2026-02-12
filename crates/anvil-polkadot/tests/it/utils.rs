@@ -148,39 +148,47 @@ impl TestNode {
     }
 
     /// Execute an ethereum transaction and wait for its receipt.
-    /// This is useful for forking tests where transaction validation can take time
-    /// due to lazy loading of state from the remote chain.
+    /// In forking mode, block import and receipt indexing are decoupled: the block
+    /// commits immediately but the ReceiptProvider indexes receipts asynchronously.
+    /// This method awaits new block import notifications instead of sleeping.
     pub async fn send_transaction_and_wait(
         &mut self,
         transaction: TransactionRequest,
         timeout_secs: u64,
     ) -> Result<ReceiptInfo, RpcError> {
         let tx_hash = self.send_transaction(transaction).await?;
-
-        let start = std::time::Instant::now();
+        let mut import_stream = self.service.client.import_notification_stream();
         let timeout = Duration::from_secs(timeout_secs);
 
-        while start.elapsed() < timeout {
-            // Check if receipt is available
-            let receipt_result = self
-                .eth_rpc(EthRequest::EthGetTransactionReceipt(B256::from(tx_hash.to_fixed_bytes())))
-                .await;
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                // Check if receipt is available
+                let receipt_result = self
+                    .eth_rpc(EthRequest::EthGetTransactionReceipt(B256::from(
+                        tx_hash.to_fixed_bytes(),
+                    )))
+                    .await;
 
-            if let Ok(ResponseResult::Success(val)) = receipt_result
-                && !val.is_null()
-            {
-                return serde_json::from_value(val)
-                    .map_err(|_| RpcError::new(ErrorCode::InternalError));
+                if let Ok(ResponseResult::Success(val)) = receipt_result
+                    && !val.is_null()
+                {
+                    return serde_json::from_value(val)
+                        .map_err(|_| RpcError::new(ErrorCode::InternalError));
+                }
+
+                // Mine a block and wait for the next block import notification
+                let _ = self.eth_rpc(EthRequest::Mine(None, None)).await;
+                let _ = import_stream.next().await;
             }
+        })
+        .await;
 
-            // Mine a block and wait
-            let _ = self.eth_rpc(EthRequest::Mine(None, None)).await;
-            tokio::time::sleep(Duration::from_secs(5)).await;
+        match result {
+            Ok(receipt) => receipt,
+            Err(_) => Err(RpcError::internal_error_with(format!(
+                "Transaction {tx_hash:?} was not confirmed within {timeout:?}"
+            ))),
         }
-
-        Err(RpcError::internal_error_with(format!(
-            "Transaction {tx_hash:?} was not confirmed within {timeout:?}"
-        )))
     }
 
     /// Execute an impersonated ethereum transaction.
