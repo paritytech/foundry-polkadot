@@ -236,7 +236,8 @@ See: [Integration Tests Guide](references/integration-tests.md)
 
 ### Unsupported Features
 
-- `forge clone`, `forge coverage`, `forge snapshot` don't work with `--polkadot`
+- `forge clone` requires an Etherscan API key
+- `forge coverage --resolc` fails with compiler error (standard and `--polkadot` work)
 - Gas model not fully aligned with production Polkadot
 
 ## Architecture Overview
