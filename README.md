@@ -82,7 +82,7 @@ Resolc configuration:
 - compilation from yul is not supported
 - [factory contracts deployment support](https://github.com/paritytech/foundry-polkadot/issues/130)
 
-**Potential Unsupported Features**: Support for Anvil and Chisel is not available, which also means commands like `forge test`, `forge snapshot`, and `forge script` are not currently supported.
+**Potential Unsupported Features**: Support for Chisel is not available. Commands like `forge coverage`, and `forge script` are not currently supported.
 
 **Modified Features**:
 

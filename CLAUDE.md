@@ -126,7 +126,7 @@ cast send 0x... "set(uint256)" 42 --rpc-url https://testnet-passet-hub-eth-rpc.p
 1. **Gas Model**: Not fully aligned with Polkadot's production gas model
 2. **Numeric Types**: Ethereum uses `u256`, Polkadot uses `u64` for block numbers/timestamps and `u128` for balances - values exceeding these limits will be clamped with warnings
 3. **PVM Integration**: Experimental - may not work with libraries or proxy patterns
-4. **Unsupported Commands**: `forge clone`, `forge coverage`, `forge snapshot` don't work
+4. **Unsupported Commands**: `forge coverage` does not work with `--resolc`. Commands requiring Etherscan (`clone`, `verify-contract`, `verify-check`, `verify-bytecode`) do not work — Polkadot is not integrated with Etherscan
 5. **Cheatcodes**: HEVM_ADDRESS only exists in REVM - contracts in pallet-revive cannot call cheatcodes. Use `vm.polkadotSkip()` to keep contracts in REVM
 
 **For troubleshooting**, see: `.claude/skills/foundry-polkadot-testing/references/troubleshooting.md`
@@ -201,10 +201,13 @@ vm.polkadot(false);  // counter migrates to REVM
 - `inspect`
 - `install`, `update`, `remove`, `remappings`
 - `selectors upload`, `selectors list`, `selectors find`, `selectors cache`
+- `snapshot`
 - `tree`
 
-### ❌ Not Working Commands
-- `clone`, `coverage`, `snapshot`
+### ❌ Not Working with Polkadot
+
+- `clone`, `verify-contract`, `verify-check`, `verify-bytecode` — require Etherscan, which is not integrated with Polkadot
+- `coverage` — does not work with `--resolc`
 
 ## 📚 Key Files for Understanding
 
