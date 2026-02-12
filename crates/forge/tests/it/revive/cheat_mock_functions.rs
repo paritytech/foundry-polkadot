@@ -43,6 +43,7 @@ async fn test_mock_function_all_args(#[case] runtime_mode: ReviveRuntimeMode) {
 }
 
 #[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
 #[case::evm(ReviveRuntimeMode::Evm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mock_function_preserves_real_code(#[case] runtime_mode: ReviveRuntimeMode) {
