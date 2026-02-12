@@ -148,9 +148,7 @@ impl TestNode {
     }
 
     /// Execute an ethereum transaction and wait for its receipt.
-    /// In forking mode, block import and receipt indexing are decoupled: the block
-    /// commits immediately but the ReceiptProvider indexes receipts asynchronously.
-    /// This method awaits new block import notifications instead of sleeping.
+    /// Awaits new block import notifications until the receipt becomes available.
     pub async fn send_transaction_and_wait(
         &mut self,
         transaction: TransactionRequest,
@@ -402,8 +400,6 @@ impl TestNode {
     }
 
     /// Deploy a contract and wait for its receipt.
-    /// This is useful for forking tests where transaction validation can take time
-    /// due to lazy loading of state from the remote chain.
     pub async fn deploy_contract_and_wait(
         &mut self,
         code: &[u8],
