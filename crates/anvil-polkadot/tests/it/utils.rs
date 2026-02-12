@@ -178,7 +178,9 @@ impl TestNode {
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
 
-        Err(RpcError::new(ErrorCode::InternalError))
+        Err(RpcError::internal_error_with(format!(
+            "Transaction {tx_hash:?} was not confirmed within {timeout:?}"
+        )))
     }
 
     /// Execute an impersonated ethereum transaction.
