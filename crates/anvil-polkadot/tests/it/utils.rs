@@ -148,12 +148,27 @@ impl TestNode {
     }
 
     /// Execute an ethereum transaction and wait for its receipt.
-    /// Awaits new block import notifications until the receipt becomes available.
+    /// When automine is enabled, uses `EthSendTransactionSync` to get the receipt directly.
+    /// Otherwise, sends the transaction and polls for the receipt via block import notifications.
     pub async fn send_transaction_and_wait(
         &mut self,
         transaction: TransactionRequest,
         timeout_secs: u64,
     ) -> Result<ReceiptInfo, RpcError> {
+        let is_automine =
+            unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
+                .unwrap();
+
+        if is_automine {
+            return unwrap_response::<ReceiptInfo>(
+                self.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(
+                    WithOtherFields::new(transaction),
+                )))
+                .await
+                .unwrap(),
+            );
+        }
+
         let tx_hash = self.send_transaction(transaction).await?;
         let mut import_stream = self.service.client.import_notification_stream();
         let timeout = Duration::from_secs(timeout_secs);
