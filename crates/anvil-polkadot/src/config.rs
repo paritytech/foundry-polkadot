@@ -1,23 +1,25 @@
+use crate::api_server::revive_conversions::ReviveAddress;
 use alloy_genesis::Genesis;
-use alloy_primitives::{hex, map::HashMap, utils::Unit, U256};
-use alloy_signer::Signer;
+use alloy_primitives::{Address, U256, hex, map::HashMap, utils::Unit};
 use alloy_signer_local::{
-    coins_bip39::{English, Mnemonic},
     MnemonicBuilder, PrivateKeySigner,
+    coins_bip39::{English, Mnemonic},
 };
 use anvil_server::ServerConfig;
 use eyre::{Context, Result};
 use foundry_common::{duration_since_unix_epoch, sh_println};
 use polkadot_sdk::{
+    pallet_revive::evm::Account,
     sc_cli::{
-        self, CliConfiguration as SubstrateCliConfiguration, Cors, RPC_DEFAULT_MAX_CONNECTIONS,
+        self, CliConfiguration as SubstrateCliConfiguration, Cors, DEFAULT_WASM_EXECUTION_METHOD,
+        DEFAULT_WASMTIME_INSTANTIATION_STRATEGY, RPC_DEFAULT_MAX_CONNECTIONS,
         RPC_DEFAULT_MAX_REQUEST_SIZE_MB, RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
         RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN,
     },
     sc_service,
 };
-use rand::thread_rng;
-use serde_json::{json, Value};
+use rand_08::thread_rng;
+use serde_json::{Value, json};
 use std::{
     fmt::Write as FmtWrite,
     fs::File,
@@ -27,6 +29,7 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
+use subxt_signer::eth::Keypair;
 use yansi::Paint;
 
 pub use foundry_common::version::SHORT_VERSION as VERSION_MESSAGE;
@@ -44,11 +47,9 @@ pub const DEFAULT_MNEMONIC: &str = "test test test test test test test test test
 pub const DEFAULT_IPC_ENDPOINT: &str =
     if cfg!(unix) { "/tmp/anvil.ipc" } else { r"\\.\pipe\anvil.ipc" };
 
-/// Initial base fee for EIP-1559 blocks.
-pub const INITIAL_BASE_FEE: u64 = 1_000_000_000;
-
-/// Initial default gas price for the first block
-pub const INITIAL_GAS_PRICE: u128 = 1_875_000_000;
+/// In anvil this is `1_000_000_000`, in 1e18 denomination. However,
+/// asset-hub-westend runtime sets it to `1_000_000`.
+pub const INITIAL_BASE_FEE: u128 = 1_000_000;
 
 const BANNER: &str = r"
                              _   _
@@ -63,6 +64,7 @@ const BANNER: &str = r"
 pub struct SubstrateNodeConfig {
     shared_params: sc_cli::SharedParams,
     rpc_params: sc_cli::RpcParams,
+    import_params: sc_cli::ImportParams,
 }
 
 impl SubstrateNodeConfig {
@@ -98,7 +100,32 @@ impl SubstrateNodeConfig {
             rpc_cors: None,
         };
 
-        Self { shared_params, rpc_params }
+        // Anvil node requires these cli params configured by default except the state_pruning and
+        // block_pruning params. They must be set to `DatabasePruningMode::Archive` because
+        // chain reversion RPCs must revert the state db for finalized blocks, which is a no
+        // operation when pruning is not configured as an archive for both blocks & state.
+        let import_params = sc_cli::ImportParams {
+            pruning_params: sc_cli::PruningParams {
+                state_pruning: Some(sc_cli::DatabasePruningMode::Archive),
+                blocks_pruning: sc_cli::DatabasePruningMode::Archive,
+            },
+            database_params: sc_cli::DatabaseParams { database: None, database_cache_size: None },
+            wasm_method: DEFAULT_WASM_EXECUTION_METHOD,
+            wasmtime_instantiation_strategy: DEFAULT_WASMTIME_INSTANTIATION_STRATEGY,
+            wasm_runtime_overrides: None,
+            execution_strategies: sc_cli::ExecutionStrategiesParams {
+                execution_syncing: None,
+                execution_import_block: None,
+                execution_block_construction: None,
+                execution_offchain_worker: None,
+                execution_other: None,
+                execution: None,
+            },
+            trie_cache_size: 1024 * 1024 * 1024,
+            warm_up_trie_cache: None,
+        };
+
+        Self { shared_params, rpc_params, import_params }
     }
 
     pub fn set_base_path(&mut self, base_path: Option<PathBuf>) {
@@ -112,7 +139,7 @@ impl SubstrateCliConfiguration for SubstrateNodeConfig {
     }
 
     fn import_params(&self) -> Option<&sc_cli::ImportParams> {
-        None
+        Some(&self.import_params)
     }
 
     fn network_params(&self) -> Option<&sc_cli::NetworkParams> {
@@ -238,18 +265,10 @@ impl SubstrateCliConfiguration for SubstrateNodeConfig {
 pub struct AnvilNodeConfig {
     /// Chain ID of the EVM chain
     pub chain_id: Option<u64>,
-    /// Default gas limit for all txs
-    pub gas_limit: Option<u128>,
-    /// If set to `true`, disables the block gas limit
-    pub disable_block_gas_limit: bool,
-    /// Default gas price for all txs
-    pub gas_price: Option<u128>,
     /// Default base fee
-    pub base_fee: Option<u64>,
-    /// If set to `true`, disables the enforcement of a minimum suggested priority fee
-    pub disable_min_priority_fee: bool,
+    pub base_fee: Option<u128>,
     /// Signer accounts that will be initialised with `genesis_balance` in the genesis block
-    pub genesis_accounts: Vec<PrivateKeySigner>,
+    pub genesis_accounts: Vec<Keypair>,
     /// Native token balance of every genesis account in the genesis block
     pub genesis_balance: U256,
     /// Genesis block timestamp
@@ -257,7 +276,7 @@ pub struct AnvilNodeConfig {
     /// Genesis block number
     pub genesis_block_number: Option<u64>,
     /// Signer accounts that can sign messages/transactions from the EVM node
-    pub signer_accounts: Vec<PrivateKeySigner>,
+    pub signer_accounts: Vec<Keypair>,
     /// Configured block time for the EVM chain. Use `None` to mine a new block for every tx
     pub block_time: Option<Duration>,
     /// Disable auto, interval mining mode uns use `MiningMode::None` instead
@@ -266,8 +285,6 @@ pub struct AnvilNodeConfig {
     pub mixed_mining: bool,
     /// port to use for the server
     pub port: u16,
-    /// maximum number of transactions in a block
-    pub max_transactions: usize,
     /// The generator used to generate the dev accounts
     pub account_generator: Option<AccountGenerator>,
     /// whether to enable tracing
@@ -282,20 +299,10 @@ pub struct AnvilNodeConfig {
     pub genesis: Option<Genesis>,
     /// The ipc path
     pub ipc_path: Option<Option<String>>,
-    /// Enable transaction/call steps tracing for debug calls returning geth-style traces
-    pub enable_steps_tracing: bool,
-    /// Enable printing of `console.log` invocations.
-    pub print_logs: bool,
-    /// Enable printing of traces.
-    pub print_traces: bool,
     /// Enable auto impersonation of accounts on startup
     pub enable_auto_impersonate: bool,
-    /// Configure the code size limit
-    pub code_size_limit: Option<usize>,
-    /// Disable the default CREATE2 deployer
-    pub disable_default_create2_deployer: bool,
-    /// The memory limit per EVM execution in bytes.
-    pub memory_limit: Option<u64>,
+    /// Max number of blocks to keep in memory for the eth revive rpc
+    pub revive_rpc_block_limit: Option<usize>,
     /// Do not print log messages.
     pub silent: bool,
 }
@@ -317,7 +324,12 @@ Available Accounts
         );
         let balance = alloy_primitives::utils::format_ether(self.genesis_balance);
         for (idx, wallet) in self.genesis_accounts.iter().enumerate() {
-            write!(s, "\n({idx}) {} ({balance} ETH)", wallet.address()).unwrap();
+            write!(
+                s,
+                "\n({idx}) {} ({balance} ETH)",
+                Address::from(ReviveAddress::new(Account::from(wallet.clone()).address()))
+            )
+            .unwrap();
         }
 
         let _ = write!(
@@ -330,11 +342,11 @@ Private Keys
         );
 
         for (idx, wallet) in self.genesis_accounts.iter().enumerate() {
-            let hex = hex::encode(wallet.credential().to_bytes());
+            let hex = hex::encode(wallet.secret_key());
             let _ = write!(s, "\n({idx}) 0x{hex}");
         }
 
-        if let Some(ref gen) = self.account_generator {
+        if let Some(ref rng_gen) = self.account_generator {
             let _ = write!(
                 s,
                 r#"
@@ -344,8 +356,8 @@ Wallet
 Mnemonic:          {}
 Derivation path:   {}
 "#,
-                gen.phrase,
-                gen.get_derivation_path()
+                rng_gen.phrase,
+                rng_gen.get_derivation_path()
             );
         }
 
@@ -370,26 +382,6 @@ Base Fee
 {}
 "#,
             self.get_base_fee().green()
-        );
-
-        let _ = write!(
-            s,
-            r#"
-Gas Limit
-==================
-
-{}
-"#,
-            {
-                if self.disable_block_gas_limit {
-                    "Disabled".to_string()
-                } else {
-                    self.gas_limit
-                        .map(|l| l.to_string())
-                        .unwrap_or_else(|| DEFAULT_GAS_LIMIT.to_string())
-                }
-            }
-            .green()
         );
 
         let _ = write!(
@@ -423,23 +415,16 @@ Genesis Number
         let mut private_keys = Vec::with_capacity(self.genesis_accounts.len());
 
         for wallet in &self.genesis_accounts {
-            available_accounts.push(format!("{:?}", wallet.address()));
-            private_keys.push(format!("0x{}", hex::encode(wallet.credential().to_bytes())));
+            available_accounts.push(format!("{:?}", Account::from(wallet.clone()).address()));
+            private_keys.push(hex::encode_prefixed(wallet.secret_key()));
         }
 
-        if let Some(ref gen) = self.account_generator {
-            let phrase = gen.get_phrase().to_string();
-            let derivation_path = gen.get_derivation_path().to_string();
+        if let Some(ref rng_gen) = self.account_generator {
+            let phrase = rng_gen.get_phrase().to_string();
+            let derivation_path = rng_gen.get_derivation_path().to_string();
 
             wallet_description.insert("derivation_path".to_string(), derivation_path);
             wallet_description.insert("mnemonic".to_string(), phrase);
-        };
-
-        let gas_limit = match self.gas_limit {
-            // if we have a disabled flag we should max out the limit
-            Some(_) | None if self.disable_block_gas_limit => Some(u64::MAX.to_string()),
-            Some(limit) => Some(limit.to_string()),
-            _ => None,
         };
 
         json!({
@@ -447,34 +432,41 @@ Genesis Number
           "private_keys": private_keys,
           "wallet": wallet_description,
           "base_fee": format!("{}", self.get_base_fee()),
-          "gas_price": format!("{}", self.get_gas_price()),
-          "gas_limit": gas_limit,
           "genesis_timestamp": format!("{}", self.get_genesis_timestamp()),
         })
     }
 
     pub fn test_config() -> Self {
-        Self {
+        let mut anvil_node_config = Self {
             port: 0,
             no_mining: true,
             mixed_mining: false,
-            enable_tracing: true,
+            enable_tracing: false,
             silent: true,
+            genesis_balance: Unit::ETHER.wei().saturating_mul(U256::from(10000u64)),
             ..Default::default()
-        }
+        };
+        let dev_accounts =
+            vec![subxt_signer::eth::dev::alith(), subxt_signer::eth::dev::baltathar()];
+        anvil_node_config.genesis_accounts.extend(dev_accounts.clone());
+        anvil_node_config.signer_accounts.extend(dev_accounts);
+        anvil_node_config
     }
 }
 
 impl Default for AnvilNodeConfig {
     fn default() -> Self {
         // generate some random wallets
-        let genesis_accounts =
-            AccountGenerator::new(10).phrase(DEFAULT_MNEMONIC).gen().expect("Invalid mnemonic.");
+        let genesis_accounts = keypairs_from_private_keys(
+            &AccountGenerator::new(10)
+                .phrase(DEFAULT_MNEMONIC)
+                .rng_gen()
+                .expect("Invalid mnemonic."),
+        )
+        .expect("Invalid keys");
+
         Self {
             chain_id: None,
-            gas_limit: None,
-            disable_block_gas_limit: false,
-            gas_price: None,
             signer_accounts: genesis_accounts.clone(),
             genesis_timestamp: None,
             genesis_block_number: None,
@@ -485,61 +477,32 @@ impl Default for AnvilNodeConfig {
             no_mining: false,
             mixed_mining: false,
             port: NODE_PORT,
-            // TODO make this something dependent on block capacity
-            max_transactions: 1_000,
             account_generator: None,
             base_fee: None,
-            disable_min_priority_fee: false,
             enable_tracing: true,
-            enable_steps_tracing: false,
-            print_logs: true,
-            print_traces: false,
             enable_auto_impersonate: false,
+            revive_rpc_block_limit: None,
             server_config: Default::default(),
             host: vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
             config_out: None,
             genesis: None,
             ipc_path: None,
-            code_size_limit: None,
-            disable_default_create2_deployer: false,
-            memory_limit: None,
             silent: false,
         }
     }
 }
 
 impl AnvilNodeConfig {
-    /// Returns the memory limit of the node
-    #[must_use]
-    pub fn with_memory_limit(mut self, mems_value: Option<u64>) -> Self {
-        self.memory_limit = mems_value;
-        self
-    }
     /// Returns the base fee to use
-    pub fn get_base_fee(&self) -> u64 {
+    pub fn get_base_fee(&self) -> u128 {
         self.base_fee
-            .or_else(|| self.genesis.as_ref().and_then(|g| g.base_fee_per_gas.map(|g| g as u64)))
+            .or_else(|| {
+                self.genesis.as_ref().and_then(|g| {
+                    // The base fee received via CLI will be transformed to 1e-12.
+                    g.base_fee_per_gas
+                })
+            })
             .unwrap_or(INITIAL_BASE_FEE)
-    }
-
-    /// Returns the base fee to use
-    pub fn get_gas_price(&self) -> u128 {
-        self.gas_price.unwrap_or(INITIAL_GAS_PRICE)
-    }
-
-    /// Sets a custom code size limit
-    #[must_use]
-    pub fn with_code_size_limit(mut self, code_size_limit: Option<usize>) -> Self {
-        self.code_size_limit = code_size_limit;
-        self
-    }
-    /// Disables  code size limit
-    #[must_use]
-    pub fn disable_code_size_limit(mut self, disable_code_size_limit: bool) -> Self {
-        if disable_code_size_limit {
-            self.code_size_limit = Some(usize::MAX);
-        }
-        self
     }
 
     /// Sets the chain ID
@@ -556,52 +519,25 @@ impl AnvilNodeConfig {
             .unwrap_or(CHAIN_ID)
     }
 
-    /// Sets the chain id and updates all wallets
+    /// Sets the chain id
     pub fn set_chain_id(&mut self, chain_id: Option<impl Into<u64>>) {
         self.chain_id = chain_id.map(Into::into);
-        let chain_id = self.get_chain_id();
-        self.genesis_accounts.iter_mut().for_each(|wallet| {
-            *wallet = wallet.clone().with_chain_id(Some(chain_id));
-        });
-        self.signer_accounts.iter_mut().for_each(|wallet| {
-            *wallet = wallet.clone().with_chain_id(Some(chain_id));
-        })
     }
 
-    /// Sets the gas limit
+    /// Sets max number of blocks to keep in memory for the eth revive rpc
     #[must_use]
-    pub fn with_gas_limit(mut self, gas_limit: Option<u128>) -> Self {
-        self.gas_limit = gas_limit;
-        self
-    }
-
-    /// Disable block gas limit check
-    ///
-    /// If set to `true` block gas limit will not be enforced
-    #[must_use]
-    pub fn disable_block_gas_limit(mut self, disable_block_gas_limit: bool) -> Self {
-        self.disable_block_gas_limit = disable_block_gas_limit;
-        self
-    }
-
-    /// Sets the gas price
-    #[must_use]
-    pub fn with_gas_price(mut self, gas_price: Option<u128>) -> Self {
-        self.gas_price = gas_price;
+    pub fn with_revive_rpc_block_limit<U: Into<usize>>(
+        mut self,
+        revive_rpc_block_limit: Option<U>,
+    ) -> Self {
+        self.revive_rpc_block_limit = revive_rpc_block_limit.map(Into::into);
         self
     }
 
     /// Sets the base fee
     #[must_use]
     pub fn with_base_fee(mut self, base_fee: Option<u64>) -> Self {
-        self.base_fee = base_fee;
-        self
-    }
-
-    /// Disable the enforcement of a minimum suggested priority fee
-    #[must_use]
-    pub fn disable_min_priority_fee(mut self, disable_min_priority_fee: bool) -> Self {
-        self.disable_min_priority_fee = disable_min_priority_fee;
+        self.base_fee = base_fee.map(|bf| bf.into());
         self
     }
 
@@ -646,14 +582,14 @@ impl AnvilNodeConfig {
 
     /// Sets the genesis accounts
     #[must_use]
-    pub fn with_genesis_accounts(mut self, accounts: Vec<PrivateKeySigner>) -> Self {
+    pub fn with_genesis_accounts(mut self, accounts: Vec<Keypair>) -> Self {
         self.genesis_accounts = accounts;
         self
     }
 
     /// Sets the signer accounts
     #[must_use]
-    pub fn with_signer_accounts(mut self, accounts: Vec<PrivateKeySigner>) -> Self {
+    pub fn with_signer_accounts(mut self, accounts: Vec<Keypair>) -> Self {
         self.signer_accounts = accounts;
         self
     }
@@ -661,8 +597,9 @@ impl AnvilNodeConfig {
     /// Sets both the genesis accounts and the signer accounts
     /// so that `genesis_accounts == accounts`
     pub fn with_account_generator(mut self, generator: AccountGenerator) -> eyre::Result<Self> {
-        let accounts = generator.gen()?;
+        let accounts = generator.rng_gen()?;
         self.account_generator = Some(generator);
+        let accounts = keypairs_from_private_keys(&accounts)?;
         Ok(self.with_signer_accounts(accounts.clone()).with_genesis_accounts(accounts))
     }
 
@@ -731,27 +668,6 @@ impl AnvilNodeConfig {
         self
     }
 
-    /// Sets whether to enable steps tracing
-    #[must_use]
-    pub fn with_steps_tracing(mut self, enable_steps_tracing: bool) -> Self {
-        self.enable_steps_tracing = enable_steps_tracing;
-        self
-    }
-
-    /// Sets whether to print `console.log` invocations to stdout.
-    #[must_use]
-    pub fn with_print_logs(mut self, print_logs: bool) -> Self {
-        self.print_logs = print_logs;
-        self
-    }
-
-    /// Sets whether to print traces to stdout.
-    #[must_use]
-    pub fn with_print_traces(mut self, print_traces: bool) -> Self {
-        self.print_traces = print_traces;
-        self
-    }
-
     /// Sets whether to enable autoImpersonate
     #[must_use]
     pub fn with_auto_impersonate(mut self, enable_auto_impersonate: bool) -> Self {
@@ -795,13 +711,6 @@ impl AnvilNodeConfig {
         Ok(())
     }
 
-    /// Sets whether to disable the default create2 deployer
-    #[must_use]
-    pub fn with_disable_default_create2_deployer(mut self, yes: bool) -> Self {
-        self.disable_default_create2_deployer = yes;
-        self
-    }
-
     /// Makes the node silent to not emit anything on stdout
     #[must_use]
     pub fn silent(self) -> Self {
@@ -818,7 +727,6 @@ impl AnvilNodeConfig {
 /// Can create dev accounts
 #[derive(Clone, Debug)]
 pub struct AccountGenerator {
-    chain_id: u64,
     amount: usize,
     phrase: String,
     derivation_path: Option<String>,
@@ -827,7 +735,6 @@ pub struct AccountGenerator {
 impl AccountGenerator {
     pub fn new(amount: usize) -> Self {
         Self {
-            chain_id: CHAIN_ID,
             amount,
             phrase: Mnemonic::<English>::new(&mut thread_rng()).to_phrase(),
             derivation_path: None,
@@ -842,12 +749,6 @@ impl AccountGenerator {
 
     fn get_phrase(&self) -> &str {
         &self.phrase
-    }
-
-    #[must_use]
-    pub fn chain_id(mut self, chain_id: impl Into<u64>) -> Self {
-        self.chain_id = chain_id.into();
-        self
     }
 
     #[must_use]
@@ -866,7 +767,7 @@ impl AccountGenerator {
 }
 
 impl AccountGenerator {
-    pub fn gen(&self) -> eyre::Result<Vec<PrivateKeySigner>> {
+    pub fn rng_gen(&self) -> eyre::Result<Vec<PrivateKeySigner>> {
         let builder = MnemonicBuilder::<English>::default().phrase(self.phrase.as_str());
 
         // use the derivation path
@@ -876,9 +777,21 @@ impl AccountGenerator {
         for idx in 0..self.amount {
             let builder =
                 builder.clone().derivation_path(format!("{derivation_path}{idx}")).unwrap();
-            let wallet = builder.build()?.with_chain_id(Some(self.chain_id));
+            let wallet = builder.build()?;
             wallets.push(wallet)
         }
         Ok(wallets)
     }
+}
+
+fn keypairs_from_private_keys(
+    accounts: &[PrivateKeySigner],
+) -> Result<Vec<Keypair>, subxt_signer::eth::Error> {
+    accounts
+        .iter()
+        .map(|signer| {
+            let key = Keypair::from_secret_key(signer.credential().to_bytes().into())?;
+            Ok(key)
+        })
+        .collect()
 }

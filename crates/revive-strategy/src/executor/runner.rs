@@ -1,28 +1,21 @@
+use crate::{
+    backend::ReviveBackendStrategyBuilder, cheatcodes::PvmCheatcodeInspectorStrategyBuilder,
+    executor::context::ReviveExecutorStrategyContext, state::TestEnv,
+};
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
 use foundry_compilers::{
-    compilers::resolc::dual_compiled_contracts::DualCompiledContracts, ProjectCompileOutput,
+    ProjectCompileOutput, compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
 };
 use foundry_evm::{
+    Env,
     backend::BackendStrategy,
     executors::{
-        strategy::ExecutorStrategyExt, EvmExecutorStrategyRunner, ExecutorStrategyContext,
-        ExecutorStrategyRunner,
+        EvmExecutorStrategyRunner, ExecutorStrategyContext, ExecutorStrategyRunner,
+        strategy::ExecutorStrategyExt,
     },
 };
-use polkadot_sdk::{
-    frame_support::traits::{fungible::Mutate, Currency},
-    pallet_balances,
-    pallet_revive::{AddressMapper, BalanceOf, BalanceWithDust},
-    sp_core::{self, H160},
-};
-use revive_env::{AccountId, Runtime, System};
-use revm::primitives::{EnvWithHandlerCfg, ResultAndState};
-
-use crate::{
-    backend::ReviveBackendStrategyBuilder, cheatcodes::PvmCheatcodeInspectorStrategyBuilder,
-    execute_with_externalities, executor::context::ReviveExecutorStrategyContext,
-};
+use revm::context::result::ResultAndState;
 
 /// Defines the [ExecutorStrategyRunner] strategy for Revive.
 #[derive(Debug, Default, Clone)]
@@ -44,7 +37,11 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         ctx: &dyn ExecutorStrategyContext,
     ) -> foundry_cheatcodes::CheatcodesStrategy {
         let ctx = get_context_ref(ctx);
-        CheatcodeInspectorStrategy::new_pvm(ctx.dual_compiled_contracts.clone(), ctx.resolc_startup)
+        CheatcodeInspectorStrategy::new_pvm(
+            ctx.dual_compiled_contracts.clone(),
+            ctx.runtime_mode,
+            ctx.externalties.shallow_clone(),
+        )
     }
 
     /// Sets the balance of an account.
@@ -57,33 +54,24 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         address: Address,
         amount: U256,
     ) -> foundry_evm::backend::BackendResult<()> {
-        let amount_pvm =
-            sp_core::U256::from_little_endian(&amount.as_le_bytes()).min(u128::MAX.into());
-        let balance_native =
-            BalanceWithDust::<BalanceOf<Runtime>>::from_value::<Runtime>(amount_pvm).unwrap();
-
         EvmExecutorStrategyRunner.set_balance(executor, address, amount)?;
 
-        let min_balance = pallet_balances::Pallet::<Runtime>::minimum_balance();
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
 
-        execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                pallet_balances::Pallet::<Runtime>::set_balance(
-                    &AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice())),
-                    balance_native.into_rounded_balance().saturating_add(min_balance),
-                );
-            })
-        });
+        ctx.externalties.set_balance(address, amount);
         Ok(())
     }
 
     fn get_balance(
         &self,
-        executor: &foundry_evm::executors::Executor,
+        executor: &mut foundry_evm::executors::Executor,
         address: Address,
     ) -> foundry_evm::backend::BackendResult<U256> {
         let evm_balance = EvmExecutorStrategyRunner.get_balance(executor, address)?;
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
 
+        let revive_balance = ctx.externalties.get_balance(address);
+        assert_eq!(evm_balance, revive_balance);
         Ok(evm_balance)
     }
 
@@ -94,38 +82,20 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         nonce: u64,
     ) -> foundry_evm::backend::BackendResult<()> {
         EvmExecutorStrategyRunner.set_nonce(executor, address, nonce)?;
-        execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                let account_id =
-                    AccountId::to_fallback_account_id(&H160::from_slice(address.as_slice()));
-                let current_nonce = System::account_nonce(&account_id);
-
-                assert!(
-                    current_nonce as u64 <= nonce,
-                    "Cannot set nonce lower than current nonce: {current_nonce} > {nonce}"
-                );
-
-                while (System::account_nonce(&account_id) as u64) < nonce {
-                    System::inc_account_nonce(&account_id);
-                }
-            })
-        });
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
+        ctx.externalties.set_nonce(address, nonce);
         Ok(())
     }
 
     fn get_nonce(
         &self,
-        executor: &foundry_evm::executors::Executor,
+        executor: &mut foundry_evm::executors::Executor,
         address: Address,
     ) -> foundry_evm::backend::BackendResult<u64> {
         let evm_nonce = EvmExecutorStrategyRunner.get_nonce(executor, address)?;
-        let revive_nonce = execute_with_externalities(|externalities| {
-            externalities.execute_with(|| {
-                System::account_nonce(AccountId::to_fallback_account_id(&H160::from_slice(
-                    address.as_slice(),
-                )))
-            })
-        });
+        let ctx = get_context_ref_mut(executor.strategy.context.as_mut());
+
+        let revive_nonce = ctx.externalties.get_nonce(address);
 
         assert_eq!(evm_nonce, revive_nonce as u64);
         Ok(evm_nonce)
@@ -135,8 +105,8 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         &self,
         ctx: &dyn ExecutorStrategyContext,
         backend: &mut foundry_evm::backend::CowBackend<'_>,
-        env: &mut EnvWithHandlerCfg,
-        executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        executor_env: &Env,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
         EvmExecutorStrategyRunner.call(ctx, backend, env, executor_env, inspector)
@@ -146,8 +116,8 @@ impl ExecutorStrategyRunner for ReviveExecutorStrategyRunner {
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
         backend: &mut foundry_evm::backend::Backend,
-        env: &mut EnvWithHandlerCfg,
-        executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        executor_env: &Env,
         inspector: &mut foundry_evm::inspectors::InspectorStack,
     ) -> eyre::Result<ResultAndState> {
         EvmExecutorStrategyRunner.transact(ctx, backend, env, executor_env, inspector)
@@ -165,6 +135,10 @@ fn get_context_ref_mut(
 }
 
 impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
+    fn max_balance(&self) -> U256 {
+        U256::from(u128::MAX)
+    }
+
     fn revive_set_dual_compiled_contracts(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
@@ -182,11 +156,15 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         let ctx = get_context_ref_mut(ctx);
         ctx.compilation_output.replace(output);
     }
-
-    fn checkpoint(&self) {
-        crate::save_checkpoint();
+    fn start_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
+        let ctx = get_context_ref(ctx);
+        let mut state = ctx.externalties.0.lock().unwrap();
+        TestEnv::start_transaction(&mut state);
     }
-    fn reload_checkpoint(&self) {
-        crate::return_to_checkpoint();
+
+    fn rollback_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
+        let ctx = get_context_ref(ctx);
+        let mut state = ctx.externalties.0.lock().unwrap();
+        TestEnv::revert_transaction(&mut state);
     }
 }

@@ -1,5 +1,5 @@
 use crate::Vm;
-use alloy_primitives::{hex, Address, Bytes};
+use alloy_primitives::{Address, Bytes, hex};
 use alloy_signer::Error as SignerError;
 use alloy_signer_local::LocalSignerError;
 use alloy_sol_types::SolError;
@@ -8,7 +8,7 @@ use foundry_config::UnresolvedEnvVarError;
 use foundry_evm_core::backend::{BackendError, DatabaseError};
 use foundry_wallets::error::WalletSignerError;
 use k256::ecdsa::signature::Error as SignatureError;
-use revm::primitives::EVMError;
+use revm::context_interface::result::EVMError;
 use std::{borrow::Cow, fmt};
 
 /// Cheatcode result type.
@@ -74,7 +74,7 @@ macro_rules! ensure_not_precompile {
 }
 
 #[cold]
-pub(crate) fn precompile_error(address: &Address) -> Error {
+pub fn precompile_error(address: &Address) -> Error {
     fmt_err!("cannot use precompile {address} as an argument")
 }
 
@@ -283,6 +283,7 @@ impl_from!(
     alloy_sol_types::Error,
     alloy_dyn_abi::Error,
     alloy_primitives::SignatureError,
+    alloy_consensus::crypto::RecoveryError,
     eyre::Report,
     FsPathError,
     hex::FromHexError,

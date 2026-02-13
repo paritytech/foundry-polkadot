@@ -2,26 +2,26 @@
 
 use alloy_chains::NamedChain;
 use alloy_primitives::U256;
-use forge::{
-    executors::ExecutorStrategy, revm::primitives::SpecId, MultiContractRunner,
-    MultiContractRunnerBuilder,
-};
+use forge::{MultiContractRunner, MultiContractRunnerBuilder, executors::ExecutorStrategy};
 use foundry_cli::utils::install_crypto_provider;
 use foundry_compilers::{
-    artifacts::{EvmVersion, Libraries, Settings},
-    compilers::multi::MultiCompiler,
-    utils::RuntimeOrHandle,
     Project, ProjectCompileOutput, SolcConfig, Vyper,
+    artifacts::{EvmVersion, Libraries, Settings, output_selection::ContractOutputSelection},
+    compilers::{multi::MultiCompiler, resolc::dual_compiled_contracts::DualCompiledContracts},
+    utils::RuntimeOrHandle,
 };
 use foundry_config::{
-    fs_permissions::PathPermission, Config, FsPermissions, FuzzConfig, FuzzDictionaryConfig,
-    InvariantConfig, RpcEndpointUrl, RpcEndpoints,
+    Config, FsPermissions, FuzzConfig, FuzzDictionaryConfig, InvariantConfig, RpcEndpointUrl,
+    RpcEndpoints, fs_permissions::PathPermission, revive,
 };
 use foundry_evm::{constants::CALLER, opts::EvmOpts};
 use foundry_test_utils::{
     fd_lock, init_tracing,
     rpc::{next_http_archive_rpc_url, next_rpc_endpoint},
 };
+use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
+use revm::primitives::hardfork::SpecId;
+use semver::Version;
 use std::{
     env, fmt,
     io::Write,
@@ -102,8 +102,8 @@ impl ForgeTestProfile {
         config.gas_limit = u64::MAX.into();
         config.chain = None;
         config.tx_origin = CALLER;
-        config.block_number = 1;
-        config.block_timestamp = 1;
+        config.block_number = U256::from(1);
+        config.block_timestamp = U256::from(1);
 
         config.sender = CALLER;
         config.initial_balance = U256::MAX;
@@ -117,6 +117,7 @@ impl ForgeTestProfile {
 
         config.fuzz = FuzzConfig {
             runs: 256,
+            fail_on_revert: true,
             max_test_rejects: 65536,
             seed: None,
             dictionary: FuzzDictionaryConfig {
@@ -127,10 +128,11 @@ impl ForgeTestProfile {
                 max_fuzz_dictionary_values: 10_000,
             },
             gas_report_samples: 256,
-            failure_persist_dir: Some(tempfile::tempdir().unwrap().into_path()),
+            failure_persist_dir: Some(tempfile::tempdir().unwrap().keep()),
             failure_persist_file: Some("testfailure".to_string()),
             show_logs: false,
             timeout: None,
+            max_fuzz_int: None,
         };
         config.invariant = InvariantConfig {
             runs: 256,
@@ -147,16 +149,22 @@ impl ForgeTestProfile {
             shrink_run_limit: 5000,
             max_assume_rejects: 65536,
             gas_report_samples: 256,
+            corpus_dir: None,
+            corpus_gzip: true,
+            corpus_min_mutations: 5,
+            corpus_min_size: 0,
             failure_persist_dir: Some(
                 tempfile::Builder::new()
                     .prefix(&format!("foundry-{self}"))
                     .tempdir()
                     .unwrap()
-                    .into_path(),
+                    .keep(),
             ),
-            show_metrics: false,
+            show_metrics: true,
             timeout: None,
             show_solidity: false,
+            show_edge_coverage: false,
+            max_fuzz_int: None,
         };
 
         config.sanitized()
@@ -169,6 +177,7 @@ pub struct ForgeTestData {
     pub output: ProjectCompileOutput,
     pub config: Arc<Config>,
     pub profile: ForgeTestProfile,
+    pub dual_compiled_contracts: Option<DualCompiledContracts>,
 }
 
 impl ForgeTestData {
@@ -181,7 +190,59 @@ impl ForgeTestData {
         let config = Arc::new(profile.config());
         let mut project = config.project().unwrap();
         let output = get_compiled(&mut project);
-        Self { project, output, config, profile }
+        Self { project, output, config, profile, dual_compiled_contracts: None }
+    }
+
+    /// Builds [ForgeTestData] for the given [ForgeTestProfile] with Revive compilation.
+    ///
+    /// This is required for tests that use `runner_revive()`.
+    pub fn new_with_revive(profile: ForgeTestProfile) -> Self {
+        install_crypto_provider();
+        init_tracing();
+        let mut config = profile.config();
+        config.out = profile.root().join("resolc-out").join(profile.to_string());
+        config.extra_output.push(ContractOutputSelection::StorageLayout);
+        let config = Arc::new(config);
+
+        let mut solc_config = (*config).clone();
+        solc_config.out = solc_config.out.join(revive::SOLC_ARTIFACTS_SUBDIR);
+        solc_config.build_info_path = Some(solc_config.out.join("build-info"));
+        let mut solc_project = solc_config.project().unwrap();
+
+        let output = get_compiled(&mut solc_project);
+
+        // Create resolc config with resolc compilation enabled
+        let mut resolc_config = (*config).clone();
+        resolc_config.polkadot.resolc_compile = true;
+        resolc_config.polkadot.resolc =
+            Some(foundry_config::SolcReq::Version(Version::new(0, 6, 0)));
+        let mut resolc_project = resolc_config.project().unwrap();
+
+        // Filter files compatible with resolc
+        let all_files: Vec<_> = solc_project.paths.input_files();
+        let files_to_compile: Vec<_> = all_files
+            .into_iter()
+            .filter(|path| {
+                // We skip all the other sources to avoid deploy-time linking issues
+                path.components().any(|c| c.as_os_str() == "revive")
+            })
+            .collect();
+        let resolc_output = get_resolc_compiled(&mut resolc_project, files_to_compile);
+
+        let dual_compiled_contracts = DualCompiledContracts::new(
+            &output,
+            &resolc_output,
+            &solc_project.paths,
+            &resolc_project.paths,
+        );
+
+        Self {
+            project: solc_project,
+            output,
+            config: Arc::new(solc_config),
+            profile,
+            dual_compiled_contracts: Some(dual_compiled_contracts),
+        }
     }
 
     /// Builds a base runner
@@ -271,6 +332,48 @@ impl ForgeTestData {
             )
             .unwrap()
     }
+
+    /// Builds a runner with revive strategy for polkadot/substrate testing
+    pub fn runner_revive(&self, runtime_mode: ReviveRuntimeMode) -> MultiContractRunner {
+        self.runner_revive_with(runtime_mode, |_| {})
+    }
+
+    pub fn runner_revive_with(
+        &self,
+        runtime_mode: ReviveRuntimeMode,
+        modify: impl FnOnce(&mut Config),
+    ) -> MultiContractRunner {
+        let mut config = (*self.config).clone();
+        modify(&mut config);
+        config.rpc_endpoints = rpc_endpoints();
+        config.allow_paths.push(manifest_root().to_path_buf());
+        if config.fs_permissions.is_empty() {
+            config.fs_permissions =
+                FsPermissions::new(vec![PathPermission::read_write(manifest_root())]);
+        }
+
+        let output = self.output.clone();
+        let dual_compiled_contracts = self.dual_compiled_contracts.as_ref().unwrap().clone();
+
+        let opts = config_evm_opts(&config);
+
+        let mut builder = self.base_runner();
+        let config = Arc::new(config);
+        let root = self.project.root();
+        builder.config = config.clone();
+
+        let mut strategy = ExecutorStrategy::new_revive(runtime_mode);
+
+        strategy
+            .runner
+            .revive_set_dual_compiled_contracts(strategy.context.as_mut(), dual_compiled_contracts);
+
+        builder
+            .enable_isolation(opts.isolate)
+            .sender(config.sender)
+            .build::<MultiCompiler>(strategy, root, &output, opts.local_evm_env(), opts)
+            .unwrap()
+    }
 }
 
 /// Installs Vyper if it's not already present.
@@ -294,7 +397,7 @@ pub fn get_vyper() -> Vyper {
                  install it manually and add it to $PATH"
             ),
         };
-        let url = format!("https://github.com/vyperlang/vyper/releases/download/v0.4.0/vyper.0.4.0+commit.e9db8d9f.{suffix}");
+        let url = format!("https://github.com/vyperlang/vyper/releases/download/v0.4.3/vyper.0.4.3+commit.bff19ea2.{suffix}");
 
         let res = reqwest::Client::builder().build().unwrap().get(url).send().await.unwrap();
 
@@ -344,15 +447,54 @@ pub fn get_compiled(project: &mut Project) -> ProjectCompileOutput {
     out
 }
 
+pub fn get_resolc_compiled(
+    project: &mut Project,
+    files_to_compile: Vec<PathBuf>,
+) -> ProjectCompileOutput {
+    use foundry_common::compile::ProjectCompiler;
+
+    let lock_file_path = project.sources_path().join(".lock-revive");
+
+    let mut lock = fd_lock::new_lock(&lock_file_path);
+    let read = lock.read().unwrap();
+    let out;
+
+    let mut write = None;
+    if !project.cache_path().exists() || std::fs::read(&lock_file_path).unwrap() != b"1" {
+        drop(read);
+        write = Some(lock.write().unwrap());
+    }
+
+    let resolc_compiler = ProjectCompiler::new()
+        .files(files_to_compile)
+        .size_limits(revive::CONTRACT_SIZE_LIMIT, revive::CONTRACT_SIZE_LIMIT);
+
+    out = resolc_compiler.compile(project).unwrap();
+
+    if out.has_compiler_errors() {
+        panic!("Compiled with errors:\n{out}");
+    }
+
+    if let Some(ref mut write) = write {
+        write.write_all(b"1").unwrap();
+    }
+
+    out
+}
+
 /// Default data for the tests group.
 pub static TEST_DATA_DEFAULT: LazyLock<ForgeTestData> =
     LazyLock::new(|| ForgeTestData::new(ForgeTestProfile::Default));
+
+/// Default data for Revive tests (with Revive compilation).
+pub static TEST_DATA_REVIVE: LazyLock<ForgeTestData> =
+    LazyLock::new(|| ForgeTestData::new_with_revive(ForgeTestProfile::Default));
 
 /// Data for tests requiring Paris support on Solc and EVM level.
 pub static TEST_DATA_PARIS: LazyLock<ForgeTestData> =
     LazyLock::new(|| ForgeTestData::new(ForgeTestProfile::Paris));
 
-/// Data for tests requiring Cancun support on Solc and EVM level.
+/// Data for tests requiring Prague support on Solc and EVM level.
 pub static TEST_DATA_MULTI_VERSION: LazyLock<ForgeTestData> =
     LazyLock::new(|| ForgeTestData::new(ForgeTestProfile::MultiVersion));
 
@@ -378,6 +520,9 @@ pub fn rpc_endpoints() -> RpcEndpoints {
         ("bsc", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::BinanceSmartChain))),
         ("avaxTestnet", RpcEndpointUrl::Url("https://api.avax-test.network/ext/bc/C/rpc".into())),
         ("moonbeam", RpcEndpointUrl::Url("https://moonbeam-rpc.publicnode.com".into())),
+        ("polkadotTestnet", RpcEndpointUrl::Url("https://eth-rpc-testnet.polkadot.io".into())),
+        ("kusama", RpcEndpointUrl::Url("https://eth-rpc-kusama.polkadot.io".into())),
+        ("polkadot", RpcEndpointUrl::Url("https://eth-rpc.polkadot.io".into())),
         ("rpcEnvAlias", RpcEndpointUrl::Env("${RPC_ENV_ALIAS}".into())),
     ])
 }

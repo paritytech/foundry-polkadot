@@ -5,3 +5,8 @@ snapshots/
 out.json
 .idea
 .vscode
+.env
+node_modules
+dist
+bin
+_

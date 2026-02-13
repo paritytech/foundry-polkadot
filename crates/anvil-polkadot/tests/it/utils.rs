@@ -1,42 +1,84 @@
-use alloy_primitives::hex;
+use alloy_dyn_abi::{DynSolValue, JsonAbiExt};
+use alloy_eips::{BlockId, BlockNumberOrTag};
+use alloy_json_abi::JsonAbi;
+use alloy_primitives::{Address, B256, Bytes, U256, hex};
+use alloy_rpc_types::{TransactionInput, TransactionRequest};
+use alloy_serde::WithOtherFields;
+use alloy_sol_types::SolCall;
 use anvil_core::eth::EthRequest;
 use anvil_polkadot::{
-    api_server::{self, ApiHandle},
+    api_server::{
+        self, ApiHandle,
+        filters::Filters,
+        revive_conversions::{AlloyU256, ReviveAddress},
+    },
     config::{AnvilNodeConfig, SubstrateNodeConfig},
+    init_tracing,
     logging::LoggingManager,
     opts::SubstrateCli,
     spawn,
-    substrate_node::service::Service,
+    substrate_node::{
+        genesis::GenesisConfig,
+        service::{Service, storage::well_known_keys},
+    },
 };
-use anvil_rpc::response::ResponseResult;
+use anvil_rpc::{
+    error::{ErrorCode, RpcError},
+    response::ResponseResult,
+};
+use codec::Decode;
 use eyre::{Result, WrapErr};
-use futures::{channel::oneshot, StreamExt};
-use parity_scale_codec::Decode;
+use futures::{StreamExt, channel::oneshot};
 use polkadot_sdk::{
-    pallet_revive_eth_rpc::subxt_client::{self, system::calls::types::Remark},
+    pallet_revive::{
+        ReviveApi,
+        evm::{Block, HashesOrTransactionInfos, ReceiptInfo},
+    },
     polkadot_sdk_frame::traits::Header,
     sc_cli::CliConfiguration,
     sc_client_api::{BlockBackend, BlockchainEvents},
-    sc_network_types::multiaddr::Protocol,
-    sp_core::{storage::StorageKey, twox_128, H256},
+    sc_service::TaskManager,
+    sp_api::ProvideRuntimeApi,
+    sp_core::H256,
+    sp_state_machine::StorageKey,
 };
-use serde_json::{json, Value};
-use std::fmt::Debug;
-use subxt::{OnlineClient, PolkadotConfig};
-use subxt_signer::sr25519::Keypair;
+use serde_json::{Value, json};
+use std::{fmt::Debug, time::Duration};
+use subxt::utils::H160;
 use tempfile::TempDir;
+
+use crate::abi::Multicall;
+
+pub struct BlockWaitTimeout {
+    pub block_number: u32,
+    pub timeout: Duration,
+}
+
+impl BlockWaitTimeout {
+    pub fn new(block_number: u32, timeout: Duration) -> Self {
+        Self { block_number, timeout }
+    }
+}
 
 pub struct TestNode {
     pub service: Service,
     pub api: ApiHandle,
     _temp_dir: Option<TempDir>,
-    port: u16,
+    _task_manager: TaskManager,
 }
 
 impl TestNode {
     pub async fn new(
         anvil_config: AnvilNodeConfig,
+        substrate_config: SubstrateNodeConfig,
+    ) -> Result<Self> {
+        Self::new_inner(anvil_config, substrate_config, Filters::default()).await
+    }
+
+    pub async fn new_inner(
+        anvil_config: AnvilNodeConfig,
         mut substrate_config: SubstrateNodeConfig,
+        filters: Filters,
     ) -> Result<Self> {
         let handle = tokio::runtime::Handle::current();
 
@@ -60,16 +102,18 @@ impl TestNode {
             Some(_) => {}
         }
 
-        let substrate_client = SubstrateCli {};
+        let substrate_client = SubstrateCli::new(GenesisConfig::from(&anvil_config));
         let config = substrate_config.create_configuration(&substrate_client, handle.clone())?;
-        let (service, api) = spawn(anvil_config, config, LoggingManager::default()).await?;
-
-        let port = match service.rpc_handlers.listen_addresses()[0].clone().pop().unwrap() {
-            Protocol::Tcp(port) => port,
-            _ => panic!("Expected TCP protocol"),
+        let logging_manager = if anvil_config.enable_tracing {
+            init_tracing(anvil_config.silent)
+        } else {
+            LoggingManager::default()
         };
 
-        Ok(Self { service, api, _temp_dir: temp_dir, port })
+        let (service, task_manager, api) =
+            spawn(anvil_config, config, logging_manager, filters).await?;
+
+        Ok(Self { service, api, _temp_dir: temp_dir, _task_manager: task_manager })
     }
 
     pub async fn eth_rpc(&mut self, req: EthRequest) -> Result<ResponseResult> {
@@ -81,7 +125,269 @@ impl TestNode {
         rx.await.map_err(|e| eyre::eyre!("ApiRequest receiver dropped: {}", e))
     }
 
-    pub async fn substrate_rpc(&self, method: &str, params: Value) -> Result<Value> {
+    pub async fn block_hash_by_number(&self, n: u32) -> eyre::Result<H256> {
+        self.service
+            .client
+            .block_hash(n)
+            .wrap_err("client.block_hash failed")?
+            .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
+    }
+
+    pub async fn eth_block_hash_by_number(&self, n: u32) -> eyre::Result<H256> {
+        let substrate_block_hash = self.block_hash_by_number(n).await?;
+
+        self.resolve_ethereum_hash(substrate_block_hash)
+    }
+
+    /// Execute an ethereum transaction.
+    pub async fn send_transaction(
+        &mut self,
+        transaction: TransactionRequest,
+    ) -> Result<H256, RpcError> {
+        self.send_transaction_inner(transaction, None, false).await
+    }
+
+    /// Execute an impersonated ethereum transaction.
+    pub async fn send_unsigned_transaction(
+        &mut self,
+        transaction: TransactionRequest,
+        timeout: Option<BlockWaitTimeout>,
+    ) -> Result<H256, RpcError> {
+        self.send_transaction_inner(transaction, timeout, true).await
+    }
+
+    async fn send_transaction_inner(
+        &mut self,
+        transaction: TransactionRequest,
+        timeout: Option<BlockWaitTimeout>,
+        unsigned: bool,
+    ) -> Result<H256, RpcError> {
+        let tx_hash = if unsigned {
+            unwrap_response::<H256>(
+                self.eth_rpc(EthRequest::EthSendUnsignedTransaction(Box::new(
+                    WithOtherFields::new(transaction),
+                )))
+                .await
+                .unwrap(),
+            )?
+        } else {
+            let is_automine =
+                unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
+                    .unwrap();
+
+            if is_automine {
+                unwrap_response::<ReceiptInfo>(
+                    self.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(
+                        WithOtherFields::new(transaction),
+                    )))
+                    .await
+                    .unwrap(),
+                )?
+                .transaction_hash
+            } else {
+                unwrap_response(
+                    self.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(
+                        transaction,
+                    ))))
+                    .await
+                    .unwrap(),
+                )?
+            }
+        };
+
+        if let Some(BlockWaitTimeout { block_number, timeout }) = timeout {
+            self.wait_for_block_with_timeout(block_number, timeout).await.unwrap();
+        }
+        Ok(tx_hash)
+    }
+
+    pub async fn get_decoded_timestamp(&mut self, at: Option<H256>) -> u64 {
+        let encoded_value =
+            self.state_get_storage(well_known_keys::TIMESTAMP.to_vec(), at).await.unwrap().unwrap();
+        let bytes =
+            hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
+        let substrate_timestamp: u64 = Decode::decode(&mut &bytes[..]).unwrap();
+
+        let eth_timestamp = self.get_eth_timestamp(at).await;
+
+        assert_eq!(eth_timestamp, substrate_timestamp / 1000);
+
+        substrate_timestamp
+    }
+
+    pub async fn get_nonce(&mut self, address: Address) -> U256 {
+        unwrap_response::<U256>(
+            self.eth_rpc(EthRequest::EthGetTransactionCount(address, None)).await.unwrap(),
+        )
+        .unwrap()
+    }
+
+    pub async fn best_block_number(&mut self) -> u32 {
+        self.eth_best_block().await.number.as_u32()
+    }
+
+    pub async fn wait_for_block_with_timeout(
+        &mut self,
+        n: u32,
+        timeout: std::time::Duration,
+    ) -> eyre::Result<()> {
+        if n <= self.best_block_number().await {
+            return Ok(());
+        }
+        tokio::time::timeout(timeout, self.wait_for_substrate_block_with_number(n)).await?;
+
+        // Sleep here to give time for the revive rpc node to process the block
+        // Can be removed once pub/sub is supported and we could subscribe to the new block
+        // notification.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        Ok(())
+    }
+
+    pub async fn get_balance(&mut self, address: H160, block: Option<BlockId>) -> U256 {
+        unwrap_response::<U256>(
+            self.eth_rpc(EthRequest::EthGetBalance(
+                Address::from(ReviveAddress::new(address)),
+                block,
+            ))
+            .await
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    pub async fn get_transaction_receipt(&mut self, tx_hash: H256) -> ReceiptInfo {
+        unwrap_response::<Option<ReceiptInfo>>(
+            self.eth_rpc(EthRequest::EthGetTransactionReceipt(B256::from(
+                tx_hash.to_fixed_bytes(),
+            )))
+            .await
+            .unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+    }
+
+    /// Retrieves a block allowing both ethereum and substrate hashes.
+    ///
+    /// This relies on the `GetBlockByHash` anvil RPC call, which is based on pallet revive
+    /// `get_block_by_hash` function. As a consequence, the block is first retrieved using the
+    /// input hash as an ethereum hash, and then as a substrate hash if not found.
+    pub async fn get_block_by_hash(&mut self, hash: H256) -> Block {
+        unwrap_response::<Block>(
+            self.eth_rpc(EthRequest::EthGetBlockByHash(hash.as_fixed_bytes().into(), false))
+                .await
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    // Initialize with some balance a random account and return its address.
+    //
+    // Returns the initialized random account address and transaction hash.
+    // When a block wait time is provided, it is assumed that automine was
+    // previously enabled on the node.
+    pub async fn eth_transfer_to_unitialized_random_account(
+        &mut self,
+        from: Address,
+        transfer_amount: U256,
+    ) -> (Address, H256) {
+        let dest_addr = Address::random();
+        let dest_h160 = H160::from_slice(dest_addr.as_slice());
+        let from_h160 = H160::from_slice(from.as_slice());
+
+        // Create a random account with some balance.
+        let from_initial_balance = self.get_balance(from_h160, None).await;
+        let dest_initial_balance = self.get_balance(dest_h160, None).await;
+        assert_eq!(dest_initial_balance, U256::ZERO);
+
+        let transaction =
+            TransactionRequest::default().value(transfer_amount).from(from).to(dest_addr);
+        let tx_hash = self.send_transaction(transaction).await.unwrap();
+
+        let is_automine =
+            unwrap_response::<bool>(self.eth_rpc(EthRequest::GetAutoMine(())).await.unwrap())
+                .unwrap();
+        if is_automine {
+            let receipt_info = self.get_transaction_receipt(tx_hash).await;
+
+            // Assert on balances after first transfer.
+            let from_balance = self.get_balance(from_h160, None).await;
+            let dest_balance = self.get_balance(dest_h160, None).await;
+            assert_eq!(
+                from_balance,
+                from_initial_balance
+                    - AlloyU256::from(receipt_info.effective_gas_price * receipt_info.gas_used)
+                        .inner()
+                    - transfer_amount,
+                "signer's balance should have changed"
+            );
+            assert_eq!(
+                dest_balance,
+                dest_initial_balance + transfer_amount,
+                "dest's balance should have changed"
+            );
+        }
+
+        (dest_addr, tx_hash)
+    }
+
+    pub async fn deploy_contract(&mut self, code: &[u8], deployer: H160) -> H256 {
+        let deploy_contract_tx = TransactionRequest::default()
+            .from(Address::from(ReviveAddress::new(deployer)))
+            .input(TransactionInput::both(Bytes::copy_from_slice(code)));
+        self.send_transaction(deploy_contract_tx).await.unwrap()
+    }
+
+    pub async fn get_storage_at(&mut self, storage_key: U256, contract_address: H160) -> U256 {
+        let result = self
+            .eth_rpc(EthRequest::EthGetStorageAt(
+                Address::from(ReviveAddress::new(contract_address)),
+                storage_key,
+                None,
+            ))
+            .await
+            .unwrap();
+        let hex_string = unwrap_response::<String>(result).unwrap();
+        let hex_value = hex_string.strip_prefix("0x").unwrap_or(&hex_string);
+        U256::from_str_radix(hex_value, 16).unwrap()
+    }
+
+    pub fn resolve_ethereum_hash(&self, substrate_hash: H256) -> eyre::Result<H256> {
+        Ok(self.service.client.runtime_api().eth_block(substrate_hash)?.hash)
+    }
+
+    async fn eth_best_block(&mut self) -> Block {
+        unwrap_response::<Block>(
+            self.eth_rpc(EthRequest::EthGetBlockByNumber(BlockNumberOrTag::Latest, false))
+                .await
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    async fn get_eth_timestamp(&mut self, at: Option<H256>) -> u64 {
+        if let Some(hash) = at {
+            self.get_block_by_hash(hash).await
+        } else {
+            self.eth_best_block().await
+        }
+        .timestamp
+        .as_u64()
+    }
+
+    async fn wait_for_substrate_block_with_number(&self, n: u32) {
+        let mut import_stream = self.service.client.import_notification_stream();
+
+        while let Some(notification) = import_stream.next().await {
+            let block_number = *notification.header.number();
+            if block_number >= n {
+                break;
+            }
+        }
+    }
+
+    async fn substrate_rpc(&self, method: &str, params: Value) -> Result<Value> {
         let rpc = &self.service.rpc_handlers;
 
         let request = json!({
@@ -108,103 +414,22 @@ impl TestNode {
             .cloned()
             .ok_or_else(|| eyre::eyre!("No result in RPC response"))
     }
-}
 
-impl TestNode {
-    pub async fn block_hash_by_number(&self, n: u32) -> eyre::Result<H256> {
-        self.service
-            .client
-            .block_hash(n)
-            .wrap_err("client.block_hash failed")?
-            .ok_or_else(|| eyre::eyre!("no hash for block {}", n))
-    }
-
-    pub fn create_storage_key(pallet: &str, item: &str) -> StorageKey {
-        let mut key = Vec::new();
-        key.extend_from_slice(&twox_128(pallet.as_bytes()));
-        key.extend_from_slice(&twox_128(item.as_bytes()));
-        StorageKey(key)
-    }
-
-    pub async fn state_get_storage(
-        &self,
-        key: StorageKey,
-        at: Option<H256>,
-    ) -> Result<Option<String>> {
-        let key_hex = format!("0x{}", hex::encode(&key.0));
+    async fn state_get_storage(&self, key: StorageKey, at: Option<H256>) -> Result<Option<String>> {
+        let key_hex = format!("0x{}", hex::encode(&key));
         let result = match at {
             Some(hash) => self.substrate_rpc("state_getStorageAt", json!([key_hex, hash])).await?,
             None => self.substrate_rpc("state_getStorage", json!([key_hex])).await?,
         };
         Ok(result.as_str().map(|s| s.to_string()))
     }
+}
 
-    pub async fn get_decoded_timestamp(&self, at: Option<H256>) -> u64 {
-        let storage_key = Self::create_storage_key("Timestamp", "Now");
-        let encoded_value = self.state_get_storage(storage_key, at).await.unwrap().unwrap();
-        let bytes =
-            hex::decode(encoded_value.strip_prefix("0x").unwrap_or(&encoded_value)).unwrap();
-        let mut input = &bytes[..];
-        Decode::decode(&mut input).unwrap()
+pub fn is_transaction_in_block(transactions: &HashesOrTransactionInfos, transaction: H256) -> bool {
+    if let HashesOrTransactionInfos::Hashes(transactions) = transactions {
+        return transactions.contains(&transaction);
     }
-
-    async fn wait_for_block_with_number(&self, n: u32) {
-        let mut import_stream = self.service.client.import_notification_stream();
-
-        while let Some(notification) = import_stream.next().await {
-            let block_number = *notification.header.number();
-            if block_number >= n {
-                break;
-            }
-        }
-    }
-
-    pub async fn best_block_number(&self) -> u32 {
-        let num = self
-            .substrate_rpc("chain_getHeader", json!([]))
-            .await
-            .unwrap()
-            .get("number")
-            .and_then(|v| v.as_str())
-            .unwrap()
-            .to_owned();
-        u32::from_str_radix(num.trim_start_matches("0x"), 16).unwrap()
-    }
-
-    pub async fn wait_for_block_with_timeout(
-        &self,
-        n: u32,
-        timeout: std::time::Duration,
-    ) -> eyre::Result<()> {
-        tokio::time::timeout(timeout, self.wait_for_block_with_number(n))
-            .await
-            .map_err(|e| e.into())
-    }
-
-    pub async fn submit_remark(&self, signer: Keypair) {
-        let url = format!("ws://127.0.0.1:{}", self.port);
-        let subxt_client = OnlineClient::<PolkadotConfig>::from_url(url)
-            .await
-            .wrap_err("Failed to create subxt client")
-            .unwrap();
-        let remark_data = b"bonjour".to_vec();
-        let tx_payload = subxt_client::tx().system().remark(remark_data.clone());
-        let res = subxt_client
-            .tx()
-            .sign_and_submit_then_watch_default(&tx_payload, &signer)
-            .await
-            .unwrap()
-            .wait_for_finalized()
-            .await
-            .unwrap();
-
-        let block_hash = res.block_hash();
-        let block = subxt_client.blocks().at(block_hash).await.unwrap();
-        let extrinsics = block.extrinsics().await.unwrap();
-        let remarks =
-            extrinsics.find::<Remark>().map(|remark| remark.unwrap().value).collect::<Vec<_>>();
-        assert_eq!(remarks[0].remark, remark_data);
-    }
+    false
 }
 
 pub fn assert_with_tolerance<T>(actual: T, expected: T, tolerance: T, message: &str)
@@ -220,14 +445,105 @@ where
     }
 }
 
-pub fn unwrap_response<T>(response: ResponseResult) -> Result<T, Box<dyn std::error::Error>>
+pub fn unwrap_response<T>(response: ResponseResult) -> Result<T, RpcError>
 where
     T: serde::de::DeserializeOwned,
 {
     match response {
-        ResponseResult::Success(value) => Ok(serde_json::from_value(value)?),
-        ResponseResult::Error(err) => {
-            Err(format!("Expected success but got error: {err:?}").into())
-        }
+        ResponseResult::Success(value) => serde_json::from_value(value.clone())
+            .or_else(|_| serde_json::from_str(&serde_json::to_string(&value)?))
+            .map_err(|_| RpcError::new(ErrorCode::ParseError)),
+        ResponseResult::Error(err) => Err(err),
     }
+}
+pub struct ContractCode {
+    pub init: Vec<u8>,
+    pub runtime: Option<Vec<u8>>,
+}
+
+fn load_contract_json(name: &str) -> Value {
+    let contract_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("test-data/{name}.json"));
+
+    serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(contract_path).unwrap()))
+        .unwrap()
+}
+
+fn decode_hex_field(json: &Value, field: &str) -> Option<Vec<u8>> {
+    json.get(field).and_then(|v| v.as_str()).map(|s| hex::decode(s).unwrap())
+}
+
+pub fn get_contract_code(name: &str) -> ContractCode {
+    let contract_json = load_contract_json(name);
+
+    let init = decode_hex_field(&contract_json, "bin").expect("missing 'bin' field");
+    let runtime = decode_hex_field(&contract_json, "bin-runtime");
+
+    ContractCode { init, runtime }
+}
+
+pub fn get_contract_pvm_code(name: &str) -> Vec<u8> {
+    let contract_json = load_contract_json(name);
+    decode_hex_field(&contract_json, "bin-pvm").expect("missing 'bin-pvm' field")
+}
+
+/// Gets contract code with constructor arguments encoded and appended to bytecode.
+/// Loads the ABI from the contract JSON file and encodes the constructor arguments.
+pub fn get_contract_code_with_args(name: &str, constructor_args: Vec<DynSolValue>) -> ContractCode {
+    let contract_code = get_contract_code(name);
+    let contract_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("test-data/{name}.json"));
+
+    let contract_json: Value = serde_json::from_reader(std::io::BufReader::new(
+        std::fs::File::open(contract_path).unwrap(),
+    ))
+    .unwrap();
+
+    // Load ABI - handle both JSON structures
+    let abi: JsonAbi = if contract_json.get("abi").is_some() {
+        // ABI is in "abi" field
+        serde_json::from_value(contract_json.get("abi").unwrap().clone()).unwrap()
+    } else if contract_json.is_array() {
+        // JSON itself is the ABI array
+        serde_json::from_value(contract_json).unwrap()
+    } else {
+        panic!("No ABI found in contract JSON for {name}");
+    };
+
+    let mut init = contract_code.init;
+    if let Some(constructor) = abi.constructor() {
+        let encoded_args = constructor
+            .abi_encode_input(&constructor_args)
+            .expect("Failed to encode constructor arguments");
+        init.extend_from_slice(&encoded_args);
+    }
+
+    ContractCode { init, runtime: contract_code.runtime }
+}
+
+pub fn to_hex_string(value: u64) -> String {
+    let hex = hex::encode(value.to_be_bytes());
+    let trimmed = hex.trim_start_matches('0');
+    let result = if trimmed.is_empty() { "0" } else { trimmed };
+    format!("0x{result}")
+}
+
+pub async fn multicall_get_coinbase(
+    node: &mut TestNode,
+    from: Address,
+    contract_address: Address,
+) -> Address {
+    let get_coinbase = Multicall::getCurrentBlockCoinbaseCall::new(()).abi_encode();
+    let call_tx = TransactionRequest::default()
+        .from(from)
+        .to(contract_address)
+        .input(TransactionInput::both(get_coinbase.into()));
+
+    let res: Bytes = unwrap_response(
+        node.eth_rpc(EthRequest::EthCall(WithOtherFields::new(call_tx), None, None, None))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    Multicall::getCurrentBlockCoinbaseCall::abi_decode_returns(&res.0).unwrap()
 }

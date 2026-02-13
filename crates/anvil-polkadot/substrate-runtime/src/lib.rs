@@ -7,95 +7,51 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 extern crate alloc;
 
+use crate::sp_runtime::ConsensusEngineId;
 use alloc::{vec, vec::Vec};
 use currency::*;
 use frame_support::weights::{
-    constants::{BlockExecutionWeight, ExtrinsicBaseWeight, WEIGHT_REF_TIME_PER_SECOND},
     Weight,
+    constants::{BlockExecutionWeight, ExtrinsicBaseWeight, WEIGHT_REF_TIME_PER_SECOND},
 };
 use frame_system::limits::BlockWeights;
-use pallet_revive::{evm::runtime::EthExtra, AccountId32Mapper};
+use pallet_revive::{
+    AccountId32Mapper,
+    evm::{
+        fees::{BlockRatioFee, Info as FeeInfo},
+        runtime::EthExtra,
+    },
+};
 use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
 use polkadot_sdk::{
     parachains_common::{
-        AccountId, Balance, BlockNumber, Hash as CommonHash, Header, Nonce, Signature,
+        AccountId, AssetHubPolkadotAuraId as AuraId, BlockNumber, Hash as CommonHash, Header,
+        Nonce, Signature,
     },
+    polkadot_runtime_common::SlowAdjustingFeeUpdate,
     polkadot_sdk_frame::{
         deps::sp_genesis_builder,
         runtime::{apis, prelude::*},
+        traits::FindAuthor,
     },
+    sp_consensus_aura::{self, SlotDuration, runtime_decl_for_aura_api::AuraApiV1},
+    sp_runtime::traits::Block as BlockT,
     *,
 };
-use sp_weights::{ConstantMultiplier, IdentityFee};
 
-pub use polkadot_sdk::polkadot_sdk_frame::runtime::types_common::OpaqueBlock;
+pub use polkadot_sdk::parachains_common::Balance;
+use sp_weights::ConstantMultiplier;
+
+pub mod constants {
+    /// DOT precision (1e12) to ETH precision (1e18) ratio.
+    pub const NATIVE_TO_ETH_RATIO: u32 = 1_000_000;
+}
 
 pub mod currency {
     use super::Balance;
-    pub const MILLICENTS: Balance = 1_000_000_000;
-    pub const CENTS: Balance = 1_000 * MILLICENTS;
-    pub const DOLLARS: Balance = 100 * CENTS;
-}
-
-/// Provides getters for genesis configuration presets.
-pub mod genesis_config_presets {
-    use super::*;
-    use crate::{
-        currency::DOLLARS, sp_keyring::Sr25519Keyring, Balance, BalancesConfig,
-        RuntimeGenesisConfig, SudoConfig,
-    };
-
-    use alloc::{vec, vec::Vec};
-    use serde_json::Value;
-
-    pub const ENDOWMENT: Balance = 1_001 * DOLLARS;
-
-    fn well_known_accounts() -> Vec<AccountId> {
-        Sr25519Keyring::well_known()
-            .map(|k| k.to_account_id())
-            .chain([
-                // subxt_signer::eth::dev::alith()
-                array_bytes::hex_n_into_unchecked(
-                    "f24ff3a9cf04c71dbc94d0b566f7a27b94566caceeeeeeeeeeeeeeeeeeeeeeee",
-                ),
-                // subxt_signer::eth::dev::baltathar()
-                array_bytes::hex_n_into_unchecked(
-                    "3cd0a705a2dc65e5b1e1205896baa2be8a07c6e0eeeeeeeeeeeeeeeeeeeeeeee",
-                ),
-            ])
-            .collect::<Vec<_>>()
-    }
-
-    /// Returns a development genesis config preset.
-    pub fn development_config_genesis() -> Value {
-        frame_support::build_struct_json_patch!(RuntimeGenesisConfig {
-            balances: BalancesConfig {
-                balances: well_known_accounts()
-                    .into_iter()
-                    .map(|id| (id, ENDOWMENT))
-                    .collect::<Vec<_>>(),
-            },
-            sudo: SudoConfig { key: Some(Sr25519Keyring::Alice.to_account_id()) },
-        })
-    }
-
-    /// Get the set of the available genesis config presets.
-    pub fn get_preset(id: &PresetId) -> Option<Vec<u8>> {
-        let patch = match id.as_ref() {
-            sp_genesis_builder::DEV_RUNTIME_PRESET => development_config_genesis(),
-            _ => return None,
-        };
-        Some(
-            serde_json::to_string(&patch)
-                .expect("serialization to json is expected to work. qed.")
-                .into_bytes(),
-        )
-    }
-
-    /// List of supported presets.
-    pub fn preset_names() -> Vec<PresetId> {
-        vec![PresetId::from(sp_genesis_builder::DEV_RUNTIME_PRESET)]
-    }
+    pub const DOLLARS: Balance = 1_000_000_000_000;
+    pub const CENTS: Balance = DOLLARS / 100;
+    pub const MILLICENTS: Balance = CENTS / 1_000;
 }
 
 /// The runtime version.
@@ -142,6 +98,8 @@ type TxExtension = (
     // Ensures that the sender has enough funds to pay for the transaction
     // and deducts the fee from the sender's account.
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    // Needs to be done after all extensions that rely on a signed origin.
+    pallet_revive::evm::tx_extension::SetOrigin<Runtime>,
     // Reclaim the unused weight from the block using post dispatch information.
     // It must be last in the pipeline in order to catch the refund in previous transaction
     // extensions
@@ -166,6 +124,7 @@ impl EthExtra for EthExtraImpl {
             frame_system::CheckNonce::<Runtime>::from(nonce),
             frame_system::CheckWeight::<Runtime>::new(),
             pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+            pallet_revive::evm::tx_extension::SetOrigin::<Runtime>::new_from_eth_transaction(),
             frame_system::WeightReclaim::<Runtime>::new(),
         )
     }
@@ -213,17 +172,27 @@ mod runtime {
     #[runtime::pallet_index(2)]
     pub type Balances = pallet_balances::Pallet<Runtime>;
 
-    /// Provides a way to execute privileged functions.
-    #[runtime::pallet_index(3)]
-    pub type Sudo = pallet_sudo::Pallet<Runtime>;
-
     /// Provides the ability to charge for extrinsic execution.
-    #[runtime::pallet_index(4)]
+    #[runtime::pallet_index(3)]
     pub type TransactionPayment = pallet_transaction_payment::Pallet<Runtime>;
 
     /// Provides the ability to execute Smart Contracts.
-    #[runtime::pallet_index(5)]
+    #[runtime::pallet_index(4)]
     pub type Revive = pallet_revive::Pallet<Runtime>;
+
+    /// Provides the ability to determine AURA authorities for block building.
+    #[runtime::pallet_index(5)]
+    pub type Aura = pallet_aura::Pallet<Runtime>;
+}
+
+impl pallet_aura::Config for Runtime {
+    type AuthorityId = AuraId;
+    type DisabledValidators = ();
+    type MaxAuthorities = ConstU32<1>;
+    type AllowMultipleBlocksPerSlot = ConstBool<true>;
+    // Not relevant in general since the node digest
+    // will refer to slot 0 always.
+    type SlotDuration = ConstU64<6000>;
 }
 
 /// We assume that ~10% of the block weight is consumed by `on_initialize` handlers.
@@ -270,7 +239,8 @@ impl frame_system::Config for Runtime {
 }
 
 parameter_types! {
-    pub const ExistentialDeposit: Balance = DOLLARS;
+    // As it is on Westend
+    pub const ExistentialDeposit: Balance = MILLICENTS;
 }
 
 // Implements the types required for the balances pallet.
@@ -281,29 +251,49 @@ impl pallet_balances::Config for Runtime {
     type ExistentialDeposit = ExistentialDeposit;
 }
 
-// Implements the types required for the sudo pallet.
-#[derive_impl(pallet_sudo::config_preludes::TestDefaultConfig)]
-impl pallet_sudo::Config for Runtime {}
-
-// Implements the types required for the sudo pallet.
+// Implements the types required for the timestamp pallet.
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
 impl pallet_timestamp::Config for Runtime {}
 
 parameter_types! {
-    pub const TransactionByteFee: Balance = 10 * MILLICENTS;
+    // That's how asset-hub-westend sets this.
+    pub const TransactionByteFee: Balance = MILLICENTS;
 }
+
+// That's how asset-hub-westend sets this.
+pub type WeightToFee = BlockRatioFee<
+    // p
+    CENTS,
+    // q
+    { 100 * ExtrinsicBaseWeight::get().ref_time() as u128 },
+    Runtime,
+    Balance,
+>;
 
 // Implements the types required for the transaction payment pallet.
 #[derive_impl(pallet_transaction_payment::config_preludes::TestDefaultConfig)]
 impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
-    type WeightToFee = IdentityFee<Balance>;
+    type WeightToFee = WeightToFee;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
+    // That's how asset-hub-westend sets this.
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
 }
 
 parameter_types! {
     pub CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(30);
     pub storage ChainId: u64 = 420_420_420;
+}
+
+pub struct BlockAuthor;
+impl FindAuthor<AccountId> for BlockAuthor {
+    fn find_author<'a, I>(_digests: I) -> Option<AccountId>
+    where
+        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
+    {
+        let authorities = Runtime::authorities();
+        authorities.first().map(|inner| inner.clone().into_inner().into())
+    }
 }
 
 #[derive_impl(pallet_revive::config_preludes::TestDefaultConfig)]
@@ -312,14 +302,24 @@ impl pallet_revive::Config for Runtime {
     type ChainId = ChainId;
     type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
     type Currency = Balances;
-    type NativeToEthRatio = ConstU32<1_000_000>;
+    // TODO: make necessary changes so that we can use `pallet-aura`'s
+    // `FindAuthor` implementation. Main thing it requires is mocking
+    // the inherent data on the node side, effort already part of
+    // `forking` feature.
+    type FindAuthor = BlockAuthor;
+    type Balance = Balance;
+    type NativeToEthRatio = ConstU32<{ constants::NATIVE_TO_ETH_RATIO }>;
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;
+    type GasScale = ConstU32<1>;
+    type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
+    type DebugEnabled = ConstBool<true>;
 }
 
-pallet_revive::impl_runtime_apis_plus_revive!(
+pallet_revive::impl_runtime_apis_plus_revive_traits!(
     Runtime,
+    Revive,
     Executive,
     EthExtraImpl,
 
@@ -328,7 +328,7 @@ pallet_revive::impl_runtime_apis_plus_revive!(
             VERSION
         }
 
-        fn execute_block(block: Block) {
+        fn execute_block(block: <Block as BlockT>::LazyBlock) {
             Executive::execute_block(block)
         }
 
@@ -365,7 +365,7 @@ pallet_revive::impl_runtime_apis_plus_revive!(
         }
 
         fn check_inherents(
-            block: Block,
+            block: <Block as BlockT>::LazyBlock,
             data: InherentData,
         ) -> CheckInherentsResult {
             data.check_extrinsics(&block)
@@ -389,7 +389,7 @@ pallet_revive::impl_runtime_apis_plus_revive!(
     }
 
     impl apis::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(_seed: Option<Vec<u8>>) -> Vec<u8> {
+        fn generate_session_keys(_owner: Vec<u8>, _seed: Option<Vec<u8>>) -> apis::OpaqueGeneratedSessionKeys {
             Default::default()
         }
 
@@ -430,11 +430,27 @@ pallet_revive::impl_runtime_apis_plus_revive!(
         }
 
         fn get_preset(id: &Option<PresetId>) -> Option<Vec<u8>> {
-            get_preset::<RuntimeGenesisConfig>(id, self::genesis_config_presets::get_preset)
+            get_preset::<RuntimeGenesisConfig>(id, |_| None)
         }
 
         fn preset_names() -> Vec<PresetId> {
-            self::genesis_config_presets::preset_names()
+            vec![]
         }
     }
+
+    impl sp_consensus_aura::AuraApi<Block, AuraId> for Runtime {
+        fn slot_duration() -> SlotDuration {
+            // This is not relevant when considering a manual-seal
+            // driven node. The slot duration is used by Aura to determine
+            // the authority, but anvil-polkadot will provide a single slot
+            // always, not taking into consideration computing based on this
+            // runtime API.
+            SlotDuration::from_millis(6000)
+        }
+
+        fn authorities() -> Vec<AuraId> {
+            pallet_aura::Authorities::<Runtime>::get().into_inner()
+        }
+    }
+
 );

@@ -1,22 +1,25 @@
 use foundry_compilers::{
-    resolc::dual_compiled_contracts::DualCompiledContracts, ProjectCompileOutput,
+    ProjectCompileOutput, resolc::dual_compiled_contracts::DualCompiledContracts,
 };
 use foundry_evm::executors::ExecutorStrategyContext;
+
+use crate::{ReviveRuntimeMode, state::TestEnv};
 
 /// Defines the context for [crate::ReviveExecutorStrategyRunner].
 #[derive(Debug, Default, Clone)]
 pub struct ReviveExecutorStrategyContext {
-    /// Whether to start in PVM mode (from config)
-    pub(crate) resolc_startup: bool,
+    /// Runtime backend mode (PVM or EVM on Polkadot)
+    pub(crate) runtime_mode: ReviveRuntimeMode,
     /// Dual compiled contracts.
     pub(crate) dual_compiled_contracts: DualCompiledContracts,
     /// Compilation output.
     pub(crate) compilation_output: Option<ProjectCompileOutput>,
+    pub(crate) externalties: TestEnv,
 }
 
 impl ReviveExecutorStrategyContext {
-    pub fn new(resolc_startup: bool) -> Self {
-        Self { resolc_startup, ..Default::default() }
+    pub fn new(runtime_mode: ReviveRuntimeMode) -> Self {
+        Self { runtime_mode, ..Default::default() }
     }
 }
 

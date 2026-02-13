@@ -4,13 +4,13 @@ use alloy_primitives::{Address, U256};
 use eyre::Result;
 use foundry_cheatcodes::CheatcodesStrategy;
 use foundry_compilers::{
-    compilers::resolc::dual_compiled_contracts::DualCompiledContracts, ProjectCompileOutput,
+    ProjectCompileOutput, compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
 };
-use foundry_evm_core::backend::{Backend, BackendResult, BackendStrategy, CowBackend};
-use revm::{
-    primitives::{EnvWithHandlerCfg, ResultAndState},
-    DatabaseRef,
+use foundry_evm_core::{
+    Env,
+    backend::{Backend, BackendResult, BackendStrategy, CowBackend},
 };
+use revm::{DatabaseRef, context::result::ResultAndState};
 
 use crate::inspectors::InspectorStack;
 
@@ -64,22 +64,22 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync + ExecutorStrategyExt {
     ) -> BackendResult<()>;
 
     /// Gets the balance of an account
-    fn get_balance(&self, executor: &Executor, address: Address) -> BackendResult<U256>;
+    fn get_balance(&self, executor: &mut Executor, address: Address) -> BackendResult<U256>;
 
     /// Set the nonce of an account.
     fn set_nonce(&self, executor: &mut Executor, address: Address, nonce: u64)
-        -> BackendResult<()>;
+    -> BackendResult<()>;
 
     /// Returns the nonce of an account.
-    fn get_nonce(&self, executor: &Executor, address: Address) -> BackendResult<u64>;
+    fn get_nonce(&self, executor: &mut Executor, address: Address) -> BackendResult<u64>;
 
     /// Execute a transaction and *WITHOUT* applying state changes.
     fn call(
         &self,
         ctx: &dyn ExecutorStrategyContext,
         backend: &mut CowBackend<'_>,
-        env: &mut EnvWithHandlerCfg,
-        executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState>;
 
@@ -88,14 +88,20 @@ pub trait ExecutorStrategyRunner: Debug + Send + Sync + ExecutorStrategyExt {
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
         backend: &mut Backend,
-        env: &mut EnvWithHandlerCfg,
-        executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState>;
 }
 
-/// Extended trait for Revive/PVM.
+/// Extended trait for Polkadot.
 pub trait ExecutorStrategyExt {
+    /// Returns the maximum balance value.
+    /// Standard EVM uses U256::MAX, Polkadot uses u128::MAX.
+    fn max_balance(&self) -> U256 {
+        U256::MAX
+    }
+
     /// Set [DualCompiledContracts] on the context.
     fn revive_set_dual_compiled_contracts(
         &self,
@@ -111,8 +117,8 @@ pub trait ExecutorStrategyExt {
     ) {
     }
 
-    fn checkpoint(&self) {}
-    fn reload_checkpoint(&self) {}
+    fn start_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
+    fn rollback_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
 }
 
 /// Implements [ExecutorStrategyRunner] for EVM.
@@ -132,7 +138,7 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         Ok(())
     }
 
-    fn get_balance(&self, executor: &Executor, address: Address) -> BackendResult<U256> {
+    fn get_balance(&self, executor: &mut Executor, address: Address) -> BackendResult<U256> {
         Ok(executor.backend().basic_ref(address)?.map(|acc| acc.balance).unwrap_or_default())
     }
 
@@ -148,7 +154,7 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         Ok(())
     }
 
-    fn get_nonce(&self, executor: &Executor, address: Address) -> BackendResult<u64> {
+    fn get_nonce(&self, executor: &mut Executor, address: Address) -> BackendResult<u64> {
         Ok(executor.backend().basic_ref(address)?.map(|acc| acc.nonce).unwrap_or_default())
     }
 
@@ -156,8 +162,8 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         &self,
         _ctx: &dyn ExecutorStrategyContext,
         backend: &mut CowBackend<'_>,
-        env: &mut EnvWithHandlerCfg,
-        _executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        _executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState> {
         backend.inspect(env, inspector, Box::new(()))
@@ -167,8 +173,8 @@ impl ExecutorStrategyRunner for EvmExecutorStrategyRunner {
         &self,
         _ctx: &mut dyn ExecutorStrategyContext,
         backend: &mut Backend,
-        env: &mut EnvWithHandlerCfg,
-        _executor_env: &EnvWithHandlerCfg,
+        env: &mut Env,
+        _executor_env: &Env,
         inspector: &mut InspectorStack,
     ) -> Result<ResultAndState> {
         backend.inspect(env, inspector, Box::new(()))

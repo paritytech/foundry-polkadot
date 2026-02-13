@@ -9,6 +9,8 @@ use std::path::PathBuf;
 pub struct FuzzConfig {
     /// The number of test cases that must execute for each property test
     pub runs: u32,
+    /// Fails the fuzzed test if a revert occurs.
+    pub fail_on_revert: bool,
     /// The maximum number of test case rejections allowed by proptest, to be
     /// encountered during usage of `vm.assume` cheatcode. This will be used
     /// to set the `max_global_rejects` value in proptest test runner config.
@@ -30,12 +32,19 @@ pub struct FuzzConfig {
     pub show_logs: bool,
     /// Optional timeout (in seconds) for each property test
     pub timeout: Option<u32>,
+    /// Maximum value for fuzzed integers, used to simulate smaller integer types.
+    /// When set, unsigned integers are clamped to [0, max_fuzz_int] and signed integers
+    /// are clamped to [-(max_fuzz_int+1), max_fuzz_int] to match real signed type ranges.
+    /// Useful for Polkadot compatibility where balances are u128.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_fuzz_int: Option<U256>,
 }
 
 impl Default for FuzzConfig {
     fn default() -> Self {
         Self {
             runs: 256,
+            fail_on_revert: true,
             max_test_rejects: 65536,
             seed: None,
             dictionary: FuzzDictionaryConfig::default(),
@@ -44,6 +53,7 @@ impl Default for FuzzConfig {
             failure_persist_file: None,
             show_logs: false,
             timeout: None,
+            max_fuzz_int: None,
         }
     }
 }

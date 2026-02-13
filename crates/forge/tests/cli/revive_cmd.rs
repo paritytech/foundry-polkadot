@@ -2,7 +2,7 @@ use std::{fs, path::Path, str::FromStr};
 
 use foundry_compilers::artifacts::{ConfigurableContractArtifact, Metadata, Remapping};
 use foundry_config::SolidityErrorCode;
-use foundry_test_utils::{snapbox::IntoData, TestProject};
+use foundry_test_utils::{TestProject, snapbox::IntoData};
 
 use crate::constants::*;
 const CONTRACT_ARTIFACT_JSON: &str = "Foo.sol/Foo.json";
@@ -71,18 +71,19 @@ Compiler run successful!
 });
 
 // checks that extra output works
+// TODO: Failing with resolc 0.4.0. Works with resolc 0.6.0.
 forgetest!(can_emit_extra_output_for_resolc, |prj, cmd| {
     prj.clear();
     init_prj(&prj);
 
-    cmd.args(["build", "--resolc", "--extra-output", "metadata"]).assert_success().stdout_eq(str![
-        [r#"
+    cmd.args(["build", "--resolc", "--use-resolc", "0.6.0", "--extra-output", "metadata"])
+        .assert_success()
+        .stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
 
-"#]
-    ]);
+"#]]);
 
     let artifact_path = prj.artifacts().join(CONTRACT_ARTIFACT_JSON);
     let artifact: ConfigurableContractArtifact =
@@ -90,7 +91,15 @@ Compiler run successful!
     assert!(artifact.metadata.is_some());
 
     cmd.forge_fuse()
-        .args(["build", "--resolc", "--extra-output-files", "metadata", "--force"])
+        .args([
+            "build",
+            "--resolc",
+            "--use-resolc",
+            "0.6.0",
+            "--extra-output-files",
+            "metadata",
+            "--force",
+        ])
         .root_arg()
         .assert_success()
         .stdout_eq(str![[r#"
@@ -105,11 +114,14 @@ Compiler run successful!
 });
 
 // checks that extra output works
+// TODO: Failing with resolc 0.4.0. Works with resolc 0.6.0.
 forgetest!(can_emit_multiple_extra_output_for_resolc, |prj, cmd| {
     init_prj(&prj);
     cmd.args([
         "build",
         "--resolc",
+        "--use-resolc",
+        "0.6.0",
         "--extra-output",
         "metadata",
         "ir-optimized",
@@ -135,6 +147,8 @@ Compiler run successful!
         .args([
             "build",
             "--resolc",
+            "--use-resolc",
+            "0.6.0",
             "--extra-output-files",
             "metadata",
             "ir-optimized",
@@ -611,30 +625,30 @@ Error: No source files found in specified build paths.
 forgetest!(can_build_sizes_repeatedly_for_resolc, |prj, cmd| {
     init_prj(&prj);
 
-    cmd.args(["build", "--resolc", "--sizes", "--use-resolc", "resolc:0.1.0-dev.16"])
+    cmd.args(["build", "--resolc", "--sizes", "--use-resolc", "resolc:0.6.0"])
         .assert_success()
         .stdout_eq(str![[r#"
 ...
 ╭----------+------------------+-------------------+--------------------+---------------------╮
 | Contract | Runtime Size (B) | Initcode Size (B) | Runtime Margin (B) | Initcode Margin (B) |
 +============================================================================================+
-| Foo      | 1,288            | 1,288             | 248,712            | 248,712             |
+| Foo      | 1,226            | 1,226             | 248,774            | 248,774             |
 ╰----------+------------------+-------------------+--------------------+---------------------╯
 
 
 "#]]);
 
     cmd.forge_fuse()
-        .args(["build", "--resolc", "--sizes", "--json", "--use-resolc", "resolc:0.1.0-dev.16"])
+        .args(["build", "--resolc", "--sizes", "--json", "--use-resolc", "resolc:0.6.0"])
         .assert_success()
         .stdout_eq(
             str![[r#"
 {
   "Foo": {
-    "runtime_size": 1288,
-    "init_size": 1288,
-    "runtime_margin": 248712,
-    "init_margin": 248712
+    "runtime_size": 1226,
+    "init_size": 1226,
+    "runtime_margin": 248774,
+    "init_margin": 248774
   }
 }
 "#]]
@@ -839,7 +853,10 @@ forgetest!(test_inspect_contract_with_same_name_for_resolc, |prj, cmd| {
     let source = format!("{CUSTOM_COUNTER}\n{ANOTHER_COUNTER}");
     prj.add_source("Counter.sol", &source).unwrap();
 
-    cmd.args(["inspect", "--resolc", "src/Counter.sol", "errors"]).assert_failure().stderr_eq(str![[r#"Error: Multiple contracts found in the same file, please specify the target <path>:<contract> or <contract>[..]"#]]);
+    cmd.args(["inspect", "--resolc", "src/Counter.sol", "errors"]).assert_failure().stderr_eq(str![[r#"
+Error: Multiple contracts found in the same file, please specify the target <path>:<contract> or <contract>
+
+"#]]);
 
     cmd.forge_fuse().args(["inspect", "--resolc", "Counter", "errors"]).assert_success().stdout_eq(
         str![[r#"
@@ -860,8 +877,9 @@ forgetest!(test_inspect_contract_with_same_name_for_resolc, |prj, cmd| {
 forgetest!(inspect_custom_counter_method_identifiers_for_resolc, |prj, cmd| {
     prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
 
-    cmd.args(["inspect", "--resolc", "Counter", "method-identifiers"]).assert_success().stdout_eq(
-        str![[r#"
+    cmd.args(["inspect", "--resolc", "--use-resolc", "0.6.0", "Counter", "method-identifiers"])
+        .assert_success()
+        .stdout_eq(str![[r#"
 
 ╭----------------------------+------------╮
 | Method                     | Identifier |
@@ -882,8 +900,7 @@ forgetest!(inspect_custom_counter_method_identifiers_for_resolc, |prj, cmd| {
 ╰----------------------------+------------╯
 
 
-"#]],
-    );
+"#]]);
 });
 
 // checks forge bind works correctly on the default project
@@ -979,10 +996,9 @@ Compiler run successful!
 forgetest!(can_use_absolute_imports_for_resolc, |prj, cmd| {
     prj.update_config(|config| {
         let remapping = prj.paths().libraries[0].join("myDependency");
-        config.remappings =
-            vec![Remapping::from_str(&format!("myDependency/={}", remapping.display()))
-                .unwrap()
-                .into()];
+        config.remappings = vec![
+            Remapping::from_str(&format!("myDependency/={}", remapping.display())).unwrap().into(),
+        ];
     });
 
     prj.add_lib(

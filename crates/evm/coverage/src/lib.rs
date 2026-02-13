@@ -3,14 +3,14 @@
 //! EVM bytecode coverage analysis.
 
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[macro_use]
 extern crate tracing;
 
 use alloy_primitives::{
-    map::{B256HashMap, HashMap},
     Bytes,
+    map::{B256HashMap, HashMap},
 };
 use analysis::SourceAnalysis;
 use eyre::Result;
@@ -29,7 +29,7 @@ pub mod analysis;
 pub mod anchors;
 
 mod inspector;
-pub use inspector::CoverageCollector;
+pub use inspector::LineCoverageCollector;
 
 /// A coverage report.
 ///
@@ -326,7 +326,7 @@ pub enum CoverageItemKind {
     /// A function in the code.
     Function {
         /// The name of the function.
-        name: String,
+        name: Box<str>,
     },
 }
 

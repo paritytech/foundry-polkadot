@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand, ValueHint};
 use eyre::Result;
 use foundry_common::shell;
 use foundry_compilers::{
-    artifacts::EvmVersion, multi::MultiCompilerInput, Compiler, CompilerInput, Graph,
+    Compiler, CompilerInput, Graph, artifacts::EvmVersion, multi::MultiCompilerInput,
 };
 use foundry_config::Config;
 use semver::Version;
@@ -89,7 +89,7 @@ impl ResolveArgs {
             let mut config = Config::load_with_root(&root)?.canonic_at(root);
 
             if resolc_compile {
-                config.resolc.resolc_compile = true;
+                config.polkadot.resolc_compile = true;
             }
             config
         };
@@ -115,10 +115,10 @@ impl ResolveArgs {
                                 .to_string();
 
                             // Skip files that match the given regex pattern.
-                            if let Some(ref regex) = skip {
-                                if regex.is_match(&path_str) {
-                                    return None;
-                                }
+                            if let Some(ref regex) = skip
+                                && regex.is_match(&path_str)
+                            {
+                                return None;
                             }
 
                             Some(path_str)
@@ -126,11 +126,11 @@ impl ResolveArgs {
                         .collect();
 
                     let evm_version = if shell::verbosity() > 1 {
-                        Some(
-                            EvmVersion::default()
-                                .normalize_version_solc(version)
-                                .unwrap_or_default(),
-                        )
+                        let evm = EvmVersion::default()
+                            .normalize_version_solc(version)
+                            .unwrap_or_default();
+
+                        Some(evm)
                     } else {
                         None
                     };
@@ -145,7 +145,7 @@ impl ResolveArgs {
 
                     let dependency = {
                         // `Input.version` will always differ from `compiler_version`
-                        if config.resolc.resolc_compile {
+                        if config.polkadot.resolc_compile {
                             let names = compiler_name;
                             let mut names = names.split_whitespace();
                             compiler_name =

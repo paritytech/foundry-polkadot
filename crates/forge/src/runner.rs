@@ -1,36 +1,36 @@
 //! The Forge test runner.
 
 use crate::{
-    fuzz::{invariant::BasicTxDetails, BaseCounterExample},
-    multi_runner::{is_matching_test, TestContract, TestRunnerConfig},
-    progress::{start_fuzz_progress, TestsProgress},
-    result::{SuiteResult, TestResult, TestSetup},
     MultiContractRunner, TestFilter,
+    fuzz::{BaseCounterExample, invariant::BasicTxDetails},
+    multi_runner::{TestContract, TestRunnerConfig, is_matching_test},
+    progress::{TestsProgress, start_fuzz_progress},
+    result::{SuiteResult, TestResult, TestSetup},
 };
-use alloy_dyn_abi::DynSolValue;
+use alloy_dyn_abi::{DynSolValue, JsonAbiExt};
 use alloy_json_abi::Function;
-use alloy_primitives::{address, map::HashMap, Address, Bytes, U256};
+use alloy_primitives::{Address, Bytes, U256, address, map::HashMap};
 use eyre::Result;
-use foundry_common::{contracts::ContractsByAddress, TestFunctionExt, TestFunctionKind};
+use foundry_common::{TestFunctionExt, TestFunctionKind, contracts::ContractsByAddress};
 use foundry_compilers::utils::canonicalized;
 use foundry_config::{Config, InvariantConfig};
 use foundry_evm::{
     constants::CALLER,
     decode::RevertDecoder,
     executors::{
+        CallResult, EvmError, Executor, ITest, RawCallResult,
         fuzz::FuzzedExecutor,
         invariant::{
-            check_sequence, replay_error, replay_run, InvariantExecutor, InvariantFuzzError,
+            InvariantExecutor, InvariantFuzzError, check_sequence, replay_error, replay_run,
         },
-        CallResult, EvmError, Executor, ITest, RawCallResult,
     },
     fuzz::{
-        fixture_name,
+        CounterExample, FuzzFixtures, fixture_name,
         invariant::{CallDetails, InvariantContract},
-        CounterExample, FuzzFixtures,
     },
-    traces::{load_contracts, TraceKind, TraceMode},
+    traces::{TraceKind, TraceMode, load_contracts},
 };
+use itertools::Itertools;
 use proptest::test_runner::{
     FailurePersistence, FileFailurePersistence, RngAlgorithm, TestError, TestRng, TestRunner,
 };
@@ -122,14 +122,14 @@ impl<'a> ContractRunner<'a> {
         self.apply_contract_inline_config()?;
 
         // We max out their balance so that they can deploy and make calls.
-        self.executor.set_balance(self.sender, U256::MAX)?;
-        self.executor.set_balance(CALLER, U256::MAX)?;
+        self.executor.set_balance(self.sender, self.executor.strategy.runner.max_balance())?;
+        self.executor.set_balance(CALLER, self.executor.strategy.runner.max_balance())?;
 
         // We set the nonce of the deployer accounts to 1 to get the same addresses as DappTools.
         self.executor.set_nonce(self.sender, 1)?;
 
         // Deploy libraries.
-        self.executor.set_balance(LIBRARY_DEPLOYER, U256::MAX)?;
+        self.executor.set_balance(LIBRARY_DEPLOYER, self.executor.strategy.runner.max_balance())?;
 
         let mut result = TestSetup::default();
         for code in &self.mcr.libs_to_deploy {
@@ -152,14 +152,14 @@ impl<'a> ContractRunner<'a> {
                 return Ok(result);
             }
         }
-
-        let address = self.sender.create(self.executor.get_nonce(self.sender)?);
+        let nonce = self.executor.get_nonce(self.sender)?;
+        let address = self.sender.create(nonce);
         result.address = address;
         // NOTE(revive): the test contract is set here instead of where upstream does it as
         // the test contract address needs to be retrieved in order to skip
         // revive mode for the creation of the test address (and for calls to it later).
         self.executor.backend_mut().set_test_contract(address);
-
+        //
         // Set the contracts initial balance before deployment, so it is available during
         // construction
         self.executor.set_balance(address, self.initial_balance())?;
@@ -411,7 +411,7 @@ impl<'a> ContractRunner<'a> {
             let fail =  TestResult::fail("`testFail*` has been removed. Consider changing to test_Revert[If|When]_Condition and expecting a revert".to_string());
             return SuiteResult::new(start.elapsed(), [(instances, fail)].into(), warnings);
         }
-        let f = |backend: Option<revive_strategy::Backend>, func: &Function| {
+        let f = |func: &Function| {
             let f = || {
                 let start = Instant::now();
 
@@ -443,22 +443,10 @@ impl<'a> ContractRunner<'a> {
 
                 (sig, res)
             };
-            if let Some(backend) = backend {
-                revive_strategy::with_externalities(backend, f)
-            } else {
-                f()
-            }
-        };
-        let backend = if self.config.resolc.resolc_compile {
-            Some(revive_strategy::Backend::get())
-        } else {
-            None
+            f()
         };
 
-        let test_results = functions
-            .into_par_iter()
-            .map(|item| f(backend.clone(), item))
-            .collect::<BTreeMap<_, _>>();
+        let test_results = functions.into_par_iter().map(f).collect::<BTreeMap<_, _>>();
 
         let duration = start.elapsed();
         SuiteResult::new(duration, test_results, warnings)
@@ -530,10 +518,10 @@ impl<'a> FunctionRunner<'a> {
             self.result.single_fail(Some(e.to_string()));
             return self.result;
         }
-
         match kind {
             TestFunctionKind::UnitTest { .. } => self.run_unit_test(func),
             TestFunctionKind::FuzzTest { .. } => self.run_fuzz_test(func),
+            TestFunctionKind::TableTest => self.run_table_test(func),
             TestFunctionKind::InvariantTest => {
                 let test_bytecode = &self.cr.contract.bytecode;
                 self.run_invariant_test(
@@ -557,13 +545,17 @@ impl<'a> FunctionRunner<'a> {
     /// test ends, similar to `eth_call`.
     fn run_unit_test(mut self, func: &Function) -> TestResult {
         // Prepare unit test execution.
+        self.executor.strategy.runner.start_transaction(self.executor.strategy.context.as_ref());
         if self.prepare_test(func).is_err() {
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
             return self.result;
         }
-        let mut binding = self.executor.clone();
-        let executor = binding.to_mut();
+
         // Run current unit test.
-        let (mut raw_call_result, reason) = match executor.call(
+        let (mut raw_call_result, reason) = match self.executor.call(
             self.sender,
             self.address,
             func,
@@ -575,10 +567,18 @@ impl<'a> FunctionRunner<'a> {
             Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
             Err(EvmError::Skip(reason)) => {
                 self.result.single_skip(reason);
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
             Err(err) => {
                 self.result.single_fail(Some(err.to_string()));
+                self.executor
+                    .strategy
+                    .runner
+                    .rollback_transaction(self.executor.strategy.context.as_ref());
                 return self.result;
             }
         };
@@ -586,6 +586,139 @@ impl<'a> FunctionRunner<'a> {
         let success =
             self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
         self.result.single_result(success, reason, raw_call_result);
+        self.executor.strategy.runner.rollback_transaction(self.executor.strategy.context.as_ref());
+
+        self.result
+    }
+
+    /// Runs a table test.
+    /// The parameters dataset (table) is created from defined parameter fixtures, therefore each
+    /// test table parameter should have the same number of fixtures defined.
+    /// E.g. for table test
+    /// - `table_test(uint256 amount, bool swap)` fixtures are defined as
+    /// - `uint256[] public fixtureAmount = [2, 5]`
+    /// - `bool[] public fixtureSwap = [true, false]` The `table_test` is then called with the pair
+    ///   of args `(2, true)` and `(5, false)`.
+    fn run_table_test(mut self, func: &Function) -> TestResult {
+        if self.prepare_test(func).is_err() {
+            return self.result;
+        }
+
+        // Extract and validate fixtures for the first table test parameter.
+        let Some(first_param) = func.inputs.first() else {
+            self.result.single_fail(Some("Table test should have at least one parameter".into()));
+            return self.result;
+        };
+
+        let Some(first_param_fixtures) =
+            &self.setup.fuzz_fixtures.param_fixtures(first_param.name())
+        else {
+            self.result.single_fail(Some("Table test should have fixtures defined".into()));
+            return self.result;
+        };
+
+        if first_param_fixtures.is_empty() {
+            self.result.single_fail(Some("Table test should have at least one fixture".into()));
+            return self.result;
+        }
+
+        let fixtures_len = first_param_fixtures.len();
+        let mut table_fixtures = vec![&first_param_fixtures[..]];
+
+        // Collect fixtures for remaining parameters.
+        for param in &func.inputs[1..] {
+            let param_name = param.name();
+            let Some(fixtures) = &self.setup.fuzz_fixtures.param_fixtures(param.name()) else {
+                self.result.single_fail(Some(format!("No fixture defined for param {param_name}")));
+                return self.result;
+            };
+
+            if fixtures.len() != fixtures_len {
+                self.result.single_fail(Some(format!(
+                    "{} fixtures defined for {param_name} (expected {})",
+                    fixtures.len(),
+                    fixtures_len
+                )));
+                return self.result;
+            }
+
+            table_fixtures.push(&fixtures[..]);
+        }
+
+        let progress = start_fuzz_progress(
+            self.cr.progress,
+            self.cr.name,
+            &func.name,
+            None,
+            fixtures_len as u32,
+        );
+
+        for i in 0..fixtures_len {
+            // Increment progress bar.
+            if let Some(progress) = progress.as_ref() {
+                progress.inc(1);
+            }
+
+            let args = table_fixtures.iter().map(|row| row[i].clone()).collect_vec();
+            self.executor
+                .strategy
+                .runner
+                .start_transaction(self.executor.strategy.context.as_ref());
+
+            let (mut raw_call_result, reason) = match self.executor.call(
+                self.sender,
+                self.address,
+                func,
+                &args,
+                U256::ZERO,
+                Some(self.revert_decoder()),
+            ) {
+                Ok(res) => (res.raw, None),
+                Err(EvmError::Execution(err)) => (err.raw, Some(err.reason)),
+                Err(EvmError::Skip(reason)) => {
+                    self.result.single_skip(reason);
+                    self.executor
+                        .strategy
+                        .runner
+                        .rollback_transaction(self.executor.strategy.context.as_ref());
+                    return self.result;
+                }
+                Err(err) => {
+                    self.result.single_fail(Some(err.to_string()));
+                    self.executor
+                        .strategy
+                        .runner
+                        .rollback_transaction(self.executor.strategy.context.as_ref());
+                    return self.result;
+                }
+            };
+            self.executor
+                .strategy
+                .runner
+                .rollback_transaction(self.executor.strategy.context.as_ref());
+
+            let is_success =
+                self.executor.is_raw_call_mut_success(self.address, &mut raw_call_result, false);
+            // Record counterexample if test fails.
+            if !is_success {
+                self.result.counterexample =
+                    Some(CounterExample::Single(BaseCounterExample::from_fuzz_call(
+                        Bytes::from(func.abi_encode_input(&args).unwrap()),
+                        args,
+                        raw_call_result.traces.clone(),
+                    )));
+                self.result.single_result(false, reason, raw_call_result);
+                return self.result;
+            }
+
+            // If it's the last iteration and all other runs succeeded, then use last call result
+            // for logs and traces.
+            if i == fixtures_len - 1 {
+                self.result.single_result(true, None, raw_call_result);
+                return self.result;
+            }
+        }
+
         self.result
     }
 
@@ -596,10 +729,8 @@ impl<'a> FunctionRunner<'a> {
         identified_contracts: &ContractsByAddress,
         test_bytecode: &Bytes,
     ) -> TestResult {
-        let mut binding = self.executor.clone();
-        let executor = binding.to_mut();
         // First, run the test normally to see if it needs to be skipped.
-        if let Err(EvmError::Skip(reason)) = executor.call(
+        if let Err(EvmError::Skip(reason)) = self.executor.call(
             self.sender,
             self.address,
             func,
@@ -614,8 +745,15 @@ impl<'a> FunctionRunner<'a> {
         let runner = self.invariant_runner();
         let invariant_config = &self.config.invariant;
 
+        let mut executor = self.clone_executor();
+        // Enable edge coverage if running with coverage guided fuzzing or with edge coverage
+        // metrics (useful for benchmarking the fuzzer).
+        executor.inspector_mut().collect_edge_coverage(
+            invariant_config.corpus_dir.is_some() || invariant_config.show_edge_coverage,
+        );
+
         let mut evm = InvariantExecutor::new(
-            self.clone_executor(),
+            executor,
             runner,
             invariant_config.clone(),
             identified_contracts,
@@ -661,39 +799,44 @@ impl<'a> FunctionRunner<'a> {
                 invariant_contract.invariant_function.selector().to_vec().into(),
                 invariant_config.fail_on_revert,
                 invariant_contract.call_after_invariant,
-            ) {
-                if !success {
-                    let _= sh_warn!("\
+            ) && !success
+            {
+                let _ = sh_warn!(
+                    "\
                             Replayed invariant failure from {:?} file. \
                             Run `forge clean` or remove file to ignore failure and to continue invariant test campaign.",
-                        failure_file.as_path()
-                    );
-                    // If sequence still fails then replay error to collect traces and
-                    // exit without executing new runs.
-                    let _ = replay_run(
-                        &invariant_contract,
-                        self.clone_executor(),
-                        &self.cr.mcr.known_contracts,
-                        identified_contracts.clone(),
-                        &mut self.result.logs,
-                        &mut self.result.traces,
-                        &mut self.result.coverage,
-                        &mut self.result.deprecated_cheatcodes,
-                        &txes,
-                        show_solidity,
-                    );
-                    self.result.invariant_replay_fail(
-                        replayed_entirely,
-                        &invariant_contract.invariant_function.name,
-                        call_sequence,
-                    );
-                    return self.result;
-                }
+                    failure_file.as_path()
+                );
+                // If sequence still fails then replay error to collect traces and
+                // exit without executing new runs.
+                let _ = replay_run(
+                    &invariant_contract,
+                    self.clone_executor(),
+                    &self.cr.mcr.known_contracts,
+                    identified_contracts.clone(),
+                    &mut self.result.logs,
+                    &mut self.result.traces,
+                    &mut self.result.line_coverage,
+                    &mut self.result.deprecated_cheatcodes,
+                    &txes,
+                    show_solidity,
+                );
+                self.result.invariant_replay_fail(
+                    replayed_entirely,
+                    &invariant_contract.invariant_function.name,
+                    call_sequence,
+                );
+                return self.result;
             }
         }
 
-        let progress =
-            start_fuzz_progress(self.cr.progress, self.cr.name, &func.name, invariant_config.runs);
+        let progress = start_fuzz_progress(
+            self.cr.progress,
+            self.cr.name,
+            &func.name,
+            invariant_config.timeout,
+            invariant_config.runs,
+        );
         let invariant_result = match evm.invariant_fuzz(
             invariant_contract.clone(),
             &self.setup.fuzz_fixtures,
@@ -707,7 +850,7 @@ impl<'a> FunctionRunner<'a> {
             }
         };
         // Merge coverage collected during invariant run with test setup coverage.
-        self.result.merge_coverages(invariant_result.coverage);
+        self.result.merge_coverages(invariant_result.line_coverage);
 
         let mut counterexample = None;
         let success = invariant_result.error.is_none();
@@ -716,8 +859,8 @@ impl<'a> FunctionRunner<'a> {
         match invariant_result.error {
             // If invariants were broken, replay the error to collect logs and traces
             Some(error) => match error {
-                InvariantFuzzError::BrokenInvariant(case_data) |
-                InvariantFuzzError::Revert(case_data) => {
+                InvariantFuzzError::BrokenInvariant(case_data)
+                | InvariantFuzzError::Revert(case_data) => {
                     // Replay error to create counterexample and to collect logs, traces and
                     // coverage.
                     match replay_error(
@@ -728,7 +871,7 @@ impl<'a> FunctionRunner<'a> {
                         identified_contracts.clone(),
                         &mut self.result.logs,
                         &mut self.result.traces,
-                        &mut self.result.coverage,
+                        &mut self.result.line_coverage,
                         &mut self.result.deprecated_cheatcodes,
                         progress.as_ref(),
                         show_solidity,
@@ -777,7 +920,7 @@ impl<'a> FunctionRunner<'a> {
                     identified_contracts.clone(),
                     &mut self.result.logs,
                     &mut self.result.traces,
-                    &mut self.result.coverage,
+                    &mut self.result.line_coverage,
                     &mut self.result.deprecated_cheatcodes,
                     &invariant_result.last_run_inputs,
                     show_solidity,
@@ -795,6 +938,7 @@ impl<'a> FunctionRunner<'a> {
             invariant_result.cases,
             invariant_result.reverts,
             invariant_result.metrics,
+            invariant_result.failed_corpus_replays,
         );
         self.result
     }
@@ -809,6 +953,8 @@ impl<'a> FunctionRunner<'a> {
     /// State modifications of before test txes and fuzz test are discarded after test ends,
     /// similar to `eth_call`.
     fn run_fuzz_test(mut self, func: &Function) -> TestResult {
+        let binding = self.executor.clone().into_owned();
+        self.executor = Cow::Owned(binding);
         // Prepare fuzz test execution.
         if self.prepare_test(func).is_err() {
             return self.result;
@@ -817,8 +963,13 @@ impl<'a> FunctionRunner<'a> {
         let runner = self.fuzz_runner();
         let fuzz_config = self.config.fuzz.clone();
 
-        let progress =
-            start_fuzz_progress(self.cr.progress, self.cr.name, &func.name, fuzz_config.runs);
+        let progress = start_fuzz_progress(
+            self.cr.progress,
+            self.cr.name,
+            &func.name,
+            fuzz_config.timeout,
+            fuzz_config.runs,
+        );
 
         // Run fuzz test.
         let fuzzed_executor =
@@ -832,6 +983,7 @@ impl<'a> FunctionRunner<'a> {
             progress.as_ref(),
         );
         self.result.fuzz_result(result);
+
         self.result
     }
 
@@ -848,17 +1000,13 @@ impl<'a> FunctionRunner<'a> {
         let address = self.setup.address;
 
         // Apply before test configured functions (if any).
-        if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count() ==
-            1
+        if self.cr.contract.abi.functions().filter(|func| func.name.is_before_test_setup()).count()
+            == 1
         {
-            for calldata in self
-                .executor
-                .call_sol_default(
-                    address,
-                    &ITest::beforeTestSetupCall { testSelector: func.selector() },
-                )
-                .beforeTestCalldata
-            {
+            for calldata in self.executor.call_sol_default(
+                address,
+                &ITest::beforeTestSetupCall { testSelector: func.selector() },
+            ) {
                 // Apply before test configured calldata.
                 match self.executor.to_mut().transact_raw(
                     self.tcfg.sender,
