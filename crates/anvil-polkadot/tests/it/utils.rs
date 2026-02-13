@@ -47,7 +47,9 @@ use std::{fmt::Debug, time::Duration};
 use subxt::utils::H160;
 use tempfile::TempDir;
 
-use crate::abi::{Multicall, SimpleStorage};
+use crate::abi::Multicall;
+#[cfg(feature = "forking-support")]
+use crate::abi::SimpleStorage;
 
 pub struct BlockWaitTimeout {
     pub block_number: u32,
@@ -150,6 +152,7 @@ impl TestNode {
     /// Execute an ethereum transaction and wait for its receipt.
     /// When automine is enabled, uses `EthSendTransactionSync` to get the receipt directly.
     /// Otherwise, sends the transaction and polls for the receipt via block import notifications.
+    #[cfg(feature = "forking-support")]
     pub async fn send_transaction_and_wait(
         &mut self,
         transaction: TransactionRequest,
@@ -415,6 +418,7 @@ impl TestNode {
     }
 
     /// Deploy a contract and wait for its receipt.
+    #[cfg(feature = "forking-support")]
     pub async fn deploy_contract_and_wait(
         &mut self,
         code: &[u8],
@@ -617,6 +621,7 @@ pub fn to_hex_string(value: u64) -> String {
 }
 
 /// Helper function to call getValue() on a SimpleStorage contract
+#[cfg(feature = "forking-support")]
 pub async fn simplestorage_get_value(
     node: &mut TestNode,
     contract_address: polkadot_sdk::pallet_revive::H160,
