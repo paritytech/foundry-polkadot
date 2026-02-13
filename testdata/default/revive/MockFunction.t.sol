@@ -71,4 +71,31 @@ contract MockFunctionTest is DSTest {
         my_contract.mocked_args_function(789);
         assertEq(my_contract.a(), 123 + 789);
     }
+
+    // mockFunction: delegates calls AND preserves real code
+    function test_mockFunction_preserves_real_code() public {
+        address target = address(my_contract);
+        uint256 originalSize;
+        assembly {
+            originalSize := extcodesize(target)
+        }
+        bytes32 originalHash = target.codehash;
+        assertTrue(originalSize > 1, "Should have real code");
+
+        vm.mockFunction(
+            address(my_contract),
+            address(model_contract),
+            abi.encodeWithSelector(MockFunctionContract.mocked_function.selector)
+        );
+
+        my_contract.mocked_function();
+        assertEq(my_contract.a(), 123, "Should use model behavior");
+
+        uint256 sizeAfter;
+        assembly {
+            sizeAfter := extcodesize(target)
+        }
+        assertEq(sizeAfter, originalSize, "EXTCODESIZE preserved");
+        assertEq(target.codehash, originalHash, "EXTCODEHASH preserved");
+    }
 }
