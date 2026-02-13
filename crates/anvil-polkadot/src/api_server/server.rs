@@ -823,7 +823,7 @@ impl ApiServer {
         // Use dynamic transaction building to ensure the correct pallet index is used.
         // The metadata in self.api comes from the runtime's WASM (via runtime API call),
         // which is the forked chain's WASM when forking. This ensures correct pallet indices.
-        let payload_value = DynamicValue::from_bytes(transaction.0.clone());
+        let payload_value = DynamicValue::from_bytes(transaction.0);
         let tx_payload = dynamic_tx("Revive", "eth_transact", vec![payload_value]);
 
         let ext = self.api.tx().create_unsigned(&tx_payload).map_err(|e| {
