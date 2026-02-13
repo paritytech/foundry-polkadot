@@ -826,9 +826,7 @@ impl ApiServer {
         let payload_value = DynamicValue::from_bytes(transaction.0);
         let tx_payload = dynamic_tx("Revive", "eth_transact", vec![payload_value]);
 
-        let ext = self.api.tx().create_unsigned(&tx_payload).map_err(|e| {
-            Error::InternalError(format!("Failed to create unsigned extrinsic: {e}"))
-        })?;
+        let ext = self.api.tx().create_unsigned(&tx_payload)?;
 
         // Submit the extrinsic to the transaction pool
         self.rpc.author_submit_extrinsic(ext.encoded()).await?;
