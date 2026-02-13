@@ -24,10 +24,10 @@ use foundry_common::{
     shell,
 };
 use foundry_compilers::{
+    Artifact, ArtifactId, ProjectCompileOutput,
     artifacts::{ArtifactExtras, BytecodeObject},
     info::ContractInfo,
     utils::canonicalize,
-    Artifact, ArtifactId, ProjectCompileOutput,
 };
 use foundry_config::{
     Config,
@@ -120,11 +120,11 @@ async fn upload_factory_dependencies<P: Provider<AnyNetwork>>(
     let mut all_dependencies = BTreeMap::new();
 
     for (_id, contract) in output.artifact_ids() {
-        if let ArtifactExtras::Resolc(extras) = &contract.extensions {
-            if let Some(factory_dependencies) = &extras.factory_dependencies {
-                for (bytecode_hash, contract_name) in factory_dependencies {
-                    all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
-                }
+        if let ArtifactExtras::Resolc(extras) = &contract.extensions
+            && let Some(factory_dependencies) = &extras.factory_dependencies
+        {
+            for (bytecode_hash, contract_name) in factory_dependencies {
+                all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
             }
         }
     }
@@ -160,11 +160,7 @@ async fn upload_factory_dependencies<P: Provider<AnyNetwork>>(
         let receipt = pending_tx.get_receipt().await?;
 
         if !shell::is_json() {
-            sh_println!(
-                "Factory dependency '{}' uploaded: tx {}",
-                name,
-                receipt.transaction_hash
-            )?;
+            sh_println!("Factory dependency '{}' uploaded: tx {}", name, receipt.transaction_hash)?;
         }
     }
 
