@@ -1,6 +1,6 @@
 //! Tests for max_fuzz_int configuration limiting fuzz values.
 
-use crate::test_helpers::TEST_DATA_DEFAULT;
+use crate::test_helpers::TEST_DATA_REVIVE;
 use alloy_primitives::U256;
 use forge::result::{SuiteResult, TestStatus};
 use foundry_test_utils::Filter;
@@ -13,7 +13,7 @@ async fn test_fuzz_max_int_uint_limited() {
 
     let filter =
         Filter::new("testFuzzUint256Limited", "FuzzMaxIntTest", ".*/revive/FuzzMaxInt.t.sol");
-    let mut runner = TEST_DATA_DEFAULT.runner_with(|config| {
+    let mut runner = TEST_DATA_REVIVE.runner_with(|config| {
         config.fuzz.max_fuzz_int = Some(max_value);
         config.fuzz.runs = 1000;
     });
@@ -40,7 +40,7 @@ async fn test_fuzz_max_int_int_limited() {
 
     let filter =
         Filter::new("testFuzzInt256Limited", "FuzzMaxIntTest", ".*/revive/FuzzMaxInt.t.sol");
-    let mut runner = TEST_DATA_DEFAULT.runner_with(|config| {
+    let mut runner = TEST_DATA_REVIVE.runner_with(|config| {
         config.fuzz.max_fuzz_int = Some(max_value);
         config.fuzz.runs = 1000;
     });
@@ -64,7 +64,7 @@ async fn test_fuzz_max_int_int_limited() {
 async fn test_fuzz_no_limit_uint_exceeds() {
     let filter =
         Filter::new("testFuzzUint256Unlimited", "FuzzNoLimitTest", ".*/revive/FuzzMaxInt.t.sol");
-    let mut runner = TEST_DATA_DEFAULT.runner_with(|config| {
+    let mut runner = TEST_DATA_REVIVE.runner_with(|config| {
         config.fuzz.max_fuzz_int = None; // No limit
         config.fuzz.runs = 1000;
         config.fuzz.seed = Some(U256::from(42u32)); // Fixed seed for reproducibility
@@ -89,7 +89,7 @@ async fn test_fuzz_no_limit_uint_exceeds() {
 async fn test_fuzz_no_limit_int_exceeds() {
     let filter =
         Filter::new("testFuzzInt256Unlimited", "FuzzNoLimitTest", ".*/revive/FuzzMaxInt.t.sol");
-    let mut runner = TEST_DATA_DEFAULT.runner_with(|config| {
+    let mut runner = TEST_DATA_REVIVE.runner_with(|config| {
         config.fuzz.max_fuzz_int = None; // No limit
         config.fuzz.runs = 1000;
         config.fuzz.seed = Some(U256::from(42u32)); // Fixed seed for reproducibility

@@ -452,8 +452,7 @@ note[mixed-case-variable]: mutable variables should use mixedCase
 
 #[tokio::test]
 async fn ensure_lint_rule_docs() {
-    const FOUNDRY_BOOK_LINT_PAGE_URL: &str =
-        "https://book.getfoundry.sh/reference/forge/forge-lint";
+    const FOUNDRY_BOOK_LINT_PAGE_URL: &str = "https://book.getfoundry.sh/forge/linting";
 
     // Fetch the content of the lint reference
     let content = match reqwest::get(FOUNDRY_BOOK_LINT_PAGE_URL).await {
@@ -479,8 +478,11 @@ async fn ensure_lint_rule_docs() {
     // Ensure no missing lints
     let mut missing_lints = Vec::new();
     for lint in REGISTERED_LINTS {
-        let selector = format!("#{}", lint.id());
-        if !content.contains(&selector) {
+        let selector = lint.id().to_lowercase();
+        let selector_with_space = selector.replace("-", " ");
+        if !content.to_lowercase().contains(&selector)
+            && !content.to_lowercase().contains(&selector_with_space)
+        {
             missing_lints.push(lint.id());
         }
     }

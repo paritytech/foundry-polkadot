@@ -528,7 +528,7 @@ impl From<ReviveTrace> for GethTrace {
                                         .map(|x| String::from_utf8(x.0))
                                         .collect::<Result<Vec<String>, _>>()
                                         .ok()
-                                        .or_else(|| None)
+                                        .or(None)
                                 },
                                 memory_size: None, // TODO: fixme
                                 storage: storage.map(|x| {
