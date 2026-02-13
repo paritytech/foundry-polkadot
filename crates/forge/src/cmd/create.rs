@@ -3,7 +3,7 @@ use alloy_chains::Chain;
 use alloy_dyn_abi::{DynSolValue, JsonAbiExt, Specifier};
 use alloy_json_abi::{Constructor, JsonAbi};
 use alloy_network::{AnyNetwork, AnyTransactionReceipt, EthereumWallet, TransactionBuilder};
-use alloy_primitives::{Address, Bytes, hex};
+use alloy_primitives::{Address, Bytes, U256, address, hex, keccak256};
 use alloy_provider::{PendingTransactionError, Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
@@ -12,7 +12,7 @@ use alloy_transport::TransportError;
 use clap::{Parser, ValueHint};
 
 use codec::{Compact, Encode};
-use eyre::{Context, OptionExt, Result};
+use eyre::{Context, Result};
 use forge_verify::{RetryArgs, VerifierArgs, VerifyArgs};
 use foundry_cli::{
     opts::{BuildOpts, EthereumOpts, EtherscanOpts, TransactionOpts},
@@ -44,21 +44,61 @@ use std::{
 };
 merge_impl_figment_convert!(CreateArgs, build, eth);
 
-/// Finds a contract in the artifacts by its bytecode hash
+/// The `upload_code` call index within pallet-revive (`#[pallet::call_index(4)]`).
+const UPLOAD_CODE_CALL_INDEX: u8 = 4;
+
+/// The address used to dispatch substrate runtime calls via EVM transactions.
+/// Computed with `PalletId(*b"py/paddr").into_account_truncating()`.
+const RUNTIME_PALLETS_ADDR: Address = address!("6d6f646c70792f70616464720000000000000000");
+
+/// Maximum bytecode size that can be uploaded in a single transaction calldata.
+const MAX_UPLOAD_BYTECODE_SIZE: usize = 128 * 1024;
+
+/// Resolves the pallet-revive index for the given chain.
+///
+/// Checks the explicit config value first, then falls back to known chain IDs.
+/// Known networks and their pallet-revive indices:
+/// - anvil-polkadot (420420420) → 4
+/// - Paseo Asset Hub (420420417) → 100
+/// - Kusama Asset Hub (420420418) → 60
+/// - Polkadot Asset Hub (420420419) → 90
+fn resolve_revive_pallet_index(config_value: Option<u8>, chain_id: u64) -> Result<u8> {
+    if let Some(index) = config_value {
+        return Ok(index);
+    }
+
+    match chain_id {
+        420420420 => Ok(4),   // anvil-polkadot
+        420420417 => Ok(100), // Paseo Asset Hub
+        420420418 => Ok(60),  // Kusama Asset Hub
+        420420419 => Ok(90),  // Polkadot Asset Hub
+        _ => eyre::bail!(
+            "Unknown pallet-revive index for chain ID {chain_id}. \
+             Set `polkadot.revive_pallet_index` in foundry.toml."
+        ),
+    }
+}
+
+/// Encodes an `upload_code` call for pallet-revive as a SCALE-encoded `RuntimeCall`.
+/// Format: `[pallet_index, call_index, SCALE(Vec<u8> code), SCALE(Compact<u128> deposit)]`
+fn encode_upload_code_call(pallet_index: u8, code: &[u8], storage_deposit_limit: u128) -> Vec<u8> {
+    let mut encoded = Vec::new();
+    encoded.push(pallet_index);
+    encoded.push(UPLOAD_CODE_CALL_INDEX);
+    code.encode_to(&mut encoded);
+    Compact(storage_deposit_limit).encode_to(&mut encoded);
+    encoded
+}
+
+/// Finds a contract in the artifacts by its bytecode keccak256 hash.
 fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Option<Bytes> {
+    let normalized_target = target_hash.trim_start_matches("0x");
     for (_contract_name, artifact) in output.artifacts() {
         if let Some(bytecode) = artifact.get_bytecode_bytes() {
             let bytecode_bytes = bytecode.into_owned();
             if !bytecode_bytes.is_empty() {
-                // Calculate keccak256 hash of the bytecode
-                use alloy_primitives::keccak256;
                 let calculated_hash = hex::encode(keccak256(&bytecode_bytes));
-
-                // Normalize both hashes by removing 0x prefix for comparison
-                let normalized_target = target_hash.trim_start_matches("0x");
-                let normalized_calculated = calculated_hash.trim_start_matches("0x");
-
-                if normalized_calculated == normalized_target {
+                if calculated_hash.trim_start_matches("0x") == normalized_target {
                     return Some(bytecode_bytes);
                 }
             }
@@ -67,20 +107,23 @@ fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Op
     None
 }
 
-/// Handles factory dependencies for a contract deployment
-async fn upload_factory_dependencies(
+/// Uploads factory dependencies for a contract deployment.
+///
+/// Collects all `factory_dependencies` from Resolc compiler metadata, then uploads
+/// each dependency bytecode to pallet-revive via `upload_code` dispatched through
+/// `RUNTIME_PALLETS_ADDR`.
+async fn upload_factory_dependencies<P: Provider<AnyNetwork>>(
     output: &ProjectCompileOutput,
-    config: &Config,
-    private_key: &str,
+    provider: &P,
+    pallet_index: u8,
 ) -> Result<()> {
-    // Collect all factory dependencies from all contracts
     let mut all_dependencies = BTreeMap::new();
 
     for (_id, contract) in output.artifact_ids() {
         if let ArtifactExtras::Resolc(extras) = &contract.extensions {
             if let Some(factory_dependencies) = &extras.factory_dependencies {
                 for (bytecode_hash, contract_name) in factory_dependencies {
-                    all_dependencies.insert(bytecode_hash, contract_name);
+                    all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
                 }
             }
         }
@@ -90,41 +133,38 @@ async fn upload_factory_dependencies(
         return Ok(());
     }
 
-    // Get RPC URL for factory dependency uploads
-    let rpc_url = config.get_rpc_url_or_localhost_http()?;
+    for (hash, name) in &all_dependencies {
+        let bytecode = find_contract_by_hash(output, hash).ok_or_else(|| {
+            eyre::eyre!("Could not find contract '{}' (hash: {}) in artifacts", name, hash)
+        })?;
 
-    // Upload each factory dependency
-    for (hash, name) in all_dependencies {
-        // Try to find the contract by hash directly (skip name-based lookup)
-        let bytecode = find_contract_by_hash(output, hash);
-
-        if let Some(bytecode) = bytecode {
-            // Skip child contracts (those with 0x3c04 prefix)
-            let bytecode_slice = bytecode.as_ref();
-            if bytecode_slice.len() >= 2 && bytecode_slice[0] == 0x3c && bytecode_slice[1] == 0x04 {
-                continue;
-            }
-
-            // Upload factory dependency using upload_child_contract_alloy
-            let scaled_encoded_bytes = bytecode.encode();
-            let storage_deposit_limit = Compact(10000000000u128);
-            let encoded_storage_deposit_limit = storage_deposit_limit.encode();
-            let combined_hex = "0x3c04".to_string() +
-                &hex::encode(&scaled_encoded_bytes) +
-                &hex::encode(&encoded_storage_deposit_limit);
-
-            let _tx_hash = upload_child_contract_alloy(
-                rpc_url.as_ref(),
-                private_key.to_string(),
-                combined_hex,
-            )
-            .await?;
-        } else {
-            return Err(eyre::eyre!(
-                "Could not find contract '{}' (hash: {}) in artifacts",
+        if bytecode.len() > MAX_UPLOAD_BYTECODE_SIZE {
+            eyre::bail!(
+                "Factory dependency '{}' bytecode ({} bytes) exceeds the maximum upload size ({} bytes)",
                 name,
-                hash
-            ));
+                bytecode.len(),
+                MAX_UPLOAD_BYTECODE_SIZE
+            );
+        }
+
+        let calldata = encode_upload_code_call(pallet_index, &bytecode, 10_000_000_000u128);
+
+        let tx = WithOtherFields::new(
+            TransactionRequest::default()
+                .to(RUNTIME_PALLETS_ADDR)
+                .input(calldata.into())
+                .value(U256::ZERO),
+        );
+
+        let pending_tx = provider.send_transaction(tx).await?;
+        let receipt = pending_tx.get_receipt().await?;
+
+        if !shell::is_json() {
+            sh_println!(
+                "Factory dependency '{}' uploaded: tx {}",
+                name,
+                receipt.transaction_hash
+            )?;
         }
     }
 
@@ -194,50 +234,6 @@ pub struct CreateArgs {
     retry: RetryArgs,
 }
 
-/// Uploads a child contract to a blockchain network using the Alloy framework.
-async fn upload_child_contract_alloy(
-    rpc_url: &str,
-    private_key: String,
-    encoded_bytes: String,
-) -> Result<String> {
-    use alloy_primitives::{Address, U256};
-    use alloy_provider::Provider;
-    use alloy_rpc_types::TransactionRequest;
-    use alloy_serde::WithOtherFields;
-    use alloy_signer_local::PrivateKeySigner;
-    use foundry_common::provider::ProviderBuilder;
-    use std::str::FromStr;
-
-    // This wallet will be used to sign the deployment transaction
-    let wallet = PrivateKeySigner::from_str(&private_key)?;
-
-    // This establishes the connection to the target network and prepares for transaction signing
-    let provider = ProviderBuilder::new(rpc_url).build_with_wallet(EthereumWallet::new(wallet))?;
-
-    // Use the special "magic address" for child contract deployment
-    let magic_address: Address = "0x6d6f646c70792f70616464720000000000000000".parse()?;
-
-    // Convert the hex-encoded bytecode string to actual bytes for the transaction input
-    // Remove "0x" prefix if present before decoding
-    let input_bytes = hex::decode(encoded_bytes.trim_start_matches("0x"))?;
-
-    // Construct the transaction request
-    let tx = TransactionRequest::default()
-        .to(magic_address)
-        .input(input_bytes.into())
-        .value(U256::from(0u64));
-
-    // Wrap the transaction in WithOtherFields for proper serialization
-    let wrapped_tx = WithOtherFields::new(tx);
-
-    // Send the transaction to the network and wait for it to be included in a block
-    let pending_tx = provider.send_transaction(wrapped_tx).await?;
-    let receipt = pending_tx.get_receipt().await?;
-
-    // Return the transaction hash as a string for tracking and verification
-    Ok(receipt.transaction_hash.to_string())
-}
-
 impl CreateArgs {
     /// Executes the command to create a contract
     pub async fn run(mut self) -> Result<()> {
@@ -294,13 +290,6 @@ impl CreateArgs {
 
         let provider = utils::get_provider(&config)?;
 
-        // Handle factory dependencies before deploying the main contract
-        if self.broadcast && self.build.compiler.resolc_opts.resolc_compile.unwrap_or_default() {
-            let private_key =
-                self.eth.wallet.raw.private_key.clone().ok_or_eyre("Private key not provided")?;
-            upload_factory_dependencies(&output, &config, &private_key).await?;
-        }
-
         // respect chain, if set explicitly via cmd args
         let chain_id = if let Some(chain_id) = self.chain_id() {
             chain_id
@@ -311,9 +300,19 @@ impl CreateArgs {
         // Whether to broadcast the transaction or not
         let dry_run = !self.broadcast;
 
+        let needs_factory_deps =
+            !dry_run && self.build.compiler.resolc_opts.resolc_compile.unwrap_or_default();
+
         if self.unlocked {
             // Deploy with unlocked account
             let sender = self.eth.wallet.from.expect("required");
+
+            if needs_factory_deps {
+                let pallet_index =
+                    resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
+                upload_factory_dependencies(&output, &provider, pallet_index).await?;
+            }
+
             self.deploy(
                 abi,
                 bin,
@@ -333,6 +332,13 @@ impl CreateArgs {
             let provider = ProviderBuilder::<_, _, AnyNetwork>::default()
                 .wallet(EthereumWallet::new(signer))
                 .connect_provider(provider);
+
+            if needs_factory_deps {
+                let pallet_index =
+                    resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
+                upload_factory_dependencies(&output, &provider, pallet_index).await?;
+            }
+
             self.deploy(
                 abi,
                 bin,
@@ -829,5 +835,27 @@ mod tests {
         let constructor: Constructor = serde_json::from_str(r#"{"type":"constructor","inputs":[{"name":"_name","type":"int256","internalType":"int256"}],"stateMutability":"nonpayable"}"#).unwrap();
         let params = args.parse_constructor_args(&constructor, &args.constructor_args).unwrap();
         assert_eq!(params, vec![DynSolValue::Int(I256::unchecked_from(-5), 256)]);
+    }
+
+    #[test]
+    fn test_encode_upload_code_call() {
+        let code = vec![0x01, 0x02, 0x03];
+        let encoded = encode_upload_code_call(4, &code, 10_000_000_000u128);
+
+        // First byte: pallet index
+        assert_eq!(encoded[0], 4);
+        // Second byte: call index (upload_code = 4)
+        assert_eq!(encoded[1], UPLOAD_CODE_CALL_INDEX);
+        // Next: SCALE-encoded Vec<u8> (length prefix + data)
+        assert_eq!(encoded[2], 0x0c); // Compact length 3 = 3 << 2 = 12 = 0x0c
+        assert_eq!(&encoded[3..6], &[0x01, 0x02, 0x03]);
+        // Remaining: Compact<u128> for storage deposit limit
+        assert!(!encoded[6..].is_empty());
+    }
+
+    #[test]
+    fn test_resolve_revive_pallet_index_config_overrides_chain_id() {
+        // Config value takes precedence over chain ID lookup
+        assert_eq!(resolve_revive_pallet_index(Some(42), 420420420).unwrap(), 42);
     }
 }

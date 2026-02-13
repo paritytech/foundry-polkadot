@@ -116,6 +116,11 @@ constructor(Point[] memory _points) {}
 }
 
 fn setup_with_factory_pattern(prj: &TestProject) -> String {
+    // Set the pallet-revive index for anvil-polkadot local node
+    prj.update_config(|config| {
+        config.polkadot.revive_pallet_index = Some(4);
+    });
+
     prj.add_source(
         "Child.sol",
         r#"

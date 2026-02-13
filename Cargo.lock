@@ -6314,7 +6314,6 @@ dependencies = [
  "foundry-wallets",
  "futures",
  "globset",
- "hex",
  "indicatif",
  "inferno",
  "itertools 0.14.0",
