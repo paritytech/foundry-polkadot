@@ -18,6 +18,17 @@ use polkadot_sdk::pallet_revive::evm::Account;
 /// This endpoint provides both Substrate RPC and ETH RPC methods
 const WESTEND_ASSET_HUB_URL: &str = "https://westend-asset-hub-rpc.polkadot.io";
 
+/// Helper to create a fork config pointing to Westend Asset Hub
+/// We have verbose forking tests to debug this new experimental workflow.
+fn westend_fork_config() -> AnvilNodeConfig {
+    AnvilNodeConfig::test_config()
+        .with_port(0)
+        .with_eth_rpc_url(Some(WESTEND_ASSET_HUB_URL.to_string()))
+        .with_auto_impersonate(true)
+        .with_tracing(true)
+        .set_silent(false)
+}
+
 /// Tests that forking preserves state from the source chain and allows local modifications
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_preserves_state_and_allows_modifications() {
@@ -601,16 +612,6 @@ async fn test_fork_with_contract_deployment() {
 // These tests require a running zombienet instance at WESTEND_ASSET_HUB_URL
 // =============================================================================
 
-/// Helper to create a fork config pointing to Westend Asset Hub
-fn westend_fork_config() -> AnvilNodeConfig {
-    AnvilNodeConfig::test_config()
-        .with_port(0)
-        .with_eth_rpc_url(Some(WESTEND_ASSET_HUB_URL.to_string()))
-        .with_auto_impersonate(true)
-        .with_tracing(true)
-        .set_silent(false)
-}
-
 /// Tests that we can fork from Westend Asset Hub and get balance of addresses
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_eth_get_balance_from_westend() {
@@ -943,6 +944,56 @@ async fn test_fork_can_send_tx_from_westend() {
     // Verify block number increased
     let final_block = fork_node.best_block_number().await;
     assert!(final_block > initial_block, "Block number should increase after transactions");
+}
+
+/// Tests sending a transaction on a forked chain with automine enabled.
+/// This exercises the EthSendTransactionSync path in send_transaction_and_wait.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_can_send_tx_from_westend_with_automine() {
+    let fork_config = westend_fork_config().with_no_mining(false);
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+    let baltathar_address = Address::from(ReviveAddress::new(baltathar.address()));
+
+    // Set initial balances for dev accounts (they may not have balance in the forked chain)
+    let initial_balance = U256::from(1e20 as u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Mine an empty block to warm up the forking backend. The first block in forking mode
+    // is slow (~60s) because it imports state from the remote chain, which would exceed
+    // the 30s internal timeout of EthSendTransactionSync.
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    // Send a transaction using the automine path (EthSendTransactionSync)
+    let transfer_amount = U256::from(1e18 as u128); // 1 ether
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(alith_address)
+        .to(baltathar_address);
+
+    let receipt = fork_node
+        .send_transaction_and_wait(transaction, 120)
+        .await
+        .expect("Transaction receipt not found within timeout");
+    assert_eq!(
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Transaction should succeed"
+    );
+
+    // Verify balances changed
+    let final_baltathar_balance = fork_node.get_balance(baltathar.address(), None).await;
+    assert_eq!(
+        final_baltathar_balance, transfer_amount,
+        "Baltathar should receive the transfer amount"
+    );
 }
 
 /// Tests deploying a contract on a forked chain
