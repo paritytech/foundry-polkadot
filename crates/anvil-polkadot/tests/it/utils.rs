@@ -164,9 +164,9 @@ impl TestNode {
 
         if is_automine {
             return unwrap_response::<ReceiptInfo>(
-                self.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(
-                    WithOtherFields::new(transaction),
-                )))
+                self.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(WithOtherFields::new(
+                    transaction,
+                ))))
                 .await
                 .unwrap(),
             );

@@ -950,7 +950,9 @@ async fn test_fork_can_send_tx_from_westend() {
 /// This exercises the EthSendTransactionSync path in send_transaction_and_wait.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_can_send_tx_from_westend_with_automine() {
-    let fork_config = westend_fork_config().with_no_mining(false);
+    // Start with automine disabled (default for test_config) so we can warm up
+    // the forking backend with a manual mine before enabling automine.
+    let fork_config = westend_fork_config();
     let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
     let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
 
@@ -966,12 +968,16 @@ async fn test_fork_can_send_tx_from_westend_with_automine() {
     )
     .unwrap();
 
-    // Mine an empty block to warm up the forking backend. The first block in forking mode
-    // is slow (~60s) because it imports state from the remote chain, which would exceed
-    // the 30s internal timeout of EthSendTransactionSync.
+    // Warm up the forking backend by mining an empty block. The first block in forking
+    // mode is slow because it imports state from the remote chain. Without this, the
+    // 30s internal timeout of EthSendTransactionSync would be exceeded.
     unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
 
+    // Enable automine so send_transaction_and_wait uses EthSendTransactionSync
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
     // Send a transaction using the automine path (EthSendTransactionSync)
+    let baltathar_balance_before = fork_node.get_balance(baltathar.address(), None).await;
     let transfer_amount = U256::from(1e18 as u128); // 1 ether
     let transaction = TransactionRequest::default()
         .value(transfer_amount)
@@ -989,9 +995,10 @@ async fn test_fork_can_send_tx_from_westend_with_automine() {
     );
 
     // Verify balances changed
-    let final_baltathar_balance = fork_node.get_balance(baltathar.address(), None).await;
+    let baltathar_balance_after = fork_node.get_balance(baltathar.address(), None).await;
     assert_eq!(
-        final_baltathar_balance, transfer_amount,
+        baltathar_balance_after,
+        baltathar_balance_before + transfer_amount,
         "Baltathar should receive the transfer amount"
     );
 }
@@ -1070,12 +1077,8 @@ async fn test_fork_can_deploy_contract_from_westend() {
         .await
         .expect("setValue transaction should succeed");
 
-    let stored_value = simplestorage_get_value(
-        &mut fork_node,
-        contract_address,
-        alith_address,
-    )
-    .await;
+    let stored_value =
+        simplestorage_get_value(&mut fork_node, contract_address, alith_address).await;
     assert_eq!(stored_value, U256::from(42), "getValue should return the value we set");
 }
 

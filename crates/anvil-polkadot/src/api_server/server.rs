@@ -99,6 +99,11 @@ use subxt_signer::eth::Keypair;
 use tokio::try_join;
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
+// When forking, operations can be slower due to fetching state from the remote chain,
+// so we use a higher timeout to avoid spurious failures.
+#[cfg(feature = "forking-support")]
+const TIMEOUT_DURATION: Duration = Duration::from_secs(120);
+#[cfg(not(feature = "forking-support"))]
 const TIMEOUT_DURATION: Duration = Duration::from_secs(30);
 
 pub struct ApiServer {
@@ -1932,7 +1937,14 @@ impl ApiServer {
         awaited_hash: H256,
     ) -> Result<()> {
         if let Some(mut receiver) = receiver {
-            tokio::time::timeout(Duration::from_secs(3), async {
+            // When forking, block production can be slower due to fetching state from the
+            // remote chain, so we use a higher timeout to avoid spurious failures.
+            #[cfg(feature = "forking-support")]
+            let timeout = TIMEOUT_DURATION;
+            #[cfg(not(feature = "forking-support"))]
+            let timeout = Duration::from_secs(3);
+
+            tokio::time::timeout(timeout, async {
                 loop {
                     if let Ok(block_hash) = receiver.recv().await {
                         if let Err(e) = self.log_mined_block(block_hash).await {
