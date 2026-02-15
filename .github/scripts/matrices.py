@@ -106,7 +106,7 @@ config = [
         name="integration / anvil-polkadot",
         filter="package(=anvil-polkadot) & kind(test)",
         n_partitions=1,
-        pr_cross_platform=False,
+        pr_cross_platform=True,
     ),
     # TODO: run the local node tests on polkadot-anvil
     # Case(
