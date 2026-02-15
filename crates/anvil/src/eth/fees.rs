@@ -298,7 +298,7 @@ impl FeeHistoryService {
                 .collect();
 
             // sort by effective reward asc
-            transactions.sort_by(|(_, a), (_, b)| a.cmp(b));
+            transactions.sort_by_key(|(_, a)| *a);
 
             // calculate percentile rewards
             item.rewards = reward_percentiles

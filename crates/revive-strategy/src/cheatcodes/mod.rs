@@ -1512,7 +1512,7 @@ fn post_exec(
         && !is_static_call
     {
         let mut logs: Vec<(u32, Log)> = vec![];
-        logs.sort_by(|a, b| a.0.cmp(&b.0));
+        logs.sort_by_key(|a| a.0);
         if !state.expected_emits.is_empty() || state.recorded_logs.is_some() {
             logs = collect_logs(&traces);
         }
@@ -1586,7 +1586,7 @@ fn assign_indexes(trace: &mut LogWithIndex, mut index: u32) -> (u32, Vec<(Log, u
 
 fn collect_logs(trace: &CallTrace) -> Vec<(u32, Log)> {
     let (_, mut l) = assign_indexes(&mut trace.clone().into(), 0);
-    l.sort_by(|a, b| a.1.cmp(&b.1));
+    l.sort_by_key(|a| a.1);
     l.into_iter().map(|x| (x.1, x.0)).collect()
 }
 
