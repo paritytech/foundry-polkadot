@@ -14,7 +14,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
-  RUSTC_WRAPPER: "sccache"
   RESOLC_VERSION: 0.6.0
   DLRP_API_KEY: ${{ secrets.DLRP_API_KEY }}
   ETHERSCAN_API_KEYS: ${{ secrets.ETHERSCAN_API_KEYS }}
@@ -56,7 +55,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878
         if: runner.os == 'Linux'
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
       - uses: taiki-e/install-action@nextest
       - name: Install dependencies for building (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new')

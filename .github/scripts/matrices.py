@@ -30,13 +30,16 @@ class Case:
     # Whether to run on non-Linux platforms for PRs. All platforms and tests are run on pushes.
     pr_cross_platform: bool
 
+    extra_flags: str
+
     def __init__(
-        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool
+        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool, extra_flags: str = ""
     ):
         self.name = name
         self.filter = filter
         self.n_partitions = n_partitions
         self.pr_cross_platform = pr_cross_platform
+        self.extra_flags = extra_flags
 
 
 # GHA matrix entry
@@ -83,8 +86,8 @@ config = [
     ),
     Case(
         name="integration",
-        filter="kind(test) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
-        n_partitions=3,
+        filter="kind(test) & !package(=anvil-polkadot) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
+        n_partitions=2,
         pr_cross_platform=True,
     ),
     Case(
@@ -97,6 +100,12 @@ config = [
         name="integration / external",
         filter="package(=forge) & test(/\\bext_integration/)",
         n_partitions=2,
+        pr_cross_platform=False,
+    ),
+    Case(
+        name="integration / anvil-polkadot",
+        filter="package(=anvil-polkadot) & kind(test)",
+        n_partitions=1,
         pr_cross_platform=False,
     ),
     # TODO: run the local node tests on polkadot-anvil
@@ -122,7 +131,7 @@ def main():
                     os_str = f" ({target.target})"
 
                 name = case.name
-                flags = f"--no-fail-fast -E '{case.filter}'"
+                flags = f"--release --no-fail-fast -E '{case.filter}'"
                 if case.n_partitions > 1:
                     s = f"{partition}/{case.n_partitions}"
                     name += f" ({s})"
@@ -130,6 +139,8 @@ def main():
                 
                 if profile == "isolate":
                     flags += " --features=isolate-by-default"
+                if case.extra_flags:
+                    flags += f" {case.extra_flags}"
                 name += os_str
 
                 obj = Expanded(
