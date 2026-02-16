@@ -30,16 +30,13 @@ class Case:
     # Whether to run on non-Linux platforms for PRs. All platforms and tests are run on pushes.
     pr_cross_platform: bool
 
-    extra_flags: str
-
     def __init__(
-        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool, extra_flags: str = ""
+        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool
     ):
         self.name = name
         self.filter = filter
         self.n_partitions = n_partitions
         self.pr_cross_platform = pr_cross_platform
-        self.extra_flags = extra_flags
 
 
 # GHA matrix entry
@@ -70,7 +67,7 @@ class Expanded:
 
 profile = os.environ.get("PROFILE")
 is_pr = os.environ.get("EVENT_NAME") == "pull_request"
-t_linux_x86 = Target("ubuntu-latest", "x86_64-unknown-linux-gnu", "linux-amd64")
+t_linux_x86 = Target("parity-large-new", "x86_64-unknown-linux-gnu", "linux-amd64")
 # TODO: Figure out how to make this work
 # t_linux_arm = Target("ubuntu-latest", "aarch64-unknown-linux-gnu", "linux-aarch64")
 t_macos = Target("macos-latest", "aarch64-apple-darwin", "macosx-aarch64")
@@ -107,7 +104,6 @@ config = [
         filter="package(=anvil-polkadot) & kind(test)",
         n_partitions=1,
         pr_cross_platform=True,
-        extra_flags="--release",
     ),
     # TODO: run the local node tests on polkadot-anvil
     # Case(
@@ -140,8 +136,6 @@ def main():
                 
                 if profile == "isolate":
                     flags += " --features=isolate-by-default"
-                if case.extra_flags:
-                    flags += f" {case.extra_flags}"
                 name += os_str
 
                 obj = Expanded(
