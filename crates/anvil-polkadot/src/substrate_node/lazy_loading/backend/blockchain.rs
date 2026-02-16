@@ -156,10 +156,11 @@ impl<Block: BlockT + DeserializeOwned> Blockchain<Block> {
             storage.genesis_hash = hash;
         }
 
-        // Update leaves for non-genesis blocks
-        if storage.blocks.len() > 1 {
-            storage.leaves.import(hash, number, *header.parent_hash());
-        }
+        // Update leaves for all blocks including genesis.
+        // For genesis when forking, the parent_hash points to the previous block on the remote
+        // chain. That parent won't be in our leaf set, so this effectively adds genesis as
+        // a new leaf.
+        storage.leaves.import(hash, number, *header.parent_hash());
 
         // Finalize block only if explicitly requested via new_state
         if let NewBlockState::Final = new_state {
@@ -266,25 +267,43 @@ impl<Block: BlockT + DeserializeOwned> HeaderBackend<Block> for Blockchain<Block
 
         // If not found in local storage, fetch from RPC client
         let header = if let Some(rpc) = self.rpc() {
-            rpc.block(Some(hash)).ok().flatten().map(|full| {
-                let block = full.block.clone();
-                self.storage
-                    .write()
-                    .blocks
-                    .insert(hash, StoredBlock::Full(block.clone(), full.justifications));
-                block.header().clone()
-            })
+            match rpc.block(Some(hash)) {
+                Ok(Some(full)) => {
+                    let block = full.block.clone();
+                    self.storage
+                        .write()
+                        .blocks
+                        .insert(hash, StoredBlock::Full(block.clone(), full.justifications));
+                    Some(block.header().clone())
+                }
+                Ok(None) => {
+                    // Block not found on remote chain - this is expected for locally-built blocks
+                    tracing::debug!(
+                        target: LAZY_LOADING_LOG_TARGET,
+                        "Block {:?} not found in local storage or remote RPC",
+                        hash
+                    );
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: LAZY_LOADING_LOG_TARGET,
+                        "Failed to fetch block {:?} from RPC: {}",
+                        hash,
+                        e
+                    );
+                    None
+                }
+            }
         } else {
+            // No RPC configured - block simply doesn't exist locally
+            tracing::debug!(
+                target: LAZY_LOADING_LOG_TARGET,
+                "Block {:?} not found in local storage (no RPC configured)",
+                hash
+            );
             None
         };
-
-        if header.is_none() {
-            tracing::warn!(
-                target: LAZY_LOADING_LOG_TARGET,
-                "Expected block {:x?} to exist.",
-                &hash
-            );
-        }
 
         Ok(header)
     }
@@ -418,19 +437,30 @@ impl<Block: BlockT + DeserializeOwned> sp_blockchain::Backend<Block> for Blockch
         Ok(leaves)
     }
 
-    fn children(&self, _parent_hash: Block::Hash) -> sp_blockchain::Result<Vec<Block::Hash>> {
-        unimplemented!("Not supported by the `lazy-loading` backend.")
+    fn children(&self, parent_hash: Block::Hash) -> sp_blockchain::Result<Vec<Block::Hash>> {
+        // Find all blocks whose parent_hash matches the given hash
+        let storage = self.storage.read();
+        let children: Vec<Block::Hash> = storage
+            .blocks
+            .iter()
+            .filter_map(|(hash, block)| {
+                if *block.header().parent_hash() == parent_hash { Some(*hash) } else { None }
+            })
+            .collect();
+        Ok(children)
     }
 
     fn indexed_transaction(&self, _hash: Block::Hash) -> sp_blockchain::Result<Option<Vec<u8>>> {
-        unimplemented!("Not supported by the `lazy-loading` backend.")
+        // Indexed transactions are not supported in the lazy-loading backend
+        Ok(None)
     }
 
     fn block_indexed_body(
         &self,
         _hash: Block::Hash,
     ) -> sp_blockchain::Result<Option<Vec<Vec<u8>>>> {
-        unimplemented!("Not supported by the `lazy-loading` backend.")
+        // Indexed block bodies are not supported in the lazy-loading backend
+        Ok(None)
     }
 }
 

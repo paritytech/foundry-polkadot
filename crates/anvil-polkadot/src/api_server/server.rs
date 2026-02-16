@@ -87,14 +87,23 @@ use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
-    Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
-    client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
-    ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
+    Metadata as SubxtMetadata, OnlineClient,
+    backend::rpc::RpcClient,
+    client::RuntimeVersion as SubxtRuntimeVersion,
+    config::substrate::H256,
+    dynamic::{Value as DynamicValue, tx as dynamic_tx},
+    ext::subxt_rpcs::LegacyRpcMethods,
+    utils::H160,
 };
 use subxt_signer::eth::Keypair;
 use tokio::try_join;
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
+// When forking, operations can be slower due to fetching state from the remote chain,
+// so we use a higher timeout to avoid spurious failures.
+#[cfg(feature = "forking-support")]
+const TIMEOUT_DURATION: Duration = Duration::from_secs(120);
+#[cfg(not(feature = "forking-support"))]
 const TIMEOUT_DURATION: Duration = Duration::from_secs(30);
 
 pub struct ApiServer {
@@ -113,6 +122,12 @@ pub struct ApiServer {
     /// Tracks all active filters
     filters: Filters,
     hardcoded_chain_id: u64,
+    /// RPC methods for submitting transactions
+    rpc: LegacyRpcMethods<SrcChainConfig>,
+    /// Subxt OnlineClient for dynamic transaction building.
+    /// When forking, the metadata comes from the forked chain's WASM (loaded via lazy loading),
+    /// so pallet indices will be correct for the forked runtime.
+    api: OnlineClient<SrcChainConfig>,
 }
 
 /// Fetch the chain ID from the substrate chain.
@@ -140,7 +155,7 @@ impl ApiServer {
         let eth_rpc_client = create_revive_rpc_client(
             api.clone(),
             rpc_client.clone(),
-            rpc,
+            rpc.clone(),
             block_provider.clone(),
             substrate_service.spawn_handle.clone(),
             revive_rpc_block_limit,
@@ -176,6 +191,8 @@ impl ApiServer {
             instance_id: B256::random(),
             filters,
             hardcoded_chain_id: chain_id,
+            rpc,
+            api,
         })
     }
 
@@ -807,8 +824,18 @@ impl ApiServer {
 
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
         let hash = H256(keccak_256(&transaction.0));
-        let call = subxt_client::tx().revive().eth_transact(transaction.0);
-        self.eth_rpc_client.submit(call).await?;
+
+        // Use dynamic transaction building to ensure the correct pallet index is used.
+        // The metadata in self.api comes from the runtime's WASM (via runtime API call),
+        // which is the forked chain's WASM when forking. This ensures correct pallet indices.
+        let payload_value = DynamicValue::from_bytes(transaction.0);
+        let tx_payload = dynamic_tx("Revive", "eth_transact", vec![payload_value]);
+
+        let ext = self.api.tx().create_unsigned(&tx_payload)?;
+
+        // Submit the extrinsic to the transaction pool
+        self.rpc.author_submit_extrinsic(ext.encoded()).await?;
+
         Ok(hash)
     }
 
@@ -1910,7 +1937,14 @@ impl ApiServer {
         awaited_hash: H256,
     ) -> Result<()> {
         if let Some(mut receiver) = receiver {
-            tokio::time::timeout(Duration::from_secs(3), async {
+            // When forking, block production can be slower due to fetching state from the
+            // remote chain, so we use a higher timeout to avoid spurious failures.
+            #[cfg(feature = "forking-support")]
+            let timeout = TIMEOUT_DURATION;
+            #[cfg(not(feature = "forking-support"))]
+            let timeout = Duration::from_secs(3);
+
+            tokio::time::timeout(timeout, async {
                 loop {
                     if let Ok(block_hash) = receiver.recv().await {
                         if let Err(e) = self.log_mined_block(block_hash).await {
@@ -1948,38 +1982,38 @@ impl ApiServer {
         if let Ok(Some(substrate_block)) = self.eth_rpc_client.block_by_hash(&block_hash).await
             && let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await
         {
-                // Extract transaction hashes
-                let tx_hashes: Vec<H256> = match &evm_block.transactions {
-                    HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
-                    // Considering that we called evm_block with hydrated set to false, we will
-                    // never receive TransactionInfos, but we handle it anyways.
-                    HashesOrTransactionInfos::TransactionInfos(infos) => {
-                        infos.iter().map(|i| i.hash).collect()
-                    }
-                };
+            // Extract transaction hashes
+            let tx_hashes: Vec<H256> = match &evm_block.transactions {
+                HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
+                // Considering that we called evm_block with hydrated set to false, we will
+                // never receive TransactionInfos, but we handle it anyways.
+                HashesOrTransactionInfos::TransactionInfos(infos) => {
+                    infos.iter().map(|i| i.hash).collect()
+                }
+            };
 
-                if !tx_hashes.is_empty() {
-                    node_info!("");
+            if !tx_hashes.is_empty() {
+                node_info!("");
 
-                    // Log each transaction
-                    for tx_hash in tx_hashes {
-                        if let Some(receipt) = self.eth_rpc_client.receipt(&tx_hash).await {
-                            node_info!("    Transaction: {:?}", receipt.transaction_hash);
+                // Log each transaction
+                for tx_hash in tx_hashes {
+                    if let Some(receipt) = self.eth_rpc_client.receipt(&tx_hash).await {
+                        node_info!("    Transaction: {:?}", receipt.transaction_hash);
 
-                            if let Some(contract) = &receipt.contract_address {
-                                node_info!("    Contract created: {contract}");
-                            }
-
-                            node_info!("    Gas used: {}", receipt.cumulative_gas_used);
-
-                            if receipt.status == Some(evm::U256::zero()) {
-                                node_info!("    Error: reverted");
-                            }
-
-                            node_info!("");
+                        if let Some(contract) = &receipt.contract_address {
+                            node_info!("    Contract created: {contract}");
                         }
+
+                        node_info!("    Gas used: {}", receipt.cumulative_gas_used);
+
+                        if receipt.status == Some(evm::U256::zero()) {
+                            node_info!("    Error: reverted");
+                        }
+
+                        node_info!("");
                     }
                 }
+            }
         }
 
         node_info!("    Block Number: {}", block_number);

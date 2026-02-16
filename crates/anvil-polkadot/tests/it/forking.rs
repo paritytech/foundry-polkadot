@@ -14,11 +14,20 @@ use anvil_polkadot::{
 };
 use polkadot_sdk::pallet_revive::evm::Account;
 
-/// Westend Asset Hub zombienet local URL for forking tests
-/// This URL should point to a running zombienet instance,
-/// so running the tests depending on it should be preceded
-/// by setting up a zombienet network with a running RPC.
-const WESTEND_ASSET_HUB_URL: &str = "http://127.0.0.1:63982";
+/// Westend Asset Hub real RPC URL for forking tests
+/// This endpoint provides both Substrate RPC and ETH RPC methods
+const WESTEND_ASSET_HUB_URL: &str = "https://westend-asset-hub-rpc.polkadot.io";
+
+/// Helper to create a fork config pointing to Westend Asset Hub
+/// We have verbose forking tests to debug this new experimental workflow.
+fn westend_fork_config() -> AnvilNodeConfig {
+    AnvilNodeConfig::test_config()
+        .with_port(0)
+        .with_eth_rpc_url(Some(WESTEND_ASSET_HUB_URL.to_string()))
+        .with_auto_impersonate(true)
+        .with_tracing(true)
+        .set_silent(false)
+}
 
 /// Tests that forking preserves state from the source chain and allows local modifications
 #[tokio::test(flavor = "multi_thread")]
@@ -603,13 +612,6 @@ async fn test_fork_with_contract_deployment() {
 // These tests require a running zombienet instance at WESTEND_ASSET_HUB_URL
 // =============================================================================
 
-/// Helper to create a fork config pointing to Westend Asset Hub zombienet
-fn westend_fork_config() -> AnvilNodeConfig {
-    AnvilNodeConfig::test_config()
-        .with_port(0)
-        .with_eth_rpc_url(Some(WESTEND_ASSET_HUB_URL.to_string()))
-}
-
 /// Tests that we can fork from Westend Asset Hub and get balance of addresses
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fork_eth_get_balance_from_westend() {
@@ -688,7 +690,11 @@ async fn test_fork_eth_get_code_from_westend() {
             .unwrap(),
     )
     .unwrap();
-    assert!(!deployed_code.is_empty(), "Deployed contract should have code");
+    assert_eq!(
+        deployed_code.as_ref(),
+        contract_code.runtime.as_deref().expect("missing runtime bytecode"),
+        "Deployed code should match contract runtime bytecode"
+    );
 
     // Deploy another contract to verify chain continues working
     let tx_hash2 = fork_node.deploy_contract(&contract_code.init, alith.address()).await;
@@ -732,8 +738,11 @@ async fn test_fork_eth_get_nonce_from_westend() {
         .from(alith_address)
         .to(Address::from(baltathar_address));
 
-    fork_node.send_transaction(transaction).await.unwrap();
-    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    // Send and wait for transaction to be included
+    fork_node
+        .send_transaction_and_wait(transaction, 120)
+        .await
+        .expect("Transaction receipt not found within timeout");
 
     // Nonce should have increased by 1
     let nonce_after_tx = fork_node.get_nonce(alith_address).await;
@@ -798,8 +807,16 @@ async fn test_fork_state_snapshotting_from_westend() {
         .from(alith_address)
         .to(baltathar_address);
 
-    fork_node.send_transaction(transaction).await.unwrap();
-    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+    // Send and wait for transaction to be included
+    let receipt = fork_node
+        .send_transaction_and_wait(transaction, 120)
+        .await
+        .expect("Transaction receipt not found within timeout");
+    assert_eq!(
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Transaction should succeed"
+    );
 
     // Verify state changed
     let alith_balance_after = fork_node.get_balance(alith.address(), None).await;
@@ -846,7 +863,6 @@ async fn test_fork_can_send_tx_from_westend() {
     let fork_config = westend_fork_config();
     let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
     let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
-
     let initial_block = fork_node.best_block_number().await;
 
     let alith = Account::from(subxt_signer::eth::dev::alith());
@@ -882,13 +898,11 @@ async fn test_fork_can_send_tx_from_westend() {
         .from(alith_address)
         .to(baltathar_address);
 
-    let tx_hash = fork_node.send_transaction(transaction).await.unwrap();
-
-    // Mine the transaction
-    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-
-    // Get receipt and verify transaction succeeded
-    let receipt = fork_node.get_transaction_receipt(tx_hash).await;
+    // Send and wait for transaction to be included
+    let receipt = fork_node
+        .send_transaction_and_wait(transaction, 120)
+        .await
+        .expect("Transaction receipt not found within timeout");
     assert_eq!(
         receipt.status,
         Some(polkadot_sdk::pallet_revive::U256::from(1)),
@@ -916,23 +930,156 @@ async fn test_fork_can_send_tx_from_westend() {
         .from(baltathar_address)
         .to(alith_address);
 
-    let tx_hash2 = fork_node.send_transaction(transaction2).await.unwrap();
-    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-
-    let receipt2 = fork_node.get_transaction_receipt(tx_hash2).await;
+    // Send and wait for second transaction
+    let receipt2 = fork_node
+        .send_transaction_and_wait(transaction2, 120)
+        .await
+        .expect("Second transaction receipt not found within timeout");
     assert_eq!(
         receipt2.status,
         Some(polkadot_sdk::pallet_revive::U256::from(1)),
         "Second transaction should succeed"
     );
 
-    // Verify block number increased (2 transactions = 2 blocks mined)
+    // Verify block number increased
     let final_block = fork_node.best_block_number().await;
+    assert!(final_block > initial_block, "Block number should increase after transactions");
+}
+
+/// Tests sending a transaction on a forked chain with automine enabled.
+/// This exercises the EthSendTransactionSync path in send_transaction_and_wait.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_can_send_tx_from_westend_with_automine() {
+    // Start with automine disabled (default for test_config) so we can warm up
+    // the forking backend with a manual mine before enabling automine.
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+    let baltathar_address = Address::from(ReviveAddress::new(baltathar.address()));
+
+    // Set initial balances for dev accounts (they may not have balance in the forked chain)
+    let initial_balance = U256::from(1e20 as u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Warm up the forking backend by mining an empty block. The first block in forking
+    // mode is slow because it imports state from the remote chain. Without this, the
+    // 30s internal timeout of EthSendTransactionSync would be exceeded.
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
+
+    // Enable automine so send_transaction_and_wait uses EthSendTransactionSync
+    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Send a transaction using the automine path (EthSendTransactionSync)
+    let baltathar_balance_before = fork_node.get_balance(baltathar.address(), None).await;
+    let transfer_amount = U256::from(1e18 as u128); // 1 ether
+    let transaction = TransactionRequest::default()
+        .value(transfer_amount)
+        .from(alith_address)
+        .to(baltathar_address);
+
+    let receipt = fork_node
+        .send_transaction_and_wait(transaction, 120)
+        .await
+        .expect("Transaction receipt not found within timeout");
     assert_eq!(
-        final_block,
-        initial_block + 2,
-        "Block number should increase by 2 after two mined transactions"
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Transaction should succeed"
     );
+
+    // Verify balances changed
+    let baltathar_balance_after = fork_node.get_balance(baltathar.address(), None).await;
+    assert_eq!(
+        baltathar_balance_after,
+        baltathar_balance_before + transfer_amount,
+        "Baltathar should receive the transfer amount"
+    );
+}
+
+/// Tests deploying a contract on a forked chain
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fork_can_deploy_contract_from_westend() {
+    let fork_config = westend_fork_config();
+    let fork_substrate_config = SubstrateNodeConfig::new(&fork_config);
+    let mut fork_node = TestNode::new(fork_config.clone(), fork_substrate_config).await.unwrap();
+
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let alith_address = Address::from(ReviveAddress::new(alith.address()));
+
+    // Set balance for deployment
+    let initial_balance = U256::from(100_000_000_000_000_000_000u128); // 100 ether
+    unwrap_response::<()>(
+        fork_node.eth_rpc(EthRequest::SetBalance(alith_address, initial_balance)).await.unwrap(),
+    )
+    .unwrap();
+
+    // Deploy SimpleStorage contract and wait for receipt
+    let contract_code = get_contract_code("SimpleStorage");
+    let receipt = fork_node
+        .deploy_contract_and_wait(&contract_code.init, alith.address(), 120)
+        .await
+        .expect("Contract deployment receipt not found within timeout");
+    assert_eq!(
+        receipt.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Contract deployment should succeed"
+    );
+
+    let contract_address = receipt.contract_address.expect("Contract address should exist");
+
+    // Verify contract has code
+    let code = unwrap_response::<Bytes>(
+        fork_node
+            .eth_rpc(EthRequest::EthGetCodeAt(
+                Address::from(ReviveAddress::new(contract_address)),
+                None,
+            ))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        code.as_ref(),
+        contract_code.runtime.as_deref().expect("missing runtime bytecode"),
+        "Deployed code should match contract runtime bytecode"
+    );
+
+    // Deploy another contract to verify chain continues working
+    let receipt2 = fork_node
+        .deploy_contract_and_wait(&contract_code.init, alith.address(), 120)
+        .await
+        .expect("Second contract deployment receipt not found within timeout");
+    assert_eq!(
+        receipt2.status,
+        Some(polkadot_sdk::pallet_revive::U256::from(1)),
+        "Second contract deployment should succeed"
+    );
+
+    let contract_address2 =
+        receipt2.contract_address.expect("Second contract address should exist");
+    assert_ne!(contract_address, contract_address2, "Contract addresses should be different");
+
+    // Verify contract methods work: set a value and read it back
+    let set_value = SimpleStorage::setValueCall::new((U256::from(42),)).abi_encode();
+    let set_tx = TransactionRequest::default()
+        .from(alith_address)
+        .to(Address::from(ReviveAddress::new(contract_address)))
+        .input(TransactionInput::both(Bytes::from(set_value)));
+    fork_node
+        .send_transaction_and_wait(set_tx, 120)
+        .await
+        .expect("setValue transaction should succeed");
+
+    let stored_value =
+        simplestorage_get_value(&mut fork_node, contract_address, alith_address).await;
+    assert_eq!(stored_value, U256::from(42), "getValue should return the value we set");
 }
 
 /// Tests impersonating an account on a forked chain
@@ -966,10 +1113,11 @@ async fn test_fork_impersonate_account_from_westend() {
         .from(impersonated_addr)
         .to(recipient_addr);
 
-    let tx_hash = fork_node.send_transaction(transaction).await.unwrap();
-    unwrap_response::<()>(fork_node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
-
-    let receipt = fork_node.get_transaction_receipt(tx_hash).await;
+    // Send and wait for transaction to be included
+    let receipt = fork_node
+        .send_transaction_and_wait(transaction, 120)
+        .await
+        .expect("Impersonated transaction receipt not found within timeout");
     assert_eq!(
         receipt.status,
         Some(polkadot_sdk::pallet_revive::U256::from(1)),
