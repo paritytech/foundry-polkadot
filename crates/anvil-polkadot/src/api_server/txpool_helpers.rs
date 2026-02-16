@@ -9,6 +9,7 @@ use alloy_rpc_types::txpool::TxpoolInspectSummary;
 use codec::{DecodeLimit, Encode};
 use polkadot_sdk::{
     pallet_revive::evm::TransactionSigned,
+    sc_service::{InPoolTransaction, TransactionPool},
     sp_core::{self, H256},
 };
 use serde::{Deserialize, Serialize};
@@ -184,6 +185,22 @@ pub(super) fn extract_tx_info(
     };
 
     Some((sender, nonce_u64, tx_info))
+}
+
+/// Returns the highest pending nonce + 1 for the given address from pool transactions,
+/// or `None` if the address has no pending transactions.
+///
+/// Mirrors the logic of `get_pool_transactions_nonce` in standard anvil.
+pub(super) fn get_pool_transactions_nonce(
+    pool: &crate::substrate_node::service::TransactionPoolHandle,
+    address: Address,
+) -> Option<u64> {
+    pool.ready()
+        .filter_map(|tx| extract_tx_summary(tx.data()))
+        .filter(|(sender, _, _)| *sender == address)
+        .map(|(_, nonce, _)| nonce)
+        .max()
+        .map(|nonce| nonce.saturating_add(1))
 }
 
 /// Extract sender address from extrinsic as Alloy Address type.

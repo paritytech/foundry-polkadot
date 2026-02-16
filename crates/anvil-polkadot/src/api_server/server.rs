@@ -15,7 +15,7 @@ use crate::{
         trace_helpers::{parity_block_trace_builder, parity_transaction_trace_builder},
         txpool_helpers::{
             TxpoolTransactionInfo, extract_sender, extract_tx_info, extract_tx_summary,
-            transaction_matches_eth_hash,
+            get_pool_transactions_nonce, transaction_matches_eth_hash,
         },
     },
     logging::LoggingManager,
@@ -775,6 +775,14 @@ impl ApiServer {
     ) -> Result<sp_core::U256> {
         node_info!("eth_getTransactionCount");
         trace!(target: "backend", "get nonce for {:?}", address);
+
+        if Some(BlockId::Number(BlockNumberOrTag::Pending)) == block {
+            let addr = Address::from_slice(address.as_bytes());
+            if let Some(pool_tx_count) = get_pool_transactions_nonce(&self.tx_pool, addr) {
+                return Ok(sp_core::U256::from(pool_tx_count));
+            }
+        }
+
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
         let nonce = runtime_api.nonce(address).await?;
@@ -841,7 +849,8 @@ impl ApiServer {
         }
 
         if transaction.nonce.is_none() {
-            transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
+            let pending_block_id = Some(BlockId::Number(BlockNumberOrTag::Pending));
+            transaction.nonce = Some(self.get_transaction_count(from, pending_block_id).await?);
         }
 
         if transaction.chain_id.is_none() {
