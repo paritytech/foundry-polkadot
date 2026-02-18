@@ -7,6 +7,7 @@ use codec::{Decode, Encode};
 use lru::LruCache;
 use parking_lot::Mutex;
 use polkadot_sdk::{
+    frame_support::traits::Get,
     parachains_common::{AccountId, Hash, opaque::Block},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
@@ -175,7 +176,6 @@ impl BackendWithOverlay {
     /// Store a one-shot `pallet_timestamp::Now` override for the **next** mined block.
     /// Unlike `inject_timestamp`, this does not modify any existing block's observable state.
     pub fn set_pending_timestamp(&self, desired_timestamp: u64) {
-        use polkadot_sdk::frame_support::traits::Get;
         let min_period = <substrate_runtime::Runtime as polkadot_sdk::pallet_timestamp::Config>::MinimumPeriod::get();
         // Compensate for the minimum period to ensure the timestamp is as expected.
         let override_value = desired_timestamp.saturating_sub(min_period);
