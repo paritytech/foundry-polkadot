@@ -252,8 +252,12 @@ impl pallet_balances::Config for Runtime {
 }
 
 // Implements the types required for the timestamp pallet.
+// MinimumPeriod of 1000ms (1 second) ensures that each block's Ethereum timestamp is strictly
+// greater than the previous block's.
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
-impl pallet_timestamp::Config for Runtime {}
+impl pallet_timestamp::Config for Runtime {
+    type MinimumPeriod = ConstU64<1000>;
+}
 
 parameter_types! {
     // That's how asset-hub-westend sets this.
