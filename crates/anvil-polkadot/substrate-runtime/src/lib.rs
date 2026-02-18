@@ -312,7 +312,7 @@ impl pallet_revive::Config for Runtime {
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;
-    type GasScale = ConstU32<1>;
+    type GasScale = ConstU32<100_000>;
     type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
     type DebugEnabled = ConstBool<true>;
 }
