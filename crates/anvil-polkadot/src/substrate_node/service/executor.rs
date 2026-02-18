@@ -57,8 +57,7 @@ impl Executor {
     }
 
     /// Take and apply one-shot pending overrides from `StorageOverrides`.
-    /// Called during `Core_initialize_block` for actual block production, so the override
-    /// affects only the next mined block without modifying any past block's state.
+    /// Called during `Core_initialize_block` for actual block production.
     fn apply_and_consume_pending_overrides(
         &self,
         overlay: &mut OverlayedChanges<HashingFor<Block>>,
@@ -141,7 +140,6 @@ impl CallExecutor<Block> for Executor {
         }
 
         // Apply and consume pending overrides only during actual block production.
-        // This ensures time-manipulation overrides affect only the next mined block.
         if is_block_init {
             self.apply_and_consume_pending_overrides(&mut changes.borrow_mut());
         }

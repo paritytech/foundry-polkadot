@@ -269,8 +269,7 @@ pub struct StorageOverrides {
     // to the state DB only in the next block.
     per_block: LruCache<Hash, BlockOverrides>,
     // One-shot overrides applied at the next `Core_initialize_block` and then consumed.
-    // Used by time-manipulation RPCs (e.g. `evm_setTime` going backward) to apply changes
-    // to the **next** mined block without retroactively modifying the last block's state.
+    // It can be used to affect the state of the pending block.
     pending: Option<BlockOverrides>,
 }
 
