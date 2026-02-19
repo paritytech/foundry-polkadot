@@ -10,7 +10,7 @@ use foundry_evm::{
     constants::CALLER,
     executors::{DeployResult, EvmError, ExecutionErr, Executor, RawCallResult},
     opts::EvmOpts,
-    revm::interpreter::{return_ok, InstructionResult},
+    revm::interpreter::{InstructionResult, return_ok},
     traces::{TraceKind, Traces},
 };
 use std::collections::VecDeque;
@@ -41,7 +41,10 @@ impl ScriptRunner {
         if !is_broadcast {
             if self.evm_opts.sender == Config::DEFAULT_SENDER {
                 // We max out their balance so that they can deploy and make calls.
-                self.executor.set_balance(self.evm_opts.sender, U256::MAX)?;
+                self.executor.set_balance(
+                    self.evm_opts.sender,
+                    self.executor.strategy.runner.max_balance(),
+                )?;
             }
 
             if script_config.evm_opts.fork_url.is_none() {
@@ -53,7 +56,7 @@ impl ScriptRunner {
         self.executor.set_nonce(self.evm_opts.sender, sender_nonce)?;
 
         // We max out their balance so that they can deploy and make calls.
-        self.executor.set_balance(CALLER, U256::MAX)?;
+        self.executor.set_balance(CALLER, self.executor.strategy.runner.max_balance())?;
 
         let mut library_transactions = VecDeque::new();
         let mut traces = Traces::default();
@@ -359,7 +362,7 @@ impl ScriptRunner {
         value: U256,
     ) -> Result<u64> {
         let mut gas_used = res.gas_used;
-        if matches!(res.exit_reason, return_ok!()) {
+        if matches!(res.exit_reason, Some(return_ok!())) {
             // Store the current gas limit and reset it later.
             let init_gas_limit = self.executor.env().tx.gas_limit;
 
@@ -371,9 +374,9 @@ impl ScriptRunner {
                 self.executor.env_mut().tx.gas_limit = mid_gas_limit;
                 let res = self.executor.call_raw(from, to, calldata.0.clone().into(), value)?;
                 match res.exit_reason {
-                    InstructionResult::Revert |
-                    InstructionResult::OutOfGas |
-                    InstructionResult::OutOfFunds => {
+                    Some(InstructionResult::Revert)
+                    | Some(InstructionResult::OutOfGas)
+                    | Some(InstructionResult::OutOfFunds) => {
                         lowest_gas_limit = mid_gas_limit;
                     }
                     _ => {
@@ -381,9 +384,9 @@ impl ScriptRunner {
                         // if last two successful estimations only vary by 10%, we consider this to
                         // sufficiently accurate
                         const ACCURACY: u64 = 10;
-                        if (last_highest_gas_limit - highest_gas_limit) * ACCURACY /
-                            last_highest_gas_limit <
-                            1
+                        if (last_highest_gas_limit - highest_gas_limit) * ACCURACY
+                            / last_highest_gas_limit
+                            < 1
                         {
                             // update the gas
                             gas_used = highest_gas_limit;

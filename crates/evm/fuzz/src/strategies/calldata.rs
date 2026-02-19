@@ -1,15 +1,19 @@
 use crate::{
-    strategies::{fuzz_param_from_state, fuzz_param_with_fixtures, EvmFuzzState},
     FuzzFixtures,
+    strategies::{EvmFuzzState, fuzz_param_from_state, fuzz_param_with_fixtures},
 };
 use alloy_dyn_abi::JsonAbiExt;
 use alloy_json_abi::Function;
-use alloy_primitives::Bytes;
+use alloy_primitives::{Bytes, U256};
 use proptest::prelude::Strategy;
 
 /// Given a function, it returns a strategy which generates valid calldata
 /// for that function's input types, following declared test fixtures.
-pub fn fuzz_calldata(func: Function, fuzz_fixtures: &FuzzFixtures) -> impl Strategy<Value = Bytes> {
+pub fn fuzz_calldata(
+    func: Function,
+    fuzz_fixtures: &FuzzFixtures,
+    max_fuzz_int: Option<U256>,
+) -> impl Strategy<Value = Bytes> + use<> {
     // We need to compose all the strategies generated for each parameter in all
     // possible combinations, accounting any parameter declared fixture
     let strats = func
@@ -20,6 +24,7 @@ pub fn fuzz_calldata(func: Function, fuzz_fixtures: &FuzzFixtures) -> impl Strat
                 &input.selector_type().parse().unwrap(),
                 fuzz_fixtures.param_fixtures(&input.name),
                 &input.name,
+                max_fuzz_int,
             )
         })
         .collect::<Vec<_>>();
@@ -40,11 +45,14 @@ pub fn fuzz_calldata(func: Function, fuzz_fixtures: &FuzzFixtures) -> impl Strat
 pub fn fuzz_calldata_from_state(
     func: Function,
     state: &EvmFuzzState,
-) -> impl Strategy<Value = Bytes> {
+    max_fuzz_int: Option<U256>,
+) -> impl Strategy<Value = Bytes> + use<> {
     let strats = func
         .inputs
         .iter()
-        .map(|input| fuzz_param_from_state(&input.selector_type().parse().unwrap(), state))
+        .map(|input| {
+            fuzz_param_from_state(&input.selector_type().parse().unwrap(), state, max_fuzz_int)
+        })
         .collect::<Vec<_>>();
     strats
         .prop_map(move |values| {
@@ -62,10 +70,10 @@ pub fn fuzz_calldata_from_state(
 
 #[cfg(test)]
 mod tests {
-    use crate::{strategies::fuzz_calldata, FuzzFixtures};
+    use crate::{FuzzFixtures, strategies::fuzz_calldata};
     use alloy_dyn_abi::{DynSolValue, JsonAbiExt};
     use alloy_json_abi::Function;
-    use alloy_primitives::{map::HashMap, Address};
+    use alloy_primitives::{Address, map::HashMap};
     use proptest::prelude::Strategy;
 
     #[test]
@@ -80,7 +88,7 @@ mod tests {
         );
 
         let expected = function.abi_encode_input(&[address_fixture]).unwrap();
-        let strategy = fuzz_calldata(function, &FuzzFixtures::new(fixtures));
+        let strategy = fuzz_calldata(function, &FuzzFixtures::new(fixtures), None);
         let _ = strategy.prop_map(move |fuzzed| {
             assert_eq!(expected, fuzzed);
         });

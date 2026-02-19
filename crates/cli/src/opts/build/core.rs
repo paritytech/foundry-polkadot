@@ -3,20 +3,19 @@ use crate::{opts::CompilerOpts, utils::LoadConfig};
 use clap::{Parser, ValueHint};
 use eyre::Result;
 use foundry_compilers::{
-    artifacts::{remappings::Remapping, RevertStrings},
+    Project,
+    artifacts::{RevertStrings, remappings::Remapping},
     compilers::multi::MultiCompiler,
     utils::canonicalized,
-    Project,
 };
 use foundry_config::{
-    figment,
+    Config, Remappings, figment,
     figment::{
+        Figment, Metadata, Profile, Provider,
         error::Kind::InvalidType,
         value::{Dict, Map, Value},
-        Figment, Metadata, Profile, Provider,
     },
     filter::SkipBuildFilter,
-    Config, Remappings,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -130,11 +129,6 @@ pub struct BuildOpts {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build_info_path: Option<PathBuf>,
 
-    /// Whether to compile contracts to EOF bytecode.
-    #[arg(long)]
-    #[serde(skip)]
-    pub eof: bool,
-
     /// Skip building files whose names contain the given filter.
     ///
     /// `test` and `script` are aliases for `.t.sol` and `.s.sol`.
@@ -201,9 +195,9 @@ impl<'a> From<&'a BuildOpts> for Figment {
         let resolc = args
             .compiler
             .resolc_opts
-            .apply_overrides(figment.extract_inner("resolc").unwrap_or_default());
+            .apply_overrides(figment.extract_inner("polkadot").unwrap_or_default());
 
-        figment.merge(("resolc", resolc))
+        figment.merge(("polkadot", resolc))
     }
 }
 
@@ -285,10 +279,6 @@ impl Provider for BuildOpts {
 
         if let Some(ref revert) = self.revert_strings {
             dict.insert("revert_strings".to_string(), revert.to_string().into());
-        }
-
-        if self.eof {
-            dict.insert("eof".to_string(), true.into());
         }
 
         Ok(Map::from([(Config::selected_profile(), dict)]))

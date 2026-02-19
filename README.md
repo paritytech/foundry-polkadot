@@ -34,7 +34,7 @@ Running `foundryup-polkadot` will automatically install the latest version of th
 - **Configuration**: Alternatively, you can configure Resolc usage in the `foundry.toml` file by adding:
 
   ```toml
-  [profile.default.resolc]
+  [profile.default.polkadot]
   resolc_compile = true
   ```
 
@@ -64,6 +64,9 @@ Resolc configuration:
 
       --stack-size <SIZE>
           Set the contracts total stack size in bytes
+
+      --debug-info
+          Generate source based debug information in the output code file
 ```
 
 ## 3. Command-Line Interface
@@ -79,7 +82,7 @@ Resolc configuration:
 - compilation from yul is not supported
 - [factory contracts deployment support](https://github.com/paritytech/foundry-polkadot/issues/130)
 
-**Potential Unsupported Features**: Support for Anvil and Chisel is not available, which also means commands like `forge test`, `forge snapshot`, and `forge script` are not currently supported.
+**Potential Unsupported Features**: Support for Chisel is not available. Commands like `forge coverage`, and `forge script` are not currently supported.
 
 **Modified Features**:
 
@@ -115,6 +118,7 @@ These repositories may contain additional tools or documentation relevant to Fou
 | [User Book][foundry-book]
 | [Developer Docs](./docs/dev/README.md)
 | [Contributing](./CONTRIBUTING.md)
+| [Crate Docs](https://foundry-rs.github.io/foundry)
 
 </div>
 
@@ -129,7 +133,7 @@ Foundry consists of:
 - [**Anvil**](#anvil): Fast local Ethereum development node, akin to Hardhat Network, Tenderly.
 - [**Chisel**](#chisel): Fast, utilitarian, and verbose Solidity REPL.
 
-**Need help getting started with Foundry? Read the [📖 Foundry Book][foundry-book]!**
+**Need help getting started with Foundry? Read the [📖 Foundry Docs][foundry-docs]!**
 
 ![Demo](.github/assets/demo.gif)
 
@@ -213,7 +217,7 @@ _In the above benchmarks, compilation was always skipped_
     <img src=".github/assets/build_benchmark_solady_light.png" width="600px">
   </picture>
 
-  <picture>
+<picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/build_benchmark_openzeppelin_dark.png" width="600px">
     <img src=".github/assets/build_benchmark_openzeppelin_light.png" width="600px">
   </picture>
@@ -284,7 +288,7 @@ If you wish to simulate on-chain transactions pass a RPC URL.
 
 Run `forge --help` to explore the full list of available subcommands and their usage.
 
-More documentation can be found in the [forge][foundry-book-forge] section of the Foundry Book.
+More documentation can be found in the [forge](https://getfoundry.sh/forge/overview) section of the Foundry Docs.
 
 ## Cast
 
@@ -316,7 +320,7 @@ Optionally, pass `--etherscan-api-key <API_KEY>` to decode transaction traces us
 
 Run `cast --help` to explore the full list of available subcommands and their usage.
 
-More documentation can be found in the [cast][foundry-book-cast] section of the Foundry Book.
+More documentation can be found in the [cast](https://getfoundry.sh/cast/overview) section of the Foundry Docs.
 
 ## Anvil
 
@@ -338,7 +342,7 @@ cast block-number
 
 Run `anvil --help` to explore the full list of available features and their usage.
 
-More documentation can be found in the [anvil][foundry-book-anvil] section of the Foundry Book.
+More documentation can be found in the [anvil](https://getfoundry.sh/anvil/overview) section of the Foundry Docs.
 
 ## Chisel
 
@@ -385,7 +389,7 @@ contract REPL {
 
 Run `chisel --help` to explore the full list of available features and their usage.
 
-More documentation can be found in the [chisel][foundry-book-chisel] section of the Foundry Book.
+More documentation can be found in the [chisel](https://getfoundry.sh/chisel/overview) section of the Foundry Docs.
 
 ## Configuration
 
@@ -400,9 +404,9 @@ Foundry is highly configurable, allowing you to tailor it to your needs. Configu
 
 ---
 
-You can find additional [setup and configurations guides][foundry-book-config] in the [Foundry Book][foundry-book] and in the [config crate](./crates/config/README.md):
+You can find additional [setup and configurations guides](https://getfoundry.sh/config/overview) in the [Foundry Docs][foundry-docs] and in the [config crate](./crates/config/README.md):
 
-- [Configuring with `foundry.toml`](https://book.getfoundry.sh/config/)
+- [Configuring with `foundry.toml`](https://getfoundry.sh/config/overview)
 - [Setting up VSCode][vscode-setup]
 - [Shell autocompletions][shell-setup]
 
@@ -412,7 +416,7 @@ See our [contributing guidelines](./CONTRIBUTING.md).
 
 ## Getting Help
 
-First, see if the answer to your question can be found in the [Foundy Book][foundry-book], or in the relevant crate.
+First, see if the answer to your question can be found in the [Foundy Docs][foundry-docs], or in the relevant crate.
 
 If the answer is not there:
 

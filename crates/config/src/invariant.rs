@@ -1,6 +1,7 @@
 //! Configuration for invariant testing
 
 use crate::fuzz::FuzzDictionaryConfig;
+use alloy_primitives::U256;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -26,6 +27,15 @@ pub struct InvariantConfig {
     pub max_assume_rejects: u32,
     /// Number of runs to execute and include in the gas report.
     pub gas_report_samples: u32,
+    /// Path where invariant corpus is stored, enables coverage guided fuzzing and edge coverage
+    /// metrics.
+    pub corpus_dir: Option<PathBuf>,
+    /// Whether corpus to use gzip file compression and decompression.
+    pub corpus_gzip: bool,
+    // Number of corpus mutations until marked as eligible to be flushed from memory.
+    pub corpus_min_mutations: usize,
+    // Number of corpus that won't be evicted from memory.
+    pub corpus_min_size: usize,
     /// Path where invariant failures are recorded and replayed.
     pub failure_persist_dir: Option<PathBuf>,
     /// Whether to collect and display fuzzed selectors metrics.
@@ -34,6 +44,14 @@ pub struct InvariantConfig {
     pub timeout: Option<u32>,
     /// Display counterexample as solidity calls.
     pub show_solidity: bool,
+    /// Whether to collect and display edge coverage metrics.
+    pub show_edge_coverage: bool,
+    /// Maximum value for fuzzed integers, used to simulate smaller integer types.
+    /// When set, unsigned integers are clamped to [0, max_fuzz_int] and signed integers
+    /// are clamped to [-(max_fuzz_int+1), max_fuzz_int] to match real signed type ranges.
+    /// Used for Polkadot compatibility where balances are u128.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_fuzz_int: Option<U256>,
 }
 
 impl Default for InvariantConfig {
@@ -47,10 +65,16 @@ impl Default for InvariantConfig {
             shrink_run_limit: 5000,
             max_assume_rejects: 65536,
             gas_report_samples: 256,
+            corpus_dir: None,
+            corpus_gzip: true,
+            corpus_min_mutations: 5,
+            corpus_min_size: 0,
             failure_persist_dir: None,
-            show_metrics: false,
+            show_metrics: true,
             timeout: None,
             show_solidity: false,
+            show_edge_coverage: false,
+            max_fuzz_int: None,
         }
     }
 }
@@ -67,10 +91,16 @@ impl InvariantConfig {
             shrink_run_limit: 5000,
             max_assume_rejects: 65536,
             gas_report_samples: 256,
+            corpus_dir: None,
+            corpus_gzip: true,
+            corpus_min_mutations: 5,
+            corpus_min_size: 0,
             failure_persist_dir: Some(cache_dir),
-            show_metrics: false,
+            show_metrics: true,
             timeout: None,
             show_solidity: false,
+            show_edge_coverage: false,
+            max_fuzz_int: None,
         }
     }
 }

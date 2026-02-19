@@ -1,13 +1,18 @@
 [test-groups]
 chisel-serial = { max-threads = 1 }
+polkadot-localnode-serial = { max-threads = 1 }
 
 [profile.default]
-retries = { backoff = "exponential", count = 2, delay = "5s", jitter = true }
-slow-timeout = { period = "1m", terminate-after = 3 }
+retries = { backoff = "exponential", count = 3, delay = "10s", jitter = true }
+slow-timeout = { period = "5m", terminate-after = 4 }
 
 [[profile.default.overrides]]
 filter = "test(/ext_integration|can_test_forge_std/)"
 slow-timeout = { period = "5m", terminate-after = 4 }
+
+[[profile.default.overrides]]
+filter = "package(anvil-polkadot)"
+slow-timeout = { period = "10m", terminate-after = 4 }
 
 [[profile.default.overrides]]
 filter = "package(foundry-cheatcodes-spec)"
@@ -16,3 +21,8 @@ retries = 0
 [[profile.default.overrides]]
 filter = "package(chisel)"
 test-group = "chisel-serial"
+
+[[profile.default.overrides]]
+filter = "test(/polkadot_localnode/)"
+test-group = "polkadot-localnode-serial"
+slow-timeout = { period = "5m", terminate-after = 4 }

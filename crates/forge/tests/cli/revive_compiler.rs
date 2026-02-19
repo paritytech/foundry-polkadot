@@ -1,7 +1,7 @@
 //! Tests for the `forge compiler` command.
 
 use foundry_test_utils::snapbox::IntoData;
-pub const OTHER_RESOLC_VERSION: &str = "0.1.0-dev.13";
+pub const OTHER_RESOLC_VERSION: &str = "0.6.0";
 
 const CONTRACT_A: &str = r#"
 // SPDX-license-identifier: MIT
@@ -33,7 +33,7 @@ contract ContractD {}
 
 forgetest!(can_resolve_path, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
     });
@@ -52,10 +52,10 @@ Solidity:
 
 forgetest!(can_list_resolved_compiler_versions, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractA", CONTRACT_A).unwrap();
 
@@ -69,10 +69,10 @@ Solidity:
 
 forgetest!(can_list_resolved_compiler_versions_json, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractA", CONTRACT_A).unwrap();
 
@@ -82,7 +82,7 @@ forgetest!(can_list_resolved_compiler_versions_json, |prj, cmd| {
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "dependency": {
         "name": "Solc",
         "version": "0.8.4"
@@ -97,10 +97,10 @@ forgetest!(can_list_resolved_compiler_versions_json, |prj, cmd| {
 
 forgetest!(can_list_resolved_compiler_versions_verbose, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractC", CONTRACT_C).unwrap();
     prj.add_source("ContractD", CONTRACT_D).unwrap();
@@ -118,10 +118,10 @@ Solidity:
 
 forgetest!(can_list_resolved_compiler_versions_verbose_json, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractC", CONTRACT_C).unwrap();
     prj.add_source("ContractD", CONTRACT_D).unwrap();
@@ -132,7 +132,7 @@ forgetest!(can_list_resolved_compiler_versions_verbose_json, |prj, cmd| {
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "paths": [
         "src/ContractC.sol",
         "src/ContractD.sol"
@@ -151,10 +151,10 @@ forgetest!(can_list_resolved_compiler_versions_verbose_json, |prj, cmd| {
 
 forgetest!(can_list_resolved_multiple_compiler_versions, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractA", CONTRACT_A).unwrap();
     prj.add_source("ContractB", CONTRACT_B).unwrap();
@@ -173,10 +173,10 @@ Solidity:
 
 forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractA", CONTRACT_A).unwrap();
     prj.add_source("ContractB", CONTRACT_B).unwrap();
@@ -191,7 +191,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd|
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "paths": [
         "src/ContractD.sol"
       ],
@@ -209,10 +209,10 @@ forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd|
 
 forgetest!(can_list_resolved_multiple_compiler_versions_verbose, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractA", CONTRACT_A).unwrap();
     prj.add_source("ContractB", CONTRACT_B).unwrap();
@@ -238,10 +238,10 @@ Solidity:
 
 forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd| {
     prj.update_config(|config| {
-        config.resolc.resolc = Some(foundry_config::SolcReq::Version(
+        config.polkadot.resolc = Some(foundry_config::SolcReq::Version(
             semver::Version::parse(OTHER_RESOLC_VERSION).unwrap(),
         ));
-        config.resolc.resolc_compile = true;
+        config.polkadot.resolc_compile = true;
     });
     prj.add_source("ContractA", CONTRACT_A).unwrap();
     prj.add_source("ContractB", CONTRACT_B).unwrap();
@@ -254,7 +254,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
   "Solidity": [
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "evm_version": "Istanbul",
       "paths": [
         "src/ContractA.sol"
@@ -266,7 +266,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
     },
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "evm_version": "London",
       "paths": [
         "src/ContractB.sol"
@@ -278,7 +278,7 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
     },
     {
       "name": "Resolc",
-      "version": "0.1.0-dev.13",
+      "version": "0.6.0",
       "evm_version": "Cancun",
       "paths": [
         "src/ContractC.sol",

@@ -1,7 +1,7 @@
-use crate::{error::ParserResult, Comments};
+use crate::{Comments, error::ParserResult};
 use forge_fmt::{
-    solang_ext::SafeUnwrap, Comments as FmtComments, Formatter, FormatterConfig, InlineConfig,
-    Visitor,
+    Comments as FmtComments, Formatter, FormatterConfig, InlineConfig, Visitor,
+    solang_ext::SafeUnwrap,
 };
 use solang_parser::pt::{
     ContractDefinition, ContractTy, EnumDefinition, ErrorDefinition, EventDefinition,
@@ -16,7 +16,7 @@ pub struct ParseItem {
     /// Item comments.
     pub comments: Comments,
     /// Children items.
-    pub children: Vec<ParseItem>,
+    pub children: Vec<Self>,
     /// Formatted code string.
     pub code: String,
 }

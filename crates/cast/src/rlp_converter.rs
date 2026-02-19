@@ -1,4 +1,4 @@
-use alloy_primitives::{hex, U256};
+use alloy_primitives::{U256, hex};
 use alloy_rlp::{Buf, Decodable, Encodable, Header};
 use eyre::Context;
 use serde_json::Value;
@@ -11,7 +11,7 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Item {
     Data(Vec<u8>),
-    Array(Vec<Item>),
+    Array(Vec<Self>),
 }
 
 impl Encodable for Item {

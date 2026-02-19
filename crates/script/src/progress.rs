@@ -1,8 +1,8 @@
-use crate::receipts::{check_tx_status, format_receipt, TxStatus};
+use crate::receipts::{TxStatus, check_tx_status, format_receipt};
 use alloy_chains::Chain;
 use alloy_primitives::{
-    map::{B256HashMap, HashMap},
     B256,
+    map::{B256HashMap, HashMap},
 };
 use eyre::Result;
 use forge_script_sequence::ScriptSequence;
@@ -134,7 +134,7 @@ impl SequenceProgressState {
     }
 }
 
-/// Clonable wrapper around [SequenceProgressState].
+/// Cloneable wrapper around [SequenceProgressState].
 #[derive(Debug, Clone)]
 pub struct SequenceProgress {
     pub inner: Arc<RwLock<SequenceProgressState>>,
@@ -171,7 +171,7 @@ impl ScriptProgress {
         progress
     }
 
-    /// Traverses a set of pendings and either finds receipts, or clears them from
+    /// Traverses a set of pending transactions and either finds receipts, or clears them from
     /// the deployment sequence.
     ///
     /// For each `tx_hash`, we check if it has confirmed. If it has

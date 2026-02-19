@@ -25,4 +25,11 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Expose Anvil's default JSON-RPC port from the final image.
+EXPOSE 8545
+
+# Allow `anvil-polkadot` (and `anvil`) to bind externally by default.
+# This can still be overridden by passing `--host` explicitly.
+ENV ANVIL_IP_ADDR=0.0.0.0
+
 COPY --from=builder /root/.foundry/bin/ /usr/local/bin/

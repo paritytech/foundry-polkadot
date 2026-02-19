@@ -1,5 +1,5 @@
 use clap::Parser;
-use foundry_config::{revive::ResolcConfig, SolcReq};
+use foundry_config::{SolcReq, revive::PolkadotConfig};
 use serde::Serialize;
 
 #[derive(Clone, Debug, Default, Serialize, Parser)]
@@ -53,10 +53,19 @@ pub struct ResolcOpts {
     )]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stack_size: Option<u32>,
+
+    /// Generate source based debug information in the output code file.
+    #[arg(
+        long = "debug-info",
+        help = "Generate source based debug information in the output code file",
+        action = clap::ArgAction::SetTrue
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debug_information: Option<bool>,
 }
 
 impl ResolcOpts {
-    pub(crate) fn apply_overrides(&self, mut resolc: ResolcConfig) -> ResolcConfig {
+    pub(crate) fn apply_overrides(&self, mut polkadot: PolkadotConfig) -> PolkadotConfig {
         macro_rules! set_if_some {
             ($src:expr, $dst:expr) => {
                 if let Some(src) = $src {
@@ -67,19 +76,24 @@ impl ResolcOpts {
 
         set_if_some!(
             self.resolc_compile.and_then(|v| if v { Some(true) } else { None }),
-            resolc.resolc_compile
+            polkadot.resolc_compile
         );
+
         set_if_some!(
             self.use_resolc.as_ref().map(|v| SolcReq::from(v.trim_start_matches("resolc:"))),
-            resolc.resolc
+            polkadot.resolc
         );
         set_if_some!(
             self.optimizer_mode.as_ref().and_then(|mode| mode.parse::<char>().ok()),
-            resolc.optimizer_mode
+            polkadot.optimizer_mode
         );
-        set_if_some!(self.heap_size, resolc.heap_size);
-        set_if_some!(self.stack_size, resolc.stack_size);
+        set_if_some!(self.heap_size, polkadot.heap_size);
+        set_if_some!(self.stack_size, polkadot.stack_size);
+        set_if_some!(
+            self.debug_information.and_then(|v| if v { Some(true) } else { None }),
+            polkadot.debug_information
+        );
 
-        resolc
+        polkadot
     }
 }
