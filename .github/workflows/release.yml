@@ -20,7 +20,7 @@ on:
         description: "stable version for the build"
         type: string
         required: false
-        default: "v1.1.0"
+        default: "v1.5.1"
 
 env:
   CARGO_TERM_COLOR: always
