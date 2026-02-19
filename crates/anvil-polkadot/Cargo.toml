@@ -135,8 +135,8 @@ clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_complete = { version = "4" }
 chrono.workspace = true
 clap_complete_fig = "4"
-subxt = "0.43.0"
-subxt-signer = "0.43.0"
+subxt = "^0.44.0"
+subxt-signer = { version = "^0.44.0", features = ["default", "unstable-eth" ] }
 tokio-stream = "0.1.17"
 jsonrpsee = "0.24.10"
 sqlx = "0.8.6"
