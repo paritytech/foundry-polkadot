@@ -591,12 +591,11 @@ impl ApiServer {
         }
         let time = timestamp.to::<u64>();
         let time_ms = time.saturating_mul(1000);
-        // Get the time for the last block.
         let latest_block = self.latest_block();
         let last_block_timestamp = self.backend.read_timestamp(latest_block)?;
-        // Inject the new time if the timestamp precedes last block time
+        // When going backward in time, store a pending override for the next mined block.
         if time_ms < last_block_timestamp {
-            self.backend.inject_timestamp(latest_block, time_ms);
+            self.backend.set_pending_timestamp(time_ms);
         }
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
@@ -832,8 +831,8 @@ impl ApiServer {
         };
 
         if transaction.gas.is_none() {
-            transaction.gas =
-                Some(self.estimate_gas(transaction_req.clone(), latest_block_id).await?);
+            // Pass None so that gas estimation refers to default `Pending` block.
+            transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
         }
 
         if transaction.gas_price.is_none() {
