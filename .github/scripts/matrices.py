@@ -29,14 +29,18 @@ class Case:
     n_partitions: int
     # Whether to run on non-Linux platforms for PRs. All platforms and tests are run on pushes.
     pr_cross_platform: bool
+    # Extra flags passed to cargo nextest run (e.g. --release).
+    extra_flags: str
 
     def __init__(
-        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool
+        self, name: str, filter: str, n_partitions: int, pr_cross_platform: bool,
+        extra_flags: str = "",
     ):
         self.name = name
         self.filter = filter
         self.n_partitions = n_partitions
         self.pr_cross_platform = pr_cross_platform
+        self.extra_flags = extra_flags
 
 
 # GHA matrix entry
@@ -103,7 +107,8 @@ config = [
         name="integration / anvil-polkadot",
         filter="package(=anvil-polkadot) & kind(test)",
         n_partitions=1,
-        pr_cross_platform=True,
+        pr_cross_platform=False,
+        extra_flags="--release",
     ),
     # TODO: run the local node tests on polkadot-anvil
     # Case(
@@ -128,7 +133,7 @@ def main():
                     os_str = f" ({target.target})"
 
                 name = case.name
-                flags = f"--no-fail-fast -E '{case.filter}'"
+                flags = f"--no-fail-fast -E '{case.filter}' {case.extra_flags}".strip()
                 if case.n_partitions > 1:
                     s = f"{partition}/{case.n_partitions}"
                     name += f" ({s})"
