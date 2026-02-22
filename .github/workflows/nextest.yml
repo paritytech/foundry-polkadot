@@ -112,6 +112,7 @@ jobs:
         with:
           cache-on-failure: true
           prefix-key: "v0-rust-after-merge"
+          save-if: ${{ github.event_name != 'pull_request' }}
 
       - name: Setup Git config
         run: |
