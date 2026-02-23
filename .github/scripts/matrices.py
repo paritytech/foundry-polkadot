@@ -87,9 +87,15 @@ config = [
     ),
     Case(
         name="integration",
-        filter="kind(test) & !package(=anvil-polkadot) & !test(/\\b(ext_integration)|polkadot_localnode/)",
+        filter="kind(test) & !package(=anvil-polkadot) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
         n_partitions=1,
         pr_cross_platform=True,
+    ),
+    Case(
+        name="integration / issue-repros",
+        filter="package(=forge) & test(/\\bissue/)",
+        n_partitions=1,
+        pr_cross_platform=False,
     ),
     Case(
         name="integration / external",
