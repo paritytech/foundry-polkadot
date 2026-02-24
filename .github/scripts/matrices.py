@@ -83,20 +83,26 @@ config = [
     ),
     Case(
         name="integration",
-        filter="kind(test) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
-        n_partitions=3,
+        filter="kind(test) & !package(=anvil-polkadot) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
+        n_partitions=1,
         pr_cross_platform=True,
     ),
     Case(
         name="integration / issue-repros",
         filter="package(=forge) & test(/\\bissue/)",
-        n_partitions=2,
+        n_partitions=1,
         pr_cross_platform=False,
     ),
     Case(
         name="integration / external",
         filter="package(=forge) & test(/\\bext_integration/)",
-        n_partitions=2,
+        n_partitions=1,
+        pr_cross_platform=False,
+    ),
+    Case(
+        name="integration / anvil-polkadot",
+        filter="package(=anvil-polkadot) & kind(test)",
+        n_partitions=1,
         pr_cross_platform=False,
     ),
     # TODO: run the local node tests on polkadot-anvil
@@ -122,7 +128,10 @@ def main():
                     os_str = f" ({target.target})"
 
                 name = case.name
-                flags = f"-E '{case.filter}'"
+                if case.name == "integration / anvil-polkadot":
+                    flags = f"--no-fail-fast -E '{case.filter}' --cargo-profile release-with-debug"
+                else:
+                    flags = f"--no-fail-fast -E '{case.filter}'"
                 if case.n_partitions > 1:
                     s = f"{partition}/{case.n_partitions}"
                     name += f" ({s})"

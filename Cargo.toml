@@ -96,6 +96,11 @@ debug = "full"
 split-debuginfo = "unpacked"
 strip = false
 
+[profile.release-with-debug]
+inherits = "release"
+debug = "line-tables-only"
+strip = false
+
 [profile.bench]
 inherits = "profiling"
 
