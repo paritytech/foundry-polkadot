@@ -4,11 +4,13 @@
 //! Substrate extrinsics, including support for impersonated transactions with
 //! fake signatures.
 
+use crate::substrate_node::service::TransactionPoolHandle;
 use alloy_primitives::{Address, B256, U256, keccak256};
 use alloy_rpc_types::txpool::TxpoolInspectSummary;
 use codec::{DecodeLimit, Encode};
 use polkadot_sdk::{
     pallet_revive::evm::TransactionSigned,
+    sc_service::{InPoolTransaction, TransactionPool},
     sp_core::{self, H256},
 };
 use serde::{Deserialize, Serialize};
@@ -197,4 +199,15 @@ pub(super) fn extract_sender(
     let sender = Address::from_slice(from.as_bytes());
 
     Some(sender)
+}
+
+/// Get the next nonce for an address based on pending pool transactions.
+/// Returns `Some(max_nonce + 1)` if the address has pending txs, `None` otherwise.
+pub(super) fn get_pool_nonce(pool: &TransactionPoolHandle, address: Address) -> Option<u64> {
+    pool.ready()
+        .filter_map(|tx| extract_tx_summary(tx.data()))
+        .filter(|(sender, _, _)| *sender == address)
+        .map(|(_, nonce, _)| nonce)
+        .max()
+        .map(|nonce| nonce.saturating_add(1))
 }
