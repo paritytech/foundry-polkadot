@@ -506,3 +506,42 @@ async fn test_mining_with_eth_rpc_block_limit() {
         U256::from(0)
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mode_switching_stability() {
+    // Start in None (default for test_config)
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    // Switch to Auto
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Send Tx1
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(baltathar.address())))
+        .value(U256::from(100));
+
+    node.send_transaction(tx.clone()).await.unwrap();
+    assert_eq!(node.best_block_number().await, 1);
+
+    // Switch to Interval
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetIntervalMining(1)).await.unwrap()).unwrap();
+
+    // Send Tx2
+    node.send_transaction(tx.clone().nonce(1)).await.unwrap();
+
+    // Wait for block (interval)
+    node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(2)).await.unwrap();
+    assert_eq!(node.best_block_number().await, 2);
+
+    // Switch back to Auto
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Send Tx3
+    node.send_transaction(tx.clone().nonce(2)).await.unwrap();
+    assert_eq!(node.best_block_number().await, 3);
+}
