@@ -1744,13 +1744,15 @@ impl ApiServer {
                 })?;
                 Ok(self.eth_rpc_client.get_block_hash(n).await?)
             }
-            BlockNumberOrTagOrHash::BlockTag(BlockTag::Finalized | BlockTag::Safe) => {
-                let block = self.eth_rpc_client.latest_finalized_block().await;
-                Ok(Some(block.hash()))
-            }
-            BlockNumberOrTagOrHash::BlockTag(_) => {
-                let block = self.eth_rpc_client.latest_block().await;
-                Ok(Some(block.hash()))
+            BlockNumberOrTagOrHash::BlockTag(tag) => {
+                // Read from the substrate backend directly for up to date information.
+                let info = self.backend.blockchain().info();
+                let hash = match tag {
+                    BlockTag::Earliest => info.genesis_hash,
+                    BlockTag::Finalized | BlockTag::Safe => info.finalized_hash,
+                    _ => info.best_hash,
+                };
+                Ok(Some(hash))
             }
         }
     }
