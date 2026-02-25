@@ -245,16 +245,8 @@ impl ApiServer {
                         self.stale_pool_notifications.fetch_sub(1, Ordering::Relaxed);
                         continue;
                     }
-                    let tx_count = self.tx_pool.ready().count();
-                    trace!(target: "miner", "creating new block");
-                    trace!(target: "backend", "creating new block with {tx_count} transactions");
-                    match seal_now(&self.seal_command_sender).await {
-                        Ok(block) => {
-                            // Note: upstream anvil logs block_number here, but CreatedBlock only has hash.
-                            trace!(target: "miner", "created new block: {:?}", block.hash);
-                            debug!(hash=?block.hash, "sealed");
-                            let _ = self.log_mined_block(block.hash).await;
-                        }
+                    match self.seal_and_log().await {
+                        Ok(()) => {}
                         Err(MiningError::ClosedChannel) => break,
                         Err(e) => {
                             error!(?e, "block production failed");
@@ -911,10 +903,23 @@ impl ApiServer {
         Ok(hash)
     }
 
+    /// Seal a new block, log its details, and call `log_mined_block`.
+    async fn seal_and_log(&self) -> std::result::Result<(), MiningError> {
+        let tx_count = self.tx_pool.ready().count();
+        trace!(target: "miner", "creating new block");
+        trace!(target: "backend", "creating new block with {tx_count} transactions");
+        let block = seal_now(&self.seal_command_sender).await?;
+        // Note: upstream anvil logs block_number here, but CreatedBlock only has hash.
+        trace!(target: "miner", "created new block: {:?}", block.hash);
+        debug!(hash=?block.hash, "sealed");
+        let _ = self.log_mined_block(block.hash).await;
+        Ok(())
+    }
+
     /// Mine a block inline from an RPC handler and mark the upcoming pool
     /// notification as stale so the mining branch in `run()` skips it.
     async fn seal_now_inline(&self) -> Result<()> {
-        seal_now(&self.seal_command_sender).await.map_err(Error::Mining)?;
+        self.seal_and_log().await.map_err(Error::Mining)?;
         self.stale_pool_notifications.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
