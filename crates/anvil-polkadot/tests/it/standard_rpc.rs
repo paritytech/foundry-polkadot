@@ -417,7 +417,7 @@ async fn test_eth_get_transaction_count_pending_with_pooled_txs() {
         node.send_transaction(transaction).await.unwrap();
     }
 
-    // Pending nonce should reflect the 3 pooled txs (max nonce 2 → next nonce 3).
+    // Pending nonce should reflect the 3 pooled txs (max nonce is 2, so next nonce is 3).
     let nonce_pending = unwrap_response::<U256>(
         node.eth_rpc(EthRequest::EthGetTransactionCount(
             alith_addr,

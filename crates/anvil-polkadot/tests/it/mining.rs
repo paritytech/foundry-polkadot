@@ -265,9 +265,7 @@ async fn test_mixed_mining() {
     assert_eq!(node.best_block_number().await, 1);
 
     // Wait for second block mined through interval mining.
-    // Uses 4s timeout for a 1s interval to account for the select-loop
-    // serialization: the interval tick can only fire between RPC calls.
-    node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(4)).await.unwrap();
+    node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(2)).await.unwrap();
     assert_eq!(node.best_block_number().await, 2);
 }
 
