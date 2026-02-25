@@ -903,7 +903,7 @@ impl ApiServer {
         Ok(hash)
     }
 
-    /// Seal a new block, log its details, and call `log_mined_block`.
+    /// Seal a new block and log its details.
     async fn seal_and_log(&self) -> std::result::Result<(), MiningError> {
         let tx_count = self.tx_pool.ready().count();
         trace!(target: "miner", "creating new block");
