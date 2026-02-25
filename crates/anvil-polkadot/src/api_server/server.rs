@@ -207,12 +207,11 @@ impl ApiServer {
     ///
     /// # Inline mining
     ///
-    /// Because the mining branch cannot fire while an RPC is executing,
-    /// transaction-submitting RPCs in automine/mixed mode call
-    /// [`Self::seal_now_inline`] (via `send_transaction_and_maybe_mine`,
-    /// `send_raw_transaction_and_maybe_mine`, and the `_sync` variants).
-    /// This ensures the block exists before the RPC returns, matching
-    /// upstream Anvil's automine semantics.
+    /// Because the mining branch cannot fire while an RPC is executing, transaction-submitting RPCs
+    /// in automine/mixed mode call [`Self::seal_now_inline`] (via
+    /// `send_transaction_and_maybe_mine`, `send_raw_transaction_and_maybe_mine`, and the `_sync`
+    /// variants). This ensures the block exists before the RPC returns, matching upstream Anvil's
+    /// automine semantics.
     ///
     /// # Error handling
     ///
