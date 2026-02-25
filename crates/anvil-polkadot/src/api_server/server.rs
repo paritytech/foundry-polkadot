@@ -195,9 +195,9 @@ impl ApiServer {
     /// 1. **Mode change** – monitors `MiningEngine::mining_mode` via `wait_for_mode_change`.  On
     ///    the first iteration `current_mode` is `None`, so it fires immediately and builds the
     ///    initial streams. Subsequent mode changes (e.g. `set_interval_mining`, `set_auto_mine`)
-    ///    wake the `AtomicWaker` and rebuild streams on the next iteration.
-    ///    The `stale_pool_notifications` counter is reset to 0 here because rebuilding the stream
-    ///    drops any pending notifications that the counter was expecting to skip.
+    ///    wake the `AtomicWaker` and rebuild streams on the next iteration. The
+    ///    `stale_pool_notifications` counter is reset to 0 here because rebuilding the stream drops
+    ///    any pending notifications that the counter was expecting to skip.
     ///
     /// 2. **Mining trigger** – fires on interval ticks or transaction-pool import notifications
     ///    (tagged by [`MiningTrigger`]).  Calls `seal_now` to produce a block via manual-seal.
