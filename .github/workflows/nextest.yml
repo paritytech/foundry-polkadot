@@ -77,7 +77,7 @@ jobs:
           chmod +x ./anvil-polkadot
           echo "$PWD/anvil-polkadot" >> $GITHUB_PATH
           echo "added to path"
-          echo $(which anvil-polkadot)
+          echo "Path to binary is $(which anvil-polkadot)."
 
       - name: Setup Node.js
         if: contains(matrix.name, 'external')
