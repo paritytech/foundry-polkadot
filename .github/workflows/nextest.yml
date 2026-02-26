@@ -64,10 +64,10 @@ jobs:
           sudo apt-get install -y clang libclang-dev unzip build-essential
       - uses: dev-hanz-ops/install-gh-cli-action@v0.2.1
         if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
-      - name: Install anvil-polkadot for local tests (Ubuntu)
-        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
         with:
           gh-cli-version: 2.65.0
+      - name: Install anvil-polkadot for local tests (Ubuntu)
+        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
         run: |
           gh release download stable \
             --pattern 'foundry_stable_linux_amd64.tar.gz'
