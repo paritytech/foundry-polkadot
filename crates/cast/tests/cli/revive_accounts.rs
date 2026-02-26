@@ -1,22 +1,22 @@
-use foundry_test_utils::{casttest_serial, deploy_contract, revive::PolkadotNode, util::OutputExt};
+use foundry_test_utils::{deploy_contract, forgetest_async, revive::PolkadotNode, util::OutputExt};
 
-casttest_serial!(test_cast_balance, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_balance, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
         let (account, _) = PolkadotNode::dev_accounts().next().expect("no dev accounts available");
         let account = account.to_string();
 
         cmd.cast_fuse().args(["balance", "--rpc-url", url, &account]).assert_success().stdout_eq(
             str![[r#"
-999999900000000000000000000
+18446744073709551615000000000000000000
 
 "#]],
         );
     }
 });
 
-casttest_serial!(test_cast_nonce, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_nonce, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
         let (account, _) = PolkadotNode::dev_accounts().next().unwrap();
         let account = account.to_string();
@@ -30,8 +30,8 @@ casttest_serial!(test_cast_nonce, |_prj, cmd| {
     }
 });
 
-casttest_serial!(test_cast_code, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_code, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse()
@@ -44,8 +44,8 @@ casttest_serial!(test_cast_code, |_prj, cmd| {
     }
 });
 
-casttest_serial!(test_cast_codesize, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_codesize, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse()
@@ -58,8 +58,8 @@ casttest_serial!(test_cast_codesize, |_prj, cmd| {
     }
 });
 
-casttest_serial!(test_cast_storage, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_storage, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse()

@@ -48,23 +48,6 @@ macro_rules! forgetest {
 }
 
 #[macro_export]
-macro_rules! forgetest_serial {
-    ($(#[$attr:meta])* $test:ident, |$prj:ident, $cmd:ident| $e:expr) => {
-        $crate::forgetest_serial!($(#[$attr])* $test, $crate::foundry_compilers::PathStyle::Dapptools, |$prj, $cmd| $e);
-    };
-    ($(#[$attr:meta])* $test:ident, $style:expr, |$prj:ident, $cmd:ident| $e:expr) => {
-        #[expect(clippy::disallowed_macros)]
-        #[serial]
-        #[test]
-        $(#[$attr])*
-        fn $test() {
-            let (mut $prj, mut $cmd) = $crate::util::setup_forge(stringify!($test), $style);
-            $e
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! forgetest_async {
     ($(#[$attr:meta])* $test:ident, |$prj:ident, $cmd:ident| $e:expr) => {
         $crate::forgetest_async!($(#[$attr])* $test, $crate::foundry_compilers::PathStyle::Dapptools, |$prj, $cmd| $e);
@@ -137,13 +120,6 @@ macro_rules! forgesoldeer {
             $crate::util::initialize($prj.root());
             $e
         }
-    };
-}
-
-#[macro_export]
-macro_rules! casttest_serial{
-    ($test:ident, $($async:ident)? |$prj:ident, $cmd:ident| $e:expr) => {
-        casttest!(#[serial_test::serial] $test, $($async)? |$prj, $cmd| $e);
     };
 }
 

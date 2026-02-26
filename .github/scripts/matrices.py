@@ -99,13 +99,12 @@ config = [
         n_partitions=2,
         pr_cross_platform=False,
     ),
-    # TODO: run the local node tests on polkadot-anvil
-    # Case(
-    #     name="integration / polkadot_localnode",
-    #     filter="(package(=cast) | package(=forge)) & test(/polkadot_localnode/)",
-    #     n_partitions=1,
-    #     pr_cross_platform=False,
-    # ),
+    Case(
+        name="integration / polkadot_localnode",
+        filter="(package(=cast) | package(=forge)) & test(/polkadot_localnode/)",
+        n_partitions=1,
+        pr_cross_platform=False,
+    ),
 ]
 
 

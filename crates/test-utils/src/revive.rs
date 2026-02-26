@@ -1,42 +1,46 @@
-use alloy_rpc_client::ClientBuilder;
 use eyre::Result;
 use std::{process, thread::sleep, time::Duration};
 use subxt::{OnlineClient, PolkadotConfig};
 use tempfile::TempDir;
 
-const NODE_BINARY: &str = "substrate-node";
-const RPC_PROXY_BINARY: &str = "eth-rpc";
+const NODE_BINARY: &str = "anvil-polkadot";
 const MAX_ATTEMPTS: u32 = 15;
 const RPC_URL: &str = "http://127.0.0.1:8545";
 const RETRY_DELAY: Duration = Duration::from_secs(1);
+pub static GENESIS_JSON: &str = include_str!("../test-data/genesis.json");
 
 const WALLETS: [(&str, &str); 1] = [(
-    "0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac",
-    "0x5fb92d6e98884f76de468fa3f6278f8807c48bebc13595d45af5bdc4da702133",
+    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
 )];
 
 /// Spawn and manage an instance of a compatible contracts enabled chain node.
 #[allow(dead_code)]
-struct ContractsNodeProcess {
+struct AnvilPolkadotNode {
     node: process::Child,
     tmp_dir: tempfile::TempDir,
 }
 
-impl Drop for ContractsNodeProcess {
+impl Drop for AnvilPolkadotNode {
     fn drop(&mut self) {
         self.kill()
     }
 }
 
-impl ContractsNodeProcess {
+impl AnvilPolkadotNode {
     async fn start() -> Result<Self> {
         let tmp_dir = TempDir::with_prefix("cargo-contract.cli.test.node")?;
-
+        std::fs::write(tmp_dir.path().join("genesis.json"), GENESIS_JSON).unwrap();
         let mut node = process::Command::new(NODE_BINARY)
             .env("RUST_LOG", "error")
-            .arg("--dev")
-            .arg(format!("--base-path={}", tmp_dir.path().to_string_lossy()))
-            .arg("--no-prometheus")
+            .args(&[
+                "--init",
+                tmp_dir.path().join("genesis.json").to_str().unwrap(),
+                "--ipc",
+                tmp_dir.path().join("anvil.ipc").to_str().unwrap(),
+                "--balance",
+                u64::MAX.to_string().as_str(),
+            ])
             .spawn()?;
         // wait for rpc to be initialized
         let mut attempts = 1;
@@ -75,59 +79,6 @@ impl ContractsNodeProcess {
     }
 }
 
-/// Spawn and manage an instance of an ethereum RPC proxy node.
-struct RpcProxyProcess(process::Child);
-
-impl Drop for RpcProxyProcess {
-    fn drop(&mut self) {
-        self.kill()
-    }
-}
-
-impl RpcProxyProcess {
-    async fn start() -> Result<Self> {
-        let mut rpc_proxy = process::Command::new(RPC_PROXY_BINARY)
-            .env("RUST_LOG", "error")
-            .arg("--dev")
-            .arg("--no-prometheus")
-            .spawn()?;
-
-        let client = ClientBuilder::default().connect(RPC_URL).await?;
-
-        let mut attempts = 1;
-        loop {
-            sleep(RETRY_DELAY);
-            match client.request_noparams::<String>("eth_chainId").await {
-                Result::Ok(_) => {
-                    return Ok(Self(rpc_proxy));
-                }
-                Err(err) => {
-                    if attempts < MAX_ATTEMPTS {
-                        attempts += 1;
-                        continue;
-                    }
-
-                    let err = eyre::eyre!(
-                        "Failed to connect to RPC proxy after {} attempts: {}",
-                        MAX_ATTEMPTS,
-                        err
-                    );
-                    tracing::error!("{}", err);
-                    rpc_proxy.kill()?;
-                    return Err(err);
-                }
-            }
-        }
-    }
-
-    fn kill(&mut self) {
-        tracing::debug!("Killing RPC proxy process {}", self.0.id());
-        if let Err(err) = self.0.kill() {
-            tracing::error!("Error killing RPC proxy process {}: {}", self.0.id(), err)
-        }
-    }
-}
-
 /// `PolkadotHubNode` combines a `substrate-node` with an Ethereum RPC proxy to enable
 /// Ethereum-compatible transactions in CI tests.
 ///
@@ -144,15 +95,13 @@ impl RpcProxyProcess {
 /// Ensure that both binaries are available in your system's PATH and are version-compatible.
 #[allow(dead_code)]
 pub struct PolkadotNode {
-    node: ContractsNodeProcess,
-    rpc_proxy: RpcProxyProcess,
+    node: AnvilPolkadotNode,
 }
 
 impl PolkadotNode {
     pub async fn start() -> Result<Self> {
-        let node = ContractsNodeProcess::start().await?;
-        let rpc_proxy = RpcProxyProcess::start().await?;
-        Ok(Self { node, rpc_proxy })
+        let node = AnvilPolkadotNode::start().await?;
+        Ok(Self { node })
     }
 
     pub fn http_endpoint() -> &'static str {

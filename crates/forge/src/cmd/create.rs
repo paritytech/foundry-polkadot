@@ -3,7 +3,7 @@ use alloy_chains::Chain;
 use alloy_dyn_abi::{DynSolValue, JsonAbiExt, Specifier};
 use alloy_json_abi::{Constructor, JsonAbi};
 use alloy_network::{AnyNetwork, AnyTransactionReceipt, EthereumWallet, TransactionBuilder};
-use alloy_primitives::{Address, Bytes, U256, address, hex, keccak256};
+use alloy_primitives::{Address, Bytes, hex, keccak256};
 use alloy_provider::{PendingTransactionError, Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
@@ -11,7 +11,6 @@ use alloy_signer::Signer;
 use alloy_transport::TransportError;
 use clap::{Parser, ValueHint};
 
-use codec::{Compact, Encode};
 use eyre::{Context, Result};
 use forge_verify::{RetryArgs, VerifierArgs, VerifyArgs};
 use foundry_cli::{
@@ -44,51 +43,8 @@ use std::{
 };
 merge_impl_figment_convert!(CreateArgs, build, eth);
 
-/// The `upload_code` call index within pallet-revive (`#[pallet::call_index(4)]`).
-const UPLOAD_CODE_CALL_INDEX: u8 = 4;
-
-/// The address used to dispatch substrate runtime calls via EVM transactions.
-/// Computed with `PalletId(*b"py/paddr").into_account_truncating()`.
-const RUNTIME_PALLETS_ADDR: Address = address!("6d6f646c70792f70616464720000000000000000");
-
 /// Maximum bytecode size that can be uploaded in a single transaction calldata.
 const MAX_UPLOAD_BYTECODE_SIZE: usize = 128 * 1024;
-
-/// Resolves the pallet-revive index for the given chain.
-///
-/// Checks the explicit config value first, then falls back to known chain IDs.
-/// Known networks and their pallet-revive indices:
-/// - anvil-polkadot (420420420) → 4
-/// - Paseo Asset Hub (420420417) → 100
-/// - Kusama Asset Hub (420420418) → 60
-/// - Polkadot Asset Hub (420420419) → 90
-fn resolve_revive_pallet_index(config_value: Option<u8>, chain_id: u64) -> Result<u8> {
-    if let Some(index) = config_value {
-        return Ok(index);
-    }
-
-    match chain_id {
-        420420420 => Ok(4),   // anvil-polkadot
-        420420417 => Ok(100), // Paseo Asset Hub
-        420420418 => Ok(60),  // Kusama Asset Hub
-        420420419 => Ok(90),  // Polkadot Asset Hub
-        _ => eyre::bail!(
-            "Unknown pallet-revive index for chain ID {chain_id}. \
-             Set `polkadot.revive_pallet_index` in foundry.toml."
-        ),
-    }
-}
-
-/// Encodes an `upload_code` call for pallet-revive as a SCALE-encoded `RuntimeCall`.
-/// Format: `[pallet_index, call_index, SCALE(Vec<u8> code), SCALE(Compact<u128> deposit)]`
-fn encode_upload_code_call(pallet_index: u8, code: &[u8], storage_deposit_limit: u128) -> Vec<u8> {
-    let mut encoded = Vec::new();
-    encoded.push(pallet_index);
-    encoded.push(UPLOAD_CODE_CALL_INDEX);
-    code.encode_to(&mut encoded);
-    Compact(storage_deposit_limit).encode_to(&mut encoded);
-    encoded
-}
 
 /// Finds a contract in the artifacts by its bytecode keccak256 hash.
 fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Option<Bytes> {
@@ -105,66 +61,6 @@ fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Op
         }
     }
     None
-}
-
-/// Uploads factory dependencies for a contract deployment.
-///
-/// Collects all `factory_dependencies` from Resolc compiler metadata, then uploads
-/// each dependency bytecode to pallet-revive via `upload_code` dispatched through
-/// `RUNTIME_PALLETS_ADDR`.
-async fn upload_factory_dependencies<P: Provider<AnyNetwork>>(
-    output: &ProjectCompileOutput,
-    provider: &P,
-    pallet_index: u8,
-) -> Result<()> {
-    let mut all_dependencies = BTreeMap::new();
-
-    for (_id, contract) in output.artifact_ids() {
-        if let ArtifactExtras::Resolc(extras) = &contract.extensions
-            && let Some(factory_dependencies) = &extras.factory_dependencies
-        {
-            for (bytecode_hash, contract_name) in factory_dependencies {
-                all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
-            }
-        }
-    }
-
-    if all_dependencies.is_empty() {
-        return Ok(());
-    }
-
-    for (hash, name) in &all_dependencies {
-        let bytecode = find_contract_by_hash(output, hash).ok_or_else(|| {
-            eyre::eyre!("Could not find contract '{}' (hash: {}) in artifacts", name, hash)
-        })?;
-
-        if bytecode.len() > MAX_UPLOAD_BYTECODE_SIZE {
-            eyre::bail!(
-                "Factory dependency '{}' bytecode ({} bytes) exceeds the maximum upload size ({} bytes)",
-                name,
-                bytecode.len(),
-                MAX_UPLOAD_BYTECODE_SIZE
-            );
-        }
-
-        let calldata = encode_upload_code_call(pallet_index, &bytecode, 10_000_000_000u128);
-
-        let tx = WithOtherFields::new(
-            TransactionRequest::default()
-                .to(RUNTIME_PALLETS_ADDR)
-                .input(calldata.into())
-                .value(U256::ZERO),
-        );
-
-        let pending_tx = provider.send_transaction(tx).await?;
-        let receipt = pending_tx.get_receipt().await?;
-
-        if !shell::is_json() {
-            sh_println!("Factory dependency '{}' uploaded: tx {}", name, receipt.transaction_hash)?;
-        }
-    }
-
-    Ok(())
 }
 
 /// CLI arguments for `forge create`.
@@ -231,6 +127,94 @@ pub struct CreateArgs {
 }
 
 impl CreateArgs {
+    /// Uploads factory dependencies for a contract deployment.
+    ///
+    /// Collects all `factory_dependencies` from Resolc compiler metadata, then uploads
+    /// each dependency bytecode to pallet-revive via `upload_code` dispatched through
+    /// `RUNTIME_PALLETS_ADDR`.
+    async fn upload_factory_dependencies<P: Provider<AnyNetwork> + Clone>(
+        &self,
+        output: &ProjectCompileOutput,
+        provider: P,
+        deployer_address: Address,
+        transaction_timeout: u64,
+    ) -> Result<()> {
+        let mut all_dependencies = BTreeMap::new();
+        let provider = Arc::new(provider);
+
+        for (_id, contract) in output.artifact_ids() {
+            if let ArtifactExtras::Resolc(extras) = &contract.extensions
+                && let Some(factory_dependencies) = &extras.factory_dependencies
+            {
+                for (bytecode_hash, contract_name) in factory_dependencies {
+                    all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
+                }
+            }
+        }
+
+        if all_dependencies.is_empty() {
+            return Ok(());
+        }
+
+        for (hash, name) in &all_dependencies {
+            let bytecode = find_contract_by_hash(output, hash).ok_or_else(|| {
+                eyre::eyre!("Could not find contract '{}' (hash: {}) in artifacts", name, hash)
+            })?;
+
+            if bytecode.len() > MAX_UPLOAD_BYTECODE_SIZE {
+                eyre::bail!(
+                    "Factory dependency '{}' bytecode ({} bytes) exceeds the maximum upload size ({} bytes)",
+                    name,
+                    bytecode.len(),
+                    MAX_UPLOAD_BYTECODE_SIZE
+                );
+            }
+
+            let tx = WithOtherFields::new(TransactionRequest::default().input(bytecode.into()));
+            let mut deployer =
+                Deployer { client: provider.clone(), tx, confs: 1, timeout: transaction_timeout };
+
+            deployer.tx.set_from(deployer_address);
+            // `to` field must be set explicitly, cannot be None.
+            if deployer.tx.to.is_none() {
+                deployer.tx.set_create();
+            }
+            deployer.tx.set_nonce(if let Some(nonce) = self.tx.nonce {
+                Ok(nonce.to())
+            } else {
+                provider.get_transaction_count(deployer_address).await
+            }?);
+
+            // set tx value if specified
+            if let Some(value) = self.tx.value {
+                deployer.tx.set_value(value);
+            }
+
+            deployer.tx.set_gas_limit(if let Some(gas_limit) = self.tx.gas_limit {
+                Ok(gas_limit.to())
+            } else {
+                provider.estimate_gas(deployer.tx.clone()).await
+            }?);
+            let gas_price = if let Some(gas_price) = self.tx.gas_price {
+                gas_price.to()
+            } else {
+                provider.get_gas_price().await?
+            };
+            deployer.tx.set_gas_price(gas_price);
+
+            let (_, receipt) = deployer.send_with_receipt().await?;
+            if !shell::is_json() {
+                sh_println!(
+                    "Factory dependency '{}' uploaded, Transaction hash: {}",
+                    name,
+                    receipt.transaction_hash
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Executes the command to create a contract
     pub async fn run(mut self) -> Result<()> {
         let mut config = self.load_config()?;
@@ -304,9 +288,13 @@ impl CreateArgs {
             let sender = self.eth.wallet.from.expect("required");
 
             if needs_factory_deps {
-                let pallet_index =
-                    resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
-                upload_factory_dependencies(&output, &provider, pallet_index).await?;
+                self.upload_factory_dependencies(
+                    &output,
+                    &provider,
+                    sender,
+                    config.transaction_timeout,
+                )
+                .await?;
             }
 
             self.deploy(
@@ -330,9 +318,13 @@ impl CreateArgs {
                 .connect_provider(provider);
 
             if needs_factory_deps {
-                let pallet_index =
-                    resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
-                upload_factory_dependencies(&output, &provider, pallet_index).await?;
+                self.upload_factory_dependencies(
+                    &output,
+                    &provider,
+                    deployer,
+                    config.transaction_timeout,
+                )
+                .await?;
             }
 
             self.deploy(

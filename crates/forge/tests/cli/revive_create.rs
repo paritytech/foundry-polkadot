@@ -1,17 +1,22 @@
 //! Contains various tests for checking the `forge create --resolc` subcommand
 
-use crate::utils::{network_private_key, network_rpc_key};
 use alloy_primitives::Address;
 use foundry_compilers::artifacts::remappings::Remapping;
-use foundry_test_utils::{
-    TestCommand, forgetest_serial, revive::PolkadotNode, snapbox::IntoData, util::TestProject,
-};
-use serial_test::serial;
+use foundry_test_utils::{TestCommand, revive::PolkadotNode, snapbox::IntoData, util::TestProject};
 use std::str::FromStr;
 
 const CREATE_RESPONSE_PATTERN: &str = r#"[COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
+Deployer: [..]
+Deployed to: [..]
+[TX_HASH]
+"#;
+
+const CREATE_FACTORY_RESPONSE_PATTERN: &str = r#"[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+Factory dependency 'src/Child.sol:Child' uploaded, [TX_HASH]
 Deployer: [..]
 Deployed to: [..]
 [TX_HASH]
@@ -116,11 +121,6 @@ constructor(Point[] memory _points) {}
 }
 
 fn setup_with_factory_pattern(prj: &TestProject) -> String {
-    // Set the pallet-revive index for anvil-polkadot local node
-    prj.update_config(|config| {
-        config.polkadot.revive_pallet_index = Some(4);
-    });
-
     prj.add_source(
         "Child.sol",
         r#"
@@ -210,18 +210,6 @@ fn create_on_chain<F>(
     }
 }
 
-fn westend_assethub_args() -> Option<Vec<String>> {
-    Some(
-        [
-            "--rpc-url".to_string(),
-            network_rpc_key("westend_assethub")?,
-            "--private-key".to_string(),
-            network_private_key("westend_assethub")?,
-        ]
-        .to_vec(),
-    )
-}
-
 fn localnode_args() -> Option<Vec<String>> {
     Some(
         [
@@ -234,56 +222,10 @@ fn localnode_args() -> Option<Vec<String>> {
     )
 }
 
-// These tests require setting the following environment variables:
-// - `WESTEND_ASSETHUB_RPC_URL`: The RPC endpoint for the Westend Asset Hub, e.g.,
-//  `https://westend-asset-hub-eth-rpc.polkadot.io`.
-// - `WESTEND_ASSETHUB_PRIVATE_KEY`: The private key of the account that will be used to send
-//   requests.
-//
-// Ensure these variables are set before running the tests to enable proper interaction with the
-// Westend AssetHub.
-// tests `forge` create on westend if correct env vars are set
-forgetest_serial!(can_create_simple_on_westend_assethub, |prj, cmd| {
-    create_on_chain(
-        westend_assethub_args(),
-        None,
-        prj,
-        cmd,
-        setup_with_simple_remapping,
-        CREATE_RESPONSE_PATTERN,
-    );
-});
-
-// tests `forge` create on westend if correct env vars are set
-forgetest_serial!(can_create_oracle_on_westend_assethub, |prj, cmd| {
-    create_on_chain(westend_assethub_args(), None, prj, cmd, setup_oracle, CREATE_RESPONSE_PATTERN);
-});
-
-// tests that we can deploy with constructor args
-forgetest_serial!(can_create_with_constructor_args_on_westend_assethub, |prj, cmd| {
-    create_on_chain(
-        westend_assethub_args(),
-        Some(vec!["--constructor-args".to_string(), "[(1,2), (2,3), (3,4)]".to_string()]),
-        prj,
-        cmd,
-        setup_with_constructor,
-        CREATE_RESPONSE_PATTERN,
-    );
-});
-
-// These tests require `substrate-node` and the Ethereum RPC proxy:
-//
-// ```bash
-// git clone https://github.com/paritytech/polkadot-sdk
-// cd polkadot-sdk
-// cargo build --release --bin substrate-node
-//
-// cargo install pallet-revive-eth-rpc
-// ```
-//
+// These tests require `anvil-polkadot`:
 // Ensure that both binaries are available in your system's PATH and are version-compatible.
-forgetest_serial!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             None,
@@ -295,14 +237,14 @@ forgetest_serial!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
     }
 });
 
-forgetest_serial!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         create_on_chain(localnode_args(), None, prj, cmd, setup_oracle, CREATE_RESPONSE_PATTERN);
     }
 });
 
-forgetest_serial!(can_create_with_constructor_args_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             Some(vec!["--constructor-args".to_string(), "[(1,2), (2,3), (3,4)]".to_string()]),
@@ -314,21 +256,21 @@ forgetest_serial!(can_create_with_constructor_args_on_polkadot_localnode, |prj, 
     }
 });
 
-forgetest_serial!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             None,
             prj,
             cmd,
             setup_with_factory_pattern,
-            CREATE_RESPONSE_PATTERN,
+            CREATE_FACTORY_RESPONSE_PATTERN,
         );
     }
 });
 
-forgetest_serial!(can_create_with_library_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(can_create_with_library_deps_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             None,

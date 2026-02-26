@@ -19,7 +19,6 @@ foundry-common.workspace = true
 foundry-compilers = { workspace = true, features = ["project-util"] }
 foundry-config.workspace = true
 
-alloy-rpc-client.workspace = true
 alloy-primitives.workspace = true
 alloy-provider.workspace = true
 
@@ -43,4 +42,3 @@ idna_adapter.workspace = true
 
 [dev-dependencies]
 foundry-block-explorers.workspace = true
-serial_test.workspace = true

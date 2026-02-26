@@ -1,7 +1,7 @@
-use foundry_test_utils::{casttest_serial, revive::PolkadotNode, util::OutputExt};
+use foundry_test_utils::{forgetest_async, revive::PolkadotNode, util::OutputExt};
 
-casttest_serial!(test_cast_chain_id, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_chain_id, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let rpc_url = PolkadotNode::http_endpoint();
         cmd.cast_fuse().args(["chain-id", "--rpc-url", rpc_url]).assert_success().stdout_eq(str![
             [r#"
@@ -12,8 +12,8 @@ casttest_serial!(test_cast_chain_id, |_prj, cmd| {
     }
 });
 
-casttest_serial!(test_cast_chain, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_chain, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let rpc_url = PolkadotNode::http_endpoint();
         cmd.cast_fuse().args(["chain", "--rpc-url", rpc_url]).assert_success().stdout_eq(str![[
             r#"
@@ -24,8 +24,8 @@ unknown
     }
 });
 
-casttest_serial!(test_cast_client, |_prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(test_cast_client, |_prj, cmd| {
+    if let Ok(_node) = PolkadotNode::start().await {
         let rpc_url = PolkadotNode::http_endpoint();
         let version = cmd
             .cast_fuse()
