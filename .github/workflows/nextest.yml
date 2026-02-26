@@ -74,11 +74,15 @@ jobs:
           echo "downloaded release"
           tar -xzf foundry_stable_linux_amd64.tar.gz anvil-polkadot
           echo "unpack release"
-          chmod +x anvil-polkadot
-          echo "$(pwd)/anvil-polkadot" >> $GITHUB_PATH
+          mkdir -p anvil-bin
+          mv anvil-polkadot anvil-bin
+          chmod +x anvil-bin/anvil-polkadot
+          echo "$(pwd)/anvil-bin" >> $GITHUB_PATH
           echo "added to path"
-          echo "chmod path $(which chmod) Path to binary is $(which anvil-polkadot)."
-
+      - name: check anvil-polkadot is available for local tests (Ubuntu)
+        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
+        run: |
+          echo " Path to binary is $(which anvil-polkadot)."
       - name: Setup Node.js
         if: contains(matrix.name, 'external')
         uses: actions/setup-node@v4
