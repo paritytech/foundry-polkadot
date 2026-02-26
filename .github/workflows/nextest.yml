@@ -72,10 +72,10 @@ jobs:
           gh release download \
             --pattern 'foundry_stable_linux_amd64.tar.gz'
           echo "downloaded release"
-          tar -xzf foundry_stable_linux_amd64.tar.gz --directory ./
+          tar -xzf foundry_stable_linux_amd64.tar.gz --directory $PWD
           echo "unpack release"
-          chmod +x ./anvil-polkadot
-          echo "$PWD/anvil-polkadot" >> $GITHUB_PATH
+          chmod +x "$(pwd)/anvil-polkadot"
+          echo "$(pwd)/anvil-polkadot" >> $GITHUB_PATH
           echo "added to path"
           echo "Path to binary is $(which anvil-polkadot)."
 
