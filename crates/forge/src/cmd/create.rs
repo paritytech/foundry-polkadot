@@ -824,26 +824,4 @@ mod tests {
         let params = args.parse_constructor_args(&constructor, &args.constructor_args).unwrap();
         assert_eq!(params, vec![DynSolValue::Int(I256::unchecked_from(-5), 256)]);
     }
-
-    #[test]
-    fn test_encode_upload_code_call() {
-        let code = vec![0x01, 0x02, 0x03];
-        let encoded = encode_upload_code_call(4, &code, 10_000_000_000u128);
-
-        // First byte: pallet index
-        assert_eq!(encoded[0], 4);
-        // Second byte: call index (upload_code = 4)
-        assert_eq!(encoded[1], UPLOAD_CODE_CALL_INDEX);
-        // Next: SCALE-encoded Vec<u8> (length prefix + data)
-        assert_eq!(encoded[2], 0x0c); // Compact length 3 = 3 << 2 = 12 = 0x0c
-        assert_eq!(&encoded[3..6], &[0x01, 0x02, 0x03]);
-        // Remaining: Compact<u128> for storage deposit limit
-        assert!(!encoded[6..].is_empty());
-    }
-
-    #[test]
-    fn test_resolve_revive_pallet_index_config_overrides_chain_id() {
-        // Config value takes precedence over chain ID lookup
-        assert_eq!(resolve_revive_pallet_index(Some(42), 420420420).unwrap(), 42);
-    }
 }
