@@ -66,8 +66,8 @@ jobs:
         if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
         run: |
           gh release download stable \
-            -O anvil-polkadot.tar.gz
-            -p "foundry_stable_linux_amd64.tar.gz"
+            -O anvil-polkadot.tar.gz \
+            --pattern 'foundry_stable_linux_amd64.tar.gz'
           tar -xzf anvil-polkadot.tar.gz --directory ./
           chmod +x ./anvil-polkadot
           anvil-polkadot >> $GITHUB_PATH
