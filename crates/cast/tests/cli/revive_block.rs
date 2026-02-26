@@ -44,7 +44,7 @@ use foundry_test_utils::{forgetest_async, revive::PolkadotNode};
 //     }
 // });
 
-forgetest_async!(test_cast_block_number, |_prj, cmd| {
+forgetest_async!(test_cast_block_number_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
         cmd.cast_fuse().args(["block-number", "--rpc-url", url]).assert_success().stdout_eq(str![
@@ -56,7 +56,7 @@ forgetest_async!(test_cast_block_number, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_gas_price, |_prj, cmd| {
+forgetest_async!(test_cast_gas_price_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
 
@@ -69,7 +69,7 @@ forgetest_async!(test_cast_gas_price, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_basefee, |_prj, cmd| {
+forgetest_async!(test_cast_basefee_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
 
@@ -80,7 +80,7 @@ forgetest_async!(test_cast_basefee, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_block, |_prj, cmd| {
+forgetest_async!(test_cast_block_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
 
@@ -119,7 +119,7 @@ transactions:        []
     }
 });
 
-forgetest_async!(test_cast_age, |_prj, cmd| {
+forgetest_async!(test_cast_age_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
 

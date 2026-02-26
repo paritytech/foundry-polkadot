@@ -1,6 +1,6 @@
 use foundry_test_utils::{deploy_contract, forgetest_async, revive::PolkadotNode, util::OutputExt};
 
-forgetest_async!(test_cast_receipt, |_prj, cmd| {
+forgetest_async!(test_cast_receipt_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, _contract_address, tx_hash) = deploy_contract!(cmd);
 
@@ -29,7 +29,7 @@ blobGasUsed
     }
 });
 
-forgetest_async!(test_cast_call, |_prj, cmd| {
+forgetest_async!(test_cast_call_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
@@ -43,7 +43,7 @@ forgetest_async!(test_cast_call, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_mktx, |_prj, cmd| {
+forgetest_async!(test_cast_mktx_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let (url, deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
@@ -65,7 +65,7 @@ forgetest_async!(test_cast_mktx, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_tx, |_prj, cmd| {
+forgetest_async!(test_cast_tx_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, _contract_address, tx_hash) = deploy_contract!(cmd);
 
@@ -99,7 +99,7 @@ yParity              [..]
     }
 });
 
-forgetest_async!(test_cast_estimate, |_prj, cmd| {
+forgetest_async!(test_cast_estimate_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
@@ -115,7 +115,7 @@ forgetest_async!(test_cast_estimate, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_rpc_eth_get_block_by_number, |_prj, cmd| {
+forgetest_async!(test_cast_rpc_eth_get_block_by_number_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let url = PolkadotNode::http_endpoint();
 
@@ -139,7 +139,7 @@ forgetest_async!(test_cast_rpc_eth_get_block_by_number, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_logs, |_prj, cmd| {
+forgetest_async!(test_cast_logs_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let (url, _deployer_pk, _contract_address, _tx_hash) = deploy_contract!(cmd);
 

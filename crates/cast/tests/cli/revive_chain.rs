@@ -1,6 +1,6 @@
 use foundry_test_utils::{forgetest_async, revive::PolkadotNode, util::OutputExt};
 
-forgetest_async!(test_cast_chain_id, |_prj, cmd| {
+forgetest_async!(test_cast_chain_id_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let rpc_url = PolkadotNode::http_endpoint();
         cmd.cast_fuse().args(["chain-id", "--rpc-url", rpc_url]).assert_success().stdout_eq(str![
@@ -12,7 +12,7 @@ forgetest_async!(test_cast_chain_id, |_prj, cmd| {
     }
 });
 
-forgetest_async!(test_cast_chain, |_prj, cmd| {
+forgetest_async!(test_cast_chain_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let rpc_url = PolkadotNode::http_endpoint();
         cmd.cast_fuse().args(["chain", "--rpc-url", rpc_url]).assert_success().stdout_eq(str![[
@@ -24,7 +24,7 @@ unknown
     }
 });
 
-forgetest_async!(test_cast_client, |_prj, cmd| {
+forgetest_async!(test_cast_client_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = PolkadotNode::start().await {
         let rpc_url = PolkadotNode::http_endpoint();
         let version = cmd
