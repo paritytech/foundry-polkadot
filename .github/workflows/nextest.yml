@@ -76,6 +76,7 @@ jobs:
           echo "unpack release"
           chmod +x ./anvil-polkadot
           echo "${{ github.workspace }}/anvil-polkadot" >> $GITHUB_PATH
+          echo "added to path"
           which anvil-polkadot
 
       - name: Setup Node.js
