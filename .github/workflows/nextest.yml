@@ -70,7 +70,7 @@ jobs:
             --pattern 'foundry_stable_linux_amd64.tar.gz'
           tar -xzf anvil-polkadot.tar.gz --directory ./
           chmod +x ./anvil-polkadot
-          anvil-polkadot >> $GITHUB_PATH
+          echo "${{ github.workspace }}/anvil-polkadot" >> $GITHUB_PATH
           which anvil-polkadot
 
       - name: Setup Node.js
