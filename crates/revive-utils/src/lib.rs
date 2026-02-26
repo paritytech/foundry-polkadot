@@ -176,7 +176,7 @@ impl InspectorExt for TraceCollector {
         ) -> u64 {
             let inputs = &mut CallInputs {
                 input: revm::interpreter::CallInput::Bytes(call.input.0.clone().into()),
-                gas_limit: call.gas.try_into().unwrap_or(u64::MAX),
+                gas_limit: call.gas,
                 scheme: revm::interpreter::CallScheme::Call,
                 caller: call.from.0.into(),
                 value: revm::interpreter::CallValue::Transfer(RU256::from_be_bytes(

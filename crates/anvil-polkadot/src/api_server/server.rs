@@ -591,12 +591,11 @@ impl ApiServer {
         }
         let time = timestamp.to::<u64>();
         let time_ms = time.saturating_mul(1000);
-        // Get the time for the last block.
         let latest_block = self.latest_block();
         let last_block_timestamp = self.backend.read_timestamp(latest_block)?;
-        // Inject the new time if the timestamp precedes last block time
+        // When going backward in time, store a pending override for the next mined block.
         if time_ms < last_block_timestamp {
-            self.backend.inject_timestamp(latest_block, time_ms);
+            self.backend.set_pending_timestamp(time_ms);
         }
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
     }
@@ -832,8 +831,8 @@ impl ApiServer {
         };
 
         if transaction.gas.is_none() {
-            transaction.gas =
-                Some(self.estimate_gas(transaction_req.clone(), latest_block_id).await?);
+            // Pass None so that gas estimation refers to default `Pending` block.
+            transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
         }
 
         if transaction.gas_price.is_none() {
@@ -1923,38 +1922,38 @@ impl ApiServer {
         let timestamp = utc_from_millis(block_timestamp)?;
 
         // Get block with transaction hashes
-        if let Ok(Some(substrate_block)) = self.eth_rpc_client.block_by_hash(&block_hash).await {
-            if let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await {
-                // Extract transaction hashes
-                let tx_hashes: Vec<H256> = match &evm_block.transactions {
-                    HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
-                    // Considering that we called evm_block with hydrated set to false, we will
-                    // never receive TransactionInfos, but we handle it anyways.
-                    HashesOrTransactionInfos::TransactionInfos(infos) => {
-                        infos.iter().map(|i| i.hash).collect()
-                    }
-                };
+        if let Ok(Some(substrate_block)) = self.eth_rpc_client.block_by_hash(&block_hash).await
+            && let Some(evm_block) = self.eth_rpc_client.evm_block(substrate_block, false).await
+        {
+            // Extract transaction hashes
+            let tx_hashes: Vec<H256> = match &evm_block.transactions {
+                HashesOrTransactionInfos::Hashes(hashes) => hashes.clone(),
+                // Considering that we called evm_block with hydrated set to false, we will
+                // never receive TransactionInfos, but we handle it anyways.
+                HashesOrTransactionInfos::TransactionInfos(infos) => {
+                    infos.iter().map(|i| i.hash).collect()
+                }
+            };
 
-                if !tx_hashes.is_empty() {
-                    node_info!("");
+            if !tx_hashes.is_empty() {
+                node_info!("");
 
-                    // Log each transaction
-                    for tx_hash in tx_hashes {
-                        if let Some(receipt) = self.eth_rpc_client.receipt(&tx_hash).await {
-                            node_info!("    Transaction: {:?}", receipt.transaction_hash);
+                // Log each transaction
+                for tx_hash in tx_hashes {
+                    if let Some(receipt) = self.eth_rpc_client.receipt(&tx_hash).await {
+                        node_info!("    Transaction: {:?}", receipt.transaction_hash);
 
-                            if let Some(contract) = &receipt.contract_address {
-                                node_info!("    Contract created: {contract}");
-                            }
-
-                            node_info!("    Gas used: {}", receipt.cumulative_gas_used);
-
-                            if receipt.status == Some(evm::U256::zero()) {
-                                node_info!("    Error: reverted");
-                            }
-
-                            node_info!("");
+                        if let Some(contract) = &receipt.contract_address {
+                            node_info!("    Contract created: {contract}");
                         }
+
+                        node_info!("    Gas used: {}", receipt.cumulative_gas_used);
+
+                        if receipt.status == Some(evm::U256::zero()) {
+                            node_info!("    Error: reverted");
+                        }
+
+                        node_info!("");
                     }
                 }
             }

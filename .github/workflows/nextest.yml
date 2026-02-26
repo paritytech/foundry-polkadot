@@ -54,6 +54,8 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: 0
     steps:
       - uses: actions/checkout@v4
+      - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878
+        if: runner.os == 'Linux'
       - uses: taiki-e/install-action@nextest
       - name: Install dependencies for building (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new')
@@ -121,6 +123,7 @@ jobs:
         with:
           cache-on-failure: true
           prefix-key: "v0-rust-after-merge"
+          save-if: ${{ github.event_name != 'pull_request' }}
 
       - name: Setup Git config
         run: |

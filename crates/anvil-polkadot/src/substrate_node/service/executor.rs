@@ -1,6 +1,9 @@
 use crate::substrate_node::{
     host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride},
-    service::{Backend, backend::StorageOverrides},
+    service::{
+        Backend,
+        backend::{BlockOverrides, StorageOverrides},
+    },
 };
 use parking_lot::Mutex;
 use polkadot_sdk::{
@@ -50,6 +53,25 @@ impl Executor {
         let overrides = { self.storage_overrides.lock().get(hash) };
         let Some(overrides) = overrides else { return };
 
+        Self::apply_block_overrides(overrides, overlay);
+    }
+
+    /// Take and apply one-shot pending overrides from `StorageOverrides`.
+    /// Called during `Core_initialize_block` for actual block production.
+    fn apply_and_consume_pending_overrides(
+        &self,
+        overlay: &mut OverlayedChanges<HashingFor<Block>>,
+    ) {
+        let pending = self.storage_overrides.lock().take_pending();
+        let Some(pending) = pending else { return };
+
+        Self::apply_block_overrides(pending, overlay);
+    }
+
+    fn apply_block_overrides(
+        overrides: BlockOverrides,
+        overlay: &mut OverlayedChanges<HashingFor<Block>>,
+    ) {
         for (key, val) in overrides.top {
             overlay.set_storage(key, val);
         }
@@ -109,12 +131,17 @@ impl CallExecutor<Block> for Executor {
         call_context: CallContext,
         extensions: &RefCell<sp_externalities::Extensions>,
     ) -> Result<Vec<u8>, sp_blockchain::Error> {
-        let apply_overrides = (method == "Core_initialize_block"
-            && call_context == CallContext::Onchain)
-            || call_context == CallContext::Offchain;
+        let is_block_init =
+            method == "Core_initialize_block" && call_context == CallContext::Onchain;
+        let apply_overrides = is_block_init || call_context == CallContext::Offchain;
 
         if apply_overrides {
             self.apply_overrides(&at_hash, &mut changes.borrow_mut());
+        }
+
+        // Apply and consume pending overrides only during actual block production.
+        if is_block_init {
+            self.apply_and_consume_pending_overrides(&mut changes.borrow_mut());
         }
 
         self.inner.contextual_call(

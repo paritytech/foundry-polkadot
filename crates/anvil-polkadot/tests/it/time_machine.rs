@@ -199,6 +199,38 @@ async fn test_evm_set_next_block_timestamp() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_eth_timestamp_strictly_increases() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    // Set next block to a specific future second and mine it
+    let target_timestamp =
+        SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs() + 100;
+
+    node.eth_rpc(EthRequest::EvmSetNextBlockTimeStamp(U256::from(target_timestamp))).await.unwrap();
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+
+    let first_hash = node.block_hash_by_number(1).await.unwrap();
+    let first_timestamp_ms = node.get_decoded_timestamp(Some(first_hash)).await;
+    let first_timestamp_secs = first_timestamp_ms / 1000;
+    assert_eq!(first_timestamp_secs, target_timestamp, "First block should be at target second");
+
+    // Mine another block immediately — this previously produced the same second
+    let _ = node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap();
+
+    let second_hash = node.block_hash_by_number(2).await.unwrap();
+    let second_timestamp_ms = node.get_decoded_timestamp(Some(second_hash)).await;
+    let second_timestamp_secs = second_timestamp_ms / 1000;
+
+    assert!(
+        second_timestamp_secs > first_timestamp_secs,
+        "Second block timestamp ({second_timestamp_secs}s) must be strictly greater \
+         than first block timestamp ({first_timestamp_secs}s)"
+    );
+}
+
 // Tests --------- EvmSetBlockTimeStampInterval & EvmRemoveBlockTimeStampInterval
 
 #[tokio::test(flavor = "multi_thread")]

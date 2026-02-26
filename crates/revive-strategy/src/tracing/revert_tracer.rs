@@ -1,6 +1,7 @@
 use polkadot_sdk::{
     pallet_revive::{Code, tracing::Tracing},
     sp_core::{H160, U256},
+    sp_weights::Weight,
 };
 
 #[derive(Debug)]
@@ -42,7 +43,7 @@ impl Tracing for RevertTracer {
         &mut self,
         _from: H160,
         to: H160,
-        _is_delegate_call: Option<H160>,
+        is_delegate_call: Option<H160>,
         _is_read_only: bool,
         _value: U256,
         _input: &[u8],
@@ -52,8 +53,10 @@ impl Tracing for RevertTracer {
 
         self.calls.push(if self.call_types.last().is_some_and(|x| matches!(x, Type::Create)) {
             self.current_addr()
+        } else if let Some(delegate) = is_delegate_call {
+            delegate
         } else {
-            if let Some(delegate) = _is_delegate_call { delegate } else { to }
+            to
         });
 
         if self.has_reverted.is_none() {
@@ -65,6 +68,7 @@ impl Tracing for RevertTracer {
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
         _gas_left: u64,
+        _weight: Weight,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
 
@@ -83,6 +87,7 @@ impl Tracing for RevertTracer {
         &mut self,
         _error: polkadot_sdk::sp_runtime::DispatchError,
         _gas_used: u64,
+        _weight: Weight,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
         if self.has_reverted.is_none() {

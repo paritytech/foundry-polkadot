@@ -5,6 +5,7 @@ use itertools::Itertools;
 use polkadot_sdk::{
     pallet_revive::{AccountInfo, Code, Pallet, tracing::Tracing},
     sp_core::{H160, U256},
+    sp_weights::Weight,
 };
 use revive_env::Runtime;
 use revm::context::CreateScheme;
@@ -50,7 +51,7 @@ impl Tracing for CreateTracer {
         &mut self,
         _from: H160,
         to: H160,
-        _is_delegate_call: Option<H160>,
+        is_delegate_call: Option<H160>,
         _is_read_only: bool,
         _value: U256,
         _input: &[u8],
@@ -64,13 +65,14 @@ impl Tracing for CreateTracer {
         if self.calls.is_empty() {
             self.calls.push(_from);
         }
-        self.calls.push(if let Some(delegate) = _is_delegate_call { delegate } else { to });
+        self.calls.push(if let Some(delegate) = is_delegate_call { delegate } else { to });
     }
 
     fn exit_child_span(
         &mut self,
         _output: &polkadot_sdk::pallet_revive::ExecReturnValue,
         _gas_left: u64,
+        _weight: Weight,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
 

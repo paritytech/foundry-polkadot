@@ -3,6 +3,7 @@ use foundry_cheatcodes::Vm::{AccountAccessKind, StorageAccess};
 use polkadot_sdk::{
     pallet_revive::{self, AccountInfo, Code, tracing::Tracing},
     sp_core::{H160, U256},
+    sp_weights::Weight,
 };
 use revive_env::Runtime;
 
@@ -113,7 +114,18 @@ impl Tracing for StorageTracer {
             depth: new_depth,
             kind,
             account: to,
-            accessor: from,
+            accessor: if is_delegate_call.is_some() {
+                if !self.pending.is_empty() {
+                    self.pending
+                        .last()
+                        .map(|record| record.accessor)
+                        .expect("must have at least one record")
+                } else {
+                    self.records.last().map(|record| record.accessor).unwrap_or(from)
+                }
+            } else {
+                from
+            },
             data: Bytes::from(input.to_vec()),
             value,
             reverted: false,
@@ -172,6 +184,7 @@ impl Tracing for StorageTracer {
         &mut self,
         _error: polkadot_sdk::sp_runtime::DispatchError,
         _gas_left: u64,
+        _weight: Weight,
     ) {
         self.calls.pop();
 
@@ -214,6 +227,7 @@ impl Tracing for StorageTracer {
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
         _gas_left: u64,
+        _weight: Weight,
     ) {
         self.calls.pop();
 

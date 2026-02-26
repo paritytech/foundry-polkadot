@@ -94,17 +94,14 @@ fn parity_transaction_trace_from_call_trace(
                 action: Action::Call(CallAction {
                     from: Address::from_slice(trace.from.as_ref()),
                     call_type: CallType::Call,
-                    gas: trace.gas.try_into().map_err(|_| EthRpcError::ConversionError)?,
+                    gas: trace.gas,
                     input: trace.input.0.into(),
                     to: Address::from_slice(trace.to.as_ref()),
                     value: AlloyU256::from(trace.value.unwrap_or_default()).inner(),
                 }),
                 error: trace.error,
                 result: Some(TraceOutput::Call(CallOutput {
-                    gas_used: trace
-                        .gas_used
-                        .try_into()
-                        .map_err(|_| EthRpcError::ConversionError)?,
+                    gas_used: trace.gas_used,
                     output: trace.output.0.into(),
                 })),
                 subtraces: trace
@@ -123,7 +120,7 @@ fn parity_transaction_trace_from_call_trace(
             Ok(TransactionTrace {
                 action: Action::Create(CreateAction {
                     from: Address::from_slice(trace.from.as_ref()),
-                    gas: trace.gas.try_into().map_err(|_| EthRpcError::ConversionError)?,
+                    gas: trace.gas,
                     init: trace.input.0.into(),
                     value: AlloyU256::from(trace.value.unwrap_or_default()).inner(),
                     creation_method,
@@ -132,10 +129,7 @@ fn parity_transaction_trace_from_call_trace(
                 result: Some(TraceOutput::Create(CreateOutput {
                     address: Address::from_slice(trace.to.as_ref()),
                     code: Default::default(),
-                    gas_used: trace
-                        .gas_used
-                        .try_into()
-                        .map_err(|_| EthRpcError::ConversionError)?,
+                    gas_used: trace.gas_used,
                 })),
                 subtraces: trace
                     .child_call_count
