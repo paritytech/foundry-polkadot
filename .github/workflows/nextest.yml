@@ -77,7 +77,7 @@ jobs:
           chmod +x ./anvil-polkadot
           echo "${{ github.workspace }}/anvil-polkadot" >> $GITHUB_PATH
           echo "added to path"
-          which anvil-polkadot
+          echo $(which anvil-polkadot)
 
       - name: Setup Node.js
         if: contains(matrix.name, 'external')
