@@ -71,7 +71,9 @@ jobs:
         run: |
           gh release download stable \
             --pattern 'foundry_stable_linux_amd64.tar.gz'
+          echo "downloaded release"
           tar -xzf foundry_stable_linux_amd64.tar.gz --directory ./
+          "echo unpack release"
           chmod +x ./anvil-polkadot
           echo "${{ github.workspace }}/anvil-polkadot" >> $GITHUB_PATH
           which anvil-polkadot
