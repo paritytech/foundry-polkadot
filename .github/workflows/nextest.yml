@@ -69,7 +69,7 @@ jobs:
       - name: Install anvil-polkadot for local tests (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
         run: |
-          gh release download stable \
+          gh release download \
             --pattern 'foundry_stable_linux_amd64.tar.gz'
           echo "downloaded release"
           tar -xzf foundry_stable_linux_amd64.tar.gz --directory ./
