@@ -63,7 +63,7 @@ jobs:
           sudo apt-get update 
           sudo apt-get install -y clang libclang-dev unzip build-essential
       - name: Install anvil-polkadot for local tests (Ubuntu)
-        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, "polkadot_localnode")
+        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
         run: |
           gh release download stable \
             -O anvil-polkadot.tar.gz
