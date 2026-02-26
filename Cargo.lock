@@ -6321,6 +6321,7 @@ dependencies = [
  "lazy_static",
  "mockall",
  "opener 0.7.2",
+ "parity-scale-codec",
  "parking_lot 0.12.4",
  "paste",
  "path-slash",

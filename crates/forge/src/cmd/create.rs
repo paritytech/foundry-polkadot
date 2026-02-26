@@ -3,7 +3,7 @@ use alloy_chains::Chain;
 use alloy_dyn_abi::{DynSolValue, JsonAbiExt, Specifier};
 use alloy_json_abi::{Constructor, JsonAbi};
 use alloy_network::{AnyNetwork, AnyTransactionReceipt, EthereumWallet, TransactionBuilder};
-use alloy_primitives::{Address, Bytes, hex, keccak256};
+use alloy_primitives::{Address, Bytes, address, hex, keccak256};
 use alloy_provider::{PendingTransactionError, Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
@@ -11,6 +11,7 @@ use alloy_signer::Signer;
 use alloy_transport::TransportError;
 use clap::{Parser, ValueHint};
 
+use codec::{Compact, Encode};
 use eyre::{Context, Result};
 use forge_verify::{RetryArgs, VerifierArgs, VerifyArgs};
 use foundry_cli::{
@@ -45,6 +46,50 @@ merge_impl_figment_convert!(CreateArgs, build, eth);
 
 /// Maximum bytecode size that can be uploaded in a single transaction calldata.
 const MAX_UPLOAD_BYTECODE_SIZE: usize = 128 * 1024;
+
+/// The `upload_code` call index within pallet-revive (`#[pallet::call_index(4)]`).
+const UPLOAD_CODE_CALL_INDEX: u8 = 4;
+
+/// The address used to dispatch substrate runtime calls via EVM transactions.
+/// Computed with `PalletId(*b"py/paddr").into_account_truncating()`.
+const RUNTIME_PALLETS_ADDR: Address = address!("6d6f646c70792f70616464720000000000000000");
+
+/// Resolves the pallet-revive index for the given chain.
+///
+/// Checks the explicit config value first, then falls back to known chain IDs.
+/// Known networks and their pallet-revive indices:
+/// - anvil-polkadot (420420420) → 4
+/// - Paseo Asset Hub (420420417) → 100
+/// - Kusama Asset Hub (420420418) → 60
+/// - Polkadot Asset Hub (420420419) → 90
+fn resolve_revive_pallet_index(config_value: Option<u8>, chain_id: u64) -> Result<u8> {
+    if let Some(index) = config_value {
+        return Ok(index);
+    }
+
+    match chain_id {
+        420420420 => Ok(4),   // anvil-polkadot
+        420420417 => Ok(100), // Paseo Asset Hub
+        420420418 => Ok(60),  // Kusama Asset Hub
+        420420419 => Ok(90),  // Polkadot Asset Hub
+        _ => eyre::bail!(
+            "Unknown pallet-revive index for chain ID {chain_id}. \
+             Set `polkadot.revive_pallet_index` in foundry.toml."
+        ),
+    }
+}
+
+/// Encodes an `upload_code` call for pallet-revive as a SCALE-encoded `RuntimeCall`.
+/// Format: `[pallet_index, call_index, SCALE(Vec<u8> code), SCALE(Compact<u128> deposit)]`
+fn encode_upload_code_call(pallet_index: u8, code: &[u8], _storage_deposit_limit: u128) -> Vec<u8> {
+    let mut encoded = Vec::new();
+    encoded.push(pallet_index);
+    encoded.push(UPLOAD_CODE_CALL_INDEX);
+    code.encode_to(&mut encoded);
+    // TODO: proper limit
+    Compact(u128::MAX).encode_to(&mut encoded);
+    encoded
+}
 
 /// Finds a contract in the artifacts by its bytecode keccak256 hash.
 fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Option<Bytes> {
@@ -136,6 +181,7 @@ impl CreateArgs {
         &self,
         output: &ProjectCompileOutput,
         provider: P,
+        pallet_index: u8,
         deployer_address: Address,
         transaction_timeout: u64,
     ) -> Result<()> {
@@ -170,15 +216,16 @@ impl CreateArgs {
                 );
             }
 
-            let tx = WithOtherFields::new(TransactionRequest::default().input(bytecode.into()));
+            let tx = WithOtherFields::new(
+                TransactionRequest::default()
+                    .to(RUNTIME_PALLETS_ADDR)
+                    .input(encode_upload_code_call(pallet_index, &bytecode, u128::MAX).into())
+                    .value(self.tx.value.unwrap_or_default()),
+            );
             let mut deployer =
                 Deployer { client: provider.clone(), tx, confs: 1, timeout: transaction_timeout };
 
             deployer.tx.set_from(deployer_address);
-            // `to` field must be set explicitly, cannot be None.
-            if deployer.tx.to.is_none() {
-                deployer.tx.set_create();
-            }
             deployer.tx.set_nonce(if let Some(nonce) = self.tx.nonce {
                 Ok(nonce.to())
             } else {
@@ -202,7 +249,7 @@ impl CreateArgs {
             };
             deployer.tx.set_gas_price(gas_price);
 
-            let (_, receipt) = deployer.send_with_receipt().await?;
+            let receipt = deployer.send_with_receipt_pvm().await?;
             if !shell::is_json() {
                 sh_println!(
                     "Factory dependency '{}' uploaded, Transaction hash: {}",
@@ -288,9 +335,12 @@ impl CreateArgs {
             let sender = self.eth.wallet.from.expect("required");
 
             if needs_factory_deps {
+                let pallet_index =
+                    resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
                 self.upload_factory_dependencies(
                     &output,
                     &provider,
+                    pallet_index,
                     sender,
                     config.transaction_timeout,
                 )
@@ -318,9 +368,12 @@ impl CreateArgs {
                 .connect_provider(provider);
 
             if needs_factory_deps {
+                let pallet_index =
+                    resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
                 self.upload_factory_dependencies(
                     &output,
                     &provider,
+                    pallet_index,
                     deployer,
                     config.transaction_timeout,
                 )
@@ -679,11 +732,28 @@ impl<P: Provider<AnyNetwork>> Deployer<P> {
             .with_timeout(Some(Duration::from_secs(self.timeout)))
             .get_receipt()
             .await?;
-
         let address =
             receipt.contract_address.ok_or(ContractDeploymentError::ContractNotDeployed)?;
 
         Ok((address, receipt))
+    }
+    /// Broadcasts the contract deployment transaction and after waiting for it to
+    /// be sufficiently confirmed (default: 1), it returns a tuple with the [`Address`] at the
+    /// deployed contract's address and the corresponding [`AnyTransactionReceipt`].
+    pub async fn send_with_receipt_pvm(
+        self,
+    ) -> Result<AnyTransactionReceipt, ContractDeploymentError> {
+        let receipt = self
+            .client
+            .borrow()
+            .send_transaction(self.tx)
+            .await?
+            .with_required_confirmations(self.confs as u64)
+            .with_timeout(Some(Duration::from_secs(self.timeout)))
+            .get_receipt()
+            .await?;
+
+        Ok(receipt)
     }
 }
 

@@ -129,8 +129,8 @@ pragma solidity ^0.8.20;
 contract Child {
     uint256 public x;
 
-    constructor() {
-        x = 1;
+    constructor(uint256 num) {
+        x = num;
     }
 }
 "#,
@@ -145,7 +145,7 @@ import "./Child.sol";
 
 contract Factory {
     constructor() {
-        new Child();
+        new Child(5);
     }
 }
 "#,
