@@ -126,8 +126,8 @@ macro_rules! forgesoldeer {
 #[macro_export]
 macro_rules! deploy_contract {
     ($cmd:expr) => {{
-        let url = PolkadotNode::http_endpoint();
-        let deployer_pk = PolkadotNode::dev_accounts().next().unwrap().1.to_string();
+        let url = AnvilPolkadotNode::http_endpoint();
+        let deployer_pk = AnvilPolkadotNode::dev_accounts().next().unwrap().1.to_string();
 
         let output = $cmd
             .cast_fuse()

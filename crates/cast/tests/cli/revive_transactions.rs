@@ -1,7 +1,9 @@
-use foundry_test_utils::{deploy_contract, forgetest_async, revive::PolkadotNode, util::OutputExt};
+use foundry_test_utils::{
+    deploy_contract, forgetest_async, revive::AnvilPolkadotNode, util::OutputExt,
+};
 
 forgetest_async!(test_cast_receipt_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, _contract_address, tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse().args(["receipt", &tx_hash, "--rpc-url", url]).assert_success().stdout_eq(
@@ -30,7 +32,7 @@ blobGasUsed
 });
 
 forgetest_async!(test_cast_call_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse()
@@ -44,7 +46,7 @@ forgetest_async!(test_cast_call_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_mktx_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         let (url, deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse()
@@ -66,7 +68,7 @@ forgetest_async!(test_cast_mktx_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_tx_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, _contract_address, tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse().args(["tx", "--rpc-url", url, &tx_hash]).assert_success().stdout_eq(str![
@@ -100,7 +102,7 @@ yParity              [..]
 });
 
 forgetest_async!(test_cast_estimate_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
 
         let output = cmd
@@ -116,8 +118,8 @@ forgetest_async!(test_cast_estimate_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_rpc_eth_get_block_by_number_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
-        let url = PolkadotNode::http_endpoint();
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
+        let url = AnvilPolkadotNode::http_endpoint();
 
         let output = cmd
             .cast_fuse()
@@ -140,7 +142,7 @@ forgetest_async!(test_cast_rpc_eth_get_block_by_number_polkadot_localnode, |_prj
 });
 
 forgetest_async!(test_cast_logs_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, _contract_address, _tx_hash) = deploy_contract!(cmd);
 
         cmd.cast_fuse()

@@ -2,7 +2,9 @@
 
 use alloy_primitives::Address;
 use foundry_compilers::artifacts::remappings::Remapping;
-use foundry_test_utils::{TestCommand, revive::PolkadotNode, snapbox::IntoData, util::TestProject};
+use foundry_test_utils::{
+    TestCommand, revive::AnvilPolkadotNode, snapbox::IntoData, util::TestProject,
+};
 use std::str::FromStr;
 
 const CREATE_RESPONSE_PATTERN: &str = r#"[COMPILING_FILES] with [RESOLC_VERSION]
@@ -214,9 +216,9 @@ fn localnode_args() -> Option<Vec<String>> {
     Some(
         [
             "--rpc-url".to_string(),
-            PolkadotNode::http_endpoint().to_string(),
+            AnvilPolkadotNode::http_endpoint().to_string(),
             "--private-key".to_string(),
-            PolkadotNode::dev_accounts().next().unwrap().1.to_string(),
+            AnvilPolkadotNode::dev_accounts().next().unwrap().1.to_string(),
         ]
         .to_vec(),
     )
@@ -225,7 +227,7 @@ fn localnode_args() -> Option<Vec<String>> {
 // These tests require `anvil-polkadot`:
 // Ensure that both binaries are available in your system's PATH and are version-compatible.
 forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             None,
@@ -238,13 +240,13 @@ forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
 });
 
 forgetest_async!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         create_on_chain(localnode_args(), None, prj, cmd, setup_oracle, CREATE_RESPONSE_PATTERN);
     }
 });
 
 forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             Some(vec!["--constructor-args".to_string(), "[(1,2), (2,3), (3,4)]".to_string()]),
@@ -257,7 +259,7 @@ forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, c
 });
 
 forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             None,
@@ -270,7 +272,7 @@ forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| 
 });
 
 forgetest_async!(can_create_with_library_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = PolkadotNode::start().await {
+    if let Ok(_node) = AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(),
             None,

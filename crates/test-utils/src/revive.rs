@@ -16,7 +16,7 @@ const WALLETS: [(&str, &str); 1] = [(
 
 /// Spawn and manage an instance of a compatible contracts enabled chain node.
 #[allow(dead_code)]
-struct AnvilPolkadotNode {
+pub struct AnvilPolkadotNode {
     node: process::Child,
     tmp_dir: tempfile::TempDir,
 }
@@ -28,12 +28,12 @@ impl Drop for AnvilPolkadotNode {
 }
 
 impl AnvilPolkadotNode {
-    async fn start() -> Result<Self> {
+    pub async fn start() -> Result<Self> {
         let tmp_dir = TempDir::with_prefix("cargo-contract.cli.test.node")?;
         std::fs::write(tmp_dir.path().join("genesis.json"), GENESIS_JSON).unwrap();
         let mut node = process::Command::new(NODE_BINARY)
             .env("RUST_LOG", "error")
-            .args(&[
+            .args([
                 "--init",
                 tmp_dir.path().join("genesis.json").to_str().unwrap(),
                 "--ipc",
@@ -76,32 +76,6 @@ impl AnvilPolkadotNode {
         if let Err(err) = self.node.kill() {
             tracing::error!("Error killing contracts node process {}: {}", self.node.id(), err)
         }
-    }
-}
-
-/// `PolkadotHubNode` combines a `substrate-node` with an Ethereum RPC proxy to enable
-/// Ethereum-compatible transactions in CI tests.
-///
-/// Before using it, make sure both `substrate-node` and the Ethereum RPC proxy are installed:
-///
-/// ```bash
-/// git clone https://github.com/paritytech/polkadot-sdk
-/// cd polkadot-sdk
-/// cargo build --release --bin substrate-node
-///
-/// cargo install pallet-revive-eth-rpc
-/// ```
-///
-/// Ensure that both binaries are available in your system's PATH and are version-compatible.
-#[allow(dead_code)]
-pub struct PolkadotNode {
-    node: AnvilPolkadotNode,
-}
-
-impl PolkadotNode {
-    pub async fn start() -> Result<Self> {
-        let node = AnvilPolkadotNode::start().await?;
-        Ok(Self { node })
     }
 
     pub fn http_endpoint() -> &'static str {
