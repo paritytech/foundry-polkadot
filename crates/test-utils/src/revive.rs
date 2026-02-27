@@ -75,7 +75,10 @@ impl AnvilPolkadotNode {
                         .lines()
                         .filter(|x| x.contains("IPv4"))
                         .flat_map(|x| x.split_whitespace())
-                        .filter(|x| x.contains("localhost") && !x.contains(":9944"))
+                        .filter(|x| {
+                            (x.contains("localhost") || x.contains("127.0.0.1"))
+                                && !x.contains(":9944")
+                        })
                         .next()
                         .and_then(|x| x.split(":").last())
                         .map(|x| x.to_owned())
@@ -85,6 +88,7 @@ impl AnvilPolkadotNode {
                 .flatten();
 
                 if port_val.is_none() {
+                    attempts += 1;
                     tokio::time::sleep(Duration::from_millis(200)).await;
                     continue;
                 }
