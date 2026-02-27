@@ -89,7 +89,7 @@ impl AnvilPolkadotNode {
 
                 if port_val.is_none() {
                     attempts += 1;
-                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    tokio::time::sleep(RETRY_DELAY).await;
                     if attempts > MAX_ATTEMPTS {
                         let maybe_err = node.kill();
                         let err = eyre::eyre!(
