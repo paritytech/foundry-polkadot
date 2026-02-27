@@ -76,8 +76,9 @@ jobs:
           echo "unpack release"
           mkdir -p anvil-bin
           mv anvil-polkadot anvil-bin
-          chmod +x anvil-bin/anvil-polkadot
           echo "$(pwd)/anvil-bin" >> $GITHUB_PATH
+          chmod +x anvil-bin/anvil-polkadot
+          xattr -x anvil-bin/anvil-polkadot
           echo "added to path"
       - name: check anvil-polkadot is available for local tests (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
