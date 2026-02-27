@@ -3,13 +3,13 @@ use foundry_test_utils::{
 };
 
 forgetest_async!(test_cast_balance_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let url = AnvilPolkadotNode::http_endpoint();
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let url = node.http_endpoint();
         let (account, _) =
             AnvilPolkadotNode::dev_accounts().next().expect("no dev accounts available");
         let account = account.to_string();
 
-        cmd.cast_fuse().args(["balance", "--rpc-url", url, &account]).assert_success().stdout_eq(
+        cmd.cast_fuse().args(["balance", "--rpc-url", &url, &account]).assert_success().stdout_eq(
             str![[r#"
 18446744073709551615000000000000000000
 
@@ -19,12 +19,12 @@ forgetest_async!(test_cast_balance_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_nonce_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let url = AnvilPolkadotNode::http_endpoint();
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let url = node.http_endpoint();
         let (account, _) = AnvilPolkadotNode::dev_accounts().next().unwrap();
         let account = account.to_string();
 
-        cmd.cast_fuse().args(["nonce", "--rpc-url", url, &account]).assert_success().stdout_eq(
+        cmd.cast_fuse().args(["nonce", "--rpc-url", &url, &account]).assert_success().stdout_eq(
             str![[r#"
 0
 
@@ -34,11 +34,11 @@ forgetest_async!(test_cast_nonce_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_code_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd, &node);
 
         cmd.cast_fuse()
-            .args(["code", "--rpc-url", url, &contract_address])
+            .args(["code", "--rpc-url", &url, &contract_address])
             .assert_success()
             .stdout_eq(str![[r#"
 0x5[..]
@@ -48,11 +48,11 @@ forgetest_async!(test_cast_code_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_codesize_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd, &node);
 
         cmd.cast_fuse()
-            .args(["codesize", "--rpc-url", url, &contract_address])
+            .args(["codesize", "--rpc-url", &url, &contract_address])
             .assert_success()
             .stdout_eq(str![[r#"
 5501
@@ -62,11 +62,11 @@ forgetest_async!(test_cast_codesize_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_storage_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd);
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd, &node);
 
         cmd.cast_fuse()
-            .args(["storage", "--rpc-url", url, &contract_address, "0x0"])
+            .args(["storage", "--rpc-url", &url, &contract_address, "0x0"])
             .assert_success()
             .stdout_eq(str![[r#"
 0x000000000000000000000000000000000000000000000000000000000000002a

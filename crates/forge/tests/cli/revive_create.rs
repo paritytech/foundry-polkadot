@@ -212,11 +212,11 @@ fn create_on_chain<F>(
     }
 }
 
-fn localnode_args() -> Option<Vec<String>> {
+fn localnode_args(node: &AnvilPolkadotNode) -> Option<Vec<String>> {
     Some(
         [
             "--rpc-url".to_string(),
-            AnvilPolkadotNode::http_endpoint().to_string(),
+            node.http_endpoint(),
             "--private-key".to_string(),
             AnvilPolkadotNode::dev_accounts().next().unwrap().1.to_string(),
         ]
@@ -227,9 +227,9 @@ fn localnode_args() -> Option<Vec<String>> {
 // These tests require `anvil-polkadot`:
 // Ensure that both binaries are available in your system's PATH and are version-compatible.
 forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         create_on_chain(
-            localnode_args(),
+            localnode_args(&node),
             None,
             prj,
             cmd,
@@ -240,15 +240,22 @@ forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
 });
 
 forgetest_async!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        create_on_chain(localnode_args(), None, prj, cmd, setup_oracle, CREATE_RESPONSE_PATTERN);
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        create_on_chain(
+            localnode_args(&node),
+            None,
+            prj,
+            cmd,
+            setup_oracle,
+            CREATE_RESPONSE_PATTERN,
+        );
     }
 });
 
 forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         create_on_chain(
-            localnode_args(),
+            localnode_args(&node),
             Some(vec!["--constructor-args".to_string(), "[(1,2), (2,3), (3,4)]".to_string()]),
             prj,
             cmd,
@@ -259,9 +266,9 @@ forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, c
 });
 
 forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         create_on_chain(
-            localnode_args(),
+            localnode_args(&node),
             None,
             prj,
             cmd,
@@ -272,9 +279,9 @@ forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| 
 });
 
 forgetest_async!(can_create_with_library_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         create_on_chain(
-            localnode_args(),
+            localnode_args(&node),
             None,
             prj,
             cmd,

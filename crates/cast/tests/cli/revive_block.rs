@@ -1,9 +1,9 @@
 use foundry_test_utils::{forgetest_async, revive::AnvilPolkadotNode};
 
 forgetest_async!(test_cast_block_number_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let url = AnvilPolkadotNode::http_endpoint();
-        cmd.cast_fuse().args(["block-number", "--rpc-url", url]).assert_success().stdout_eq(str![
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let url = node.http_endpoint();
+        cmd.cast_fuse().args(["block-number", "--rpc-url", &url]).assert_success().stdout_eq(str![
             [r#"
 0
 
@@ -13,10 +13,10 @@ forgetest_async!(test_cast_block_number_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_gas_price_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let url = AnvilPolkadotNode::http_endpoint();
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let url = node.http_endpoint();
 
-        cmd.cast_fuse().args(["gas-price", "--rpc-url", url]).assert_success().stdout_eq(str![[
+        cmd.cast_fuse().args(["gas-price", "--rpc-url", &url]).assert_success().stdout_eq(str![[
             r#"
 1000000
 
@@ -26,21 +26,23 @@ forgetest_async!(test_cast_gas_price_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_basefee_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let url = AnvilPolkadotNode::http_endpoint();
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let url = node.http_endpoint();
 
-        cmd.cast_fuse().args(["basefee", "--rpc-url", url]).assert_success().stdout_eq(str![[r#"
+        cmd.cast_fuse().args(["basefee", "--rpc-url", &url]).assert_success().stdout_eq(str![[
+            r#"
 1000000
 
-"#]]);
+"#
+        ]]);
     }
 });
 
 forgetest_async!(test_cast_block_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let url = AnvilPolkadotNode::http_endpoint();
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let url = node.http_endpoint();
 
-        cmd.cast_fuse().args(["block", "latest", "--rpc-url", url]).assert_success().stdout_eq(
+        cmd.cast_fuse().args(["block", "latest", "--rpc-url", &url]).assert_success().stdout_eq(
             str![[r#"
 
 
@@ -76,14 +78,14 @@ transactions:        []
 });
 
 forgetest_async!(test_cast_age_polkadot_localnode, |_prj, cmd| {
-    if let Ok(_node) = AnvilPolkadotNode::start().await {
-        let url = AnvilPolkadotNode::http_endpoint();
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        let url = node.http_endpoint();
 
-        cmd.cast_fuse().args(["age", "latest", "--rpc-url", url]).assert_success().stdout_eq(str![
-            [r#"
+        cmd.cast_fuse().args(["age", "latest", "--rpc-url", &url]).assert_success().stdout_eq(
+            str![[r#"
 [..]
 
-"#]
-        ]);
+"#]],
+        );
     }
 });
