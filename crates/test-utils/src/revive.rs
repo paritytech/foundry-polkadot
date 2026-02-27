@@ -54,6 +54,10 @@ impl AnvilPolkadotNode {
             ])
             .spawn()?;
 
+        if let Some(stderr) = node.stderr {
+            panic!("{:?}", stderr)
+        }
+
         loop {
             let id = node.id();
             let mut port_val: Option<String> = None;
