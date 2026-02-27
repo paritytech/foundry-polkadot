@@ -1,9 +1,12 @@
-use foundry_test_utils::{deploy_contract, forgetest_async, revive::AnvilPolkadotNode, util::OutputExt};
+use foundry_test_utils::{
+    deploy_contract, forgetest_async, revive::AnvilPolkadotNode, util::OutputExt,
+};
 
 forgetest_async!(test_cast_balance_polkadot_localnode, |_prj, cmd| {
     if let Ok(_node) = AnvilPolkadotNode::start().await {
         let url = AnvilPolkadotNode::http_endpoint();
-        let (account, _) = AnvilPolkadotNode::dev_accounts().next().expect("no dev accounts available");
+        let (account, _) =
+            AnvilPolkadotNode::dev_accounts().next().expect("no dev accounts available");
         let account = account.to_string();
 
         cmd.cast_fuse().args(["balance", "--rpc-url", url, &account]).assert_success().stdout_eq(
