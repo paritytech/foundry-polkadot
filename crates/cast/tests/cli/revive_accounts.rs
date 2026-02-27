@@ -3,7 +3,7 @@ use foundry_test_utils::{
 };
 
 forgetest_async!(test_cast_balance_polkadot_localnode, |_prj, cmd| {
-    let node =AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         let url = node.http_endpoint();
         let (account, _) =
             AnvilPolkadotNode::dev_accounts().next().expect("no dev accounts available");
@@ -19,7 +19,7 @@ forgetest_async!(test_cast_balance_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_nonce_polkadot_localnode, |_prj, cmd| {
-    let node =AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         let url = node.http_endpoint();
         let (account, _) = AnvilPolkadotNode::dev_accounts().next().unwrap();
         let account = account.to_string();
@@ -34,7 +34,7 @@ forgetest_async!(test_cast_nonce_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_code_polkadot_localnode, |_prj, cmd| {
-    let node =AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd, &node);
 
         cmd.cast_fuse()
@@ -48,7 +48,7 @@ forgetest_async!(test_cast_code_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_codesize_polkadot_localnode, |_prj, cmd| {
-    let node =AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd, &node);
 
         cmd.cast_fuse()
@@ -62,7 +62,7 @@ forgetest_async!(test_cast_codesize_polkadot_localnode, |_prj, cmd| {
 });
 
 forgetest_async!(test_cast_storage_polkadot_localnode, |_prj, cmd| {
-    let node =AnvilPolkadotNode::start().await {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         let (url, _deployer_pk, contract_address, _tx_hash) = deploy_contract!(cmd, &node);
 
         cmd.cast_fuse()
