@@ -227,7 +227,7 @@ fn localnode_args(node: &AnvilPolkadotNode) -> Option<Vec<String>> {
 // These tests require `anvil-polkadot`:
 // Ensure that both binaries are available in your system's PATH and are version-compatible.
 forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(node) = AnvilPolkadotNode::start().await {
+    let node =AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(&node),
             None,
@@ -240,7 +240,7 @@ forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
 });
 
 forgetest_async!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(node) = AnvilPolkadotNode::start().await {
+    let node =AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(&node),
             None,
@@ -253,7 +253,7 @@ forgetest_async!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
 });
 
 forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(node) = AnvilPolkadotNode::start().await {
+    let node =AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(&node),
             Some(vec!["--constructor-args".to_string(), "[(1,2), (2,3), (3,4)]".to_string()]),
@@ -266,7 +266,7 @@ forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, c
 });
 
 forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(node) = AnvilPolkadotNode::start().await {
+    let node =AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(&node),
             None,
@@ -279,7 +279,7 @@ forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| 
 });
 
 forgetest_async!(can_create_with_library_deps_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(node) = AnvilPolkadotNode::start().await {
+    let node =AnvilPolkadotNode::start().await {
         create_on_chain(
             localnode_args(&node),
             None,

@@ -97,20 +97,21 @@ impl AnvilPolkadotNode {
                             "Failed to find port",
                             {
                                 let lsof_out = process::Command::new("lsof")
-                                .args(["-i", "-P"])
-                                .stdout(Stdio::piped())
-                                .spawn()
-                                .unwrap()
-                                .stdout;
-                            process::Command::new("grep")
-                                .arg("anvil")
-                                .stdin(lsof_out.unwrap())
-                                .output()
-                                .unwrap()
-                                .stdout_lossy()
+                                    .args(["-i", "-P"])
+                                    .stdout(Stdio::piped())
+                                    .spawn()
+                                    .unwrap()
+                                    .stdout;
+                                process::Command::new("grep")
+                                    .arg("anvil")
+                                    .stdin(lsof_out.unwrap())
+                                    .output()
+                                    .unwrap()
+                                    .stdout_lossy()
                             }
                         );
                         tracing::error!("{}", err);
+                        panic!("{:?}", err);
                         node.kill()?;
                         return Err(err);
                     };
