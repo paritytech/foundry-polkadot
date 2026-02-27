@@ -91,8 +91,9 @@ impl AnvilPolkadotNode {
                     attempts += 1;
                     tokio::time::sleep(Duration::from_millis(200)).await;
                     if attempts > MAX_ATTEMPTS {
+                        let maybe_err = node.kill();
                         let err = eyre::eyre!(
-                            "Failed to connect to node rpc after {} attempts: {}\ndump: {}\n dump over\n{:?}\n{:#?}",
+                            "Failed to connect to node rpc after {} attempts: {}\ndump: {}\n dump over\n{:?}\n{:#?}\n{:#?}",
                             attempts,
                             "Failed to find port",
                             {
@@ -110,11 +111,11 @@ impl AnvilPolkadotNode {
                                     .stdout_lossy()
                             },
                             node.stdout,
-                            node.stderr
+                            node.stderr,
+                            maybe_err
                         );
                         tracing::error!("{}", err);
                         panic!("{:?}", err);
-                        node.kill()?;
                         return Err(err);
                     };
                     continue;

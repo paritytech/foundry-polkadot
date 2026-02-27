@@ -82,7 +82,7 @@ jobs:
       - name: check anvil-polkadot is available for local tests (Ubuntu)
         if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
         run: |
-          echo " Path to binary is $(which anvil-polkadot)."
+          anvil-polkadot --version
       - name: Setup Node.js
         if: contains(matrix.name, 'external')
         uses: actions/setup-node@v4
