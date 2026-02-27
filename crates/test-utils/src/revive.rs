@@ -54,10 +54,6 @@ impl AnvilPolkadotNode {
             ])
             .spawn()?;
 
-        if let Some(stderr) = node.stderr {
-            panic!("{:?}", stderr)
-        }
-
         loop {
             let id = node.id();
             let mut port_val: Option<String> = None;
@@ -96,7 +92,7 @@ impl AnvilPolkadotNode {
                     tokio::time::sleep(Duration::from_millis(200)).await;
                     if attempts > MAX_ATTEMPTS {
                         let err = eyre::eyre!(
-                            "Failed to connect to node rpc after {} attempts: {}\n{}",
+                            "Failed to connect to node rpc after {} attempts: {}\ndump: {}\n dump over\n{:?}\n{:#?}",
                             attempts,
                             "Failed to find port",
                             {
@@ -112,7 +108,9 @@ impl AnvilPolkadotNode {
                                     .output()
                                     .unwrap()
                                     .stdout_lossy()
-                            }
+                            },
+                            node.stdout,
+                            node.stderr
                         );
                         tracing::error!("{}", err);
                         panic!("{:?}", err);
