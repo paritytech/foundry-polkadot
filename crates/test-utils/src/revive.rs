@@ -90,6 +90,30 @@ impl AnvilPolkadotNode {
                 if port_val.is_none() {
                     attempts += 1;
                     tokio::time::sleep(Duration::from_millis(200)).await;
+                    if attempts > MAX_ATTEMPTS {
+                        let err = eyre::eyre!(
+                            "Failed to connect to node rpc after {} attempts: {}\n{}",
+                            attempts,
+                            "Failed to find port",
+                            {
+                                let lsof_out = process::Command::new("lsof")
+                                .args(["-i", "-P"])
+                                .stdout(Stdio::piped())
+                                .spawn()
+                                .unwrap()
+                                .stdout;
+                            process::Command::new("grep")
+                                .arg("anvil")
+                                .stdin(lsof_out.unwrap())
+                                .output()
+                                .unwrap()
+                                .stdout_lossy()
+                            }
+                        );
+                        tracing::error!("{}", err);
+                        node.kill()?;
+                        return Err(err);
+                    };
                     continue;
                 }
             };
