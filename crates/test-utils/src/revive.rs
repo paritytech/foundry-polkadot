@@ -9,7 +9,7 @@ use tokio::net::TcpStream;
 use crate::util::OutputExt;
 
 const NODE_BINARY: &str = "anvil-polkadot";
-const MAX_ATTEMPTS: u32 = 15;
+const MAX_ATTEMPTS: usize = 15;
 const RPC_URL: &str = "http://127.0.0.1";
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 pub static GENESIS_JSON: &str = include_str!("../test-data/genesis.json");
@@ -31,6 +31,21 @@ impl Drop for AnvilPolkadotNode {
     fn drop(&mut self) {
         self.kill()
     }
+}
+
+async fn retry(attempts: &mut usize, msg: String, node: &mut process::Child) -> Result<()> {
+    *attempts += 1;
+    tokio::time::sleep(RETRY_DELAY).await;
+    if *attempts > MAX_ATTEMPTS {
+        let err = eyre::eyre!(
+            "Failed to connect to node rpc after {} attempts, reason: {msg}",
+            attempts,
+        );
+        tracing::error!("{}", err);
+        let _ = node.kill();
+        return Err(err);
+    }
+    Ok(())
 }
 
 impl AnvilPolkadotNode {
@@ -73,55 +88,25 @@ impl AnvilPolkadotNode {
                         .stdout_lossy();
                     grepped_output
                         .lines()
-                        .filter(|x| x.contains("IPv4"))
+                        .filter(|x| x.contains("IPv4") && !x.contains(":9944"))
                         .flat_map(|x| x.split_whitespace())
-                        .filter(|x| {
-                            (x.contains("localhost") || x.contains("127.0.0.1"))
-                                && !x.contains(":9944")
-                        })
-                        .next()
+                        .find(|x| x.contains("localhost") || x.contains("127.0.0.1"))
                         .and_then(|x| x.split(":").last())
                         .map(|x| x.to_owned())
                 })
                 .await
                 .ok()
                 .flatten();
-
-                if port_val.is_none() {
-                    attempts += 1;
-                    tokio::time::sleep(RETRY_DELAY).await;
-                    if attempts > MAX_ATTEMPTS {
-                        let maybe_err = node.kill();
-                        let err = eyre::eyre!(
-                            "Failed to connect to node rpc after {} attempts: {}\ndump: {}\n dump over\n{:?}\n{:#?}\n{:#?}",
-                            attempts,
-                            "Failed to find port",
-                            {
-                                let lsof_out = process::Command::new("lsof")
-                                    .args(["-i", "-P"])
-                                    .stdout(Stdio::piped())
-                                    .spawn()
-                                    .unwrap()
-                                    .stdout;
-                                process::Command::new("grep")
-                                    .arg("anvil")
-                                    .stdin(lsof_out.unwrap())
-                                    .output()
-                                    .unwrap()
-                                    .stdout_lossy()
-                            },
-                            node.stdout,
-                            node.stderr,
-                            maybe_err
-                        );
-                        tracing::error!("{}", err);
-                        panic!("{:?}", err);
-                        return Err(err);
-                    };
-                    continue;
-                }
             };
-            let Some(port) = port_val else { continue };
+            let Some(port) = port_val else {
+                retry(
+                    &mut attempts,
+                    format!("Failed to find port by pid:{}", node.id()),
+                    &mut node,
+                )
+                .await?;
+                continue;
+            };
 
             tracing::debug!(
                 "Connecting to contracts enabled node, attempt {}/{}",
@@ -136,27 +121,13 @@ impl AnvilPolkadotNode {
             {
                 Result::Ok(Result::Ok(t)) => {
                     drop(t);
-                    return Ok(Self {
-                        node,
-                        tmp_dir,
-                        port: u16::from_str_radix(&port, 10).unwrap(),
-                    });
+                    return Ok(Self { node, tmp_dir, port: port.parse::<u16>().unwrap() });
                 }
-                Err(_) => continue,
+                Err(err) => {
+                    retry(&mut attempts, format!("error reason={err}"), &mut node).await?;
+                }
                 Result::Ok(Err(err)) => {
-                    if attempts < MAX_ATTEMPTS {
-                        attempts += 1;
-                        tokio::time::sleep(RETRY_DELAY).await;
-                        continue;
-                    }
-                    let err = eyre::eyre!(
-                        "Failed to connect to node rpc after {} attempts: {}",
-                        attempts,
-                        err
-                    );
-                    tracing::error!("{}", err);
-                    node.kill()?;
-                    return Err(err);
+                    retry(&mut attempts, format!("error reason={err}"), &mut node).await?;
                 }
             }
         }

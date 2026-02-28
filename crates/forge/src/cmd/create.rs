@@ -68,11 +68,11 @@ fn resolve_revive_pallet_index(config_value: Option<u8>, chain_id: u64) -> Resul
     }
 
     match chain_id {
-        420420420 => Ok(5),   // anvil-polkadot
+        420420420 => Ok(5),   // dev_node in polkadot_sdk
         420420417 => Ok(100), // Paseo Asset Hub
         420420418 => Ok(60),  // Kusama Asset Hub
         420420419 => Ok(90),  // Polkadot Asset Hub
-        11111111 => Ok(4),    // CI testing specific
+        11111111 => Ok(4),    // CI testing specific using anvil-polkadot
         _ => eyre::bail!(
             "Unknown pallet-revive index for chain ID {chain_id}. \
              Set `polkadot.revive_pallet_index` in foundry.toml."
