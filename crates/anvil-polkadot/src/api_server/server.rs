@@ -226,6 +226,9 @@ impl ApiServer {
 
         loop {
             tokio::select! {
+                // Biased so mode changes reconfigure streams before anything runs,
+                // and pending blocks are sealed before new RPCs are accepted.
+                biased;
                 new_mode = wait_for_mode_change(&engine, current_mode) => {
                     current_mode = Some(new_mode);
                     combined_stream = build_streams_for_mode(new_mode, &engine);
