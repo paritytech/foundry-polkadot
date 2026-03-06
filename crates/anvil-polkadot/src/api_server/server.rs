@@ -922,9 +922,7 @@ impl ApiServer {
         // see the new block immediately, without waiting for the
         // background subscription task.
         if let Ok(Some(new_block)) = self.block_provider.block_by_hash(&block.hash).await {
-            self.block_provider
-                .update_latest(new_block, SubscriptionType::BestBlocks)
-                .await;
+            self.block_provider.update_latest(new_block, SubscriptionType::BestBlocks).await;
         }
 
         let _ = self.log_mined_block(block.hash).await;
