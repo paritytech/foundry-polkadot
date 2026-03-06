@@ -207,11 +207,11 @@ impl ApiServer {
     ///
     /// # Inline mining
     ///
-    /// Because the mining branch cannot fire while an RPC is executing, transaction-submitting RPCs
-    /// in automine/mixed mode call [`Self::seal_now_inline`] (via
-    /// `send_transaction_and_maybe_mine`, `send_raw_transaction_and_maybe_mine`, and the `_sync`
-    /// variants). This ensures the block exists before the RPC returns, matching upstream Anvil's
-    /// automine semantics.
+    /// Async RPCs (`EthSendTransaction`, `EthSendRawTransaction`) rely on the biased select! loop
+    /// to mine via the pool notification before the next RPC is processed. The synchronous
+    /// variants (`EthSendTransactionSync`, `EthSendRawTransactionSync`) must mine inline via
+    /// [`Self::seal_now_inline`] because they block until a receipt is available — the mining
+    /// branch cannot fire while an RPC is executing.
     ///
     /// # Error handling
     ///
@@ -352,7 +352,7 @@ impl ApiServer {
             }
             EthRequest::EthSendUnsignedTransaction(request) => {
                 node_info!("eth_sendUnsignedTransaction");
-                self.send_transaction_and_maybe_mine(*request.clone(), true).await.to_rpc_result()
+                self.send_transaction(*request.clone(), true).await.to_rpc_result()
             }
 
             //------- Eth RPCs---------
@@ -380,7 +380,7 @@ impl ApiServer {
             }
             EthRequest::EthCall(call, block, _, _) => self.call(call, block).await.to_rpc_result(),
             EthRequest::EthSendTransaction(request) => {
-                self.send_transaction_and_maybe_mine(*request.clone(), false).await.to_rpc_result()
+                self.send_transaction(*request.clone(), false).await.to_rpc_result()
             }
             EthRequest::EthSendTransactionSync(request) => {
                 self.send_transaction_sync(*request).await.to_rpc_result()
@@ -437,9 +437,7 @@ impl ApiServer {
             }
             EthRequest::EthSendRawTransaction(tx) => {
                 node_info!("eth_sendRawTransaction");
-                self.send_raw_transaction_and_maybe_mine(ReviveBytes::from(tx).inner())
-                    .await
-                    .to_rpc_result()
+                self.send_raw_transaction(ReviveBytes::from(tx).inner()).await.to_rpc_result()
             }
             EthRequest::EthSendRawTransactionSync(tx) => {
                 self.send_raw_transaction_sync(ReviveBytes::from(tx).inner()).await.to_rpc_result()
@@ -919,6 +917,16 @@ impl ApiServer {
         // Note: upstream anvil logs block_number here, but CreatedBlock only has hash.
         trace!(target: "miner", "created new block: {:?}", block.hash);
         debug!(hash=?block.hash, "sealed");
+
+        // Update the block provider cache so RPCs that resolve "latest"
+        // see the new block immediately, without waiting for the
+        // background subscription task.
+        if let Ok(Some(new_block)) = self.block_provider.block_by_hash(&block.hash).await {
+            self.block_provider
+                .update_latest(new_block, SubscriptionType::BestBlocks)
+                .await;
+        }
+
         let _ = self.log_mined_block(block.hash).await;
         Ok(())
     }
@@ -929,28 +937,6 @@ impl ApiServer {
         self.seal_and_log().await.map_err(Error::Mining)?;
         self.stale_pool_notifications.fetch_add(1, Ordering::Relaxed);
         Ok(())
-    }
-
-    /// Submit a raw transaction and mine immediately in automine/mixed mode.
-    async fn send_raw_transaction_and_maybe_mine(&self, transaction: Bytes) -> Result<H256> {
-        let hash = self.send_raw_transaction(transaction).await?;
-        if self.mining_engine.is_auto_or_mixed_mining() {
-            self.seal_now_inline().await?;
-        }
-        Ok(hash)
-    }
-
-    /// Submit a transaction and mine immediately in automine/mixed mode.
-    async fn send_transaction_and_maybe_mine(
-        &self,
-        transaction_req: WithOtherFields<TransactionRequest>,
-        unsigned_tx: bool,
-    ) -> Result<H256> {
-        let hash = self.send_transaction(transaction_req, unsigned_tx).await?;
-        if self.mining_engine.is_auto_or_mixed_mining() {
-            self.seal_now_inline().await?;
-        }
-        Ok(hash)
     }
 
     pub async fn send_raw_transaction_sync(&self, tx: Bytes) -> Result<ReceiptInfo> {
@@ -1748,12 +1734,12 @@ impl ApiServer {
                 Ok(self.eth_rpc_client.get_block_hash(n).await?)
             }
             BlockNumberOrTagOrHash::BlockTag(tag) => {
-                // Read from the substrate backend directly for up to date information.
-                let info = self.backend.blockchain().info();
                 let hash = match tag {
-                    BlockTag::Earliest => info.genesis_hash,
-                    BlockTag::Finalized | BlockTag::Safe => info.finalized_hash,
-                    _ => info.best_hash,
+                    BlockTag::Earliest => self.backend.blockchain().info().genesis_hash,
+                    BlockTag::Finalized | BlockTag::Safe => {
+                        self.eth_rpc_client.latest_finalized_block().await.hash()
+                    }
+                    _ => self.eth_rpc_client.latest_block().await.hash(),
                 };
                 Ok(Some(hash))
             }
