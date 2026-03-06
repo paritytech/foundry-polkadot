@@ -15,7 +15,7 @@ use crate::{
         trace_helpers::{parity_block_trace_builder, parity_transaction_trace_builder},
         txpool_helpers::{
             TxpoolTransactionInfo, extract_sender, extract_tx_info, extract_tx_summary,
-            transaction_matches_eth_hash,
+            get_pool_nonce, transaction_matches_eth_hash,
         },
     },
     logging::LoggingManager,
@@ -24,7 +24,10 @@ use crate::{
         host::recover_maybe_impersonated_address,
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
-        mining_engine::MiningEngine,
+        mining_engine::{
+            MiningEngine, MiningError, MiningTrigger, SealCommandStream, build_streams_for_mode,
+            seal_now, wait_for_mode_change,
+        },
         revert::{RevertInfo, RevertManager},
         service::{
             BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
@@ -53,7 +56,11 @@ use anvil_core::eth::{EthRequest, Params as AnvilCoreParams};
 use anvil_rpc::response::ResponseResult;
 use chrono::{DateTime, Datelike, Utc};
 use codec::{Decode, Encode};
-use futures::{StreamExt, channel::mpsc};
+use futures::{
+    StreamExt,
+    channel::mpsc,
+    stream::{SelectAll, select_all},
+};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
     BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
@@ -74,6 +81,7 @@ use polkadot_sdk::{
     parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::HeaderBackend,
+    sc_consensus_manual_seal::EngineCommand,
     sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
     sp_api::{Metadata as _, ProvideRuntimeApi},
     sp_blockchain::Info,
@@ -82,7 +90,14 @@ use polkadot_sdk::{
 };
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
@@ -90,7 +105,7 @@ use subxt::{
     ext::subxt_rpcs::LegacyRpcMethods, utils::H160,
 };
 use subxt_signer::eth::Keypair;
-use tokio::try_join;
+use tokio::{sync::mpsc::Sender, try_join};
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
 const TIMEOUT_DURATION: Duration = Duration::from_secs(30);
@@ -110,6 +125,12 @@ pub struct ApiServer {
     instance_id: B256,
     /// Tracks all active filters
     filters: Filters,
+    seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
+    /// Counts inline mines performed by tx-submitting RPCs.
+    /// Each inline mine produces one stale pool notification that the
+    /// mining branch must skip.  Decremented when a `PoolNotification`
+    /// is consumed.
+    stale_pool_notifications: AtomicU64,
 }
 
 impl ApiServer {
@@ -159,15 +180,93 @@ impl ApiServer {
             wallet: DevSigner::new(signers)?,
             instance_id: B256::random(),
             filters,
+            seal_command_sender: substrate_service.seal_command_sender.clone(),
+            stale_pool_notifications: AtomicU64::new(0),
         })
     }
 
+    /// Main event loop: handles both block production and RPC requests.
+    ///
+    /// Mining and RPC handling are **mutually exclusive** within this `select!`
+    /// loop — only one branch executes at a time, eliminating race conditions.
+    ///
+    /// # Select branches
+    ///
+    /// 1. **Mode change** – monitors `MiningEngine::mining_mode` via `wait_for_mode_change`.  On
+    ///    the first iteration `current_mode` is `None`, so it fires immediately and builds the
+    ///    initial streams. Subsequent mode changes (e.g. `set_interval_mining`, `set_auto_mine`)
+    ///    wake the `AtomicWaker` and rebuild streams on the next iteration. The
+    ///    `stale_pool_notifications` counter is reset to 0 here because rebuilding the stream drops
+    ///    any pending notifications that the counter was expecting to skip.
+    ///
+    /// 2. **Mining trigger** – fires on interval ticks or transaction-pool import notifications
+    ///    (tagged by [`MiningTrigger`]).  Calls `seal_now` to produce a block via manual-seal.
+    ///
+    /// 3. **RPC request** – handles an incoming request from the API channel. While an RPC
+    ///    executes, mining triggers queue up in `combined_stream` and fire on the next iteration.
+    ///
+    /// # Inline mining
+    ///
+    /// Async RPCs (`EthSendTransaction`, `EthSendRawTransaction`) rely on the biased select! loop
+    /// to mine via the pool notification before the next RPC is processed. The synchronous
+    /// variants (`EthSendTransactionSync`, `EthSendRawTransactionSync`) must mine inline via
+    /// [`Self::seal_now_inline`] because they block until a receipt is available — the mining
+    /// branch cannot fire while an RPC is executing.
+    ///
+    /// # Error handling
+    ///
+    /// - `ClosedChannel` from `seal_now` is fatal — the manual-seal consumer was dropped, so the
+    ///   loop terminates.
+    /// - Other mining errors are logged and the loop continues.
+    /// - A closed `req_receiver` terminates the loop (node shutting down).
     pub async fn run(mut self) {
-        while let Some(msg) = self.req_receiver.next().await {
-            let resp = self.execute(msg.req).await;
+        let engine = self.mining_engine.clone();
+        let mut current_mode = None;
+        let mut combined_stream: SelectAll<SealCommandStream> = select_all(vec![]);
 
-            if let Err(resp) = msg.resp_sender.send(resp) {
-                node_info!("Request was cancelled before sending the response: {:?}", resp);
+        loop {
+            tokio::select! {
+                // Biased so mode changes reconfigure streams before anything runs,
+                // and pending blocks are sealed before new RPCs are accepted.
+                biased;
+                new_mode = wait_for_mode_change(&engine, current_mode) => {
+                    current_mode = Some(new_mode);
+                    combined_stream = build_streams_for_mode(new_mode, &engine);
+                    // Rebuilding the stream drops any pending notifications
+                    // that the counter was expecting to skip.
+                    self.stale_pool_notifications.store(0, Ordering::Relaxed);
+                }
+                Some(trigger) = combined_stream.next(), if !combined_stream.is_empty() => {
+                    // Skip stale pool notifications: when an RPC already mined
+                    // the tx inline, the pool notification emitted at import
+                    // time is still pending.  Mining on it would produce an
+                    // extra empty block.
+                    // We use a counter rather than checking pool.ready().count()
+                    // because pool cleanup after block import is async — the
+                    // txpool-notifications task may not have removed the mined
+                    // tx yet when we check.
+                    // Interval ticks always produce blocks regardless.
+                    if trigger == MiningTrigger::PoolNotification
+                        && self.stale_pool_notifications.load(Ordering::Relaxed) > 0
+                    {
+                        self.stale_pool_notifications.fetch_sub(1, Ordering::Relaxed);
+                        continue;
+                    }
+                    match self.seal_and_log().await {
+                        Ok(()) => {}
+                        Err(MiningError::ClosedChannel) => break,
+                        Err(e) => {
+                            error!(?e, "block production failed");
+                        }
+                    }
+                }
+                msg = self.req_receiver.next() => {
+                    let Some(msg) = msg else { break };
+                    let resp = self.execute(msg.req).await;
+                    if let Err(resp) = msg.resp_sender.send(resp) {
+                        node_info!("Request was cancelled before sending the response: {:?}", resp);
+                    }
+                }
             }
         }
     }
@@ -481,7 +580,11 @@ impl ApiServer {
 
         let awaited_hash = self
             .mining_engine
-            .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
+            .mine(
+                blocks.map(|b| b.to()),
+                interval.map(|i| Duration::from_secs(i.to())),
+                &self.seal_command_sender,
+            )
             .await
             .map_err(Error::Mining)?;
         self.wait_for_hash(receiver, awaited_hash).await?;
@@ -519,7 +622,10 @@ impl ApiServer {
 
         // Subscribe to new best blocks.
         let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
-        let awaited_hash = self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        let awaited_hash = self
+            .mining_engine
+            .evm_mine(mine.and_then(|p| p.params), &self.seal_command_sender)
+            .await?;
         self.wait_for_hash(receiver, awaited_hash).await?;
         Ok("0x0".to_string())
     }
@@ -533,8 +639,10 @@ impl ApiServer {
         // Subscribe to new best blocks.
         let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
 
-        let (mined_blocks, awaited_hash) =
-            self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+        let (mined_blocks, awaited_hash) = self
+            .mining_engine
+            .do_evm_mine(mine.and_then(|p| p.params), &self.seal_command_sender)
+            .await?;
 
         self.wait_for_hash(receiver, awaited_hash).await?;
 
@@ -776,8 +884,21 @@ impl ApiServer {
         trace!(target: "backend", "get nonce for {:?}", address);
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let nonce = runtime_api.nonce(address).await?;
-        Ok(nonce)
+        let on_chain_nonce = runtime_api.nonce(address).await?;
+
+        // For pending block, account for txs already in the pool
+        let is_pending = matches!(block, Some(BlockId::Number(BlockNumberOrTag::Pending)));
+        if is_pending {
+            let alloy_addr = Address::from_slice(address.as_bytes());
+            if let Some(pool_nonce) = get_pool_nonce(&self.tx_pool, alloy_addr) {
+                let pool_nonce = sp_core::U256::from(pool_nonce);
+                if pool_nonce > on_chain_nonce {
+                    return Ok(pool_nonce);
+                }
+            }
+        }
+
+        Ok(on_chain_nonce)
     }
 
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
@@ -785,6 +906,35 @@ impl ApiServer {
         let call = subxt_client::tx().revive().eth_transact(transaction.0);
         self.eth_rpc_client.submit(call).await?;
         Ok(hash)
+    }
+
+    /// Seal a new block and log its details.
+    async fn seal_and_log(&self) -> std::result::Result<(), MiningError> {
+        let tx_count = self.tx_pool.ready().count();
+        trace!(target: "miner", "creating new block");
+        trace!(target: "backend", "creating new block with {tx_count} transactions");
+        let block = seal_now(&self.seal_command_sender).await?;
+        // Note: upstream anvil logs block_number here, but CreatedBlock only has hash.
+        trace!(target: "miner", "created new block: {:?}", block.hash);
+        debug!(hash=?block.hash, "sealed");
+
+        // Update the block provider cache so RPCs that resolve "latest"
+        // see the new block immediately, without waiting for the
+        // background subscription task.
+        if let Ok(Some(new_block)) = self.block_provider.block_by_hash(&block.hash).await {
+            self.block_provider.update_latest(new_block, SubscriptionType::BestBlocks).await;
+        }
+
+        let _ = self.log_mined_block(block.hash).await;
+        Ok(())
+    }
+
+    /// Mine a block inline from an RPC handler and mark the upcoming pool
+    /// notification as stale so the mining branch in `run()` skips it.
+    async fn seal_now_inline(&self) -> Result<()> {
+        self.seal_and_log().await.map_err(Error::Mining)?;
+        self.stale_pool_notifications.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 
     pub async fn send_raw_transaction_sync(&self, tx: Bytes) -> Result<ReceiptInfo> {
@@ -798,6 +948,11 @@ impl ApiServer {
             })?
             .subscribe();
         let hash = B256::from_slice(self.send_raw_transaction(tx).await?.as_ref());
+        // In automine/mixed mode, mine inline since the select! loop can't fire
+        // while we're handling this RPC.
+        if self.mining_engine.is_auto_or_mixed_mining() {
+            self.seal_now_inline().await?;
+        }
         self.wait_for_receipt(hash, receiver).await
     }
 
@@ -813,11 +968,6 @@ impl ApiServer {
         };
 
         let best_hash = self.latest_block();
-        let best_eth_hash =
-            self.eth_rpc_client.resolve_ethereum_hash(&best_hash).await.ok_or_else(|| {
-                Error::InternalError("Ethereum block hash of latest block not found".to_string())
-            })?;
-        let latest_block_id = Some(BlockId::hash(B256::from_slice(best_eth_hash.as_ref())));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {
@@ -840,7 +990,8 @@ impl ApiServer {
         }
 
         if transaction.nonce.is_none() {
-            transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
+            let pending_block = Some(BlockId::Number(BlockNumberOrTag::Pending));
+            transaction.nonce = Some(self.get_transaction_count(from, pending_block).await?);
         }
 
         if transaction.chain_id.is_none() {
@@ -889,6 +1040,11 @@ impl ApiServer {
             })?
             .subscribe();
         let hash = B256::from_slice(self.send_transaction(request, false).await?.as_ref());
+        // In automine/mixed mode, mine inline since the select! loop can't fire
+        // while we're handling this RPC.
+        if self.mining_engine.is_auto_or_mixed_mining() {
+            self.seal_now_inline().await?;
+        }
         self.wait_for_receipt(hash, receiver).await
     }
 
@@ -1575,13 +1731,15 @@ impl ApiServer {
                 })?;
                 Ok(self.eth_rpc_client.get_block_hash(n).await?)
             }
-            BlockNumberOrTagOrHash::BlockTag(BlockTag::Finalized | BlockTag::Safe) => {
-                let block = self.eth_rpc_client.latest_finalized_block().await;
-                Ok(Some(block.hash()))
-            }
-            BlockNumberOrTagOrHash::BlockTag(_) => {
-                let block = self.eth_rpc_client.latest_block().await;
-                Ok(Some(block.hash()))
+            BlockNumberOrTagOrHash::BlockTag(tag) => {
+                let hash = match tag {
+                    BlockTag::Earliest => self.backend.blockchain().info().genesis_hash,
+                    BlockTag::Finalized | BlockTag::Safe => {
+                        self.eth_rpc_client.latest_finalized_block().await.hash()
+                    }
+                    _ => self.eth_rpc_client.latest_block().await.hash(),
+                };
+                Ok(Some(hash))
             }
         }
     }

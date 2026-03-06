@@ -1,7 +1,7 @@
 use crate::{
     AnvilNodeConfig,
     substrate_node::{
-        mining_engine::{MiningEngine, MiningMode, run_mining_engine},
+        mining_engine::{MiningEngine, MiningMode},
         rpc::spawn_rpc_server,
         service::consensus::SameSlotConsensusDataProvider,
     },
@@ -11,14 +11,15 @@ use parking_lot::Mutex;
 use polkadot_sdk::{
     parachains_common::opaque::Block,
     sc_basic_authorship, sc_consensus,
-    sc_consensus_manual_seal::{self},
+    sc_consensus_manual_seal::{self, EngineCommand},
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
     },
-    sc_transaction_pool, sp_timestamp,
+    sc_transaction_pool, sp_core, sp_timestamp,
 };
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use tokio_stream::wrappers::ReceiverStream;
 
 pub use backend::{BackendError, BackendWithOverlay, StorageOverrides};
@@ -46,6 +47,7 @@ pub struct Service {
     pub mining_engine: Arc<MiningEngine>,
     pub storage_overrides: Arc<Mutex<StorageOverrides>>,
     pub genesis_block_number: u64,
+    pub seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
 }
 
 /// Builds a new service for a full client.
@@ -95,12 +97,8 @@ pub fn new(
         .into(),
     ));
 
-    let mining_engine = Arc::new(MiningEngine::new(
-        mining_mode,
-        transaction_pool.clone(),
-        time_manager.clone(),
-        seal_engine_command_sender,
-    ));
+    let mining_engine =
+        Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone(), time_manager.clone()));
 
     let rpc_handlers = spawn_rpc_server(
         anvil_config.get_genesis_number(),
@@ -111,12 +109,6 @@ pub fn new(
         keystore,
         backend.clone(),
     )?;
-
-    task_manager.spawn_handle().spawn(
-        "mining_engine_task",
-        Some("consensus"),
-        run_mining_engine(mining_engine.clone()),
-    );
 
     let proposer = sc_basic_authorship::ProposerFactory::new(
         task_manager.spawn_handle(),
@@ -161,6 +153,7 @@ pub fn new(
             mining_engine,
             storage_overrides,
             genesis_block_number: anvil_config.get_genesis_number(),
+            seal_command_sender: seal_engine_command_sender,
         },
         task_manager,
     ))

@@ -84,14 +84,13 @@ impl MiningMode {
 /// development and production environments.
 pub struct MiningEngine {
     /// Coordination mechanism between the MiningEngine and the background
-    /// task that runs the "polling" loop from `run_mining_engine`.
-    /// Calls to waker.wake() will unpark the background task and force a
+    /// task that runs the mining loop in `ApiServer::run()`.
+    /// Calls to waker.wake() will unpark the task and force a
     /// recheck of the current mining mode and rebuild of the polled streams.
     waker: Arc<AtomicWaker>,
     mining_mode: Arc<RwLock<MiningMode>>,
     transaction_pool: Arc<TransactionPoolHandle>,
     time_manager: Arc<TimeManager>,
-    seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
 }
 
 impl MiningEngine {
@@ -104,7 +103,6 @@ impl MiningEngine {
     /// * `mining_mode` - Initial mining strategy
     /// * `transaction_pool` - Handle for monitoring transaction pool changes
     /// * `time_manager` - Component for blockchain time management
-    /// * `seal_command_sender` - Channel for sending block sealing commands
     ///
     /// # Returns
     /// A new `MiningEngine` instance ready for use
@@ -112,14 +110,12 @@ impl MiningEngine {
         mining_mode: MiningMode,
         transaction_pool: Arc<TransactionPoolHandle>,
         time_manager: Arc<TimeManager>,
-        seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
     ) -> Self {
         Self {
             waker: Default::default(),
             mining_mode: Arc::new(RwLock::new(mining_mode)),
             transaction_pool,
             time_manager,
-            seal_command_sender,
         }
     }
 
@@ -132,6 +128,7 @@ impl MiningEngine {
     /// # Arguments
     /// * `num_blocks` - Number of blocks to mine (defaults to 1 if None)
     /// * `interval` - Optional time to advance between blocks (in seconds)
+    /// * `seal_sender` - Channel for sending block sealing commands.
     ///
     /// # Returns
     /// * `Ok(H256)` - The hash of the last block mined successfully.
@@ -140,6 +137,7 @@ impl MiningEngine {
         &self,
         num_blocks: Option<u64>,
         interval: Option<Duration>,
+        seal_sender: &Sender<EngineCommand<sp_core::H256>>,
     ) -> Result<H256, MiningError> {
         let blocks = num_blocks.unwrap_or(1);
         let mut last_hash = H256::zero();
@@ -147,7 +145,7 @@ impl MiningEngine {
             if let Some(interval) = interval {
                 self.time_manager.increase_time(interval.as_secs());
             }
-            last_hash = seal_now(&self.seal_command_sender).await?.hash;
+            last_hash = seal_now(seal_sender).await?.hash;
         }
         Ok(last_hash)
     }
@@ -160,12 +158,17 @@ impl MiningEngine {
     ///
     /// # Arguments
     /// * `opts` - Optional mining parameters including timestamp and block count
+    /// * `seal_sender` - Channel for sending block sealing commands.
     ///
     /// # Returns
     /// * `Ok(H256)` - The hash of the last block mined successfully.
     /// * `Err(MiningError)` - Mining operation failed
-    pub async fn evm_mine(&self, opts: Option<MineOptions>) -> Result<H256, MiningError> {
-        self.do_evm_mine(opts).await.map(|res| res.1)
+    pub async fn evm_mine(
+        &self,
+        opts: Option<MineOptions>,
+        seal_sender: &Sender<EngineCommand<sp_core::H256>>,
+    ) -> Result<H256, MiningError> {
+        self.do_evm_mine(opts, seal_sender).await.map(|res| res.1)
     }
 
     /// Configure interval-based mining mode.
@@ -212,6 +215,11 @@ impl MiningEngine {
     /// when new transactions are added to the transaction pool.
     pub fn is_automine(&self) -> bool {
         matches!(*self.mining_mode.read(), MiningMode::AutoMining)
+    }
+
+    /// Check if auto or mixed mining is active (single lock acquisition).
+    pub fn is_auto_or_mixed_mining(&self) -> bool {
+        matches!(*self.mining_mode.read(), MiningMode::AutoMining | MiningMode::MixedMining { .. })
     }
 
     /// Enable or disable automatic mining mode.
@@ -316,7 +324,11 @@ impl MiningEngine {
         self.waker.wake();
     }
 
-    pub async fn do_evm_mine(&self, opts: Option<MineOptions>) -> Result<(u64, H256), MiningError> {
+    pub async fn do_evm_mine(
+        &self,
+        opts: Option<MineOptions>,
+        seal_sender: &Sender<EngineCommand<sp_core::H256>>,
+    ) -> Result<(u64, H256), MiningError> {
         let mut blocks_to_mine = 1u64;
         let mut last_hash = H256::zero();
 
@@ -339,14 +351,14 @@ impl MiningEngine {
         }
 
         for _ in 0..blocks_to_mine {
-            last_hash = seal_now(&self.seal_command_sender).await?.hash;
+            last_hash = seal_now(seal_sender).await?.hash;
         }
 
         Ok((blocks_to_mine, last_hash))
     }
 }
 
-async fn seal_now(
+pub async fn seal_now(
     seal_command_sender: &Sender<EngineCommand<sp_core::H256>>,
 ) -> Result<CreatedBlock<Hash>, MiningError> {
     let (sender, receiver) = oneshot::channel();
@@ -365,7 +377,17 @@ async fn seal_now(
 }
 
 // --------------- MiningEngine runner
-type SealCommandStream = Pin<Box<dyn FusedStream<Item = ()> + Send>>;
+
+/// Identifies the source of a mining trigger in the select loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MiningTrigger {
+    /// An interval tick fired (produce a block regardless of pool state).
+    Interval,
+    /// A new transaction was imported into the pool.
+    PoolNotification,
+}
+
+pub type SealCommandStream = Pin<Box<dyn FusedStream<Item = MiningTrigger> + Send>>;
 
 fn build_interval_stream(interval: Duration) -> SealCommandStream {
     let mut interval_ticker = interval_at(Instant::now() + interval, interval);
@@ -373,17 +395,20 @@ fn build_interval_stream(interval: Duration) -> SealCommandStream {
 
     let stream = unfold(interval_ticker, |mut interval_tick| async {
         interval_tick.tick().await;
-        Some(((), interval_tick))
+        Some((MiningTrigger::Interval, interval_tick))
     });
     Box::pin(stream.fuse())
 }
 
 fn build_auto_stream(engine: &Arc<MiningEngine>) -> SealCommandStream {
-    let stream = engine.transaction_pool.import_notification_stream().map(|_| ());
+    let stream = engine
+        .transaction_pool
+        .import_notification_stream()
+        .map(|_| MiningTrigger::PoolNotification);
     Box::pin(stream.fuse())
 }
 
-fn build_streams_for_mode(
+pub fn build_streams_for_mode(
     mode: MiningMode,
     engine: &Arc<MiningEngine>,
 ) -> SelectAll<SealCommandStream> {
@@ -404,7 +429,7 @@ fn build_streams_for_mode(
     select_all(streams)
 }
 
-async fn wait_for_mode_change(
+pub async fn wait_for_mode_change(
     engine: &Arc<MiningEngine>,
     current: Option<MiningMode>,
 ) -> MiningMode {
@@ -417,61 +442,4 @@ async fn wait_for_mode_change(
         std::task::Poll::Pending
     })
     .await
-}
-
-/// Run the mining engine background task.
-///
-/// This is the main event loop that handles block production based on the current
-/// mining mode. It monitors for mining mode changes, manages stream selectors for
-/// different trigger types (intervals, transactions), and coordinates block sealing
-/// operations.
-///
-/// The function runs indefinitely until the mining engine is shut down or a fatal
-/// error occurs.
-///
-/// # Arguments
-/// * `engine` - Shared reference to the mining engine to control
-///
-/// # Behavior
-/// - Monitors for mining mode changes and rebuilds event streams accordingly
-/// - Handles interval-based mining triggers using tokio timers
-/// - Handles transaction-based mining triggers from the transaction pool
-/// - Processes block sealing commands and logs results
-/// - Gracefully handles non-fatal errors and continues operation
-/// - Terminates on fatal errors (communication failures)
-///
-/// # Error Handling
-/// - **Fatal errors** (Canceled, SendError): Breaks the main loop and terminates
-/// - **Non-fatal errors**: Logged and operation continues
-/// - **Successful operations**: Block hash is logged at debug level
-pub async fn run_mining_engine(engine: Arc<MiningEngine>) {
-    let mut current_mode = None;
-    let mut combined_stream: SelectAll<SealCommandStream> = select_all(vec![]);
-
-    loop {
-        tokio::select! {
-            new_mode = wait_for_mode_change(&engine, current_mode) => {
-                current_mode = Some(new_mode);
-                combined_stream = build_streams_for_mode(new_mode, &engine);
-            }
-            Some(_) = combined_stream.next(), if !combined_stream.is_empty() => {
-                let tx_count = engine.transaction_pool.ready().count();
-                trace!(target: "miner", "creating new block");
-                trace!(target: "backend", "creating new block with {} transactions", tx_count);
-                match seal_now(&engine.seal_command_sender).await {
-                    Ok(block) => {
-                        // Note: upstream anvil logs block_number here, but CreatedBlock only has hash
-                        trace!(target: "miner", "created new block: {:?}", block.hash);
-                        debug!(hash=?block.hash, "sealed");
-                    }
-                    Err(MiningError::ClosedChannel) => {
-                        break; // fatal: break outer loop
-                    }
-                    Err(e) => {
-                        error!(?e, "block production failed");
-                    }
-                }
-            }
-        }
-    }
 }
