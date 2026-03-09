@@ -201,6 +201,41 @@ async fn test_auto_mine() {
     assert_eq!(node.best_block_number().await, 1);
 }
 
+/// Verify that a fire-and-forget EthSendTransaction in automine mode produces
+/// exactly one block (no extra empty block from stale pool notification).
+#[tokio::test(flavor = "multi_thread")]
+async fn test_auto_mine_fire_and_forget_no_extra_block() {
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    assert_eq!(node.best_block_number().await, 0);
+    let transaction = TransactionRequest::default()
+        .value(U256::from_str_radix("100000000000000000", 10).unwrap())
+        .from(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::alith()).address(),
+        )))
+        .to(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::baltathar()).address(),
+        )));
+
+    // Use EthSendTransaction (fire-and-forget), not the sync variant.
+    // send_transaction_and_maybe_mine will mine inline, then the stale
+    // pool notification should be skipped by the guard.
+    let _tx_hash = unwrap_response::<sp_core::H256>(
+        node.eth_rpc(EthRequest::EthSendTransaction(Box::new(WithOtherFields::new(transaction))))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    // Give time for any stale pool notification to be processed.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(node.best_block_number().await, 1);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mixed_mining() {
     let mut anvil_node_config = AnvilNodeConfig::test_config();
@@ -231,6 +266,45 @@ async fn test_mixed_mining() {
 
     // Wait for second block mined through interval mining.
     node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(2)).await.unwrap();
+    assert_eq!(node.best_block_number().await, 2);
+}
+
+/// Verify that mixed-mode tx submission does not produce an extra empty block.
+/// After a sync send, exactly one block should exist (the one containing the tx).
+/// The interval tick should then produce the second block on schedule.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mixed_mining_no_extra_block() {
+    let mut anvil_node_config = AnvilNodeConfig::test_config();
+    anvil_node_config.mixed_mining = true;
+    anvil_node_config.block_time = Some(Duration::from_secs(3));
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let transaction = TransactionRequest::default()
+        .value(U256::from_str_radix("100000000000000000", 10).unwrap())
+        .from(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::alith()).address(),
+        )))
+        .to(Address::from(ReviveAddress::new(
+            Account::from(subxt_signer::eth::dev::baltathar()).address(),
+        )));
+
+    // Sync send — should mine exactly one block inline.
+    let _receipt = unwrap_response::<ReceiptInfo>(
+        node.eth_rpc(EthRequest::EthSendTransactionSync(Box::new(WithOtherFields::new(
+            transaction,
+        ))))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Immediately after the sync send, exactly 1 block should exist.
+    // If the stale pool notification caused a double-mine, this would be 2.
+    assert_eq!(node.best_block_number().await, 1);
+
+    // The interval tick (3 s) should eventually produce block 2.
+    node.wait_for_block_with_timeout(2, Duration::from_secs(5)).await.unwrap();
     assert_eq!(node.best_block_number().await, 2);
 }
 
@@ -431,4 +505,43 @@ async fn test_mining_with_eth_rpc_block_limit() {
         .unwrap(),
         U256::from(0)
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mode_switching_stability() {
+    // Start in None (default for test_config)
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    // Switch to Auto
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Send Tx1
+    let alith = Account::from(subxt_signer::eth::dev::alith());
+    let baltathar = Account::from(subxt_signer::eth::dev::baltathar());
+    let tx = TransactionRequest::default()
+        .from(Address::from(ReviveAddress::new(alith.address())))
+        .to(Address::from(ReviveAddress::new(baltathar.address())))
+        .value(U256::from(100));
+
+    node.send_transaction(tx.clone()).await.unwrap();
+    assert_eq!(node.best_block_number().await, 1);
+
+    // Switch to Interval
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetIntervalMining(1)).await.unwrap()).unwrap();
+
+    // Send Tx2
+    node.send_transaction(tx.clone().nonce(1)).await.unwrap();
+
+    // Wait for block (interval)
+    node.wait_for_block_with_timeout(2, std::time::Duration::from_secs(2)).await.unwrap();
+    assert_eq!(node.best_block_number().await, 2);
+
+    // Switch back to Auto
+    unwrap_response::<()>(node.eth_rpc(EthRequest::SetAutomine(true)).await.unwrap()).unwrap();
+
+    // Send Tx3
+    node.send_transaction(tx.clone().nonce(2)).await.unwrap();
+    assert_eq!(node.best_block_number().await, 3);
 }
