@@ -98,7 +98,10 @@ use std::{
     },
     time::Duration,
 };
-use substrate_runtime::{Balance, constants::{GAS_SCALE, NATIVE_TO_ETH_RATIO});
+use substrate_runtime::{
+    Balance,
+    constants::{GAS_SCALE, NATIVE_TO_ETH_RATIO},
+};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
     client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,

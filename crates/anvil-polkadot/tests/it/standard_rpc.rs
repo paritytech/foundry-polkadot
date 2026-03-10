@@ -733,7 +733,8 @@ async fn test_fee_history() {
     // fee_history returns `block_count + 1` base fees per EIP-1559: one per requested block plus a
     // predicted fee for the next block. Here 10 blocks → 11 entries.
     //
-    // Initial fee: multiplier=1.0 × NATIVE_TO_ETH_RATIO × GAS_SCALE = 1.0 × 1e6 × 100_000 = 100 gwei.
+    // Initial fee: multiplier=1.0 × NATIVE_TO_ETH_RATIO × GAS_SCALE = 1.0 × 1e6 × 100_000 = 100
+    // gwei.
     //
     // The `SlowAdjustingFeeUpdate` (from polkadot-runtime-common) lowers the multiplier each block
     // when utilisation is below the 25% target. With a single simple transfer per block (~21k gas
