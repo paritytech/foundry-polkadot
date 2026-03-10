@@ -379,6 +379,69 @@ async fn test_get_transaction_count_by_hash_number() {
     );
 }
 
+/// Verify that `eth_getTransactionCount` with the Pending block tag accounts
+/// for transactions already in the pool (not yet mined).
+#[tokio::test(flavor = "multi_thread")]
+async fn test_eth_get_transaction_count_pending_with_pooled_txs() {
+    // test_config() uses no_mining: true, so transactions stay in the pool.
+    let anvil_node_config = AnvilNodeConfig::test_config();
+    let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
+    let mut node = TestNode::new(anvil_node_config, substrate_node_config).await.unwrap();
+
+    let alith_addr =
+        Address::from(ReviveAddress::new(Account::from(subxt_signer::eth::dev::alith()).address()));
+    let baltathar_addr = Address::from(ReviveAddress::new(
+        Account::from(subxt_signer::eth::dev::baltathar()).address(),
+    ));
+
+    // On-chain nonce should start at 0.
+    let nonce_before = unwrap_response::<U256>(
+        node.eth_rpc(EthRequest::EthGetTransactionCount(
+            alith_addr,
+            Some(alloy_eips::BlockId::Number(alloy_eips::BlockNumberOrTag::Pending)),
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(nonce_before, U256::from(0));
+
+    // Submit 3 transactions to the pool (they won't be mined in no-mining mode).
+    let transfer_amount = U256::from_str_radix("10000000000000000", 10).unwrap();
+    for i in 0u64..3 {
+        let transaction = TransactionRequest::default()
+            .value(transfer_amount)
+            .from(alith_addr)
+            .to(baltathar_addr)
+            .nonce(i);
+        node.send_transaction(transaction).await.unwrap();
+    }
+
+    // Pending nonce should reflect the 3 pooled txs (max nonce is 2, so next nonce is 3).
+    let nonce_pending = unwrap_response::<U256>(
+        node.eth_rpc(EthRequest::EthGetTransactionCount(
+            alith_addr,
+            Some(alloy_eips::BlockId::Number(alloy_eips::BlockNumberOrTag::Pending)),
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(nonce_pending, U256::from(3));
+
+    // Latest (on-chain) nonce should still be 0 since nothing was mined.
+    let nonce_latest = unwrap_response::<U256>(
+        node.eth_rpc(EthRequest::EthGetTransactionCount(
+            alith_addr,
+            Some(alloy_eips::BlockId::Number(alloy_eips::BlockNumberOrTag::Latest)),
+        ))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(nonce_latest, U256::from(0));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_get_code_at() {
     let anvil_node_config = AnvilNodeConfig::test_config();

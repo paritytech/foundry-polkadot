@@ -1,9 +1,9 @@
 use alloy_primitives::{Address, U256 as RU256};
 use foundry_cheatcodes::ExpectedCallTracker;
 use polkadot_sdk::{
-    pallet_revive,
-    pallet_revive::tracing::Tracing,
+    pallet_revive::{self, tracing::Tracing},
     sp_core::{H160, U256},
+    sp_weights::Weight,
 };
 
 #[derive(Debug)]
@@ -54,7 +54,12 @@ impl Tracing for ExpectedCallTracer {
             }
         }
     }
-    fn exit_child_span(&mut self, _output: &pallet_revive::ExecReturnValue, _gas_left: u64) {
+    fn exit_child_span(
+        &mut self,
+        _output: &pallet_revive::ExecReturnValue,
+        _gas_left: u64,
+        _weight: Weight,
+    ) {
         self.is_create = false;
     }
 

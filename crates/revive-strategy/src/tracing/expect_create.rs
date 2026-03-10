@@ -5,6 +5,7 @@ use itertools::Itertools;
 use polkadot_sdk::{
     pallet_revive::{AccountInfo, Code, Pallet, tracing::Tracing},
     sp_core::{H160, U256},
+    sp_weights::Weight,
 };
 use revive_env::Runtime;
 use revm::context::CreateScheme;
@@ -71,6 +72,7 @@ impl Tracing for CreateTracer {
         &mut self,
         _output: &polkadot_sdk::pallet_revive::ExecReturnValue,
         _gas_left: u64,
+        _weight: Weight,
     ) {
         let addr = self.calls.pop().unwrap_or_default();
 

@@ -7,6 +7,7 @@ use codec::{Decode, Encode};
 use lru::LruCache;
 use parking_lot::Mutex;
 use polkadot_sdk::{
+    frame_support::traits::Get,
     parachains_common::{AccountId, Hash, opaque::Block},
     sc_client_api::{Backend as BackendT, StateBackend, TrieCacheContext},
     sc_client_db::BlockchainDb,
@@ -172,6 +173,19 @@ impl BackendWithOverlay {
         overrides.set_timestamp(at, timestamp);
     }
 
+    /// Store a one-shot `pallet_timestamp::Now` override for the **next** mined block.
+    /// Unlike `inject_timestamp`, this does not modify any existing block's observable state.
+    pub fn set_pending_timestamp(&self, desired_timestamp: u64) {
+        let min_period = <substrate_runtime::Runtime as polkadot_sdk::pallet_timestamp::Config>::MinimumPeriod::get();
+        // Compensate for the minimum period to ensure the timestamp is as expected.
+        let override_value = desired_timestamp.saturating_sub(min_period);
+
+        let mut overrides = self.overrides.lock();
+        let mut changeset = BlockOverrides::default();
+        changeset.top.insert(well_known_keys::TIMESTAMP.to_vec(), Some(override_value.encode()));
+        overrides.set_pending(changeset);
+    }
+
     pub fn inject_chain_id(&self, at: Hash, chain_id: u64) {
         let mut overrides = self.overrides.lock();
         overrides.set_chain_id(at, chain_id);
@@ -254,6 +268,9 @@ pub struct StorageOverrides {
     // query the state of past blocks. When state is mutated by the `set_*` RPCs, it gets committed
     // to the state DB only in the next block.
     per_block: LruCache<Hash, BlockOverrides>,
+    // One-shot overrides applied at the next `Core_initialize_block` and then consumed.
+    // It can be used to affect the state of the pending block.
+    pending: Option<BlockOverrides>,
 }
 
 impl StorageOverrides {
@@ -262,11 +279,20 @@ impl StorageOverrides {
             per_block: LruCache::new(
                 lru_capacity.and_then(NonZeroUsize::new).unwrap_or(DEFAULT_LRU_CAP),
             ),
+            pending: None,
         }
     }
 
     pub fn get(&mut self, block: &Hash) -> Option<BlockOverrides> {
         self.per_block.get(block).cloned()
+    }
+
+    pub fn set_pending(&mut self, overrides: BlockOverrides) {
+        self.pending = Some(overrides);
+    }
+
+    pub fn take_pending(&mut self) -> Option<BlockOverrides> {
+        self.pending.take()
     }
 
     fn set_chain_id(&mut self, latest_block: Hash, id: u64) {
