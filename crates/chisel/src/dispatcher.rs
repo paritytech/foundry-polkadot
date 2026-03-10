@@ -525,8 +525,9 @@ impl ChiselDispatcher {
                 match reqwest::get(&request_url).await {
                     Ok(response) => {
                         let json = response.json::<EtherscanABIResponse>().await.unwrap();
-                        if json.status == "1" && json.result.is_some() {
-                            let abi = json.result.unwrap();
+                        if json.status == "1"
+                            && let Some(abi) = json.result
+                        {
                             let abi: serde_json::Result<JsonAbi> = serde_json::from_str(&abi);
                             if let Ok(abi) = abi {
                                 let mut interface = format!(

@@ -254,7 +254,13 @@ impl pallet_balances::Config for Runtime {
 
 // Implements the types required for the timestamp pallet.
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
-impl pallet_timestamp::Config for Runtime {}
+impl pallet_timestamp::Config for Runtime {
+    // MinimumPeriod of 1000ms (1 second) ensures that each block's EVM timestamp is strictly
+    // greater than the previous block's EVM timestamp. While this is coherent with hardhat and
+    // Polkadot behavior, it diverges from upstream anvil behavior. This deviation is allowed to
+    // better reflect the production behavior of EVM timestamps.
+    type MinimumPeriod = ConstU64<1000>;
+}
 
 parameter_types! {
     // That's how asset-hub-westend sets this.

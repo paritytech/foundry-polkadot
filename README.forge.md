@@ -482,6 +482,30 @@ This format ensures clarity and ease of navigation, with the color scheme provid
   ```
   </details>
 
+#### ✅ <span style="color: green;">snapshot</span>
+- **Command**: `forge snapshot`
+- **Additional Flags**:
+  - `--resolc`: Use the Resolc compiler.
+- **Example**:
+  <details>
+  <summary>Click to toggle contents of example</summary>
+
+  ```bash
+  > forge snapshot --resolc
+  ```
+  </details>
+
+#### ✅ <span style="color: green;">test</span>
+- **Command**: `forge test`
+- **Example**:
+  <details>
+  <summary>Click to toggle contents of example</summary>
+
+  ```bash
+  > forge test
+  ```
+  </details>
+
 ### Not Working Commands
 
 #### ❌ <span style="color: red;">clone</span>
@@ -505,29 +529,5 @@ This format ensures clarity and ease of navigation, with the color scheme provid
 
   ```bash
   > forge coverage
-  ```
-  </details>
-
-#### ❌ <span style="color: red;">snapshot</span>
-- **Command**: `forge snapshot`
-- **Additional Flags**:
-  - `--resolc`: Use the Resolc compiler.
-- **Example**:
-  <details>
-  <summary>Click to toggle contents of example</summary>
-
-  ```bash
-  > forge snapshot --resolc
-  ```
-  </details>
-
-#### ❌ <span style="color: red;">test</span>
-- **Command**: `forge test`
-- **Example**:
-  <details>
-  <summary>Click to toggle contents of example</summary>
-
-  ```bash
-  > forge test
   ```
   </details>

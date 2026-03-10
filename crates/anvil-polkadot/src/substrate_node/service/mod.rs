@@ -1,7 +1,7 @@
 use crate::{
     AnvilNodeConfig,
     substrate_node::{
-        mining_engine::{MiningEngine, MiningMode, run_mining_engine},
+        mining_engine::{MiningEngine, MiningMode},
         rpc::spawn_rpc_server,
     },
 };
@@ -18,7 +18,7 @@ use polkadot_sdk::{
     parachains_common::{Hash, opaque::Block},
     polkadot_primitives::HeadData,
     sc_basic_authorship, sc_consensus,
-    sc_consensus_manual_seal::{self, consensus::aura::AuraConsensusDataProvider},
+    sc_consensus_manual_seal::{self, EngineCommand, consensus::aura::AuraConsensusDataProvider},
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
@@ -27,9 +27,10 @@ use polkadot_sdk::{
     sp_api::ProvideRuntimeApi,
     sp_arithmetic::traits::UniqueSaturatedInto,
     sp_consensus_aura::{AuraApi, Slot, SlotDuration},
-    sp_timestamp,
+    sp_core, sp_timestamp,
 };
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(feature = "forking-support")]
@@ -63,6 +64,7 @@ pub struct Service {
     pub mining_engine: Arc<MiningEngine>,
     pub storage_overrides: Arc<Mutex<StorageOverrides>>,
     pub genesis_block_number: u64,
+    pub seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
 }
 
 type CreateInherentDataProviders = Box<
@@ -294,12 +296,8 @@ pub async fn new(
         .into(),
     ));
 
-    let mining_engine = Arc::new(MiningEngine::new(
-        mining_mode,
-        transaction_pool.clone(),
-        time_manager.clone(),
-        seal_engine_command_sender,
-    ));
+    let mining_engine =
+        Arc::new(MiningEngine::new(mining_mode, transaction_pool.clone(), time_manager.clone()));
 
     let rpc_handlers = spawn_rpc_server(
         genesis_block_number,
@@ -310,12 +308,6 @@ pub async fn new(
         keystore,
         backend.clone(),
     )?;
-
-    task_manager.spawn_handle().spawn(
-        "mining_engine_task",
-        Some("consensus"),
-        run_mining_engine(mining_engine.clone()),
-    );
 
     let proposer = sc_basic_authorship::ProposerFactory::new(
         task_manager.spawn_handle(),
@@ -364,6 +356,7 @@ pub async fn new(
             mining_engine,
             storage_overrides,
             genesis_block_number,
+            seal_command_sender: seal_engine_command_sender,
         },
         task_manager,
     ))

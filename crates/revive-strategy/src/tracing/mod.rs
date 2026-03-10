@@ -3,13 +3,16 @@ use call_tracer::ExpectedCallTracer;
 use expect_create::CreateTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker, ExpectedCreate};
 
-use polkadot_sdk::pallet_revive::{
-    AccountInfo, Pallet, U256,
-    evm::{
-        CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
-        PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
+use polkadot_sdk::{
+    pallet_revive::{
+        AccountInfo, Pallet, U256,
+        evm::{
+            CallTrace, CallTracer, PrestateTrace, PrestateTraceInfo, PrestateTracer,
+            PrestateTracerConfig, Tracer as ReviveTracer, TracerType,
+        },
+        tracing::{Tracing, trace as trace_revive},
     },
-    tracing::{Tracing, trace as trace_revive},
+    sp_weights::Weight,
 };
 use revert_tracer::RevertTracer;
 use revive_env::Runtime;
@@ -272,25 +275,27 @@ impl Tracing for Tracer {
         &mut self,
         output: &polkadot_sdk::pallet_revive::ExecReturnValue,
         gas_left: u64,
+        weight: Weight,
     ) {
-        self.prestate_tracer.exit_child_span(output, gas_left);
-        self.call_tracer.exit_child_span(output, gas_left);
-        self.storage_accesses.exit_child_span(output, gas_left);
-        self.revert_tracer.exit_child_span(output, gas_left);
-        self.expect_call_tracer.exit_child_span(output, gas_left);
-        self.create_tracer.exit_child_span(output, gas_left);
+        self.prestate_tracer.exit_child_span(output, gas_left, weight);
+        self.call_tracer.exit_child_span(output, gas_left, weight);
+        self.storage_accesses.exit_child_span(output, gas_left, weight);
+        self.revert_tracer.exit_child_span(output, gas_left, weight);
+        self.expect_call_tracer.exit_child_span(output, gas_left, weight);
+        self.create_tracer.exit_child_span(output, gas_left, weight);
     }
 
     fn exit_child_span_with_error(
         &mut self,
         error: polkadot_sdk::sp_runtime::DispatchError,
         gas_left: u64,
+        weight: Weight,
     ) {
-        self.prestate_tracer.exit_child_span_with_error(error, gas_left);
-        self.call_tracer.exit_child_span_with_error(error, gas_left);
-        self.storage_accesses.exit_child_span_with_error(error, gas_left);
-        self.revert_tracer.exit_child_span_with_error(error, gas_left);
-        self.expect_call_tracer.exit_child_span_with_error(error, gas_left);
-        self.create_tracer.exit_child_span_with_error(error, gas_left);
+        self.prestate_tracer.exit_child_span_with_error(error, gas_left, weight);
+        self.call_tracer.exit_child_span_with_error(error, gas_left, weight);
+        self.storage_accesses.exit_child_span_with_error(error, gas_left, weight);
+        self.revert_tracer.exit_child_span_with_error(error, gas_left, weight);
+        self.expect_call_tracer.exit_child_span_with_error(error, gas_left, weight);
+        self.create_tracer.exit_child_span_with_error(error, gas_left, weight);
     }
 }

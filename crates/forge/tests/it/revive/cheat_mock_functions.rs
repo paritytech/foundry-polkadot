@@ -41,3 +41,19 @@ async fn test_mock_function_all_args(#[case] runtime_mode: ReviveRuntimeMode) {
 
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
+
+
+#[rstest]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
+#[case::evm(ReviveRuntimeMode::Evm)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_mock_function_preserves_real_code(#[case] runtime_mode: ReviveRuntimeMode) {
+    let runner = TEST_DATA_REVIVE.runner_revive(runtime_mode);
+    let filter = Filter::new(
+        "test_mockFunction_preserves_real_code",
+        "MockFunction",
+        ".*/revive/MockFunction.t.sol",
+    );
+
+    TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
+}
