@@ -42,7 +42,6 @@ async fn test_mock_function_all_args(#[case] runtime_mode: ReviveRuntimeMode) {
     TestConfig::with_filter(runner, filter).spec_id(SpecId::PRAGUE).run().await;
 }
 
-
 #[rstest]
 #[case::pvm(ReviveRuntimeMode::Pvm)]
 #[case::evm(ReviveRuntimeMode::Evm)]

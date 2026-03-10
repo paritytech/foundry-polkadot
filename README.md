@@ -88,7 +88,42 @@ Resolc configuration:
 
 - Compilation output: When using Resolc, the bytecode differs from Solc's output, reflecting PolkaVM's requirements.
 
-## 5. Additional (Contextual) Repositories
+## 5. RPC Forking (Experimental)
+
+> ⚠️ **Experimental**: RPC forking is currently behind a compile-time feature flag (`forking-support`) and is not included in the default release binaries.
+
+Foundry-Polkadot supports forking from a live Substrate-based parachain (e.g. Westend Asset Hub) via RPC. This allows you to run a local development node with the full state of a remote chain, lazily loaded on demand.
+
+**Building with forking support:**
+
+```bash
+cargo build -p anvil-polkadot --features forking-support --release
+```
+
+**Usage:**
+
+```bash
+# Fork from the latest finalized block
+anvil-polkadot --fork-url https://westend-asset-hub-rpc.polkadot.io
+
+# Fork from a specific block number
+anvil-polkadot --fork-url https://westend-asset-hub-rpc.polkadot.io --fork-block-number 12345678
+
+# Fork from a negative offset (e.g. 10 blocks behind finalized)
+anvil-polkadot --fork-url https://westend-asset-hub-rpc.polkadot.io --fork-block-number -10
+```
+
+**How it works:**
+
+- The `--fork-url` accepts an HTTP(S) RPC endpoint (automatically converted to WebSocket internally).
+- State is lazily loaded from the remote chain — only storage keys accessed during execution are fetched via RPC.
+- Block production uses parachain-aware inherent data providers (Aura consensus, mock relay chain validation data).
+
+**Supported chains:**
+
+The forking feature is tested against Westend Asset Hub. Polkadot and Kusama Asset Hubs should also work, but the setup is sensitive to breaking changes during runtime upgrades. Other Substrate parachains may work but are not guaranteed — please report issues if you encounter problems.
+
+## 6. Additional (Contextual) Repositories
 
 Foundry-Polkadot is part of ParityTech's ecosystem, which includes related repositories:
 

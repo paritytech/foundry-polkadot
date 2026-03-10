@@ -6,8 +6,11 @@ use crate::substrate_node::{
     },
 };
 use parking_lot::Mutex;
+#[cfg(feature = "forking-support")]
+use polkadot_sdk::cumulus_client_service::ParachainHostFunctions;
+#[cfg(not(feature = "forking-support"))]
+use polkadot_sdk::sp_io;
 use polkadot_sdk::{
-    cumulus_client_service::ParachainHostFunctions,
     parachains_common::{Hash, opaque::Block},
     sc_client_api::{Backend as _, CallExecutor, execution_extensions::ExecutionExtensions},
     sc_executor::{self, RuntimeVersion, RuntimeVersionOf},
@@ -23,10 +26,20 @@ use polkadot_sdk::{
 };
 use std::{cell::RefCell, sync::Arc};
 
+#[cfg(feature = "forking-support")]
 /// Wasm executor which overrides the signature checking host functions for impersonation.
 pub type WasmExecutor = sc_executor::WasmExecutor<
     ExtendedHostFunctions<
         ExtendedHostFunctions<ParachainHostFunctions, SenderAddressRecoveryOverride>,
+        PublicKeyToHashOverride,
+    >,
+>;
+
+#[cfg(not(feature = "forking-support"))]
+/// Wasm executor which overrides the signature checking host functions for impersonation.
+pub type WasmExecutor = sc_executor::WasmExecutor<
+    ExtendedHostFunctions<
+        ExtendedHostFunctions<sp_io::SubstrateHostFunctions, SenderAddressRecoveryOverride>,
         PublicKeyToHashOverride,
     >,
 >;

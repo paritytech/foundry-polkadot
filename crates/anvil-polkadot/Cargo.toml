@@ -68,7 +68,6 @@ polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", branch 
 	"substrate-rpc-client",
 	"substrate-wasm-builder",
 
-	"cumulus-client-service",
 	"cumulus-client-parachain-inherent",
 	"polkadot-primitives",
 ] }
@@ -160,4 +159,4 @@ op-alloy-rpc-types.workspace = true
 [features]
 default = []
 asm-keccak = ["alloy-primitives/asm-keccak"]
-forking-support = []
+forking-support = ["polkadot-sdk/cumulus-client-service"]

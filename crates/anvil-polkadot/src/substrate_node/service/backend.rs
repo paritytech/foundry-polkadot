@@ -223,6 +223,8 @@ impl BackendWithOverlay {
     pub fn inject_aura_current_slot(&self, at: Hash, slot: Slot) {
         let mut overrides = self.overrides.lock();
         overrides.set_aura_current_slot(at, slot);
+    }
+
     /// Store a one-shot `pallet_timestamp::Now` override for the **next** mined block.
     /// Unlike `inject_timestamp`, this does not modify any existing block's observable state.
     pub fn set_pending_timestamp(&self, desired_timestamp: u64) {

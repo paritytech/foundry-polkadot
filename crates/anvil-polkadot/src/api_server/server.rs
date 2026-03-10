@@ -85,8 +85,6 @@ use polkadot_sdk::{
     sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
     sp_api::{Metadata as _, ProvideRuntimeApi},
     sp_blockchain::Info,
-    sp_consensus_aura::AuraApi,
-    sp_consensus_slots::Slot,
     sp_core::{self, Hasher, keccak_256},
     sp_runtime::{FixedU128, traits::BlakeTwo256},
 };
@@ -114,6 +112,9 @@ use subxt_signer::eth::Keypair;
 use tokio::{sync::mpsc::Sender, try_join};
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
+#[cfg(feature = "forking-support")]
+use polkadot_sdk::{sp_consensus_aura::AuraApi, sp_consensus_slots::Slot};
+
 // When forking, operations can be slower due to fetching state from the remote chain,
 // so we use a higher timeout to avoid spurious failures.
 #[cfg(feature = "forking-support")]

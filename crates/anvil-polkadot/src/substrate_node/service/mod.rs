@@ -10,24 +10,29 @@ use crate::{
     config::ForkChoice, substrate_node::lazy_loading::backend::Backend as LazyLoadingBackend,
 };
 use anvil::eth::backend::time::TimeManager;
+#[cfg(feature = "forking-support")]
 use codec::Encode;
 use parking_lot::Mutex;
+#[cfg(feature = "forking-support")]
 use polkadot_sdk::{
     cumulus_client_parachain_inherent::MockValidationDataInherentDataProvider,
     cumulus_primitives_core::{GetParachainInfo, relay_chain},
-    parachains_common::{Hash, opaque::Block},
+    parachains_common::Hash,
     polkadot_primitives::HeadData,
+    sc_consensus_manual_seal::consensus::aura::AuraConsensusDataProvider,
+    sp_api::ProvideRuntimeApi,
+    sp_arithmetic::traits::UniqueSaturatedInto,
+    sp_consensus_aura::{AuraApi, Slot, SlotDuration},
+};
+use polkadot_sdk::{
+    parachains_common::opaque::Block,
     sc_basic_authorship, sc_consensus,
-    sc_consensus_manual_seal::{self, EngineCommand, consensus::aura::AuraConsensusDataProvider},
+    sc_consensus_manual_seal::{self, EngineCommand},
     sc_service::{
         self, Configuration, RpcHandlers, SpawnTaskHandle, TaskManager,
         error::Error as ServiceError,
     },
-    sc_transaction_pool,
-    sp_api::ProvideRuntimeApi,
-    sp_arithmetic::traits::UniqueSaturatedInto,
-    sp_consensus_aura::{AuraApi, Slot, SlotDuration},
-    sp_core, sp_timestamp,
+    sc_transaction_pool, sp_core, sp_timestamp,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -41,6 +46,8 @@ pub use client::Client;
 
 mod backend;
 mod client;
+#[cfg(not(feature = "forking-support"))]
+mod consensus;
 mod executor;
 pub mod storage;
 
@@ -67,6 +74,7 @@ pub struct Service {
     pub seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
 }
 
+#[cfg(feature = "forking-support")]
 type CreateInherentDataProviders = Box<
     dyn Fn(
             Hash,
@@ -80,6 +88,7 @@ type CreateInherentDataProviders = Box<
         + Sync,
 >;
 
+#[cfg(feature = "forking-support")]
 fn create_manual_seal_inherent_data_providers(
     backend: BackendWithOverlay,
     client: Arc<Client>,
@@ -112,6 +121,12 @@ fn create_manual_seal_inherent_data_providers(
             Ok(id) => id,
             Err(e) => return futures::future::ready(Err(Box::new(e))),
         };
+
+        // Relay parent offset required by Elastic Scaling (e.g. Westend AH expects 1).
+        // This determines how many relay parent descendants are required in the mock proof.
+        // If forking from a chain without Elastic Scaling (offset 0), this value may need
+        // to be read dynamically via `RelayParentOffsetApi` once our runtime supports it.
+        let relay_parent_offset = 1;
 
         let next_time = time_manager.next_timestamp();
         let parachain_slot = next_time.saturating_div(slot_duration.as_millis());
@@ -183,6 +198,7 @@ fn create_manual_seal_inherent_data_providers(
             relay_offset: last_rc_block_number + 1,
             current_para_block_head,
             additional_key_values: Some(additional_key_values),
+            relay_parent_offset,
             xcm_config: polkadot_sdk::cumulus_client_parachain_inherent::MockXcmConfig {
                 starting_dmq_mqc_head: dmq_mqc_head,
                 ..Default::default()
@@ -317,34 +333,70 @@ pub async fn new(
         None,
     );
 
-    // Slot duration is irrelevant for manual-seal; hardcoded to avoid AuraApi sr25519/ed25519
-    // mismatch.
-    let aura_digest_provider =
-        AuraConsensusDataProvider::new_with_slot_duration(SlotDuration::from_millis(6000));
-    let backend_with_overlay = BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
-    let create_inherent_data_providers = create_manual_seal_inherent_data_providers(
-        backend_with_overlay,
-        client.clone(),
-        time_manager,
-    );
+    // Forking: parachain-aware block production with AuraConsensusDataProvider
+    #[cfg(feature = "forking-support")]
+    {
+        // Slot duration is irrelevant for manual-seal; hardcoded to avoid AuraApi
+        // sr25519/ed25519 mismatch.
+        let aura_digest_provider =
+            AuraConsensusDataProvider::new_with_slot_duration(SlotDuration::from_millis(6000));
+        let backend_with_overlay =
+            BackendWithOverlay::new(backend.clone(), storage_overrides.clone());
+        let create_inherent_data_providers = create_manual_seal_inherent_data_providers(
+            backend_with_overlay,
+            client.clone(),
+            time_manager,
+        );
 
-    let params = sc_consensus_manual_seal::ManualSealParams {
-        block_import: client.clone(),
-        env: proposer,
-        client: client.clone(),
-        pool: transaction_pool.clone(),
-        select_chain: SelectChain::new(backend.clone()),
-        commands_stream: Box::pin(commands_stream),
-        consensus_data_provider: Some(Box::new(aura_digest_provider)),
-        create_inherent_data_providers,
-    };
-    let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);
+        let params = sc_consensus_manual_seal::ManualSealParams {
+            block_import: client.clone(),
+            env: proposer,
+            client: client.clone(),
+            pool: transaction_pool.clone(),
+            select_chain: SelectChain::new(backend.clone()),
+            commands_stream: Box::pin(commands_stream),
+            consensus_data_provider: Some(Box::new(aura_digest_provider)),
+            create_inherent_data_providers,
+        };
+        let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);
 
-    task_manager.spawn_essential_handle().spawn_blocking(
-        "manual-seal",
-        "substrate",
-        authorship_future,
-    );
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "manual-seal",
+            "substrate",
+            authorship_future,
+        );
+    }
+
+    // Non-forking: simple block production matching upstream anvil behavior
+    #[cfg(not(feature = "forking-support"))]
+    {
+        let create_inherent_data_providers = {
+            move |_, ()| {
+                let next_timestamp = time_manager.next_timestamp();
+                async move { Ok(sp_timestamp::InherentDataProvider::new(next_timestamp.into())) }
+            }
+        };
+
+        let params = sc_consensus_manual_seal::ManualSealParams {
+            block_import: client.clone(),
+            env: proposer,
+            client: client.clone(),
+            pool: transaction_pool.clone(),
+            select_chain: SelectChain::new(backend.clone()),
+            commands_stream: Box::pin(commands_stream),
+            consensus_data_provider: Some(
+                Box::new(consensus::SameSlotConsensusDataProvider::new()),
+            ),
+            create_inherent_data_providers,
+        };
+        let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);
+
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "manual-seal",
+            "substrate",
+            authorship_future,
+        );
+    }
 
     Ok((
         Service {
