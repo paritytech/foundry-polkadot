@@ -72,7 +72,7 @@ fn resolve_revive_pallet_index(config_value: Option<u8>, chain_id: u64) -> Resul
         420420417 => Ok(100), // Paseo Asset Hub
         420420418 => Ok(60),  // Kusama Asset Hub
         420420419 => Ok(90),  // Polkadot Asset Hub
-        31337 => Ok(4) // default chainId for anvil-polkadot
+        31337 => Ok(4),       // default chainId for anvil-polkadot
         _ => eyre::bail!(
             "Unknown pallet-revive index for chain ID {chain_id}. \
              Set `polkadot.revive_pallet_index` in foundry.toml."
