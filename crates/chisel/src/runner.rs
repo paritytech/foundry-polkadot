@@ -83,8 +83,8 @@ impl ChiselRunner {
     /// [ChiselResult] containing information about the result of the call to the deployed REPL
     /// contract.
     pub fn run(&mut self, bytecode: Bytes) -> Result<(Address, ChiselResult)> {
-        // Set the sender's balance to [U256::MAX] for deployment of the REPL contract.
-        self.executor.set_balance(self.sender, U256::MAX)?;
+        // Set the sender's balance to max for deployment of the REPL contract.
+        self.executor.set_balance(self.sender, self.executor.strategy.runner.max_balance())?;
 
         // Deploy an instance of the REPL contract
         // We don't care about deployment traces / logs here

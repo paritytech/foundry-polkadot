@@ -286,6 +286,7 @@ impl TestNode {
         self.eth_best_block().await.number.as_u32()
     }
 
+    #[cfg(feature = "forking-support")]
     pub fn substrate_rpc_port(&self) -> u16 {
         self.service
             .rpc_handlers

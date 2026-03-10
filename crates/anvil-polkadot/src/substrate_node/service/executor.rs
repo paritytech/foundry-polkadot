@@ -1,10 +1,16 @@
 use crate::substrate_node::{
     host::{PublicKeyToHashOverride, SenderAddressRecoveryOverride},
-    service::{Backend, backend::StorageOverrides},
+    service::{
+        Backend,
+        backend::{BlockOverrides, StorageOverrides},
+    },
 };
 use parking_lot::Mutex;
+#[cfg(feature = "forking-support")]
+use polkadot_sdk::cumulus_client_service::ParachainHostFunctions;
+#[cfg(not(feature = "forking-support"))]
+use polkadot_sdk::sp_io;
 use polkadot_sdk::{
-    cumulus_client_service::ParachainHostFunctions,
     parachains_common::{Hash, opaque::Block},
     sc_client_api::{Backend as _, CallExecutor, execution_extensions::ExecutionExtensions},
     sc_executor::{self, RuntimeVersion, RuntimeVersionOf},
@@ -20,10 +26,20 @@ use polkadot_sdk::{
 };
 use std::{cell::RefCell, sync::Arc};
 
+#[cfg(feature = "forking-support")]
 /// Wasm executor which overrides the signature checking host functions for impersonation.
 pub type WasmExecutor = sc_executor::WasmExecutor<
     ExtendedHostFunctions<
         ExtendedHostFunctions<ParachainHostFunctions, SenderAddressRecoveryOverride>,
+        PublicKeyToHashOverride,
+    >,
+>;
+
+#[cfg(not(feature = "forking-support"))]
+/// Wasm executor which overrides the signature checking host functions for impersonation.
+pub type WasmExecutor = sc_executor::WasmExecutor<
+    ExtendedHostFunctions<
+        ExtendedHostFunctions<sp_io::SubstrateHostFunctions, SenderAddressRecoveryOverride>,
         PublicKeyToHashOverride,
     >,
 >;
@@ -51,6 +67,25 @@ impl Executor {
         let overrides = { self.storage_overrides.lock().get(hash) };
         let Some(overrides) = overrides else { return };
 
+        Self::apply_block_overrides(overrides, overlay);
+    }
+
+    /// Take and apply one-shot pending overrides from `StorageOverrides`.
+    /// Called during `Core_initialize_block` for actual block production.
+    fn apply_and_consume_pending_overrides(
+        &self,
+        overlay: &mut OverlayedChanges<HashingFor<Block>>,
+    ) {
+        let pending = self.storage_overrides.lock().take_pending();
+        let Some(pending) = pending else { return };
+
+        Self::apply_block_overrides(pending, overlay);
+    }
+
+    fn apply_block_overrides(
+        overrides: BlockOverrides,
+        overlay: &mut OverlayedChanges<HashingFor<Block>>,
+    ) {
         for (key, val) in overrides.top {
             overlay.set_storage(key, val);
         }
@@ -111,9 +146,9 @@ impl CallExecutor<Block> for Executor {
         call_context: CallContext,
         extensions: &RefCell<sp_externalities::Extensions>,
     ) -> Result<Vec<u8>, sp_blockchain::Error> {
-        let apply_overrides = (method == "Core_initialize_block"
-            && call_context == CallContext::Onchain)
-            || call_context == CallContext::Offchain;
+        let is_block_init =
+            method == "Core_initialize_block" && call_context == CallContext::Onchain;
+        let apply_overrides = is_block_init || call_context == CallContext::Offchain;
 
         if apply_overrides {
             self.apply_overrides(&at_hash, &mut changes.borrow_mut());
@@ -123,6 +158,11 @@ impl CallExecutor<Block> for Executor {
         // which is not supported by ForkedLazyBackend.
         #[cfg(feature = "forking-support")]
         let recorder = &None;
+
+        // Apply and consume pending overrides only during actual block production.
+        if is_block_init {
+            self.apply_and_consume_pending_overrides(&mut changes.borrow_mut());
+        }
 
         self.inner.contextual_call(
             at_hash,

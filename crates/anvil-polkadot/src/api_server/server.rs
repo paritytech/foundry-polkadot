@@ -15,7 +15,7 @@ use crate::{
         trace_helpers::{parity_block_trace_builder, parity_transaction_trace_builder},
         txpool_helpers::{
             TxpoolTransactionInfo, extract_sender, extract_tx_info, extract_tx_summary,
-            transaction_matches_eth_hash,
+            get_pool_nonce, transaction_matches_eth_hash,
         },
     },
     logging::LoggingManager,
@@ -24,7 +24,10 @@ use crate::{
         host::recover_maybe_impersonated_address,
         impersonation::ImpersonationManager,
         in_mem_rpc::InMemoryRpcClient,
-        mining_engine::MiningEngine,
+        mining_engine::{
+            MiningEngine, MiningError, MiningTrigger, SealCommandStream, build_streams_for_mode,
+            seal_now, wait_for_mode_change,
+        },
         revert::{RevertInfo, RevertManager},
         service::{
             BackendError, BackendWithOverlay, Client, Service, TransactionPoolHandle,
@@ -53,7 +56,11 @@ use anvil_core::eth::{EthRequest, Params as AnvilCoreParams};
 use anvil_rpc::response::ResponseResult;
 use chrono::{DateTime, Datelike, Utc};
 use codec::{Decode, Encode};
-use futures::{StreamExt, channel::mpsc};
+use futures::{
+    StreamExt,
+    channel::mpsc,
+    stream::{SelectAll, select_all},
+};
 use indexmap::IndexMap;
 use pallet_revive_eth_rpc::{
     BlockInfoProvider, EthRpcError, ReceiptExtractor, ReceiptProvider, SubxtBlockInfoProvider,
@@ -74,17 +81,23 @@ use polkadot_sdk::{
     parachains_common::{AccountId, Hash, Nonce},
     polkadot_sdk_frame::runtime::types_common::OpaqueBlock,
     sc_client_api::HeaderBackend,
+    sc_consensus_manual_seal::EngineCommand,
     sc_service::{InPoolTransaction, SpawnTaskHandle, TransactionPool},
     sp_api::{Metadata as _, ProvideRuntimeApi},
     sp_blockchain::Info,
-    sp_consensus_aura::AuraApi,
-    sp_consensus_slots::Slot,
     sp_core::{self, Hasher, keccak_256},
     sp_runtime::{FixedU128, traits::BlakeTwo256},
 };
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient,
@@ -96,9 +109,12 @@ use subxt::{
     utils::H160,
 };
 use subxt_signer::eth::Keypair;
-use tokio::try_join;
+use tokio::{sync::mpsc::Sender, try_join};
 
 pub const CLIENT_VERSION: &str = concat!("anvil-polkadot/v", env!("CARGO_PKG_VERSION"));
+#[cfg(feature = "forking-support")]
+use polkadot_sdk::{sp_consensus_aura::AuraApi, sp_consensus_slots::Slot};
+
 // When forking, operations can be slower due to fetching state from the remote chain,
 // so we use a higher timeout to avoid spurious failures.
 #[cfg(feature = "forking-support")]
@@ -128,6 +144,12 @@ pub struct ApiServer {
     /// When forking, the metadata comes from the forked chain's WASM (loaded via lazy loading),
     /// so pallet indices will be correct for the forked runtime.
     api: OnlineClient<SrcChainConfig>,
+    seal_command_sender: Sender<EngineCommand<sp_core::H256>>,
+    /// Counts inline mines performed by tx-submitting RPCs.
+    /// Each inline mine produces one stale pool notification that the
+    /// mining branch must skip.  Decremented when a `PoolNotification`
+    /// is consumed.
+    stale_pool_notifications: AtomicU64,
 }
 
 /// Fetch the chain ID from the substrate chain.
@@ -193,15 +215,93 @@ impl ApiServer {
             hardcoded_chain_id: chain_id,
             rpc,
             api,
+            seal_command_sender: substrate_service.seal_command_sender.clone(),
+            stale_pool_notifications: AtomicU64::new(0),
         })
     }
 
+    /// Main event loop: handles both block production and RPC requests.
+    ///
+    /// Mining and RPC handling are **mutually exclusive** within this `select!`
+    /// loop — only one branch executes at a time, eliminating race conditions.
+    ///
+    /// # Select branches
+    ///
+    /// 1. **Mode change** – monitors `MiningEngine::mining_mode` via `wait_for_mode_change`.  On
+    ///    the first iteration `current_mode` is `None`, so it fires immediately and builds the
+    ///    initial streams. Subsequent mode changes (e.g. `set_interval_mining`, `set_auto_mine`)
+    ///    wake the `AtomicWaker` and rebuild streams on the next iteration. The
+    ///    `stale_pool_notifications` counter is reset to 0 here because rebuilding the stream drops
+    ///    any pending notifications that the counter was expecting to skip.
+    ///
+    /// 2. **Mining trigger** – fires on interval ticks or transaction-pool import notifications
+    ///    (tagged by [`MiningTrigger`]).  Calls `seal_now` to produce a block via manual-seal.
+    ///
+    /// 3. **RPC request** – handles an incoming request from the API channel. While an RPC
+    ///    executes, mining triggers queue up in `combined_stream` and fire on the next iteration.
+    ///
+    /// # Inline mining
+    ///
+    /// Async RPCs (`EthSendTransaction`, `EthSendRawTransaction`) rely on the biased select! loop
+    /// to mine via the pool notification before the next RPC is processed. The synchronous
+    /// variants (`EthSendTransactionSync`, `EthSendRawTransactionSync`) must mine inline via
+    /// [`Self::seal_now_inline`] because they block until a receipt is available — the mining
+    /// branch cannot fire while an RPC is executing.
+    ///
+    /// # Error handling
+    ///
+    /// - `ClosedChannel` from `seal_now` is fatal — the manual-seal consumer was dropped, so the
+    ///   loop terminates.
+    /// - Other mining errors are logged and the loop continues.
+    /// - A closed `req_receiver` terminates the loop (node shutting down).
     pub async fn run(mut self) {
-        while let Some(msg) = self.req_receiver.next().await {
-            let resp = self.execute(msg.req).await;
+        let engine = self.mining_engine.clone();
+        let mut current_mode = None;
+        let mut combined_stream: SelectAll<SealCommandStream> = select_all(vec![]);
 
-            if let Err(resp) = msg.resp_sender.send(resp) {
-                node_info!("Request was cancelled before sending the response: {:?}", resp);
+        loop {
+            tokio::select! {
+                // Biased so mode changes reconfigure streams before anything runs,
+                // and pending blocks are sealed before new RPCs are accepted.
+                biased;
+                new_mode = wait_for_mode_change(&engine, current_mode) => {
+                    current_mode = Some(new_mode);
+                    combined_stream = build_streams_for_mode(new_mode, &engine);
+                    // Rebuilding the stream drops any pending notifications
+                    // that the counter was expecting to skip.
+                    self.stale_pool_notifications.store(0, Ordering::Relaxed);
+                }
+                Some(trigger) = combined_stream.next(), if !combined_stream.is_empty() => {
+                    // Skip stale pool notifications: when an RPC already mined
+                    // the tx inline, the pool notification emitted at import
+                    // time is still pending.  Mining on it would produce an
+                    // extra empty block.
+                    // We use a counter rather than checking pool.ready().count()
+                    // because pool cleanup after block import is async — the
+                    // txpool-notifications task may not have removed the mined
+                    // tx yet when we check.
+                    // Interval ticks always produce blocks regardless.
+                    if trigger == MiningTrigger::PoolNotification
+                        && self.stale_pool_notifications.load(Ordering::Relaxed) > 0
+                    {
+                        self.stale_pool_notifications.fetch_sub(1, Ordering::Relaxed);
+                        continue;
+                    }
+                    match self.seal_and_log().await {
+                        Ok(()) => {}
+                        Err(MiningError::ClosedChannel) => break,
+                        Err(e) => {
+                            error!(?e, "block production failed");
+                        }
+                    }
+                }
+                msg = self.req_receiver.next() => {
+                    let Some(msg) = msg else { break };
+                    let resp = self.execute(msg.req).await;
+                    if let Err(resp) = msg.resp_sender.send(resp) {
+                        node_info!("Request was cancelled before sending the response: {:?}", resp);
+                    }
+                }
             }
         }
     }
@@ -211,6 +311,7 @@ impl ApiServer {
             EthRequest::SetLogging(enabled) => self.set_logging(enabled).to_rpc_result(),
             //------- Gas -----------
             EthRequest::SetNextBlockBaseFeePerGas(base_fee) => {
+                node_info!("evm_setNextBlockBaseFeePerGas");
                 let latest_block = self.latest_block();
                 // We inject in substrate storage an 1e18 denominated value after transforming it
                 // to a 1e12.
@@ -405,7 +506,10 @@ impl ApiServer {
                 self.reset(params.and_then(|p| p.params)).await.to_rpc_result()
             }
             // ------- Wallet ---------
-            EthRequest::EthSign(addr, content) => self.sign(addr, content).await.to_rpc_result(),
+            EthRequest::EthSign(addr, content) => {
+                node_info!("eth_sign");
+                self.sign(addr, content).await.to_rpc_result()
+            }
             EthRequest::EthSignTypedDataV4(addr, data) => {
                 self.sign_typed_data_v4(addr, data).await.to_rpc_result()
             }
@@ -419,6 +523,7 @@ impl ApiServer {
                 self.sign_transaction(*request).await.to_rpc_result()
             }
             EthRequest::PersonalSign(content, addr) => {
+                node_info!("personal_sign");
                 self.sign(addr, content).await.to_rpc_result()
             }
             EthRequest::EthGetAccount(addr, block) => {
@@ -510,7 +615,11 @@ impl ApiServer {
 
         let awaited_hash = self
             .mining_engine
-            .mine(blocks.map(|b| b.to()), interval.map(|i| Duration::from_secs(i.to())))
+            .mine(
+                blocks.map(|b| b.to()),
+                interval.map(|i| Duration::from_secs(i.to())),
+                &self.seal_command_sender,
+            )
             .await
             .map_err(Error::Mining)?;
         self.wait_for_hash(receiver, awaited_hash).await?;
@@ -548,7 +657,10 @@ impl ApiServer {
 
         // Subscribe to new best blocks.
         let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
-        let awaited_hash = self.mining_engine.evm_mine(mine.and_then(|p| p.params)).await?;
+        let awaited_hash = self
+            .mining_engine
+            .evm_mine(mine.and_then(|p| p.params), &self.seal_command_sender)
+            .await?;
         self.wait_for_hash(receiver, awaited_hash).await?;
         Ok("0x0".to_string())
     }
@@ -562,8 +674,10 @@ impl ApiServer {
         // Subscribe to new best blocks.
         let receiver = self.eth_rpc_client.block_notifier().map(|sender| sender.subscribe());
 
-        let (mined_blocks, awaited_hash) =
-            self.mining_engine.do_evm_mine(mine.and_then(|p| p.params)).await?;
+        let (mined_blocks, awaited_hash) = self
+            .mining_engine
+            .do_evm_mine(mine.and_then(|p| p.params), &self.seal_command_sender)
+            .await?;
 
         self.wait_for_hash(receiver, awaited_hash).await?;
 
@@ -595,7 +709,7 @@ impl ApiServer {
     }
 
     fn set_next_block_timestamp(&self, time: U256) -> Result<()> {
-        node_info!("anvil_setBlockTimestampInterval");
+        node_info!("evm_setNextBlockTimeStamp");
 
         if time >= U256::from(u64::MAX) {
             return Err(Error::InvalidParams("The timestamp is too big".to_string()));
@@ -620,19 +734,27 @@ impl ApiServer {
         }
         let time = timestamp.to::<u64>();
         let time_ms = time.saturating_mul(1000);
-        // Get the time for the last block.
         let latest_block = self.latest_block();
         let last_block_timestamp = self.backend.read_timestamp(latest_block)?;
-        // Inject the new time if the timestamp precedes last block time
+        // When going backward in time, store a pending override for the next mined block.
         if time_ms < last_block_timestamp {
-            self.backend.inject_timestamp(latest_block, time_ms);
-            let current_aura_slot = self.backend.read_aura_current_slot(latest_block)?;
-            let updated_aura_slot = time_ms
-                .saturating_div(self.client.runtime_api().slot_duration(latest_block)?.as_millis());
-            if current_aura_slot > updated_aura_slot {
-                self.backend.inject_aura_current_slot(latest_block, Slot::from(updated_aura_slot));
-                self.backend
-                    .inject_relay_slot_info(latest_block, (Slot::from(updated_aura_slot), 0));
+            #[cfg(feature = "forking-support")]
+            {
+                self.backend.inject_timestamp(latest_block, time_ms);
+                let current_aura_slot = self.backend.read_aura_current_slot(latest_block)?;
+                let updated_aura_slot = time_ms.saturating_div(
+                    self.client.runtime_api().slot_duration(latest_block)?.as_millis(),
+                );
+                if current_aura_slot > updated_aura_slot {
+                    self.backend
+                        .inject_aura_current_slot(latest_block, Slot::from(updated_aura_slot));
+                    self.backend
+                        .inject_relay_slot_info(latest_block, (Slot::from(updated_aura_slot), 0));
+                }
+            }
+            #[cfg(not(feature = "forking-support"))]
+            {
+                self.backend.set_pending_timestamp(time_ms);
             }
         }
         Ok(self.mining_engine.set_time(Duration::from_secs(time)))
@@ -818,8 +940,21 @@ impl ApiServer {
         trace!(target: "backend", "get nonce for {:?}", address);
         let hash = self.get_block_hash_for_tag(block).await?;
         let runtime_api = self.eth_rpc_client.runtime_api(hash);
-        let nonce = runtime_api.nonce(address).await?;
-        Ok(nonce)
+        let on_chain_nonce = runtime_api.nonce(address).await?;
+
+        // For pending block, account for txs already in the pool
+        let is_pending = matches!(block, Some(BlockId::Number(BlockNumberOrTag::Pending)));
+        if is_pending {
+            let alloy_addr = Address::from_slice(address.as_bytes());
+            if let Some(pool_nonce) = get_pool_nonce(&self.tx_pool, alloy_addr) {
+                let pool_nonce = sp_core::U256::from(pool_nonce);
+                if pool_nonce > on_chain_nonce {
+                    return Ok(pool_nonce);
+                }
+            }
+        }
+
+        Ok(on_chain_nonce)
     }
 
     async fn send_raw_transaction(&self, transaction: Bytes) -> Result<H256> {
@@ -839,6 +974,35 @@ impl ApiServer {
         Ok(hash)
     }
 
+    /// Seal a new block and log its details.
+    async fn seal_and_log(&self) -> std::result::Result<(), MiningError> {
+        let tx_count = self.tx_pool.ready().count();
+        trace!(target: "miner", "creating new block");
+        trace!(target: "backend", "creating new block with {tx_count} transactions");
+        let block = seal_now(&self.seal_command_sender).await?;
+        // Note: upstream anvil logs block_number here, but CreatedBlock only has hash.
+        trace!(target: "miner", "created new block: {:?}", block.hash);
+        debug!(hash=?block.hash, "sealed");
+
+        // Update the block provider cache so RPCs that resolve "latest"
+        // see the new block immediately, without waiting for the
+        // background subscription task.
+        if let Ok(Some(new_block)) = self.block_provider.block_by_hash(&block.hash).await {
+            self.block_provider.update_latest(new_block, SubscriptionType::BestBlocks).await;
+        }
+
+        let _ = self.log_mined_block(block.hash).await;
+        Ok(())
+    }
+
+    /// Mine a block inline from an RPC handler and mark the upcoming pool
+    /// notification as stale so the mining branch in `run()` skips it.
+    async fn seal_now_inline(&self) -> Result<()> {
+        self.seal_and_log().await.map_err(Error::Mining)?;
+        self.stale_pool_notifications.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
     pub async fn send_raw_transaction_sync(&self, tx: Bytes) -> Result<ReceiptInfo> {
         node_info!("eth_sendRawTransactionSync");
         // Subscribe to new best blocks.
@@ -850,6 +1014,11 @@ impl ApiServer {
             })?
             .subscribe();
         let hash = B256::from_slice(self.send_raw_transaction(tx).await?.as_ref());
+        // In automine/mixed mode, mine inline since the select! loop can't fire
+        // while we're handling this RPC.
+        if self.mining_engine.is_auto_or_mixed_mining() {
+            self.seal_now_inline().await?;
+        }
         self.wait_for_receipt(hash, receiver).await
     }
 
@@ -865,8 +1034,6 @@ impl ApiServer {
         };
 
         let best_hash = self.latest_block();
-        let best_number = self.client.info().best_number;
-        let latest_block_id = Some(BlockId::Number(BlockNumberOrTag::Number(best_number as u64)));
         let account = if self.impersonation_manager.is_impersonated(from) || unsigned_tx {
             None
         } else {
@@ -880,8 +1047,8 @@ impl ApiServer {
         };
 
         if transaction.gas.is_none() {
-            transaction.gas =
-                Some(self.estimate_gas(transaction_req.clone(), latest_block_id).await?);
+            // Pass None so that gas estimation refers to default `Pending` block.
+            transaction.gas = Some(self.estimate_gas(transaction_req.clone(), None).await?);
         }
 
         if transaction.gas_price.is_none() {
@@ -889,7 +1056,8 @@ impl ApiServer {
         }
 
         if transaction.nonce.is_none() {
-            transaction.nonce = Some(self.get_transaction_count(from, latest_block_id).await?);
+            let pending_block = Some(BlockId::Number(BlockNumberOrTag::Pending));
+            transaction.nonce = Some(self.get_transaction_count(from, pending_block).await?);
         }
 
         if transaction.chain_id.is_none() {
@@ -938,6 +1106,11 @@ impl ApiServer {
             })?
             .subscribe();
         let hash = B256::from_slice(self.send_transaction(request, false).await?.as_ref());
+        // In automine/mixed mode, mine inline since the select! loop can't fire
+        // while we're handling this RPC.
+        if self.mining_engine.is_auto_or_mixed_mining() {
+            self.seal_now_inline().await?;
+        }
         self.wait_for_receipt(hash, receiver).await
     }
 
@@ -1448,7 +1621,6 @@ impl ApiServer {
 
     // ----- Wallet RPCs
     async fn sign(&self, address: Address, content: impl AsRef<[u8]>) -> Result<String> {
-        node_info!("eth_sign");
         Ok(alloy_primitives::hex::encode_prefixed(self.wallet.sign(address, content.as_ref())?))
     }
 
@@ -1625,13 +1797,15 @@ impl ApiServer {
                 })?;
                 Ok(self.eth_rpc_client.get_block_hash(n).await?)
             }
-            BlockNumberOrTagOrHash::BlockTag(BlockTag::Finalized | BlockTag::Safe) => {
-                let block = self.eth_rpc_client.latest_finalized_block().await;
-                Ok(Some(block.hash()))
-            }
-            BlockNumberOrTagOrHash::BlockTag(_) => {
-                let block = self.eth_rpc_client.latest_block().await;
-                Ok(Some(block.hash()))
+            BlockNumberOrTagOrHash::BlockTag(tag) => {
+                let hash = match tag {
+                    BlockTag::Earliest => self.backend.blockchain().info().genesis_hash,
+                    BlockTag::Finalized | BlockTag::Safe => {
+                        self.eth_rpc_client.latest_finalized_block().await.hash()
+                    }
+                    _ => self.eth_rpc_client.latest_block().await.hash(),
+                };
+                Ok(Some(hash))
             }
         }
     }
