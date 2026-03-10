@@ -3,13 +3,12 @@ use foundry_test_utils::{forgetest_async, revive::AnvilPolkadotNode, util::Outpu
 forgetest_async!(test_cast_chain_id_polkadot_localnode, |_prj, cmd| {
     if let Ok(node) = AnvilPolkadotNode::start().await {
         let rpc_url = node.http_endpoint();
-        cmd.cast_fuse()
-            .args(["chain-id", "--rpc-url", &rpc_url])
-            .assert_success()
-            .stdout_eq(str![[r#"
-420420420
+        cmd.cast_fuse().args(["chain-id", "--rpc-url", &rpc_url]).assert_success().stdout_eq(str![
+            [r#"
+31337
 
-"#]]);
+"#]
+        ]);
     }
 });
 
