@@ -47,9 +47,11 @@ pub const DEFAULT_MNEMONIC: &str = "test test test test test test test test test
 pub const DEFAULT_IPC_ENDPOINT: &str =
     if cfg!(unix) { "/tmp/anvil.ipc" } else { r"\\.\pipe\anvil.ipc" };
 
-/// In anvil this is `1_000_000_000`, in 1e18 denomination. However,
-/// asset-hub-westend runtime sets it to `1_000_000`.
-pub const INITIAL_BASE_FEE: u128 = 1_000_000;
+/// Default initial base fee in wei (1e18 denomination).
+/// = NATIVE_TO_ETH_RATIO × GAS_SCALE = 1e6 × 100_000 = 100 gwei (multiplier=1.0).
+/// Matches asset-hub-kusama at genesis. Must be above the SlowAdjustingFeeUpdate minimum:
+/// min_base_fee = 0.1 × NATIVE_TO_ETH_RATIO × GAS_SCALE = 0.1 × 1e6 × 100_000 = 10_000_000_000.
+pub const INITIAL_BASE_FEE: u128 = 100_000_000_000;
 
 const BANNER: &str = r"
                              _   _

@@ -179,7 +179,7 @@ async fn test_gas_price() {
 
     let gas_price =
         unwrap_response::<U256>(node.eth_rpc(EthRequest::EthGasPrice(())).await.unwrap()).unwrap();
-    assert_eq!(gas_price, U256::from(1000000));
+    assert_eq!(gas_price, U256::from(anvil_polkadot::config::INITIAL_BASE_FEE));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -667,13 +667,37 @@ async fn test_fee_history() {
     )
     .unwrap();
     assert_eq!(fee_history.gas_used_ratio.len(), 10);
-    // The `SlowAdjustingFeeUpdate` logic decreases the base_fee block by block if the
-    // activity contained within them is low.
-    let base_fees =
-        [1_000_000, 999981, 999962, 999944, 999925, 999907, 999888, 999869, 999851, 999832, 999832]
-            .into_iter()
-            .map(pallet_revive::U256::from)
-            .collect::<Vec<_>>();
+    // fee_history returns `block_count + 1` base fees per EIP-1559: one per requested block plus a
+    // predicted fee for the next block. Here 10 blocks → 11 entries.
+    //
+    // Initial fee: multiplier=1.0 × NATIVE_TO_ETH_RATIO × GAS_SCALE = 1.0 × 1e6 × 100_000 = 100 gwei.
+    //
+    // The `SlowAdjustingFeeUpdate` (from polkadot-runtime-common) lowers the multiplier each block
+    // when utilisation is below the 25% target. With a single simple transfer per block (~21k gas
+    // vs 7.5M capacity = ~0.14% fill), the decrease per block is approximately:
+    //   Δ = fee × (1/52500) × (1 - 0.25) ≈ 100_000_000_000 × 0.000019 ≈ 1_900_000
+    // (alternating 1_800_000/1_900_000 due to fixed-point rounding in FixedU128 arithmetic).
+    //
+    // The last two entries are equal because of a known pallet-revive limitation: `fee_history`
+    // returns the current stored `NEXT_FEE_MULTIPLIER` as the "predicted" entry rather than
+    // recomputing it, so the prediction mirrors the fee of the most recent block.
+    // See: https://github.com/paritytech/polkadot-sdk/issues/10177
+    let base_fees = [
+        100_000_000_000_u128,
+        99_998_100_000,
+        99_996_200_000,
+        99_994_400_000,
+        99_992_500_000,
+        99_990_700_000,
+        99_988_800_000,
+        99_986_900_000,
+        99_985_100_000,
+        99_983_200_000,
+        99_983_200_000,
+    ]
+    .into_iter()
+    .map(pallet_revive::U256::from)
+    .collect::<Vec<_>>();
     assert_eq!(base_fees, fee_history.base_fee_per_gas);
 }
 

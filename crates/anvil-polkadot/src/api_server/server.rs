@@ -83,7 +83,10 @@ use polkadot_sdk::{
 use revm::primitives::hardfork::SpecId;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
-use substrate_runtime::{Balance, constants::NATIVE_TO_ETH_RATIO};
+use substrate_runtime::{
+    Balance,
+    constants::{GAS_SCALE, NATIVE_TO_ETH_RATIO},
+};
 use subxt::{
     Metadata as SubxtMetadata, OnlineClient, backend::rpc::RpcClient,
     client::RuntimeVersion as SubxtRuntimeVersion, config::substrate::H256,
@@ -183,7 +186,12 @@ impl ApiServer {
                 // to a 1e12.
                 self.backend.inject_next_fee_multiplier(
                     latest_block,
-                    FixedU128::from_rational(base_fee.to::<u128>(), NATIVE_TO_ETH_RATIO.into()),
+                    // evm_base_fee = multiplier × NATIVE_TO_ETH_RATIO × GAS_SCALE
+                    // so multiplier = base_fee / (NATIVE_TO_ETH_RATIO × GAS_SCALE)
+                    FixedU128::from_rational(
+                        base_fee.to::<u128>(),
+                        NATIVE_TO_ETH_RATIO as u128 * GAS_SCALE as u128,
+                    ),
                 );
                 Ok(()).to_rpc_result()
             }
