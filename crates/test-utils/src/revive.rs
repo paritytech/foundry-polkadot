@@ -1,67 +1,133 @@
-use alloy_rpc_client::ClientBuilder;
 use eyre::Result;
-use std::{process, thread::sleep, time::Duration};
-use subxt::{OnlineClient, PolkadotConfig};
+use std::{
+    process::{self, Stdio},
+    time::Duration,
+};
 use tempfile::TempDir;
+use tokio::net::TcpStream;
 
-const NODE_BINARY: &str = "substrate-node";
-const RPC_PROXY_BINARY: &str = "eth-rpc";
-const MAX_ATTEMPTS: u32 = 15;
-const RPC_URL: &str = "http://127.0.0.1:8545";
+use crate::util::OutputExt;
+
+const NODE_BINARY: &str = "anvil-polkadot";
+const MAX_ATTEMPTS: usize = 15;
+const RPC_URL: &str = "http://127.0.0.1";
 const RETRY_DELAY: Duration = Duration::from_secs(1);
+pub static GENESIS_JSON: &str = include_str!("../test-data/genesis.json");
 
 const WALLETS: [(&str, &str); 1] = [(
-    "0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac",
-    "0x5fb92d6e98884f76de468fa3f6278f8807c48bebc13595d45af5bdc4da702133",
+    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
 )];
 
 /// Spawn and manage an instance of a compatible contracts enabled chain node.
 #[allow(dead_code)]
-struct ContractsNodeProcess {
+pub struct AnvilPolkadotNode {
     node: process::Child,
     tmp_dir: tempfile::TempDir,
+    port: u16,
 }
 
-impl Drop for ContractsNodeProcess {
+impl Drop for AnvilPolkadotNode {
     fn drop(&mut self) {
         self.kill()
     }
 }
 
-impl ContractsNodeProcess {
-    async fn start() -> Result<Self> {
-        let tmp_dir = TempDir::with_prefix("cargo-contract.cli.test.node")?;
+async fn retry(attempts: &mut usize, msg: String, node: &mut process::Child) -> Result<()> {
+    *attempts += 1;
+    tokio::time::sleep(RETRY_DELAY).await;
+    if *attempts > MAX_ATTEMPTS {
+        let err = eyre::eyre!(
+            "Failed to connect to node rpc after {} attempts, reason: {msg}",
+            attempts,
+        );
+        tracing::error!("{}", err);
+        let _ = node.kill();
+        return Err(err);
+    }
+    Ok(())
+}
 
-        let mut node = process::Command::new(NODE_BINARY)
-            .env("RUST_LOG", "error")
-            .arg("--dev")
-            .arg(format!("--base-path={}", tmp_dir.path().to_string_lossy()))
-            .arg("--no-prometheus")
-            .spawn()?;
+impl AnvilPolkadotNode {
+    pub async fn start() -> Result<Self> {
+        let tmp_dir = TempDir::with_prefix("cargo-contract.cli.test.node")?;
+        std::fs::write(tmp_dir.path().join("genesis.json"), GENESIS_JSON).unwrap();
+
         // wait for rpc to be initialized
         let mut attempts = 1;
+        let mut node = process::Command::new(NODE_BINARY)
+            .env("RUST_LOG", "error")
+            .args([
+                "--init",
+                tmp_dir.path().join("genesis.json").to_str().unwrap(),
+                "--ipc",
+                tmp_dir.path().join("anvil.ipc").to_str().unwrap(),
+                "--balance",
+                u64::MAX.to_string().as_str(),
+                "--port",
+                "0",
+            ])
+            .spawn()?;
+
         loop {
-            sleep(RETRY_DELAY);
+            let id = node.id();
+            let mut port_val: Option<String> = None;
+            if port_val.is_none() {
+                port_val = tokio::task::spawn_blocking(move || {
+                    let lsof_out = process::Command::new("lsof")
+                        .args(["-i", "-P"])
+                        .stdout(Stdio::piped())
+                        .spawn()
+                        .unwrap()
+                        .stdout;
+                    let grepped_output = process::Command::new("grep")
+                        .arg(id.to_string().as_str())
+                        .stdin(lsof_out.unwrap())
+                        .output()
+                        .unwrap()
+                        .stdout_lossy();
+                    grepped_output
+                        .lines()
+                        .filter(|x| x.contains("IPv4") && !x.contains(":9944"))
+                        .flat_map(|x| x.split_whitespace())
+                        .find(|x| x.contains("localhost") || x.contains("127.0.0.1"))
+                        .and_then(|x| x.split(":").last())
+                        .map(|x| x.to_owned())
+                })
+                .await
+                .ok()
+                .flatten();
+            };
+            let Some(port) = port_val else {
+                retry(
+                    &mut attempts,
+                    format!("Failed to find port by pid:{}", node.id()),
+                    &mut node,
+                )
+                .await?;
+                continue;
+            };
+
             tracing::debug!(
                 "Connecting to contracts enabled node, attempt {}/{}",
                 attempts,
                 MAX_ATTEMPTS
             );
-            match OnlineClient::<PolkadotConfig>::new().await {
-                Result::Ok(_) => return Ok(Self { node, tmp_dir }),
+            match tokio::time::timeout(
+                Duration::from_millis(200),
+                TcpStream::connect(&format!("{}:{}", "127.0.0.1", port)),
+            )
+            .await
+            {
+                Result::Ok(Result::Ok(t)) => {
+                    drop(t);
+                    return Ok(Self { node, tmp_dir, port: port.parse::<u16>().unwrap() });
+                }
                 Err(err) => {
-                    if attempts < MAX_ATTEMPTS {
-                        attempts += 1;
-                        continue;
-                    }
-                    let err = eyre::eyre!(
-                        "Failed to connect to node rpc after {} attempts: {}",
-                        attempts,
-                        err
-                    );
-                    tracing::error!("{}", err);
-                    node.kill()?;
-                    return Err(err);
+                    retry(&mut attempts, format!("error reason={err}"), &mut node).await?;
+                }
+                Result::Ok(Err(err)) => {
+                    retry(&mut attempts, format!("error reason={err}"), &mut node).await?;
                 }
             }
         }
@@ -73,90 +139,9 @@ impl ContractsNodeProcess {
             tracing::error!("Error killing contracts node process {}: {}", self.node.id(), err)
         }
     }
-}
 
-/// Spawn and manage an instance of an ethereum RPC proxy node.
-struct RpcProxyProcess(process::Child);
-
-impl Drop for RpcProxyProcess {
-    fn drop(&mut self) {
-        self.kill()
-    }
-}
-
-impl RpcProxyProcess {
-    async fn start() -> Result<Self> {
-        let mut rpc_proxy = process::Command::new(RPC_PROXY_BINARY)
-            .env("RUST_LOG", "error")
-            .arg("--dev")
-            .arg("--no-prometheus")
-            .spawn()?;
-
-        let client = ClientBuilder::default().connect(RPC_URL).await?;
-
-        let mut attempts = 1;
-        loop {
-            sleep(RETRY_DELAY);
-            match client.request_noparams::<String>("eth_chainId").await {
-                Result::Ok(_) => {
-                    return Ok(Self(rpc_proxy));
-                }
-                Err(err) => {
-                    if attempts < MAX_ATTEMPTS {
-                        attempts += 1;
-                        continue;
-                    }
-
-                    let err = eyre::eyre!(
-                        "Failed to connect to RPC proxy after {} attempts: {}",
-                        MAX_ATTEMPTS,
-                        err
-                    );
-                    tracing::error!("{}", err);
-                    rpc_proxy.kill()?;
-                    return Err(err);
-                }
-            }
-        }
-    }
-
-    fn kill(&mut self) {
-        tracing::debug!("Killing RPC proxy process {}", self.0.id());
-        if let Err(err) = self.0.kill() {
-            tracing::error!("Error killing RPC proxy process {}: {}", self.0.id(), err)
-        }
-    }
-}
-
-/// `PolkadotHubNode` combines a `substrate-node` with an Ethereum RPC proxy to enable
-/// Ethereum-compatible transactions in CI tests.
-///
-/// Before using it, make sure both `substrate-node` and the Ethereum RPC proxy are installed:
-///
-/// ```bash
-/// git clone https://github.com/paritytech/polkadot-sdk
-/// cd polkadot-sdk
-/// cargo build --release --bin substrate-node
-///
-/// cargo install pallet-revive-eth-rpc
-/// ```
-///
-/// Ensure that both binaries are available in your system's PATH and are version-compatible.
-#[allow(dead_code)]
-pub struct PolkadotNode {
-    node: ContractsNodeProcess,
-    rpc_proxy: RpcProxyProcess,
-}
-
-impl PolkadotNode {
-    pub async fn start() -> Result<Self> {
-        let node = ContractsNodeProcess::start().await?;
-        let rpc_proxy = RpcProxyProcess::start().await?;
-        Ok(Self { node, rpc_proxy })
-    }
-
-    pub fn http_endpoint() -> &'static str {
-        RPC_URL
+    pub fn http_endpoint(&self) -> String {
+        format!("{}:{}", RPC_URL, self.port)
     }
 
     pub fn dev_accounts() -> impl Iterator<Item = (&'static str, &'static str)> {

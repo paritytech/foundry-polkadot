@@ -19,7 +19,6 @@ foundry-common.workspace = true
 foundry-compilers = { workspace = true, features = ["project-util"] }
 foundry-config.workspace = true
 
-alloy-rpc-client.workspace = true
 alloy-primitives.workspace = true
 alloy-provider.workspace = true
 
@@ -33,7 +32,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 rand.workspace = true
 snapbox = { version = "0.6", features = ["json", "regex", "term-svg"] }
 tempfile.workspace = true
-subxt = "0.43.0"
 tokio.workspace = true
 ui_test = "0.29.2"
 
@@ -43,4 +41,3 @@ idna_adapter.workspace = true
 
 [dev-dependencies]
 foundry-block-explorers.workspace = true
-serial_test.workspace = true

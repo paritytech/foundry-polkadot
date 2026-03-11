@@ -381,7 +381,6 @@ vergen = { version = "8", default-features = false }
 yansi = { version = "1.0", features = ["detect-tty", "detect-env"] }
 path-slash = "0.2"
 jiff = "0.2"
-serial_test = "2.0"
 
 heck = "0.5"
 uuid = "1.17.0"
