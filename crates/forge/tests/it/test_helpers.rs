@@ -23,6 +23,7 @@ use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 use revm::primitives::hardfork::SpecId;
 use semver::Version;
 use std::{
+    collections::BTreeSet,
     env, fmt,
     io::Write,
     path::{Path, PathBuf},
@@ -220,11 +221,77 @@ impl ForgeTestData {
 
         // Filter files compatible with resolc
         let all_files: Vec<_> = solc_project.paths.input_files();
+        let set: BTreeSet<String> = [
+            "revive",
+            "ExpectEmit.t",
+            "Load.t",
+            "Addr.t",
+            "Assert.t",
+            "Assume.t",
+            "AssumeNoRevert.t",
+            "Base64.t",
+            "Blobhashes.t",
+            "GetChain.t",
+            "GetCode.t",
+            "Derive.t",
+            "EnsNamehash.t",
+            "Env.t",
+            "GetChain.t",
+            "GetCode.t",
+            "GetFoundryVersion.t",
+            "GetLabel.t",
+            "GetNonce.t",
+            "Nonce.t",
+            "Json.t",
+            "Label.t",
+            "Parse.t",
+            "ProjectRoot.t",
+            "Prompt.t",
+            "RandomAddress.t",
+            "RandomBytes.t",
+            "RandomCheatcodes.t",
+            "RandomUint.t",
+            "ReadCallers.t",
+            "RecordLogs.t",
+            "Remember.t",
+            "ResetNonce.t",
+            "RpcUrls.t",
+            "Seed.t",
+            "SetNonce.t",
+            "SetNonceUnsafe.t",
+            "Setup.t",
+            "Shuffle.t",
+            "Sign.t",
+            "SignP256.t",
+            "Skip.t",
+            "Sleep.t",
+            "Sort.t",
+            "StateSnapshots.t",
+            "StringUtils.t",
+            "ToString.t",
+            "Toml.t",
+            "UnixTime.t",
+            "Wallet.t",
+            "ExpectCreate.t",
+            "Record.t",
+            "ExpectRevert.t",
+            "ExpectCallRevive.t",
+            "GasMetering.t",
+        ]
+        .into_iter()
+        .map(|x| x.to_owned())
+        .collect();
+
         let files_to_compile: Vec<_> = all_files
             .into_iter()
             .filter(|path| {
                 // We skip all the other sources to avoid deploy-time linking issues
-                path.components().any(|c| c.as_os_str() == "revive")
+                path.components().any(|c| {
+                    let c = PathBuf::from(&c);
+                    let c = c.file_stem().unwrap_or_default();
+                    let res = set.contains(c.to_string_lossy().as_ref());
+                    res
+                })
             })
             .collect();
         let resolc_output = get_resolc_compiled(&mut resolc_project, files_to_compile);

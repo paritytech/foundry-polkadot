@@ -769,7 +769,7 @@ fn select_revive(
                             } else {
                                 ctx.runtime_mode
                             };
-                            let (code_bytes, immutable_data, code_type) = match effective_runtime_mode {
+                            let (code_bytes, immutable_data, code_type, factory_deps) = match effective_runtime_mode {
                                 crate::ReviveRuntimeMode::Pvm => {
                                     let immutable_data = contract.evm_immutable_references
                                         .as_ref()
@@ -788,10 +788,10 @@ fn select_revive(
                                                 .copied()
                                                 .collect::<Vec<u8>>()
                                         });
-                                    (contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),immutable_data, BytecodeType::Pvm)
+                                    (contract.resolc_deployed_bytecode.as_bytes().map(|b| b.to_vec()),immutable_data, BytecodeType::Pvm,contract.resolc_factory_deps.clone())
                                 },
                                 crate::ReviveRuntimeMode::Evm => {
-                                    (Some(bytecode.bytecode().to_vec()), None, BytecodeType::Evm)
+                                    (Some(bytecode.bytecode().to_vec()), None, BytecodeType::Evm, vec![])
                                 },
                             };
 
@@ -807,6 +807,19 @@ fn select_revive(
                                     .unwrap(),
                                     &ExecConfig::new_substrate_tx(),
                                 );
+                                for dep in factory_deps {
+                                    let _ = Pallet::<Runtime>::try_upload_code(
+                                        Pallet::<Runtime>::account_id(),
+                                        dep.into_bytes().unwrap_or_default().to_vec(),
+                                        BytecodeType::Pvm,
+                                        &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                                            weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                                            deposit_limit: 100_000_000_000_000,
+                                        })
+                                        .unwrap(),
+                                        &ExecConfig::new_substrate_tx_without_bump(),
+                                    );
+                                }
                                 match upload_result {
                                     Ok(upload_res) => {
                                         let code_hash = upload_res.code_hash().to_owned();
@@ -1068,7 +1081,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let init_code = input.init_code();
 
         // Determine which bytecode to use based on runtime mode
-        let (code_bytes, constructor_args) = match ctx.runtime_mode {
+        let (code_bytes, constructor_args, factory_deps) = match ctx.runtime_mode {
             crate::ReviveRuntimeMode::Pvm => {
                 // PVM mode: use resolc (PVM) bytecode
                 tracing::info!("running create in PVM mode with PVM bytecode");
@@ -1078,12 +1091,16 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
                 let constructor_args = find_contract.constructor_args();
                 let contract = find_contract.contract();
-                (contract.resolc_bytecode.as_bytes().unwrap().to_vec(), constructor_args.to_vec())
+                (
+                    contract.resolc_bytecode.as_bytes().unwrap().to_vec(),
+                    constructor_args.to_vec(),
+                    contract.resolc_factory_deps.clone(),
+                )
             }
             crate::ReviveRuntimeMode::Evm => {
                 // EVM mode: use EVM bytecode directly (includes constructor args)
                 tracing::info!("running create in EVM mode with EVM bytecode");
-                (init_code.0.to_vec(), vec![])
+                (init_code.0.to_vec(), vec![], vec![])
             }
         };
 
@@ -1118,6 +1135,19 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let eth_deals = &state.eth_deals;
 
         let res = ctx.externalities.execute_with_transient_storage(|transient_storage| {
+            for dep in factory_deps {
+                let _ = Pallet::<Runtime>::try_upload_code(
+                    Pallet::<Runtime>::account_id(),
+                    dep.into_bytes().unwrap_or_default().to_vec(),
+                    BytecodeType::Pvm,
+                    &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                        deposit_limit: 100_000_000_000_000,
+                    })
+                    .unwrap(),
+                    &ExecConfig::new_substrate_tx_without_bump(),
+                );
+            }
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {
@@ -1505,7 +1535,7 @@ fn post_exec(
     let externalities = &mut ctx.externalities;
     let dual_compiled_contracts = &ctx.dual_compiled_contracts;
     let (call_traces, create_traces) = externalities.execute_with(|| {
-        tracer.apply_prestate_trace(ecx);
+        tracer.apply_prestate_trace(ecx, &ctx.dual_compiled_contracts);
         (tracer.collect_call_traces(), tracer.create_tracer.finalize(dual_compiled_contracts))
     });
     if let Some(traces) = call_traces
