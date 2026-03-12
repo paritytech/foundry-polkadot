@@ -105,12 +105,8 @@ impl Tracer {
                         && let Some(ref code) = code
                         && let Some(info) = AccountInfo::<Runtime>::load_contract(&key)
                     {
-                        let code = code.clone();
                         let account =
                             ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
-                        // Try both PVM and EVM bytecode lookups since runtime_mode may not reflect
-                        // the actual bytecode type stored (especially after backend switches)
-                        // TODO: make PristineCode public to avoid this double lookup
                         let (bytecode, hash) = if let Some(bytecode_result) =
                             dual_compiled_contracts.find_bytecode(&code.0)
                         {
@@ -125,7 +121,7 @@ impl Tracer {
                                 contract.evm_bytecode_hash,
                             )
                         } else {
-                            (code.0.into(), info.code_hash.0.into())
+                            (code.clone().0.into(), info.code_hash.0.into())
                         };
                         let bytecode = Bytecode::new_raw(bytecode);
                         account.info.code_hash = hash;

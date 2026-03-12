@@ -17,7 +17,9 @@ use foundry_cheatcodes::{
     journaled_account, precompile_error,
 };
 
-use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
+use foundry_compilers::{
+    artifacts::BytecodeObject, resolc::dual_compiled_contracts::DualCompiledContracts,
+};
 use foundry_evm::constants::CHEATCODE_ADDRESS;
 use revive_env::{Runtime, System, Timestamp};
 use std::{
@@ -807,19 +809,7 @@ fn select_revive(
                                     .unwrap(),
                                     &ExecConfig::new_substrate_tx(),
                                 );
-                                for dep in factory_deps {
-                                    let _ = Pallet::<Runtime>::try_upload_code(
-                                        Pallet::<Runtime>::account_id(),
-                                        dep.into_bytes().unwrap_or_default().to_vec(),
-                                        BytecodeType::Pvm,
-                                        &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
-                                            weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                                            deposit_limit: 100_000_000_000_000,
-                                        })
-                                        .unwrap(),
-                                        &ExecConfig::new_substrate_tx_without_bump(),
-                                    );
-                                }
+                                upload_factory_deps(factory_deps);
                                 match upload_result {
                                     Ok(upload_res) => {
                                         let code_hash = upload_res.code_hash().to_owned();
@@ -945,6 +935,22 @@ fn migrate_contract_storage(data: Ecx<'_, '_, '_>, address: Address, account_h16
                 let _ = Pallet::<Runtime>::set_storage(account_h160, slot_bytes, None);
             }
         }
+    }
+}
+
+fn upload_factory_deps(factory_deps: Vec<BytecodeObject>) {
+    for dep in factory_deps {
+        let _ = Pallet::<Runtime>::try_upload_code(
+            Pallet::<Runtime>::account_id(),
+            dep.into_bytes().unwrap_or_default().to_vec(),
+            BytecodeType::Pvm,
+            &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
+                weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
+                deposit_limit: 100_000_000_000_000,
+            })
+            .unwrap(),
+            &ExecConfig::new_substrate_tx_without_bump(),
+        );
     }
 }
 
@@ -1135,19 +1141,7 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         let eth_deals = &state.eth_deals;
 
         let res = ctx.externalities.execute_with_transient_storage(|transient_storage| {
-            for dep in factory_deps {
-                let _ = Pallet::<Runtime>::try_upload_code(
-                    Pallet::<Runtime>::account_id(),
-                    dep.into_bytes().unwrap_or_default().to_vec(),
-                    BytecodeType::Pvm,
-                    &mut ResourceMeter::new(pallet_revive::TransactionLimits::WeightAndDeposit {
-                        weight_limit: Weight::from_parts(10_000_000_000_000, 100_000_000),
-                        deposit_limit: 100_000_000_000_000,
-                    })
-                    .unwrap(),
-                    &ExecConfig::new_substrate_tx_without_bump(),
-                );
-            }
+            upload_factory_deps(factory_deps);
             tracer.watch_address(&caller_h160);
 
             tracer.trace(|| {

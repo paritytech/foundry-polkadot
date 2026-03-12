@@ -289,8 +289,7 @@ impl ForgeTestData {
                 path.components().any(|c| {
                     let c = PathBuf::from(&c);
                     let c = c.file_stem().unwrap_or_default();
-                    let res = set.contains(c.to_string_lossy().as_ref());
-                    res
+                    set.contains(c.to_string_lossy().as_ref())
                 })
             })
             .collect();
