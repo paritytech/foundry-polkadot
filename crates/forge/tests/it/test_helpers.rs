@@ -231,8 +231,6 @@ impl ForgeTestData {
             "AssumeNoRevert.t",
             "Base64.t",
             "Blobhashes.t",
-            "GetChain.t",
-            "GetCode.t",
             "Derive.t",
             "EnsNamehash.t",
             "Env.t",
