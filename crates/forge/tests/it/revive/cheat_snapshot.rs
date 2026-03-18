@@ -28,6 +28,7 @@ async fn test_snapshot_constructor_contract(#[case] runtime_mode: ReviveRuntimeM
 
 #[rstest]
 #[case::evm(ReviveRuntimeMode::Evm)]
+#[case::pvm(ReviveRuntimeMode::Pvm)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_snapshot_across_mode_switch(#[case] runtime_mode: ReviveRuntimeMode) {
     let runner: forge::MultiContractRunner = TEST_DATA_REVIVE.runner_revive(runtime_mode);

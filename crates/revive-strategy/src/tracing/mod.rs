@@ -1,8 +1,9 @@
-use alloy_primitives::{Address, Bytes, U256 as RU256};
+use alloy_primitives::{Address, U256 as RU256};
 use call_tracer::ExpectedCallTracer;
 use expect_create::CreateTracer;
 use foundry_cheatcodes::{Ecx, ExpectedCallTracker, ExpectedCreate};
 
+use foundry_compilers::resolc::dual_compiled_contracts::DualCompiledContracts;
 use polkadot_sdk::{
     pallet_revive::{
         AccountInfo, Pallet, U256,
@@ -76,7 +77,11 @@ impl Tracer {
     }
 
     /// Applies `PrestateTrace` diffs to the revm state
-    pub fn apply_prestate_trace(&mut self, ecx: Ecx<'_, '_, '_>) {
+    pub fn apply_prestate_trace(
+        &mut self,
+        ecx: Ecx<'_, '_, '_>,
+        dual_compiled_contracts: &DualCompiledContracts,
+    ) {
         let prestate_trace = self.collect_prestate_traces();
         match prestate_trace {
             polkadot_sdk::pallet_revive::evm::PrestateTrace::DiffMode { pre: _digests, post } => {
@@ -100,11 +105,26 @@ impl Tracer {
                         && let Some(ref code) = code
                         && let Some(info) = AccountInfo::<Runtime>::load_contract(&key)
                     {
-                        let code = code.clone();
                         let account =
                             ecx.journaled_state.state.get_mut(&address).expect("account is loaded");
-                        let bytecode = Bytecode::new_raw(Bytes::from(code.0));
-                        account.info.code_hash = info.code_hash.0.into();
+                        let (bytecode, hash) = if let Some(bytecode_result) =
+                            dual_compiled_contracts.find_bytecode(&code.0)
+                        {
+                            let contract = bytecode_result.contract();
+
+                            (
+                                contract
+                                    .evm_deployed_bytecode
+                                    .as_bytes()
+                                    .unwrap_or_default()
+                                    .to_owned(),
+                                contract.evm_bytecode_hash,
+                            )
+                        } else {
+                            (code.clone().0.into(), info.code_hash.0.into())
+                        };
+                        let bytecode = Bytecode::new_raw(bytecode);
+                        account.info.code_hash = hash;
                         account.info.code = Some(bytecode);
                     }
 

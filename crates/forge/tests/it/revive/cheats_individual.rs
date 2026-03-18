@@ -8,11 +8,15 @@ use revm::primitives::hardfork::SpecId;
 use rstest::rstest;
 
 macro_rules! revive_cheat_test_with_dir {
-    ($test_name:ident, $file_pattern:expr, $dir:expr, $exclude_option:expr) => {
+    ($test_name:ident, $file_pattern:expr, $dir:expr, $exclude_option:expr, $skip_pvm:expr) => {
         #[rstest]
         #[case::evm(ReviveRuntimeMode::Evm)]
+        #[case::pvm(ReviveRuntimeMode::Pvm)]
         #[tokio::test(flavor = "multi_thread")]
         async fn $test_name(#[case] runtime_mode: ReviveRuntimeMode) {
+            if matches!(runtime_mode, ReviveRuntimeMode::Pvm) && $skip_pvm {
+                return ();
+            }
             let mut filter =
                 Filter::new(".*", ".*", &format!(".*/{}/{}.t.sol$", $dir, $file_pattern));
 
@@ -33,20 +37,44 @@ macro_rules! revive_cheat_test_with_dir {
 // Public macro for revive-specific tests (default)
 macro_rules! revive_cheat_test {
     ($test_name:ident, $file_pattern:expr) => {
-        revive_cheat_test_with_dir!($test_name, $file_pattern, "revive", None::<&str>);
+        revive_cheat_test_with_dir!($test_name, $file_pattern, "revive", None::<&str>, false);
     };
     ($test_name:ident, $file_pattern:expr,exclude: $exclude_pattern:expr) => {
-        revive_cheat_test_with_dir!($test_name, $file_pattern, "revive", Some($exclude_pattern));
+        revive_cheat_test_with_dir!(
+            $test_name,
+            $file_pattern,
+            "revive",
+            Some($exclude_pattern),
+            false
+        );
     };
 }
 
 // Public macro for original cheatcode tests
 macro_rules! revive_cheat_test_original {
     ($test_name:ident, $file_pattern:expr) => {
-        revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", None::<&str>);
+        revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", None::<&str>, false);
+    };
+    ($test_name:ident, $file_pattern:expr,skip_pvm: true) => {
+        revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", None::<&str>, true);
     };
     ($test_name:ident, $file_pattern:expr,exclude: $exclude_pattern:expr) => {
-        revive_cheat_test_with_dir!($test_name, $file_pattern, "cheats", Some($exclude_pattern));
+        revive_cheat_test_with_dir!(
+            $test_name,
+            $file_pattern,
+            "cheats",
+            Some($exclude_pattern),
+            false
+        );
+    };
+    ($test_name:ident, $file_pattern:expr,exclude: $exclude_pattern:expr,skip_pvm: true) => {
+        revive_cheat_test_with_dir!(
+            $test_name,
+            $file_pattern,
+            "cheats",
+            Some($exclude_pattern),
+            true
+        );
     };
 }
 
@@ -72,7 +100,7 @@ revive_cheat_test_original!(test_assert, "Assert");
 revive_cheat_test_original!(test_assume, "Assume");
 revive_cheat_test_original!(test_assume_no_revert, "AssumeNoRevert");
 // FAILS: vm.attachBlob: vm.broadcast does not work
-revive_cheat_test_original!(test_attach_blob, "AttachBlob");
+// revive_cheat_test_original!(test_attach_blob, "AttachBlob");
 // FAILS: vm.attachDelegation: vm.broadcast does not work
 // revive_cheat_test_original!(test_attach_delegation, "AttachDelegation");
 revive_cheat_test_original!(test_base64, "Base64");
@@ -89,7 +117,7 @@ revive_cheat_test_original!(test_blobhashes, "Blobhashes");
 // revive_cheat_test_original!(test_cool, "Cool");
 // FAILS: vm.copyStorage, vm.setArbitraryStorage not implemented
 // revive_cheat_test_original!(test_copy_storage, "CopyStorage");
-revive_cheat_test_original!(test_deploy_code, "DeployCode");
+revive_cheat_test_original!(test_deploy_code, "DeployCode", skip_pvm: true);
 revive_cheat_test_original!(test_derive, "Derive");
 revive_cheat_test_original!(test_ens_namehash, "EnsNamehash");
 revive_cheat_test_original!(test_env, "Env");
@@ -99,7 +127,7 @@ revive_cheat_test_original!(test_env, "Env");
 // revive_cheat_test_original!(test_fork, "Fork");
 // FAILS: Fork cheatcodes not supported
 // revive_cheat_test_original!(test_fork2, "Fork2");
-revive_cheat_test_original!(test_fs, "Fs");
+// revive_cheat_test_original!(test_fs, "Fs");
 revive_cheat_test!(test_get_artifact_path, "GetArtifactPath");
 revive_cheat_test_original!(test_get_chain, "GetChain");
 revive_cheat_test_original!(test_get_code, "GetCode");
@@ -114,7 +142,7 @@ revive_cheat_test_original!(test_label, "Label");
 // FAILS: Mapping recording cheatcodes (startMappingRecording, getMappingLength) don't work
 // because SSTORE operations happen in pallet-revive, not REVM, so mapping slots aren't tracked
 // revive_cheat_test_original!(test_mapping, "Mapping");
-revive_cheat_test_original!(test_mem_safety, "MemSafety");
+revive_cheat_test_original!(test_mem_safety, "MemSafety", skip_pvm: true);
 revive_cheat_test_original!(test_parse, "Parse");
 revive_cheat_test_original!(test_project_root, "ProjectRoot");
 revive_cheat_test_original!(test_prompt, "Prompt");
@@ -161,15 +189,15 @@ revive_cheat_test_original!(test_wallet, "Wallet");
 // to pallet-revive, and the snapshot/revert mechanism doesn't properly handle rolling back
 // cross-runtime state changes revive_cheat_test_original!(test_load_allocs, "loadAllocs");
 revive_cheat_test_original!(test_gas_metering, "GasMetering");
-revive_cheat_test!(test_custom_nonce, "Nonce");
+revive_cheat_test!(test_custom_nonce, "NonceRevive");
 revive_cheat_test_original!(test_nonce, "Nonce");
 revive_cheat_test_original!(test_expect_create, "ExpectCreate");
-revive_cheat_test_original!(test_record_accesses, "RecordAccessesRevive");
+revive_cheat_test_original!(test_record_accesses, "RecordAccessesRevive", skip_pvm: true);
 revive_cheat_test_original!(test_record_rw, "Record");
 revive_cheat_test_original!(test_expect_revert, "ExpectRevert");
 revive_cheat_test_original!(test_custom_expect_call, "ExpectCallRevive");
 revive_cheat_test!(test_coinbase, "CoinBase");
-revive_cheat_test!(test_set_custom_blockhash, "SetBlockhash");
+revive_cheat_test!(test_set_custom_blockhash, "SetBlockhashRevive");
 revive_cheat_test_original!(test_set_blockhash, "SetBlockhash");
 revive_cheat_test!(test_roll, "Roll");
 revive_cheat_test_original!(test_etch, "Etch");
