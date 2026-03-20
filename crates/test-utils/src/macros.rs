@@ -48,23 +48,6 @@ macro_rules! forgetest {
 }
 
 #[macro_export]
-macro_rules! forgetest_serial {
-    ($(#[$attr:meta])* $test:ident, |$prj:ident, $cmd:ident| $e:expr) => {
-        $crate::forgetest_serial!($(#[$attr])* $test, $crate::foundry_compilers::PathStyle::Dapptools, |$prj, $cmd| $e);
-    };
-    ($(#[$attr:meta])* $test:ident, $style:expr, |$prj:ident, $cmd:ident| $e:expr) => {
-        #[expect(clippy::disallowed_macros)]
-        #[serial]
-        #[test]
-        $(#[$attr])*
-        fn $test() {
-            let (mut $prj, mut $cmd) = $crate::util::setup_forge(stringify!($test), $style);
-            $e
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! forgetest_async {
     ($(#[$attr:meta])* $test:ident, |$prj:ident, $cmd:ident| $e:expr) => {
         $crate::forgetest_async!($(#[$attr])* $test, $crate::foundry_compilers::PathStyle::Dapptools, |$prj, $cmd| $e);
@@ -141,24 +124,17 @@ macro_rules! forgesoldeer {
 }
 
 #[macro_export]
-macro_rules! casttest_serial{
-    ($test:ident, $($async:ident)? |$prj:ident, $cmd:ident| $e:expr) => {
-        casttest!(#[serial_test::serial] $test, $($async)? |$prj, $cmd| $e);
-    };
-}
-
-#[macro_export]
 macro_rules! deploy_contract {
-    ($cmd:expr) => {{
-        let url = PolkadotNode::http_endpoint();
-        let deployer_pk = PolkadotNode::dev_accounts().next().unwrap().1.to_string();
+    ($cmd:expr, $node:expr) => {{
+        let url = $node.http_endpoint();
+        let deployer_pk = AnvilPolkadotNode::dev_accounts().next().unwrap().1.to_string();
 
         let output = $cmd
             .cast_fuse()
             .args([
                 "send",
                 "--rpc-url",
-                url,
+                &url,
                 "--private-key",
                 &deployer_pk,
                 "--create",

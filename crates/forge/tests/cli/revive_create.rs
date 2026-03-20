@@ -1,17 +1,24 @@
 //! Contains various tests for checking the `forge create --resolc` subcommand
 
-use crate::utils::{network_private_key, network_rpc_key};
 use alloy_primitives::Address;
 use foundry_compilers::artifacts::remappings::Remapping;
 use foundry_test_utils::{
-    TestCommand, forgetest_serial, revive::PolkadotNode, snapbox::IntoData, util::TestProject,
+    TestCommand, revive::AnvilPolkadotNode, snapbox::IntoData, util::TestProject,
 };
-use serial_test::serial;
 use std::str::FromStr;
 
 const CREATE_RESPONSE_PATTERN: &str = r#"[COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
 Compiler run successful!
+Deployer: [..]
+Deployed to: [..]
+[TX_HASH]
+"#;
+
+const CREATE_FACTORY_RESPONSE_PATTERN: &str = r#"[COMPILING_FILES] with [RESOLC_VERSION]
+[RESOLC_VERSION] [ELAPSED]
+Compiler run successful!
+Factory dependency 'src/Child.sol:Child' uploaded, [TX_HASH]
 Deployer: [..]
 Deployed to: [..]
 [TX_HASH]
@@ -115,6 +122,68 @@ constructor(Point[] memory _points) {}
     "src/TupleArrayConstructorContract.sol:TupleArrayConstructorContract".to_string()
 }
 
+fn setup_with_factory_pattern(prj: &TestProject) -> String {
+    prj.add_source(
+        "Child.sol",
+        r#"
+pragma solidity ^0.8.20;
+
+contract Child {
+    uint256 public x;
+
+    constructor(uint256 num) {
+        x = num;
+    }
+}
+"#,
+    )
+    .unwrap();
+    prj.add_source(
+        "Factory.sol",
+        r#"
+pragma solidity ^0.8.20;
+
+import "./Child.sol";
+
+contract Factory {
+    constructor() {
+        new Child(5);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    "src/Factory.sol:Factory".to_string()
+}
+
+fn setup_with_library(prj: &TestProject) -> String {
+    prj.add_source(
+        "Library.sol",
+        r#"
+// SPDX-License-Identifier: GPL-3.0
+
+pragma solidity >=0.7.0 <0.9.0;
+
+library Assert {
+    function equal(uint256 a, uint256 b) internal pure returns (bool result) {
+    result = (a == b);
+  }
+}
+
+contract TestAssert {
+    function checkEquality(uint256 a, uint256 b) public pure returns (string memory) {
+        Assert.equal(a, b);
+        return "Values are equal";
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    "src/Library.sol:TestAssert".to_string()
+}
+
 /// configures the `TestProject` with the given closure and calls the `forge create` command
 fn create_on_chain<F>(
     network_args: Option<Vec<String>>,
@@ -143,82 +212,24 @@ fn create_on_chain<F>(
     }
 }
 
-fn westend_assethub_args() -> Option<Vec<String>> {
+fn localnode_args(node: &AnvilPolkadotNode) -> Option<Vec<String>> {
     Some(
         [
             "--rpc-url".to_string(),
-            network_rpc_key("westend_assethub")?,
+            node.http_endpoint(),
             "--private-key".to_string(),
-            network_private_key("westend_assethub")?,
+            AnvilPolkadotNode::dev_accounts().next().unwrap().1.to_string(),
         ]
         .to_vec(),
     )
 }
 
-fn localnode_args() -> Option<Vec<String>> {
-    Some(
-        [
-            "--rpc-url".to_string(),
-            PolkadotNode::http_endpoint().to_string(),
-            "--private-key".to_string(),
-            PolkadotNode::dev_accounts().next().unwrap().1.to_string(),
-        ]
-        .to_vec(),
-    )
-}
-
-// These tests require setting the following environment variables:
-// - `WESTEND_ASSETHUB_RPC_URL`: The RPC endpoint for the Westend Asset Hub, e.g.,
-//  `https://westend-asset-hub-eth-rpc.polkadot.io`.
-// - `WESTEND_ASSETHUB_PRIVATE_KEY`: The private key of the account that will be used to send
-//   requests.
-//
-// Ensure these variables are set before running the tests to enable proper interaction with the
-// Westend AssetHub.
-// tests `forge` create on westend if correct env vars are set
-forgetest_serial!(can_create_simple_on_westend_assethub, |prj, cmd| {
-    create_on_chain(
-        westend_assethub_args(),
-        None,
-        prj,
-        cmd,
-        setup_with_simple_remapping,
-        CREATE_RESPONSE_PATTERN,
-    );
-});
-
-// tests `forge` create on westend if correct env vars are set
-forgetest_serial!(can_create_oracle_on_westend_assethub, |prj, cmd| {
-    create_on_chain(westend_assethub_args(), None, prj, cmd, setup_oracle, CREATE_RESPONSE_PATTERN);
-});
-
-// tests that we can deploy with constructor args
-forgetest_serial!(can_create_with_constructor_args_on_westend_assethub, |prj, cmd| {
-    create_on_chain(
-        westend_assethub_args(),
-        Some(vec!["--constructor-args".to_string(), "[(1,2), (2,3), (3,4)]".to_string()]),
-        prj,
-        cmd,
-        setup_with_constructor,
-        CREATE_RESPONSE_PATTERN,
-    );
-});
-
-// These tests require `substrate-node` and the Ethereum RPC proxy:
-//
-// ```bash
-// git clone https://github.com/paritytech/polkadot-sdk
-// cd polkadot-sdk
-// cargo build --release --bin substrate-node
-//
-// cargo install pallet-revive-eth-rpc
-// ```
-//
+// These tests require `anvil-polkadot`:
 // Ensure that both binaries are available in your system's PATH and are version-compatible.
-forgetest_serial!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         create_on_chain(
-            localnode_args(),
+            localnode_args(&node),
             None,
             prj,
             cmd,
@@ -228,20 +239,53 @@ forgetest_serial!(can_create_simple_on_polkadot_localnode, |prj, cmd| {
     }
 });
 
-forgetest_serial!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
-        create_on_chain(localnode_args(), None, prj, cmd, setup_oracle, CREATE_RESPONSE_PATTERN);
+forgetest_async!(can_create_oracle_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        create_on_chain(
+            localnode_args(&node),
+            None,
+            prj,
+            cmd,
+            setup_oracle,
+            CREATE_RESPONSE_PATTERN,
+        );
     }
 });
 
-forgetest_serial!(can_create_with_constructor_args_on_polkadot_localnode, |prj, cmd| {
-    if let Ok(_node) = tokio::runtime::Runtime::new().unwrap().block_on(PolkadotNode::start()) {
+forgetest_async!(can_create_with_constructor_args_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
         create_on_chain(
-            localnode_args(),
+            localnode_args(&node),
             Some(vec!["--constructor-args".to_string(), "[(1,2), (2,3), (3,4)]".to_string()]),
             prj,
             cmd,
             setup_with_constructor,
+            CREATE_RESPONSE_PATTERN,
+        );
+    }
+});
+
+forgetest_async!(can_create_with_factory_deps_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        create_on_chain(
+            localnode_args(&node),
+            None,
+            prj,
+            cmd,
+            setup_with_factory_pattern,
+            CREATE_FACTORY_RESPONSE_PATTERN,
+        );
+    }
+});
+
+forgetest_async!(can_create_with_library_deps_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        create_on_chain(
+            localnode_args(&node),
+            None,
+            prj,
+            cmd,
+            setup_with_library,
             CREATE_RESPONSE_PATTERN,
         );
     }

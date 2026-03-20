@@ -18,6 +18,7 @@ env:
   DLRP_API_KEY: ${{ secrets.DLRP_API_KEY }}
   ETHERSCAN_API_KEYS: ${{ secrets.ETHERSCAN_API_KEYS }}
   SNAPSHOTS: overwrite
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   matrices:
@@ -61,7 +62,27 @@ jobs:
         run: |
           sudo apt-get update 
           sudo apt-get install -y clang libclang-dev unzip build-essential
-
+      - uses: dev-hanz-ops/install-gh-cli-action@v0.2.1
+        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
+        with:
+          gh-cli-version: 2.65.0
+      - name: Install anvil-polkadot for local tests (Ubuntu)
+        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
+        run: |
+          gh release download stable \
+            --pattern 'foundry_stable_linux_amd64.tar.gz'
+          echo "downloaded release"
+          tar -xzf foundry_stable_linux_amd64.tar.gz anvil-polkadot
+          echo "unpack release"
+          mkdir -p anvil-bin
+          mv anvil-polkadot anvil-bin
+          echo "$(pwd)/anvil-bin" >> $GITHUB_PATH
+          chmod +x anvil-bin/anvil-polkadot
+          echo "added to path"
+      - name: check anvil-polkadot is available for local tests (Ubuntu)
+        if: contains(matrix.runner_label, 'parity-large-new') && contains(matrix.name, 'polkadot_localnode')
+        run: |
+          anvil-polkadot --version
       - name: Setup Node.js
         if: contains(matrix.name, 'external')
         uses: actions/setup-node@v4

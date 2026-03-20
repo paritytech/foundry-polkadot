@@ -68,6 +68,10 @@ pub struct PolkadotConfig {
 
     /// Generate source based debug information in the output code file
     pub debug_information: Option<bool>,
+
+    /// The pallet-revive index in the target chain's runtime.
+    /// Required for factory dependency uploads via `forge create`.
+    pub revive_pallet_index: Option<u8>,
 }
 
 impl PolkadotConfig {
