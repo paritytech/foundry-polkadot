@@ -741,11 +741,6 @@ async fn test_fee_history() {
     // vs 7.5M capacity = ~0.14% fill), the decrease per block is approximately:
     //   Δ = fee × (1/52500) × (1 - 0.25) ≈ 100_000_000_000 × 0.000019 ≈ 1_900_000
     // (alternating 1_800_000/1_900_000 due to fixed-point rounding in FixedU128 arithmetic).
-    //
-    // The last two entries are equal because of a known pallet-revive limitation: `fee_history`
-    // returns the current stored `NEXT_FEE_MULTIPLIER` as the "predicted" entry rather than
-    // recomputing it, so the prediction mirrors the fee of the most recent block.
-    // See: https://github.com/paritytech/polkadot-sdk/issues/10177
     let base_fees = [
         100_000_000_000_u128,
         99_998_100_000,
