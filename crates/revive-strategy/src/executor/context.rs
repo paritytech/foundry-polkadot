@@ -8,12 +8,10 @@ use crate::{ReviveRuntimeMode, state::TestEnv};
 /// Defines the context for [crate::ReviveExecutorStrategyRunner].
 #[derive(Debug, Default, Clone)]
 pub struct ReviveExecutorStrategyContext {
-    /// Runtime backend mode (PVM or EVM on Polkadot)
     pub(crate) runtime_mode: ReviveRuntimeMode,
-    /// Dual compiled contracts.
     pub(crate) dual_compiled_contracts: DualCompiledContracts,
-    /// Compilation output.
     pub(crate) compilation_output: Option<ProjectCompileOutput>,
+    pub(crate) resolc_output: Option<ProjectCompileOutput>,
     pub(crate) externalties: TestEnv,
 }
 

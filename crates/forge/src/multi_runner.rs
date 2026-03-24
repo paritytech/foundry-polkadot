@@ -487,10 +487,14 @@ impl MultiContractRunnerBuilder {
         mut strategy: ExecutorStrategy,
         root: &Path,
         output: &ProjectCompileOutput,
+        resolc_output: Option<ProjectCompileOutput>,
         env: Env,
         evm_opts: EvmOpts,
     ) -> Result<MultiContractRunner> {
         strategy.runner.revive_set_compilation_output(strategy.context.as_mut(), output.clone());
+        if let Some(resolc_output) = resolc_output {
+            strategy.runner.revive_set_resolc_output(strategy.context.as_mut(), resolc_output);
+        }
 
         let contracts = output
             .artifact_ids()
@@ -513,6 +517,14 @@ impl MultiContractRunnerBuilder {
         )?;
 
         let linked_contracts = linker.get_linked_artifacts(&libraries)?;
+
+        strategy.runner.revive_link_libraries(
+            strategy.context.as_mut(),
+            &self.config,
+            root,
+            &linked_contracts,
+            &libraries,
+        );
 
         // Create a mapping of name => (abi, deployment code, Vec<library deployment code>)
         let mut deployable_contracts = DeployableContracts::default();

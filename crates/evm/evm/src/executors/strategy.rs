@@ -117,6 +117,23 @@ pub trait ExecutorStrategyExt {
     ) {
     }
 
+    fn revive_set_resolc_output(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _output: ProjectCompileOutput,
+    ) {
+    }
+
+    fn revive_link_libraries(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _config: &foundry_config::Config,
+        _root: &std::path::Path,
+        _linked_contracts: &foundry_compilers::contracts::ArtifactContracts,
+        _libraries: &foundry_compilers::artifacts::Libraries,
+    ) {
+    }
+
     fn start_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
     fn rollback_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}
 }

@@ -139,6 +139,23 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         U256::from(u128::MAX)
     }
 
+    fn revive_link_libraries(
+        &self,
+        ctx: &mut dyn ExecutorStrategyContext,
+        config: &foundry_config::Config,
+        root: &std::path::Path,
+        linked_contracts: &foundry_compilers::contracts::ArtifactContracts,
+        libraries: &foundry_compilers::artifacts::Libraries,
+    ) {
+        super::libraries::link_libraries(
+            get_context_ref_mut(ctx),
+            config,
+            root,
+            linked_contracts,
+            libraries,
+        );
+    }
+
     fn revive_set_dual_compiled_contracts(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
@@ -156,6 +173,16 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         let ctx = get_context_ref_mut(ctx);
         ctx.compilation_output.replace(output);
     }
+
+    fn revive_set_resolc_output(
+        &self,
+        ctx: &mut dyn ExecutorStrategyContext,
+        output: ProjectCompileOutput,
+    ) {
+        let ctx = get_context_ref_mut(ctx);
+        ctx.resolc_output.replace(output);
+    }
+
     fn start_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
         let ctx = get_context_ref(ctx);
         let mut state = ctx.externalties.0.lock().unwrap();

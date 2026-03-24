@@ -179,6 +179,7 @@ pub struct ForgeTestData {
     pub config: Arc<Config>,
     pub profile: ForgeTestProfile,
     pub dual_compiled_contracts: Option<DualCompiledContracts>,
+    pub resolc_output: Option<ProjectCompileOutput>,
 }
 
 impl ForgeTestData {
@@ -191,7 +192,14 @@ impl ForgeTestData {
         let config = Arc::new(profile.config());
         let mut project = config.project().unwrap();
         let output = get_compiled(&mut project);
-        Self { project, output, config, profile, dual_compiled_contracts: None }
+        Self {
+            project,
+            output,
+            config,
+            profile,
+            dual_compiled_contracts: None,
+            resolc_output: None,
+        }
     }
 
     /// Builds [ForgeTestData] for the given [ForgeTestProfile] with Revive compilation.
@@ -211,13 +219,6 @@ impl ForgeTestData {
         let mut solc_project = solc_config.project().unwrap();
 
         let output = get_compiled(&mut solc_project);
-
-        // Create resolc config with resolc compilation enabled
-        let mut resolc_config = (*config).clone();
-        resolc_config.polkadot.resolc_compile = true;
-        resolc_config.polkadot.resolc =
-            Some(foundry_config::SolcReq::Version(Version::new(0, 6, 0)));
-        let mut resolc_project = resolc_config.project().unwrap();
 
         // Filter files compatible with resolc
         let all_files: Vec<_> = solc_project.paths.input_files();
@@ -283,7 +284,6 @@ impl ForgeTestData {
         let files_to_compile: Vec<_> = all_files
             .into_iter()
             .filter(|path| {
-                // We skip all the other sources to avoid deploy-time linking issues
                 path.components().any(|c| {
                     let c = PathBuf::from(&c);
                     let c = c.file_stem().unwrap_or_default();
@@ -291,6 +291,12 @@ impl ForgeTestData {
                 })
             })
             .collect();
+
+        let mut resolc_config = (*config).clone();
+        resolc_config.polkadot.resolc_compile = true;
+        resolc_config.polkadot.resolc =
+            Some(foundry_config::SolcReq::Version(Version::new(0, 6, 0)));
+        let mut resolc_project = resolc_config.project().unwrap();
         let resolc_output = get_resolc_compiled(&mut resolc_project, files_to_compile);
 
         let dual_compiled_contracts = DualCompiledContracts::new(
@@ -306,6 +312,7 @@ impl ForgeTestData {
             config: Arc::new(solc_config),
             profile,
             dual_compiled_contracts: Some(dual_compiled_contracts),
+            resolc_output: Some(resolc_output),
         }
     }
 
@@ -354,6 +361,7 @@ impl ForgeTestData {
                 ExecutorStrategy::new_evm(),
                 root,
                 &self.output,
+                None,
                 opts.local_evm_env(),
                 opts,
             )
@@ -369,6 +377,7 @@ impl ForgeTestData {
                 ExecutorStrategy::new_evm(),
                 self.project.root(),
                 &self.output,
+                None,
                 opts.local_evm_env(),
                 opts,
             )
@@ -391,6 +400,7 @@ impl ForgeTestData {
                 ExecutorStrategy::new_evm(),
                 self.project.root(),
                 &self.output,
+                None,
                 env,
                 opts,
             )
@@ -435,7 +445,14 @@ impl ForgeTestData {
         builder
             .enable_isolation(opts.isolate)
             .sender(config.sender)
-            .build::<MultiCompiler>(strategy, root, &output, opts.local_evm_env(), opts)
+            .build::<MultiCompiler>(
+                strategy,
+                root,
+                &output,
+                self.resolc_output.clone(),
+                opts.local_evm_env(),
+                opts,
+            )
             .unwrap()
     }
 }

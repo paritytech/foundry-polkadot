@@ -355,7 +355,7 @@ impl TestArgs {
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
         // Handle compilation based on whether dual compilation is enabled
-        let (output, dual_compiled_contracts) = if config.polkadot.resolc_compile {
+        let (output, dual_compiled_contracts, resolc_output) = if config.polkadot.resolc_compile {
             // Dual compilation mode: compile both solc and resolc
 
             // Compile with solc to a subdirectory
@@ -371,8 +371,7 @@ impl TestArgs {
 
             let solc_output = compiler.compile(&solc_project)?;
 
-            // Compile with resolc to the main output directory
-            let resolc_project = config.clone().project()?;
+            let resolc_project = config.project()?;
 
             let resolc_compiler = ProjectCompiler::new()
                 .quiet(shell::is_json() || self.junit)
@@ -381,7 +380,6 @@ impl TestArgs {
 
             let resolc_output = resolc_compiler.compile(&resolc_project)?;
 
-            // Create dual compiled contracts
             let dual_compiled_contracts = DualCompiledContracts::new(
                 &solc_output,
                 &resolc_output,
@@ -389,7 +387,7 @@ impl TestArgs {
                 &resolc_project.paths,
             );
 
-            (solc_output, Some(dual_compiled_contracts))
+            (solc_output, Some(dual_compiled_contracts), Some(resolc_output))
         } else {
             // Single compilation mode: compile only with solc
 
@@ -400,7 +398,7 @@ impl TestArgs {
 
             let solc_output = compiler.compile(&project)?;
 
-            (solc_output, None)
+            (solc_output, None, None)
         };
 
         // Create test options from general project settings and compiler output.
@@ -449,7 +447,14 @@ impl TestArgs {
             .with_fork(evm_opts.get_fork(&config, env.clone()))
             .enable_isolation(evm_opts.isolate)
             .odyssey(evm_opts.odyssey)
-            .build::<MultiCompiler>(strategy, project_root, &output, env, evm_opts)?;
+            .build::<MultiCompiler>(
+                strategy,
+                project_root,
+                &output,
+                resolc_output,
+                env,
+                evm_opts,
+            )?;
 
         let libraries = runner.libraries.clone();
         let mut outcome = self.run_tests(runner, config, verbosity, &filter, &output).await?;

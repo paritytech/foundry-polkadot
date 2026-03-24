@@ -25,6 +25,7 @@ alloy-rpc-types.workspace = true
 alloy-eips.workspace = true
 
 eyre.workspace = true
+tempfile.workspace = true
 revm.workspace = true
 itertools.workspace = true
 tracing.workspace = true
