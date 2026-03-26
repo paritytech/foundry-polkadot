@@ -294,8 +294,7 @@ impl ForgeTestData {
 
         let mut resolc_config = (*config).clone();
         resolc_config.polkadot.resolc_compile = true;
-        resolc_config.polkadot.resolc =
-            Some(foundry_config::SolcReq::Version(Version::new(0, 6, 0)));
+        resolc_config.polkadot.resolc = None;
         let mut resolc_project = resolc_config.project().unwrap();
         let resolc_output = get_resolc_compiled(&mut resolc_project, files_to_compile);
 

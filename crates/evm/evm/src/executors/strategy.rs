@@ -131,7 +131,8 @@ pub trait ExecutorStrategyExt {
         _root: &std::path::Path,
         _linked_contracts: &foundry_compilers::contracts::ArtifactContracts,
         _libraries: &foundry_compilers::artifacts::Libraries,
-    ) {
+    ) -> eyre::Result<()> {
+        Ok(())
     }
 
     fn start_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}

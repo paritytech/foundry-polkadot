@@ -146,14 +146,14 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         root: &std::path::Path,
         linked_contracts: &foundry_compilers::contracts::ArtifactContracts,
         libraries: &foundry_compilers::artifacts::Libraries,
-    ) {
+    ) -> eyre::Result<()> {
         super::libraries::link_libraries(
             get_context_ref_mut(ctx),
             config,
             root,
             linked_contracts,
             libraries,
-        );
+        )
     }
 
     fn revive_set_dual_compiled_contracts(

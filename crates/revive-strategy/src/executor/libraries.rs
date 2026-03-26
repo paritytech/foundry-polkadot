@@ -21,8 +21,7 @@ fn matches_by_name(info: &ContractInfo, name: &str, source: &Path) -> bool {
         Some(p) => Path::new(p),
         None => return false,
     };
-    // Try full path match first, fall back to filename-only match
-    info_path == source || info_path.file_name() == source.file_name()
+    info_path == source || source.ends_with(info_path) || info_path.ends_with(source)
 }
 
 pub fn link_libraries(
@@ -31,35 +30,50 @@ pub fn link_libraries(
     root: &Path,
     linked_contracts: &ArtifactContracts,
     libraries: &Libraries,
-) {
-    if ctx.dual_compiled_contracts.is_empty() {
-        return;
+) -> eyre::Result<()> {
+    if ctx.dual_compiled_contracts.is_empty() || libraries.libs.is_empty() {
+        return Ok(());
     }
 
-    add_missing_dcc_entries(ctx, root);
-    update_evm_bytecodes(&mut ctx.dual_compiled_contracts, linked_contracts);
-
-    if !libraries.libs.is_empty() {
-        let contracts_needing_linking = collect_contracts_needing_linking(ctx);
-        if !contracts_needing_linking.is_empty() {
-            link_pvm_bytecodes(
-                &mut ctx.dual_compiled_contracts,
-                config,
-                libraries,
-                &contracts_needing_linking,
-            );
-        }
+    let contracts_needing_linking = collect_contracts_needing_linking(ctx, root);
+    if contracts_needing_linking.is_empty() {
+        return Ok(());
     }
+
+    add_missing_dcc_entries(ctx, root, &contracts_needing_linking);
+    patch_library_guards(&mut ctx.dual_compiled_contracts, libraries);
+    update_evm_bytecodes(
+        &mut ctx.dual_compiled_contracts,
+        linked_contracts,
+        &contracts_needing_linking,
+    );
+
+    link_pvm_bytecodes(
+        &mut ctx.dual_compiled_contracts,
+        config,
+        root,
+        libraries,
+        &contracts_needing_linking,
+    )
 }
 
 /// Adds DCC entries for contracts present in resolc output but missing from DCC
 /// (e.g. libraries without factory_dependencies that DualCompiledContracts::new() skips).
-fn add_missing_dcc_entries(ctx: &mut ReviveExecutorStrategyContext, root: &Path) {
+fn add_missing_dcc_entries(
+    ctx: &mut ReviveExecutorStrategyContext,
+    root: &Path,
+    contracts_needing_linking: &BTreeSet<String>,
+) {
     let Some(resolc_output) = ctx.resolc_output.as_ref() else { return };
 
     let entries: Vec<_> = resolc_output
         .artifact_ids()
         .filter_map(|(resolc_id, resolc_artifact)| {
+            let source = resolc_id.source.strip_prefix(root).unwrap_or(&resolc_id.source);
+            let key = format!("{}:{}", source.display(), resolc_id.name);
+            if !contracts_needing_linking.contains(&key) {
+                return None;
+            }
             if ctx
                 .dual_compiled_contracts
                 .iter()
@@ -131,9 +145,62 @@ fn add_missing_dcc_entries(ctx: &mut ReviveExecutorStrategyContext, root: &Path)
     }
 }
 
-fn update_evm_bytecodes(dcc: &mut DualCompiledContracts, linked_contracts: &ArtifactContracts) {
+/// Patch library self-address guards in DCC deployed bytecodes.
+/// Libraries have `PUSH20 <zeros>` at the start of their deployed bytecode; the actual
+/// address is filled in at deploy time. We patch it here so migration can match them.
+fn patch_library_guards(dcc: &mut DualCompiledContracts, libraries: &Libraries) {
+    let lib_addresses: BTreeMap<String, Vec<u8>> = libraries
+        .libs
+        .iter()
+        .flat_map(|(_, libs)| {
+            libs.iter().filter_map(|(name, addr)| {
+                let addr = addr.strip_prefix("0x").unwrap_or(addr);
+                hex::decode(addr).ok().map(|bytes| (name.clone(), bytes))
+            })
+        })
+        .collect();
+
+    let updates: Vec<_> = dcc
+        .iter()
+        .filter_map(|(info, contract)| {
+            let bytes = contract.evm_deployed_bytecode.as_bytes()?;
+            if bytes.len() >= 21 && bytes[0] == 0x73 && bytes[1..21].iter().all(|&b| b == 0) {
+                if let Some(addr_bytes) = lib_addresses.get(&info.name) {
+                    if addr_bytes.len() == 20 {
+                        let mut patched = bytes.to_vec();
+                        patched[1..21].copy_from_slice(addr_bytes);
+                        return Some((info.clone(), patched));
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+
+    for (info, patched) in updates {
+        let contract = dcc
+            .iter()
+            .find(|(i, _)| i.name == info.name && i.path == info.path)
+            .map(|(_, c)| c.clone());
+        if let Some(mut contract) = contract {
+            contract.evm_deployed_bytecode = BytecodeObject::Bytecode(patched.clone().into());
+            contract.evm_bytecode_hash = keccak256(&patched);
+            dcc.insert(info, contract);
+        }
+    }
+}
+
+fn update_evm_bytecodes(
+    dcc: &mut DualCompiledContracts,
+    linked_contracts: &ArtifactContracts,
+    contracts_needing_linking: &BTreeSet<String>,
+) {
     let updates: Vec<_> = linked_contracts
         .iter()
+        .filter(|(id, _)| {
+            let key = format!("{}:{}", id.source.display(), id.name);
+            contracts_needing_linking.iter().any(|c| c.ends_with(&key) || key.ends_with(c))
+        })
         .filter_map(|(id, linked)| {
             let (info, mut contract) = dcc
                 .iter()
@@ -162,7 +229,10 @@ fn update_evm_bytecodes(dcc: &mut DualCompiledContracts, linked_contracts: &Arti
     }
 }
 
-fn collect_contracts_needing_linking(ctx: &ReviveExecutorStrategyContext) -> BTreeSet<String> {
+fn collect_contracts_needing_linking(
+    ctx: &ReviveExecutorStrategyContext,
+    root: &Path,
+) -> BTreeSet<String> {
     let Some(resolc_output) = ctx.resolc_output.as_ref() else {
         return BTreeSet::new();
     };
@@ -178,7 +248,8 @@ fn collect_contracts_needing_linking(ctx: &ReviveExecutorStrategyContext) -> BTr
             let is_unlinked = extras.object_format == Some(ObjectFormat::ELF);
 
             if has_missing_libraries || has_unlinked_factory_deps || is_unlinked {
-                Some(format!("{}:{}", id.source.to_string_lossy(), id.name))
+                let source = id.source.strip_prefix(root).unwrap_or(&id.source);
+                Some(format!("{}:{}", source.display(), id.name))
             } else {
                 None
             }
@@ -189,24 +260,36 @@ fn collect_contracts_needing_linking(ctx: &ReviveExecutorStrategyContext) -> BTr
 fn link_pvm_bytecodes(
     dcc: &mut DualCompiledContracts,
     config: &foundry_config::Config,
+    root: &Path,
     libraries: &Libraries,
     contracts_needing_linking: &BTreeSet<String>,
-) {
-    let Ok(resolc) = config.resolc_compiler() else {
-        tracing::warn!(target: "forge", "resolc compiler not found, skipping PVM linking");
-        return;
+) -> eyre::Result<()> {
+    let resolc =
+        config.resolc_compiler().map_err(|e| eyre::eyre!("resolc compiler not found: {e}"))?;
+
+    let solc_path = match &resolc.solc {
+        foundry_compilers::compilers::solc::SolcCompiler::Specific(s) => Some(s.solc.clone()),
+        foundry_compilers::compilers::solc::SolcCompiler::AutoDetect => {
+            use foundry_compilers::compilers::solc::Solc;
+            let mut versions = Solc::installed_versions();
+            versions.sort();
+            versions
+                .last()
+                .and_then(|v| Solc::find_svm_installed_version(v).ok().flatten().map(|s| s.solc))
+        }
     };
 
     let mut bytecodes = BTreeMap::new();
     for (info, contract) in dcc.iter() {
         if let Some(bytes) = contract.resolc_bytecode.as_bytes() {
             let source = info.path.as_deref().unwrap_or("");
-            bytecodes.insert(format!("{}:{}", source, info.name), bytes.to_vec());
+            let source = Path::new(source).strip_prefix(root).unwrap_or(Path::new(source));
+            bytecodes.insert(format!("{}:{}", source.display(), info.name), bytes.to_vec());
         }
     }
 
     if !contracts_needing_linking.iter().any(|c| bytecodes.contains_key(c)) {
-        return;
+        return Ok(());
     }
 
     let lib_args: Vec<String> = libraries
@@ -217,46 +300,84 @@ fn link_pvm_bytecodes(
         })
         .collect();
 
-    let solc_path = config
-        .solc_compiler()
-        .ok()
-        .and_then(|sc| match sc {
-            foundry_compilers::compilers::solc::SolcCompiler::Specific(s) => Some(s),
-            _ => None,
-        })
-        .map(|s| s.solc.clone());
+    let linked_pvm =
+        crate::link::resolc_link(&resolc.resolc, solc_path.as_deref(), &bytecodes, &lib_args)?;
 
-    match crate::link::resolc_link(&resolc.resolc, solc_path.as_deref(), &bytecodes, &lib_args) {
-        Ok(linked_pvm) => {
-            for (contract_id, linked_bytes) in linked_pvm {
-                let parts: Vec<&str> = contract_id.rsplitn(2, ':').collect();
-                if parts.len() != 2 {
-                    continue;
-                }
-                let (contract_name, source_path) = (parts[0], parts[1]);
+    let mut old_to_new: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
 
-                let matching = dcc
-                    .iter()
-                    .find(|(info, _)| {
-                        info.name == contract_name && info.path.as_deref() == Some(source_path)
-                    })
-                    .map(|(info, contract)| (info.clone(), contract.clone()));
-
-                if let Some((info, mut contract)) = matching {
-                    let bytecode_obj = BytecodeObject::Bytecode(linked_bytes.clone().into());
-                    contract.resolc_bytecode = bytecode_obj.clone();
-                    contract.resolc_deployed_bytecode = bytecode_obj;
-                    contract.resolc_bytecode_hash =
-                        hex::encode(keccak256(&linked_bytes).as_slice());
-                    dcc.insert(info, contract);
-                }
-            }
+    for (contract_id, linked_bytes) in &linked_pvm {
+        if let Some(old_bytes) = bytecodes.get(contract_id) {
+            old_to_new.insert(old_bytes.clone(), linked_bytes.clone());
         }
-        Err(e) => {
-            tracing::warn!(
-                target: "forge",
-                "resolc --link failed, PVM bytecodes may be unlinked: {e}"
-            );
+
+        let parts: Vec<&str> = contract_id.rsplitn(2, ':').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        let (contract_name, source_path) = (parts[0], parts[1]);
+
+        let source = Path::new(source_path);
+        let matching = dcc
+            .iter()
+            .find(|(info, _)| {
+                info.name == contract_name
+                    && info.path.as_ref().is_some_and(|p| {
+                        let p = Path::new(p);
+                        p == source || p.ends_with(source)
+                    })
+            })
+            .map(|(info, contract)| (info.clone(), contract.clone()));
+
+        if let Some((info, mut contract)) = matching {
+            let bytecode_obj = BytecodeObject::Bytecode(linked_bytes.clone().into());
+            contract.resolc_bytecode = bytecode_obj.clone();
+            contract.resolc_deployed_bytecode = bytecode_obj;
+            contract.resolc_bytecode_hash = hex::encode(keccak256(linked_bytes).as_slice());
+            dcc.insert(info, contract);
+        }
+    }
+
+    update_factory_deps(dcc, &old_to_new);
+
+    Ok(())
+}
+
+fn update_factory_deps(dcc: &mut DualCompiledContracts, old_to_new: &BTreeMap<Vec<u8>, Vec<u8>>) {
+    if old_to_new.is_empty() {
+        return;
+    }
+
+    let updates: Vec<_> = dcc
+        .iter()
+        .filter(|(_, contract)| !contract.resolc_factory_deps.is_empty())
+        .filter_map(|(info, contract)| {
+            let mut changed = false;
+            let new_deps: Vec<BytecodeObject> = contract
+                .resolc_factory_deps
+                .iter()
+                .map(|dep| {
+                    if let Some(dep_bytes) = dep.as_bytes() {
+                        if let Some(new_bytes) = old_to_new.get(dep_bytes.as_ref()) {
+                            changed = true;
+                            return BytecodeObject::Bytecode(new_bytes.clone().into());
+                        }
+                    }
+                    dep.clone()
+                })
+                .collect();
+
+            if changed { Some((info.clone(), new_deps)) } else { None }
+        })
+        .collect();
+
+    for (info, new_deps) in updates {
+        let contract = dcc
+            .iter()
+            .find(|(i, _)| i.name == info.name && i.path == info.path)
+            .map(|(_, c)| c.clone());
+        if let Some(mut updated) = contract {
+            updated.resolc_factory_deps = new_deps;
+            dcc.insert(info, updated);
         }
     }
 }

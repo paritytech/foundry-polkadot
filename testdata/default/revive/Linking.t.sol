@@ -29,3 +29,25 @@ contract LinkingTest is DSTest {
         assertEq(consumer.compute(3, 4), 15); // 3 + (3*4) = 15
     }
 }
+
+contract FactoryUser {
+    LibConsumer public consumer;
+    constructor() {
+        consumer = new LibConsumer();
+    }
+    function compute(uint256 a, uint256 b) public view returns (uint256) {
+        return consumer.compute(a, b);
+    }
+}
+
+contract FactoryLinkingTest is DSTest {
+    FactoryUser factory;
+
+    function setUp() public {
+        factory = new FactoryUser();
+    }
+
+    function testFactoryLibraryLinking() public {
+        assertEq(factory.compute(3, 4), 15); // 3 + (3*4) = 15
+    }
+}

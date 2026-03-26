@@ -524,7 +524,7 @@ impl MultiContractRunnerBuilder {
             root,
             &linked_contracts,
             &libraries,
-        );
+        )?;
 
         // Create a mapping of name => (abi, deployment code, Vec<library deployment code>)
         let mut deployable_contracts = DeployableContracts::default();

@@ -14,25 +14,29 @@ pub fn resolc_link(
 ) -> eyre::Result<BTreeMap<String, Vec<u8>>> {
     let temp_dir = tempfile::tempdir()?;
 
-    let mut file_paths = Vec::new();
+    let mut relative_paths = Vec::new();
     let mut path_to_id: BTreeMap<std::path::PathBuf, String> = BTreeMap::new();
     for (contract_id, bytecode) in bytecodes {
-        let safe_name = contract_id.replace(['/', '\\'], "_").replace(':', "_");
-        let file_path = temp_dir.path().join(format!("{safe_name}.pvm"));
-        fs::write(&file_path, bytecode)?;
-        path_to_id.insert(file_path.clone(), contract_id.clone());
-        file_paths.push(file_path);
+        let relative = std::path::PathBuf::from(format!("{contract_id}.pvm"));
+        let absolute = temp_dir.path().join(&relative);
+        if let Some(parent) = absolute.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&absolute, bytecode)?;
+        path_to_id.insert(relative.clone(), contract_id.clone());
+        relative_paths.push(relative);
     }
 
     let mut cmd = Command::new(resolc_path);
     cmd.arg("--link");
+    cmd.current_dir(temp_dir.path());
     if let Some(solc) = solc_path {
         cmd.arg("--solc").arg(solc);
     }
     for lib in libraries {
         cmd.arg("--libraries").arg(lib);
     }
-    for path in &file_paths {
+    for path in &relative_paths {
         cmd.arg(path);
     }
 
@@ -43,19 +47,27 @@ pub fn resolc_link(
     }
 
     let mut linked = BTreeMap::new();
-    for file_path in &file_paths {
-        let contract_id = &path_to_id[file_path];
+    let mut still_unlinked = Vec::new();
+    for relative in &relative_paths {
+        let contract_id = &path_to_id[relative];
         let original = &bytecodes[contract_id];
-        let updated = fs::read(file_path)?;
+        let absolute = temp_dir.path().join(relative);
+        let updated = fs::read(&absolute)?;
 
         if is_elf(original) && !is_elf(&updated) {
             linked.insert(contract_id.clone(), updated);
         } else if is_elf(original) && is_elf(&updated) {
-            tracing::debug!(
-                target: "forge",
-                "resolc --link: {contract_id} remains unlinked (still ELF)"
-            );
+            still_unlinked.push(contract_id.clone());
         }
+    }
+
+    if !still_unlinked.is_empty() {
+        tracing::warn!(
+            target: "forge",
+            "resolc --link: {} contract(s) remain unlinked: {}",
+            still_unlinked.len(),
+            still_unlinked.join(", ")
+        );
     }
 
     Ok(linked)
