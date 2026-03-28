@@ -88,8 +88,49 @@ fn add_missing_dcc_entries(
                 return None;
             }
 
-            let resolc_hash =
-                resolc_artifact.extensions.resolc_extras().and_then(|x| x.hash).unwrap_or_default();
+            let resolc_extras = resolc_artifact.extensions.resolc_extras();
+            let resolc_hash = resolc_extras.as_ref().and_then(|x| x.hash.clone()).unwrap_or_default();
+
+            let mut factory_deps: Vec<BytecodeObject> = resolc_extras
+                .as_ref()
+                .and_then(|x| x.factory_dependencies.as_ref())
+                .map(|deps_map| {
+                    deps_map
+                        .keys()
+                        .filter_map(|hash| {
+                            resolc_output.artifact_ids().find_map(|(_, art)| {
+                                let h = art.extensions.resolc_extras().and_then(|e| e.hash)?;
+                                if &h == hash {
+                                    art.get_bytecode().map(|b| b.object.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+
+            if let Some(unlinked_deps) = resolc_extras
+                .as_ref()
+                .and_then(|x| x.factory_dependencies_unlinked.as_ref())
+            {
+                for dep_id in unlinked_deps {
+                    let parts: Vec<&str> = dep_id.rsplitn(2, ':').collect();
+                    if parts.len() == 2 {
+                        let (dep_name, dep_source) = (parts[0], parts[1]);
+                        if let Some(bytecode) = resolc_output.artifact_ids().find_map(|(id, art)| {
+                            if id.name == dep_name && id.source.to_string_lossy().ends_with(dep_source) {
+                                art.get_bytecode().map(|b| b.object.clone())
+                            } else {
+                                None
+                            }
+                        }) {
+                            factory_deps.push(bytecode);
+                        }
+                    }
+                }
+            }
 
             let (evm_bytecode, evm_deployed, evm_hash) = ctx
                 .compilation_output
@@ -129,7 +170,7 @@ fn add_missing_dcc_entries(
                     resolc_bytecode_hash: resolc_hash,
                     resolc_bytecode: resolc_bytecode.clone(),
                     resolc_deployed_bytecode: resolc_bytecode,
-                    resolc_factory_deps: vec![],
+                    resolc_factory_deps: factory_deps,
                     evm_bytecode_hash: evm_hash,
                     evm_bytecode,
                     evm_deployed_bytecode: evm_deployed,
