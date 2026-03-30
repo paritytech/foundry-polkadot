@@ -221,8 +221,7 @@ contract LibConsumer {
     .unwrap();
 
     prj.update_config(|config| {
-        config.libraries =
-            vec![format!("src/MathLib.sol:MathLib:{:?}", Address::random())];
+        config.libraries = vec![format!("src/MathLib.sol:MathLib:{:?}", Address::random())];
     });
 
     "src/LibConsumer.sol:LibConsumer".to_string()

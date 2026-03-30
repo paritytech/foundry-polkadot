@@ -89,7 +89,8 @@ fn add_missing_dcc_entries(
             }
 
             let resolc_extras = resolc_artifact.extensions.resolc_extras();
-            let resolc_hash = resolc_extras.as_ref().and_then(|x| x.hash.clone()).unwrap_or_default();
+            let resolc_hash =
+                resolc_extras.as_ref().and_then(|x| x.hash.clone()).unwrap_or_default();
 
             let mut factory_deps: Vec<BytecodeObject> = resolc_extras
                 .as_ref()
@@ -111,21 +112,24 @@ fn add_missing_dcc_entries(
                 })
                 .unwrap_or_default();
 
-            if let Some(unlinked_deps) = resolc_extras
-                .as_ref()
-                .and_then(|x| x.factory_dependencies_unlinked.as_ref())
+            if let Some(unlinked_deps) =
+                resolc_extras.as_ref().and_then(|x| x.factory_dependencies_unlinked.as_ref())
             {
                 for dep_id in unlinked_deps {
                     let parts: Vec<&str> = dep_id.rsplitn(2, ':').collect();
                     if parts.len() == 2 {
                         let (dep_name, dep_source) = (parts[0], parts[1]);
-                        if let Some(bytecode) = resolc_output.artifact_ids().find_map(|(id, art)| {
-                            if id.name == dep_name && id.source.to_string_lossy().ends_with(dep_source) {
-                                art.get_bytecode().map(|b| b.object.clone())
-                            } else {
-                                None
-                            }
-                        }) {
+                        if let Some(bytecode) =
+                            resolc_output.artifact_ids().find_map(|(id, art)| {
+                                if id.name == dep_name
+                                    && id.source.to_string_lossy().ends_with(dep_source)
+                                {
+                                    art.get_bytecode().map(|b| b.object.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                        {
                             factory_deps.push(bytecode);
                         }
                     }

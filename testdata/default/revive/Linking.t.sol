@@ -7,6 +7,7 @@ library MathLib {
     function add(uint256 a, uint256 b) public pure returns (uint256) {
         return a + b;
     }
+
     function mul(uint256 a, uint256 b) public pure returns (uint256) {
         return a * b;
     }
@@ -32,9 +33,11 @@ contract LinkingTest is DSTest {
 
 contract FactoryUser {
     LibConsumer public consumer;
+
     constructor() {
         consumer = new LibConsumer();
     }
+
     function compute(uint256 a, uint256 b) public view returns (uint256) {
         return consumer.compute(a, b);
     }
