@@ -14,7 +14,8 @@ use foundry_cheatcodes::{
         revertToStateCall, rollCall, setBlockhashCall, setNonceCall, setNonceUnsafeCall,
         snapshotStateCall, storeCall, warpCall,
     },
-    journaled_account, precompile_error,
+    error::precompile_error,
+    journaled_account,
 };
 
 use foundry_compilers::{
@@ -250,6 +251,8 @@ impl PvmCheatcodeInspectorStrategyRunner {
                         account: Address::from(record.account.0),
                         kind: record.kind,
                         initialized: record.initialized,
+                        oldNonce: record.old_nonce.into(),
+                        newNonce: ctx.externalities.get_nonce(record.account.0.into()).into(),
                         oldBalance: U256::from_limbs(record.old_balance.0),
                         newBalance: ecx
                             .journaled_state
@@ -296,7 +299,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
         match cheatcode.as_any().type_id() {
             t if is::<polkadot_0Call>(t) => {
                 // polkadot(bool enable, string backend)
-                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode, using_revive = ?using_revive);
                 let polkadot_0Call { enable, backend } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
@@ -304,21 +307,21 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             }
             t if is::<polkadot_1Call>(t) => {
                 // polkadot(bool enable) - auto-detect backend
-                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode, using_revive = ?using_revive);
                 let polkadot_1Call { enable } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx: &mut PvmCheatcodeInspectorStrategyContext =
                     get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 handle_polkadot_call(ctx, ccx.ecx, *enable, "")
             }
             t if is::<polkadotSkipCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode, using_revive = ?using_revive);
                 let polkadotSkipCall { .. } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 ctx.skip_revive = true;
                 Ok(Default::default())
             }
             t if using_revive && is::<dealCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
                 let dealCall { account, newBalance } = cheatcode.as_any().downcast_ref().unwrap();
 
                 let clamped_balance = ctx.externalities.set_balance(*account, *newBalance);
@@ -326,7 +329,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 clamped_deal.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<setNonceCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
 
                 let &setNonceCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
@@ -335,7 +338,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<setNonceUnsafeCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
 
                 let &setNonceUnsafeCall { account, newNonce } =
                     cheatcode.as_any().downcast_ref().unwrap();
@@ -344,7 +347,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<resetNonceCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
                 let &resetNonceCall { account } = cheatcode.as_any().downcast_ref().unwrap();
 
                 // EOA nonces start at 0, contract nonces start at 1
@@ -358,7 +361,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<getNonce_0Call>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
                 let &getNonce_0Call { account } = cheatcode.as_any().downcast_ref().unwrap();
                 let ctx = get_context_ref_mut(ccx.state.strategy.context.as_mut());
                 let nonce = ctx.externalities.get_nonce(account);
@@ -420,7 +423,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<chainIdCall>(t) => {
                 let &chainIdCall { newChainId } = cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
                 ctx.externalities.set_chain_id(newChainId.to());
 
                 cheatcode.dyn_apply(ccx, executor)
@@ -428,7 +431,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
             t if using_revive && is::<coinbaseCall>(t) => {
                 let &coinbaseCall { newCoinbase } = cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
                 ctx.externalities.set_block_author(newCoinbase);
 
                 cheatcode.dyn_apply(ccx, executor)
@@ -437,7 +440,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 let &setBlockhashCall { blockNumber, blockHash } =
                     cheatcode.as_any().downcast_ref().unwrap();
 
-                tracing::info!(cheatcode = ?cheatcode.as_debug(), using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode, using_revive = ?using_revive);
                 let u64_max: U256 = U256::from(u64::MAX);
                 let clamped_block_number = if blockNumber > u64_max {
                     tracing::warn!(
@@ -488,7 +491,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 cheatcode.dyn_apply(ccx, executor)
             }
             t if using_revive && is::<loadCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
                 let &loadCall { target, slot } = cheatcode.as_any().downcast_ref().unwrap();
 
                 // Check if target is the test contract - if so, read from REVM state instead
@@ -509,7 +512,7 @@ impl CheatcodeInspectorStrategyRunner for PvmCheatcodeInspectorStrategyRunner {
                 }
             }
             t if using_revive && is::<storeCall>(t) => {
-                tracing::info!(cheatcode = ?cheatcode.as_debug() , using_revive = ?using_revive);
+                tracing::info!(cheatcode = ?cheatcode , using_revive = ?using_revive);
                 let &storeCall { target, slot, value } = cheatcode.as_any().downcast_ref().unwrap();
                 if ccx.is_precompile(&target) {
                     return Err(precompile_error(&target));
@@ -1332,6 +1335,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                     gas: Gas::new(call.gas_limit),
                 },
                 memory_offset: call.return_memory_offset.clone(),
+                precompile_call_logs: vec![],
+                was_precompile_called: false,
             });
         }
 
@@ -1416,6 +1421,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                             gas,
                         },
                         memory_offset: call.return_memory_offset.clone(),
+                        precompile_call_logs: vec![],
+                        was_precompile_called: false,
                     }
                 } else if result.data.is_empty() {
                     CallOutcome {
@@ -1425,6 +1432,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                             gas,
                         },
                         memory_offset: call.return_memory_offset.clone(),
+                        precompile_call_logs: vec![],
+                        was_precompile_called: false,
                     }
                 } else {
                     CallOutcome {
@@ -1434,6 +1443,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                             gas,
                         },
                         memory_offset: call.return_memory_offset.clone(),
+                        precompile_call_logs: vec![],
+                        was_precompile_called: false,
                     }
                 };
 
@@ -1450,6 +1461,8 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
                         gas,
                     },
                     memory_offset: call.return_memory_offset.clone(),
+                    precompile_call_logs: vec![],
+                    was_precompile_called: false,
                 })
             }
         }

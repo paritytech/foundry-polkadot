@@ -9,17 +9,19 @@ use alloy_network::{
 };
 use alloy_primitives::{Address, Bytes, TxKind, U256, hex};
 use alloy_provider::Provider;
-use alloy_rpc_types::{AccessList, Authorization, TransactionInput, TransactionRequest};
+use alloy_rpc_types::{AccessList, Authorization, TransactionInputKind, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use alloy_signer::Signer;
 use alloy_transport::TransportError;
 use eyre::Result;
-use foundry_block_explorers::EtherscanApiVersion;
 use foundry_cli::{
     opts::{CliAuthorizationList, TransactionOpts},
     utils::{self, parse_function_args},
 };
-use foundry_common::fmt::format_tokens;
+use foundry_common::{
+    fmt::format_tokens,
+    provider::{RetryProvider, RetryProviderWithSigner},
+};
 use foundry_config::{Chain, Config};
 use foundry_wallets::{WalletOpts, WalletSigner};
 use itertools::Itertools;
@@ -35,7 +37,7 @@ pub enum SenderKind<'a> {
     /// A reference to a signer.
     Signer(&'a WalletSigner),
     /// An owned signer.
-    OwnedSigner(WalletSigner),
+    OwnedSigner(Box<WalletSigner>),
 }
 
 impl SenderKind<'_> {
@@ -59,7 +61,7 @@ impl SenderKind<'_> {
         if let Some(from) = opts.from {
             Ok(from.into())
         } else if let Ok(signer) = opts.signer().await {
-            Ok(Self::OwnedSigner(signer))
+            Ok(Self::OwnedSigner(Box::new(signer)))
         } else {
             Ok(Address::ZERO.into())
         }
@@ -69,7 +71,7 @@ impl SenderKind<'_> {
     pub fn as_signer(&self) -> Option<&WalletSigner> {
         match self {
             Self::Signer(signer) => Some(signer),
-            Self::OwnedSigner(signer) => Some(signer),
+            Self::OwnedSigner(signer) => Some(signer.as_ref()),
             _ => None,
         }
     }
@@ -89,7 +91,7 @@ impl<'a> From<&'a WalletSigner> for SenderKind<'a> {
 
 impl From<WalletSigner> for SenderKind<'_> {
     fn from(signer: WalletSigner) -> Self {
-        Self::OwnedSigner(signer)
+        Self::OwnedSigner(Box::new(signer))
     }
 }
 
@@ -144,7 +146,6 @@ pub struct CastTxBuilder<P, S> {
     auth: Option<CliAuthorizationList>,
     chain: Chain,
     etherscan_api_key: Option<String>,
-    etherscan_api_version: EtherscanApiVersion,
     access_list: Option<Option<AccessList>>,
     state: S,
 }
@@ -156,7 +157,6 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InitState> {
         let mut tx = WithOtherFields::<TransactionRequest>::default();
 
         let chain = utils::get_chain(config.chain, &provider).await?;
-        let etherscan_api_version = config.get_etherscan_api_version(Some(chain));
         let etherscan_api_key = config.get_etherscan_api_key(Some(chain));
         // mark it as legacy if requested or the chain is legacy and no 7702 is provided.
         let legacy = tx_opts.legacy || (chain.is_legacy() && tx_opts.auth.is_none());
@@ -196,7 +196,6 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InitState> {
             blob: tx_opts.blob,
             chain,
             etherscan_api_key,
-            etherscan_api_version,
             auth: tx_opts.auth,
             access_list: tx_opts.access_list,
             state: InitState,
@@ -213,7 +212,6 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InitState> {
             blob: self.blob,
             chain: self.chain,
             etherscan_api_key: self.etherscan_api_key,
-            etherscan_api_version: self.etherscan_api_version,
             auth: self.auth,
             access_list: self.access_list,
             state: ToState { to },
@@ -239,7 +237,6 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, ToState> {
                 self.chain,
                 &self.provider,
                 self.etherscan_api_key.as_deref(),
-                self.etherscan_api_version,
             )
             .await?
         } else {
@@ -271,7 +268,6 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, ToState> {
             blob: self.blob,
             chain: self.chain,
             etherscan_api_key: self.etherscan_api_key,
-            etherscan_api_version: self.etherscan_api_version,
             auth: self.auth,
             access_list: self.access_list,
             state: InputState { kind: self.state.to.into(), input, func },
@@ -280,7 +276,7 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, ToState> {
 }
 
 impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
-    /// Builds [TransactionRequest] and fiils missing fields. Returns a transaction which is ready
+    /// Builds [TransactionRequest] and fills missing fields. Returns a transaction which is ready
     /// to be broadcasted.
     pub async fn build(
         self,
@@ -322,8 +318,7 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
         self.tx.set_kind(self.state.kind);
 
         // we set both fields to the same value because some nodes only accept the legacy `data` field: <https://github.com/foundry-rs/foundry/issues/7764#issuecomment-2210453249>
-        let input = Bytes::copy_from_slice(&self.state.input);
-        self.tx.input = TransactionInput { input: Some(input.clone()), data: Some(input) };
+        self.tx.set_input_kind(self.state.input.clone(), TransactionInputKind::Both);
 
         self.tx.set_from(from);
         self.tx.set_chain_id(self.chain.id());
@@ -377,14 +372,12 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
         {
             let estimate = self.provider.estimate_eip1559_fees().await?;
 
-            if !self.legacy {
-                if self.tx.max_fee_per_gas.is_none() {
-                    self.tx.max_fee_per_gas = Some(estimate.max_fee_per_gas);
-                }
+            if self.tx.max_fee_per_gas.is_none() {
+                self.tx.max_fee_per_gas = Some(estimate.max_fee_per_gas);
+            }
 
-                if self.tx.max_priority_fee_per_gas.is_none() {
-                    self.tx.max_priority_fee_per_gas = Some(estimate.max_priority_fee_per_gas);
-                }
+            if self.tx.max_priority_fee_per_gas.is_none() {
+                self.tx.max_priority_fee_per_gas = Some(estimate.max_priority_fee_per_gas);
             }
         }
 
@@ -450,6 +443,7 @@ impl<P, S> CastTxBuilder<P, S>
 where
     P: Provider<AnyNetwork>,
 {
+    /// Populates the blob sidecar for the transaction if any blob data was provided.
     pub fn with_blob_data(mut self, blob_data: Option<Vec<u8>>) -> Result<Self> {
         let Some(blob_data) = blob_data else { return Ok(self) };
 
@@ -480,4 +474,16 @@ async fn decode_execution_revert(data: &RawValue) -> Result<Option<String>> {
         return Ok(Some(decoded_error));
     }
     Ok(None)
+}
+
+/// Creates a provider with wallet for signing transactions locally.
+pub async fn signing_provider(
+    wallet: WalletOpts,
+    provider: &RetryProvider,
+) -> eyre::Result<RetryProviderWithSigner> {
+    let wallet = alloy_network::EthereumWallet::from(wallet.signer().await?);
+    Ok(alloy_provider::ProviderBuilder::default()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        .connect_provider(provider.clone()))
 }

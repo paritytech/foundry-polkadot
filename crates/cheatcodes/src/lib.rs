@@ -17,12 +17,13 @@ extern crate tracing;
 
 use alloy_evm::eth::EthEvmContext;
 use alloy_primitives::Address;
+use error::precompile_error;
 use foundry_evm_core::backend::DatabaseExt;
 use spec::Status;
 
 pub use Vm::ForgeContext;
 pub use config::CheatsConfig;
-pub use error::{Error, ErrorKind, Result, precompile_error};
+pub use error::{Error, ErrorKind, Result};
 pub use inspector::{
     BroadcastableTransaction, BroadcastableTransactions, Cheatcodes, CheatcodesExecutor,
 };
@@ -31,7 +32,7 @@ pub use spec::{CheatcodeDef, Vm};
 pub use evm::journaled_account;
 
 #[macro_use]
-mod error;
+pub mod error;
 
 mod base64;
 
@@ -49,7 +50,7 @@ mod evm;
 mod fs;
 
 mod inspector;
-pub use inspector::{CommonCreateInput, Ecx};
+pub use inspector::{CheatcodeAnalysis, CommonCreateInput, Ecx};
 
 mod json;
 
@@ -102,10 +103,8 @@ pub(crate) trait Cheatcode: CheatcodeDef + DynCheatcode {
     }
 }
 
-pub trait DynCheatcode: 'static + std::any::Any {
+pub trait DynCheatcode: 'static + std::fmt::Debug {
     fn cheatcode(&self) -> &'static spec::Cheatcode<'static>;
-
-    fn as_debug(&self) -> &dyn std::fmt::Debug;
 
     fn dyn_apply(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result;
 
@@ -113,17 +112,10 @@ pub trait DynCheatcode: 'static + std::any::Any {
 }
 
 impl<T: Cheatcode> DynCheatcode for T {
-    #[inline]
     fn cheatcode(&self) -> &'static spec::Cheatcode<'static> {
         Self::CHEATCODE
     }
 
-    #[inline]
-    fn as_debug(&self) -> &dyn std::fmt::Debug {
-        self
-    }
-
-    #[inline]
     fn dyn_apply(&self, ccx: &mut CheatsCtxt, executor: &mut dyn CheatcodesExecutor) -> Result {
         self.apply_full(ccx, executor)
     }
@@ -181,8 +173,11 @@ impl std::ops::DerefMut for CheatsCtxt<'_, '_, '_, '_> {
 }
 
 impl CheatsCtxt<'_, '_, '_, '_> {
-    #[inline]
+    pub fn ensure_not_precompile(&self, address: &Address) -> Result<()> {
+        if self.is_precompile(address) { Err(precompile_error(address)) } else { Ok(()) }
+    }
+
     pub fn is_precompile(&self, address: &Address) -> bool {
-        self.ecx.journaled_state.inner.precompiles.contains(address)
+        self.ecx.journaled_state.warm_addresses.precompiles().contains(address)
     }
 }

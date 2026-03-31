@@ -8,10 +8,11 @@ use eyre::{Result, eyre};
 use forge_script_sequence::{AdditionalContract, ScriptSequence};
 use forge_verify::{RetryArgs, VerifierArgs, VerifyArgs, provider::VerificationProviderType};
 use foundry_cli::opts::{EtherscanOpts, ProjectPathOpts};
-use foundry_common::ContractsByArtifact;
+use foundry_common::{ContractsByArtifact, sh_err, sh_println, sh_warn};
 use foundry_compilers::{Project, artifacts::EvmVersion, info::ContractInfo};
 use foundry_config::{Chain, Config};
 use semver::Version;
+use tracing::{trace, warn};
 
 /// State after we have broadcasted the script.
 /// It is assumed that at this point [BroadcastedState::sequence] contains receipts for all
@@ -131,7 +132,7 @@ impl VerifyBundle {
                         .to_string(),
                 };
 
-                // We strip the build metadadata information, since it can lead to
+                // We strip the build metadata information, since it can lead to
                 // etherscan not identifying it correctly. eg:
                 // `v0.8.10+commit.fc410830.Linux.gcc` != `v0.8.10+commit.fc410830`
                 let version = Version::new(
@@ -146,6 +147,8 @@ impl VerifyBundle {
                     compiler_version: Some(version.to_string()),
                     constructor_args: Some(hex::encode(constructor_args)),
                     constructor_args_path: None,
+                    no_auto_detect: false,
+                    use_solc: None,
                     num_of_optimizations: self.num_of_optimizations,
                     etherscan: self.etherscan.clone(),
                     rpc: Default::default(),
@@ -163,6 +166,7 @@ impl VerifyBundle {
                     guess_constructor_args: false,
                     compilation_profile: Some(artifact.profile.to_string()),
                     language: None,
+                    creation_transaction_hash: None,
                 };
 
                 return Some(verify);
@@ -268,7 +272,9 @@ fn check_unverified(
 ) {
     if !unverifiable_contracts.is_empty() {
         let _ = sh_warn!(
-            "We haven't found any matching bytecode for the following contracts: {:?}.\n\nThis may occur when resuming a verification, but the underlying source code or compiler version has changed.",
+            "We haven't found any matching bytecode for the following contracts: {:?}.\n\n\
+            This may occur when resuming a verification, but the underlying source code or compiler version has changed.\n\
+            Run `forge clean` to make sure builds are in sync with project files, then try again. Alternatively, use `forge verify-contract` to verify contracts that are already deployed.",
             unverifiable_contracts
         );
 

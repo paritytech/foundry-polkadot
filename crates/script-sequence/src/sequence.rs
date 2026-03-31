@@ -51,8 +51,8 @@ pub struct SensitiveScriptSequence {
     pub transactions: VecDeque<SensitiveTransactionMetadata>,
 }
 
-impl From<ScriptSequence> for SensitiveScriptSequence {
-    fn from(sequence: ScriptSequence) -> Self {
+impl From<&ScriptSequence> for SensitiveScriptSequence {
+    fn from(sequence: &ScriptSequence) -> Self {
         Self {
             transactions: sequence
                 .transactions
@@ -99,31 +99,31 @@ impl ScriptSequence {
             return Ok(());
         }
 
-        let Some((path, sensitive_path)) = self.paths.clone() else { return Ok(()) };
-
         self.timestamp = now().as_millis();
         let ts_name = format!("run-{}.json", self.timestamp);
 
-        let sensitive_script_sequence: SensitiveScriptSequence = self.clone().into();
+        let sensitive_script_sequence = SensitiveScriptSequence::from(&*self);
+
+        let Some((path, sensitive_path)) = self.paths.as_ref() else { return Ok(()) };
 
         // broadcast folder writes
         //../run-latest.json
-        let mut writer = BufWriter::new(fs::create_file(&path)?);
+        let mut writer = BufWriter::new(fs::create_file(path)?);
         serde_json::to_writer_pretty(&mut writer, &self)?;
         writer.flush()?;
         if save_ts {
             //../run-[timestamp].json
-            fs::copy(&path, path.with_file_name(&ts_name))?;
+            fs::copy(path, path.with_file_name(&ts_name))?;
         }
 
         // cache folder writes
         //../run-latest.json
-        let mut writer = BufWriter::new(fs::create_file(&sensitive_path)?);
+        let mut writer = BufWriter::new(fs::create_file(sensitive_path)?);
         serde_json::to_writer_pretty(&mut writer, &sensitive_script_sequence)?;
         writer.flush()?;
         if save_ts {
             //../run-[timestamp].json
-            fs::copy(&sensitive_path, sensitive_path.with_file_name(&ts_name))?;
+            fs::copy(sensitive_path, sensitive_path.with_file_name(&ts_name))?;
         }
 
         if !silent {
@@ -194,9 +194,10 @@ impl ScriptSequence {
 
         // TODO: ideally we want the name of the function here if sig is calldata
         let filename = sig_to_file_name(sig);
+        let filename_with_ext = format!("{filename}-latest.json");
 
-        broadcast.push(format!("{filename}-latest.json"));
-        cache.push(format!("{filename}-latest.json"));
+        broadcast.push(&filename_with_ext);
+        cache.push(&filename_with_ext);
 
         Ok((broadcast, cache))
     }
@@ -228,12 +229,15 @@ pub fn sig_to_file_name(sig: &str) -> String {
         return name.to_string();
     }
     // assume calldata if `sig` is hex
-    if let Ok(calldata) = hex::decode(sig) {
-        // in which case we return the function signature
-        return hex::encode(&calldata[..SELECTOR_LEN]);
+    if let Ok(calldata) = hex::decode(sig.strip_prefix("0x").unwrap_or(sig)) {
+        // in which case we return the function selector if available
+        if let Some(selector) = calldata.get(..SELECTOR_LEN) {
+            return hex::encode(selector);
+        }
+        // fallback to original string if calldata is too short to contain selector
+        return sig.to_string();
     }
 
-    // return sig as is
     sig.to_string()
 }
 
@@ -255,5 +259,20 @@ mod tests {
             .as_str(),
             "522bb704"
         );
+        // valid calldata with 0x prefix
+        assert_eq!(
+            sig_to_file_name(
+                "0x522bb704000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfFFb92266"
+            )
+            .as_str(),
+            "522bb704"
+        );
+        // short calldata: should not panic and should return input as-is
+        assert_eq!(sig_to_file_name("0x1234").as_str(), "0x1234");
+        assert_eq!(sig_to_file_name("123").as_str(), "123");
+        // invalid hex: should return input as-is
+        assert_eq!(sig_to_file_name("0xnotahex").as_str(), "0xnotahex");
+        // non-hex non-signature: should return input as-is
+        assert_eq!(sig_to_file_name("not_a_sig_or_hex").as_str(), "not_a_sig_or_hex");
     }
 }

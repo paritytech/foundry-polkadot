@@ -11,7 +11,7 @@ pub use self::paths::ProjectPathOpts;
 mod revive;
 pub use self::revive::ResolcOpts;
 mod utils;
-pub use self::utils::{solar_pcx_from_build_opts, solar_pcx_from_solc_project};
+pub use self::utils::*;
 
 // A set of solc compiler settings that can be set via command line arguments, which are intended
 // to be merged into an existing `foundry_config::Config`.

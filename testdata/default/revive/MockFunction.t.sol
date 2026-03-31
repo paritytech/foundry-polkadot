@@ -1,8 +1,8 @@
 pragma solidity ^0.8.18;
 
-import "ds-test/test.sol";
-import "cheats/Vm.sol";
-import "../../default/logs/console.sol";
+import "utils/DSTest.sol";
+import "utils/Vm.sol";
+import "utils/console.sol";
 
 contract MockFunctionContract {
     uint256 public a;

@@ -1,16 +1,17 @@
+use crate::{debug::handle_traces, utils::apply_chain_and_block_specific_env_changes};
 use alloy_consensus::Transaction;
 use alloy_network::{AnyNetwork, TransactionResponse};
 use alloy_primitives::{
     Address, Bytes, U256,
-    map::{HashMap, HashSet},
+    map::{AddressSet, HashMap},
 };
-use alloy_provider::{Provider, RootProvider};
+use alloy_provider::Provider;
 use alloy_rpc_types::BlockTransactions;
 use clap::Parser;
 use eyre::{Result, WrapErr};
 use foundry_cli::{
     opts::{EtherscanOpts, RpcOpts},
-    utils::{TraceResult, get_executor_strategy, handle_traces, init_progress},
+    utils::{TraceResult, get_executor_strategy, init_progress},
 };
 use foundry_common::{SYSTEM_TRANSACTION_TYPE, is_impersonated_tx, is_known_system_sender, shell};
 use foundry_compilers::artifacts::EvmVersion;
@@ -23,14 +24,14 @@ use foundry_config::{
 };
 use foundry_evm::{
     Env,
-    executors::{EvmError, TracingExecutor},
+    core::env::AsEnvMut,
+    executors::{EvmError, Executor, TracingExecutor},
     opts::EvmOpts,
     traces::{InternalTraceMode, TraceMode, Traces},
     utils::configure_tx_env,
 };
-use foundry_evm_core::env::AsEnvMut;
-
-use crate::utils::apply_chain_and_block_specific_env_changes;
+use futures::TryFutureExt;
+use revm::DatabaseRef;
 
 /// CLI arguments for `cast run`.
 #[derive(Clone, Debug, Parser)]
@@ -94,10 +95,6 @@ pub struct RunArgs {
     #[arg(long, value_name = "NO_RATE_LIMITS", visible_alias = "no-rpc-rate-limit")]
     pub no_rate_limit: bool,
 
-    /// Enables Odyssey features.
-    #[arg(long, alias = "alphanet")]
-    pub odyssey: bool,
-
     /// Use current project artifacts for trace decoding.
     #[arg(long, visible_alias = "la")]
     pub with_local_artifacts: bool,
@@ -105,6 +102,10 @@ pub struct RunArgs {
     /// Disable block gas limit check.
     #[arg(long)]
     pub disable_block_gas_limit: bool,
+
+    /// Enable the tx gas limit checks as imposed by Osaka (EIP-7825).
+    #[arg(long)]
+    pub enable_tx_gas_limit: bool,
 }
 
 impl RunArgs {
@@ -151,18 +152,27 @@ impl RunArgs {
         let tx_block_number =
             tx.block_number.ok_or_else(|| eyre::eyre!("tx may still be pending: {:?}", tx_hash))?;
 
-        // fetch the block the transaction was mined in
-        let block = provider.get_block(tx_block_number.into()).full().await?;
-
         // we need to fork off the parent block
         config.fork_block_number = Some(tx_block_number - 1);
 
         let create2_deployer = evm_opts.create2_deployer;
-        let (mut env, fork, chain, odyssey) =
-            TracingExecutor::get_fork_material(&config, evm_opts).await?;
+        let (block, (mut env, fork, chain, networks)) = tokio::try_join!(
+            // fetch the block the transaction was mined in
+            provider.get_block(tx_block_number.into()).full().into_future().map_err(Into::into),
+            TracingExecutor::get_fork_material(&mut config, evm_opts)
+        )?;
+
         let mut evm_version = self.evm_version;
 
         env.evm_env.cfg_env.disable_block_gas_limit = self.disable_block_gas_limit;
+
+        // By default do not enforce transaction gas limits imposed by Osaka (EIP-7825).
+        // Users can opt-in to enable these limits by setting `enable_tx_gas_limit` to true.
+        if !self.enable_tx_gas_limit {
+            env.evm_env.cfg_env.tx_gas_limit_cap = Some(u64::MAX);
+        }
+
+        env.evm_env.cfg_env.limit_contract_code_size = None;
         env.evm_env.block_env.number = U256::from(tx_block_number);
 
         if let Some(block) = &block {
@@ -181,7 +191,11 @@ impl RunArgs {
                     evm_version = Some(EvmVersion::Cancun);
                 }
             }
-            apply_chain_and_block_specific_env_changes::<AnyNetwork>(env.as_env_mut(), block);
+            apply_chain_and_block_specific_env_changes::<AnyNetwork>(
+                env.as_env_mut(),
+                block,
+                config.networks,
+            );
         }
 
         let trace_mode = TraceMode::Call
@@ -197,7 +211,7 @@ impl RunArgs {
             fork,
             evm_version,
             trace_mode,
-            odyssey,
+            networks,
             create2_deployer,
             None,
             strategy,
@@ -292,7 +306,7 @@ impl RunArgs {
             }
         };
 
-        let contracts_bytecode = fetch_contracts_bytecode_from_trace(&provider, &result).await?;
+        let contracts_bytecode = fetch_contracts_bytecode_from_trace(&executor, &result)?;
         handle_traces(
             result,
             &config,
@@ -310,34 +324,32 @@ impl RunArgs {
     }
 }
 
-pub async fn fetch_contracts_bytecode_from_trace(
-    provider: &RootProvider<AnyNetwork>,
+pub fn fetch_contracts_bytecode_from_trace(
+    executor: &Executor,
     result: &TraceResult,
 ) -> Result<HashMap<Address, Bytes>> {
     let mut contracts_bytecode = HashMap::default();
     if let Some(ref traces) = result.traces {
-        let addresses = gather_trace_addresses(traces);
-        let results = futures::future::join_all(addresses.into_iter().map(async |a| {
-            (
-                a,
-                provider.get_code_at(a).await.unwrap_or_else(|e| {
-                    sh_warn!("Failed to fetch code for {a:?}: {e:?}").ok();
-                    Bytes::new()
-                }),
-            )
-        }))
-        .await;
-        for (address, code) in results {
-            if !code.is_empty() {
-                contracts_bytecode.insert(address, code);
+        contracts_bytecode.extend(gather_trace_addresses(traces).filter_map(|addr| {
+            // All relevant bytecodes should already be cached in the executor.
+            let code = executor
+                .backend()
+                .basic_ref(addr)
+                .inspect_err(|e| _ = sh_warn!("Failed to fetch code for {addr}: {e}"))
+                .ok()??
+                .code?
+                .bytes();
+            if code.is_empty() {
+                return None;
             }
-        }
+            Some((addr, code))
+        }));
     }
     Ok(contracts_bytecode)
 }
 
-fn gather_trace_addresses(traces: &Traces) -> HashSet<Address> {
-    let mut addresses = HashSet::default();
+fn gather_trace_addresses(traces: &Traces) -> impl Iterator<Item = Address> {
+    let mut addresses = AddressSet::default();
     for (_, trace) in traces {
         for node in trace.arena.nodes() {
             if !node.trace.address.is_zero() {
@@ -348,7 +360,7 @@ fn gather_trace_addresses(traces: &Traces) -> HashSet<Address> {
             }
         }
     }
-    addresses
+    addresses.into_iter()
 }
 
 impl figment::Provider for RunArgs {
@@ -359,16 +371,8 @@ impl figment::Provider for RunArgs {
     fn data(&self) -> Result<Map<Profile, Dict>, figment::Error> {
         let mut map = Map::new();
 
-        if self.odyssey {
-            map.insert("odyssey".into(), self.odyssey.into());
-        }
-
         if let Some(api_key) = &self.etherscan.key {
             map.insert("etherscan_api_key".into(), api_key.as_str().into());
-        }
-
-        if let Some(api_version) = &self.etherscan.api_version {
-            map.insert("etherscan_api_version".into(), api_version.to_string().into());
         }
 
         if let Some(evm_version) = self.evm_version {

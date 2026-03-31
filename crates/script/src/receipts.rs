@@ -3,8 +3,21 @@ use alloy_network::AnyTransactionReceipt;
 use alloy_primitives::{TxHash, U256, utils::format_units};
 use alloy_provider::{PendingTransactionBuilder, PendingTransactionError, Provider, WatchTxError};
 use eyre::{Result, eyre};
-use foundry_common::{provider::RetryProvider, retry, retry::RetryError, shell};
+use foundry_common::{
+    provider::RetryProvider,
+    retry::{self, RetryError},
+    sh_println, shell,
+};
 use std::time::Duration;
+
+/// Marker error type for pending receipts
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "Received a pending receipt for {tx_hash}, but transaction is still known to the node, retrying"
+)]
+pub struct PendingReceiptError {
+    pub tx_hash: TxHash,
+}
 
 /// Convenience enum for internal signalling of transaction status
 pub enum TxStatus {
@@ -37,7 +50,30 @@ pub async fn check_tx_status(
                 .get_receipt()
                 .await
             {
-                Ok(receipt) => Ok(receipt.into()),
+                Ok(receipt) => {
+                    // Check if the receipt is pending (missing block information)
+                    let is_pending = receipt.block_number.is_none()
+                        || receipt.block_hash.is_none()
+                        || receipt.transaction_index.is_none();
+
+                    if !is_pending {
+                        return Ok(receipt.into());
+                    }
+
+                    // Receipt is pending, try to sleep and retry a few times
+                    match provider.get_transaction_by_hash(hash).await {
+                        Ok(_) => {
+                            // Sleep for a short time to allow the transaction to be mined
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            // Transaction is still known to the node, retry
+                            Err(RetryError::Retry(PendingReceiptError { tx_hash: hash }.into()))
+                        }
+                        Err(_) => {
+                            // Transaction is not known to the node, mark it as dropped
+                            Ok(TxStatus::Dropped)
+                        }
+                    }
+                }
                 Err(e) => match provider.get_transaction_by_hash(hash).await {
                     Ok(_) => match e {
                         PendingTransactionError::TxWatcher(WatchTxError::Timeout) => {

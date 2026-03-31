@@ -1,13 +1,9 @@
 //! Support for compiling [foundry_compilers::Project]
 
 use crate::{
-    TestFunctionExt,
-    preprocessor::TestOptimizerPreprocessor,
-    reports::{ReportKind, report_kind},
-    shell,
-    term::SpinnerReporter,
+    TestFunctionExt, preprocessor::DynamicTestLinkingPreprocessor, shell, term::SpinnerReporter,
 };
-use comfy_table::{Cell, Color, Table, modifiers::UTF8_ROUND_CORNERS};
+use comfy_table::{Cell, Color, Table, modifiers::UTF8_ROUND_CORNERS, presets::ASCII_MARKDOWN};
 use eyre::Result;
 use foundry_block_explorers::contract::Metadata;
 use foundry_compilers::{
@@ -18,6 +14,7 @@ use foundry_compilers::{
         solc::{Solc, SolcCompiler},
     },
     info::ContractInfo as CompilerContractInfo,
+    multi::{MultiCompiler, MultiCompilerSettings},
     project::Preprocessor,
     report::{BasicStdoutReporter, NoReporter, Report},
     solc::SolcSettings,
@@ -29,8 +26,12 @@ use std::{
     io::IsTerminal,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
     time::Instant,
 };
+
+/// A Solar compiler instance, to grant syntactic and semantic analysis capabilities.
+pub type Analysis = Arc<solar::sema::Compiler>;
 
 /// Builder type to configure how to compile a project.
 ///
@@ -40,9 +41,6 @@ use std::{
 pub struct ProjectCompiler {
     /// The root of the project.
     project_root: PathBuf,
-
-    /// Whether we are going to verify the contracts after compilation.
-    verify: Option<bool>,
 
     /// Whether to also print contract names.
     print_names: Option<bool>,
@@ -59,7 +57,7 @@ pub struct ProjectCompiler {
     /// Whether to ignore the contract initcode size limit introduced by EIP-3860.
     ignore_eip_3860: bool,
 
-    /// Extra files to include, that are not necessarily in the project's source dir.
+    /// Extra files to include, that are not necessarily in the project's source directory.
     files: Vec<PathBuf>,
 
     /// Whether to compile with dynamic linking tests and scripts.
@@ -85,7 +83,6 @@ impl ProjectCompiler {
     pub fn new() -> Self {
         Self {
             project_root: PathBuf::new(),
-            verify: None,
             print_names: None,
             print_sizes: None,
             quiet: Some(crate::shell::is_quiet()),
@@ -96,13 +93,6 @@ impl ProjectCompiler {
             runtime_size_limit: None,
             initcode_size_limit: None,
         }
-    }
-
-    /// Sets whether we are going to verify the contracts after compilation.
-    #[inline]
-    pub fn verify(mut self, yes: bool) -> Self {
-        self.verify = Some(yes);
-        self
     }
 
     /// Sets whether to print contract names.
@@ -164,12 +154,13 @@ impl ProjectCompiler {
     }
 
     /// Compiles the project.
+    #[instrument(target = "forge::compile", skip_all)]
     pub fn compile<C: Compiler<CompilerContract = Contract>>(
         mut self,
         project: &Project<C>,
     ) -> Result<ProjectCompileOutput<C>>
     where
-        TestOptimizerPreprocessor: Preprocessor<C>,
+        DynamicTestLinkingPreprocessor: Preprocessor<C>,
     {
         self.project_root = project.root().to_path_buf();
 
@@ -197,23 +188,13 @@ impl ProjectCompiler {
             let mut compiler =
                 foundry_compilers::project::ProjectCompiler::with_sources(project, sources)?;
             if preprocess {
-                compiler = compiler.with_preprocessor(TestOptimizerPreprocessor);
+                compiler = compiler.with_preprocessor(DynamicTestLinkingPreprocessor);
             }
             compiler.compile().map_err(Into::into)
         })
     }
 
     /// Compiles the project with the given closure
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use foundry_common::compile::ProjectCompiler;
-    /// let config = foundry_config::Config::load().unwrap();
-    /// let prj = config.project().unwrap();
-    /// ProjectCompiler::new().compile_with(|| Ok(prj.compile()?)).unwrap();
-    /// ```
-    #[instrument(target = "forge::compile", skip_all)]
     fn compile_with<C: Compiler<CompilerContract = Contract>, F>(
         self,
         f: F,
@@ -224,7 +205,7 @@ impl ProjectCompiler {
         let quiet = self.quiet.unwrap_or(false);
         let bail = self.bail.unwrap_or(true);
 
-        let output = with_compilation_reporter(quiet, || {
+        let output = with_compilation_reporter(quiet, Some(self.project_root.clone()), || {
             tracing::debug!("compiling project");
 
             let timer = Instant::now();
@@ -294,7 +275,6 @@ impl ProjectCompiler {
             }
 
             let mut size_report = SizeReport::new(
-                report_kind(),
                 BTreeMap::new(),
                 self.runtime_size_limit.unwrap_or(CONTRACT_RUNTIME_SIZE_LIMIT),
                 self.initcode_size_limit.unwrap_or(CONTRACT_INITCODE_SIZE_LIMIT),
@@ -369,8 +349,6 @@ const CONTRACT_INITCODE_SIZE_LIMIT: usize = 49152;
 const CONTRACT_SIZE_LIMIT_MARGIN: f64 = 0.73;
 /// Contracts with info about their size
 pub struct SizeReport {
-    /// What kind of report to generate.
-    report_kind: ReportKind,
     /// `contract name -> info`
     pub contracts: BTreeMap<String, ContractInfo>,
     /// Runtime size limit
@@ -381,12 +359,11 @@ pub struct SizeReport {
 
 impl SizeReport {
     pub fn new(
-        report_kind: ReportKind,
         contracts: BTreeMap<String, ContractInfo>,
         runtime_size_limit: usize,
         initcode_size_limit: usize,
     ) -> Self {
-        Self { report_kind, contracts, runtime_size_limit, initcode_size_limit }
+        Self { contracts, runtime_size_limit, initcode_size_limit }
     }
     /// Returns the maximum runtime code size, excluding dev contracts.
     pub fn max_runtime_size(&self) -> usize {
@@ -421,15 +398,11 @@ impl SizeReport {
 
 impl Display for SizeReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        match self.report_kind {
-            ReportKind::Text => {
-                writeln!(f, "\n{}", self.format_table_output())?;
-            }
-            ReportKind::JSON => {
-                writeln!(f, "{}", self.format_json_output())?;
-            }
+        if shell::is_json() {
+            writeln!(f, "{}", self.format_json_output())?;
+        } else {
+            writeln!(f, "\n{}", self.format_table_output())?;
         }
-
         Ok(())
     }
 }
@@ -458,7 +431,11 @@ impl SizeReport {
 
     fn format_table_output(&self) -> Table {
         let mut table = Table::new();
-        table.apply_modifier(UTF8_ROUND_CORNERS);
+        if shell::is_markdown() {
+            table.load_preset(ASCII_MARKDOWN);
+        } else {
+            table.apply_modifier(UTF8_ROUND_CORNERS);
+        }
 
         table.set_header(vec![
             Cell::new("Contract"),
@@ -552,8 +529,6 @@ pub struct ContractInfo {
 ///
 /// If `quiet` no solc related output will be emitted to stdout.
 ///
-/// If `verify` and it's a standalone script, throw error. Only allowed for projects.
-///
 /// **Note:** this expects the `target_path` to be absolute
 pub fn compile_target<C: Compiler<CompilerContract = Contract>>(
     target_path: &Path,
@@ -561,17 +536,14 @@ pub fn compile_target<C: Compiler<CompilerContract = Contract>>(
     quiet: bool,
 ) -> Result<ProjectCompileOutput<C>>
 where
-    TestOptimizerPreprocessor: Preprocessor<C>,
+    DynamicTestLinkingPreprocessor: Preprocessor<C>,
 {
     ProjectCompiler::new().quiet(quiet).files([target_path.into()]).compile(project)
 }
 
 /// Creates a [Project] from an Etherscan source.
-pub fn etherscan_project(
-    metadata: &Metadata,
-    target_path: impl AsRef<Path>,
-) -> Result<Project<SolcCompiler>> {
-    let target_path = dunce::canonicalize(target_path.as_ref())?;
+pub fn etherscan_project(metadata: &Metadata, target_path: &Path) -> Result<Project> {
+    let target_path = dunce::canonicalize(target_path)?;
     let sources_path = target_path.join(&metadata.contract_name);
     metadata.source_tree().write_to(&target_path)?;
 
@@ -601,14 +573,21 @@ pub fn etherscan_project(
         .remappings(settings.remappings.clone())
         .build_with_root(sources_path);
 
+    // TODO: detect vyper
     let v = metadata.compiler_version()?;
     let solc = Solc::find_or_install(&v)?;
 
-    let compiler = SolcCompiler::Specific(solc);
+    let compiler = MultiCompiler {
+        solidity: foundry_compilers::multi::SolidityCompiler::Solc(SolcCompiler::Specific(solc)),
+        vyper: None,
+    };
 
-    Ok(ProjectBuilder::<SolcCompiler>::default()
-        .settings(SolcSettings {
-            settings: SolcConfig::builder().settings(settings).build(),
+    Ok(ProjectBuilder::<MultiCompiler>::default()
+        .settings(MultiCompilerSettings {
+            solc: SolcSettings {
+                settings: SolcConfig::builder().settings(settings).build(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .paths(paths)
@@ -618,13 +597,17 @@ pub fn etherscan_project(
 }
 
 /// Configures the reporter and runs the given closure.
-pub fn with_compilation_reporter<O>(quiet: bool, f: impl FnOnce() -> O) -> O {
+pub fn with_compilation_reporter<O>(
+    quiet: bool,
+    project_root: Option<PathBuf>,
+    f: impl FnOnce() -> O,
+) -> O {
     #[expect(clippy::collapsible_else_if)]
     let reporter = if quiet || shell::is_json() {
         Report::new(NoReporter::default())
     } else {
         if std::io::stdout().is_terminal() {
-            Report::new(SpinnerReporter::spawn())
+            Report::new(SpinnerReporter::spawn(project_root))
         } else {
             Report::new(BasicStdoutReporter::default())
         }

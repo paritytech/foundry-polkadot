@@ -5,12 +5,6 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-#[macro_use]
-extern crate foundry_common;
-
-#[macro_use]
-extern crate tracing;
-
 use crate::runner::ScriptRunner;
 use alloy_json_abi::{Function, JsonAbi};
 use alloy_primitives::{
@@ -25,16 +19,14 @@ use dialoguer::Confirm;
 use eyre::{ContextCompat, Result};
 use forge_script_sequence::{AdditionalContract, NestedValue};
 use forge_verify::{RetryArgs, VerifierArgs};
-use foundry_block_explorers::EtherscanApiVersion;
 use foundry_cli::{
-    opts::{BuildOpts, GlobalArgs},
+    opts::{BuildOpts, EvmArgs, GlobalArgs},
     utils::{self, LoadConfig},
 };
 use foundry_common::{
     CONTRACT_MAX_SIZE, ContractsByArtifact, SELECTOR_LEN,
     abi::{encode_function_args, get_func},
-    evm::{Breakpoints, EvmArgs},
-    shell,
+    sh_err, sh_println, sh_warn, shell,
 };
 use foundry_compilers::ArtifactId;
 use foundry_config::{
@@ -46,6 +38,7 @@ use foundry_config::{
 };
 use foundry_evm::{
     backend::Backend,
+    core::Breakpoints,
     executors::ExecutorBuilder,
     inspectors::{
         CheatsConfig,
@@ -57,6 +50,7 @@ use foundry_evm::{
 use foundry_wallets::MultiWalletOpts;
 use serde::Serialize;
 use std::path::PathBuf;
+use tracing::trace;
 
 mod broadcast;
 mod build;
@@ -96,7 +90,7 @@ pub struct ScriptArgs {
     pub target_contract: Option<String>,
 
     /// The signature of the function you want to call in the contract, or raw calldata.
-    #[arg(long, short, default_value = "run()")]
+    #[arg(long, short, default_value = "run")]
     pub sig: String,
 
     /// Max priority fee per gas for EIP1559 transactions.
@@ -135,7 +129,7 @@ pub struct ScriptArgs {
     /// Send via `eth_sendTransaction` using the `--sender` argument as sender.
     #[arg(
         long,
-        conflicts_with_all = &["private_key", "private_keys", "froms", "ledger", "trezor", "aws"],
+        conflicts_with_all = &["private_key", "private_keys", "ledger", "trezor", "aws"],
     )]
     pub unlocked: bool,
 
@@ -182,16 +176,16 @@ pub struct ScriptArgs {
     #[arg(long)]
     pub disable_code_size_limit: bool,
 
+    /// Disables the labels in the traces.
+    #[arg(long)]
+    pub disable_labels: bool,
+
     /// The Etherscan (or equivalent) API key
     #[arg(long, env = "ETHERSCAN_API_KEY", value_name = "KEY")]
     pub etherscan_api_key: Option<String>,
 
-    /// The Etherscan API version.
-    #[arg(long, env = "ETHERSCAN_API_VERSION", value_name = "VERSION")]
-    pub etherscan_api_version: Option<EtherscanApiVersion>,
-
     /// Verifies all the contracts found in the receipts of a script, if any.
-    #[arg(long)]
+    #[arg(long, requires = "broadcast")]
     pub verify: bool,
 
     /// Gas price for legacy transactions, or max fee per gas for EIP1559 transactions, either
@@ -251,8 +245,7 @@ impl ScriptArgs {
 
         // Move from `CompiledState` to `BundledState` either by resuming or executing and
         // simulating script.
-        let bundled = if compiled.args.resume || (compiled.args.verify && !compiled.args.broadcast)
-        {
+        let bundled = if compiled.args.resume {
             compiled.resume().await?
         } else {
             // Drive state machine to point at which we have everything needed for simulation.
@@ -490,9 +483,9 @@ impl ScriptArgs {
         Ok(())
     }
 
-    /// We only broadcast transactions if --broadcast or --resume was passed.
+    /// We only broadcast transactions if --broadcast, --resume, or --verify was passed.
     fn should_broadcast(&self) -> bool {
-        self.broadcast || self.resume
+        self.broadcast || self.resume || self.verify
     }
 }
 
@@ -503,6 +496,7 @@ impl Provider for ScriptArgs {
 
     fn data(&self) -> Result<Map<Profile, Dict>, figment::Error> {
         let mut dict = Dict::default();
+
         if let Some(ref etherscan_api_key) =
             self.etherscan_api_key.as_ref().filter(|s| !s.trim().is_empty())
         {
@@ -511,12 +505,11 @@ impl Provider for ScriptArgs {
                 figment::value::Value::from(etherscan_api_key.to_string()),
             );
         }
-        if let Some(api_version) = &self.etherscan_api_version {
-            dict.insert("etherscan_api_version".to_string(), api_version.to_string().into());
-        }
+
         if let Some(timeout) = self.timeout {
             dict.insert("transaction_timeout".to_string(), timeout.into());
         }
+
         Ok(Map::from([(Config::selected_profile(), dict)]))
     }
 }
@@ -538,16 +531,24 @@ pub struct ScriptResult {
 }
 
 impl ScriptResult {
-    pub fn get_created_contracts(&self) -> Vec<AdditionalContract> {
+    pub fn get_created_contracts(
+        &self,
+        known_contracts: &ContractsByArtifact,
+    ) -> Vec<AdditionalContract> {
         self.traces
             .iter()
             .flat_map(|(_, traces)| {
                 traces.nodes().iter().filter_map(|node| {
                     if node.trace.kind.is_any_create() {
+                        let init_code = node.trace.data.clone();
+                        let contract_name = known_contracts
+                            .find_by_creation_code(init_code.as_ref())
+                            .map(|artifact| artifact.0.name.clone());
                         return Some(AdditionalContract {
                             opcode: node.trace.kind,
                             address: node.trace.address,
-                            init_code: node.trace.data.clone(),
+                            contract_name,
+                            init_code,
                         });
                     }
                     None
@@ -645,7 +646,7 @@ impl ScriptConfig {
             .inspectors(|stack| {
                 stack
                     .trace_mode(if debug { TraceMode::Debug } else { TraceMode::Call })
-                    .odyssey(self.evm_opts.odyssey)
+                    .networks(self.evm_opts.networks)
                     .create2_deployer(self.evm_opts.create2_deployer)
             })
             .spec_id(self.config.evm_spec_id())
@@ -707,7 +708,7 @@ mod tests {
             "0x4e59b44847b379578588920ca78fbf26c0b4956c",
             "--unlocked",
             "--private-key",
-            key.to_string().as_str(),
+            &key.to_string(),
         ]);
         assert!(args.is_err());
     }

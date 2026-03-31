@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
-import "ds-test/test.sol";
+import "utils/DSTest.sol";
 
 contract FuzzMaxIntTest is DSTest {
     // Test that unsigned integers are limited to max_fuzz_int.

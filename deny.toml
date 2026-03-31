@@ -33,7 +33,7 @@ ignore = [
     # https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-hc7m-r6v8-hg9q Unsound API access to a WebAssembly shared linear memory
     # Polkadot-sdk needs to upgrade its version also
     "RUSTSEC-2025-0118",
-    # https://rustsec.org/advisories/RUSTSEC-2025-0119 number_prefix is unmaintained
+    # https://rustsec.org/advisories/RUSTSEC-2025-0119 number_prefix! is unmaintained
     "RUSTSEC-2025-0119",
 ]
 
@@ -311,15 +311,18 @@ license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 # Lint level for what to happen when a crate from a crate registry that is not
 # in the allow list is encountered
 unknown-registry = "warn"
-# Lint level for what to happen when a crate from a git repository that is not
-# in the allow list is encountered
-unknown-git = "deny"
 allow-git = [
     "https://github.com/paritytech/foundry-compilers-polkadot",
     "https://github.com/alloy-rs/alloy",
     "https://github.com/foundry-rs/foundry-fork-db",
     "https://github.com/paradigmxyz/revm-inspectors",
+    "https://github.com/paradigmxyz/solar",
     "https://github.com/bluealloy/revm",
     "https://github.com/paradigmxyz/solar",
     "https://github.com/paritytech/polkadot-sdk",
+    # Only for tests.
+    "https://github.com/rust-cli/rexpect",
 ]
+unknown-git = "deny"
+# Lint level for what to happen when a crate from a git repository that is not
+# in the allow list is encountered

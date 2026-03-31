@@ -2,45 +2,54 @@ use crate::{
     PrecompileFactory,
     eth::{
         backend::{
-            db::Db, env::Env, mem::op_haltreason_to_instruction_result,
+            cheats::{CheatEcrecover, CheatsManager},
+            db::Db,
+            env::Env,
+            mem::op_haltreason_to_instruction_result,
             validate::TransactionValidator,
         },
         error::InvalidTransactionError,
         pool::transactions::PoolTransaction,
     },
-    inject_precompiles,
     mem::inspector::AnvilInspector,
 };
 use alloy_consensus::{
-    Receipt, ReceiptWithBloom, constants::EMPTY_WITHDRAWALS, proofs::calculate_receipt_root,
+    Header, Receipt, ReceiptWithBloom, constants::EMPTY_WITHDRAWALS,
+    proofs::calculate_receipt_root, transaction::Either,
 };
-use alloy_eips::{eip7685::EMPTY_REQUESTS_HASH, eip7840::BlobParams};
-use alloy_evm::{EthEvm, Evm, eth::EthEvmContext, precompiles::PrecompilesMap};
+use alloy_eips::{
+    eip7685::EMPTY_REQUESTS_HASH,
+    eip7702::{RecoveredAuthority, RecoveredAuthorization},
+    eip7840::BlobParams,
+};
+use alloy_evm::{
+    EthEvm, Evm, FromRecoveredTx,
+    eth::EthEvmContext,
+    precompiles::{DynPrecompile, Precompile, PrecompilesMap},
+};
 use alloy_op_evm::OpEvm;
 use alloy_primitives::{B256, Bloom, BloomInput, Log};
 use anvil_core::eth::{
-    block::{Block, BlockInfo, PartialHeader},
-    transaction::{
-        DepositReceipt, PendingTransaction, TransactionInfo, TypedReceipt, TypedTransaction,
-    },
+    block::{BlockInfo, create_block},
+    transaction::{PendingTransaction, TransactionInfo, TypedReceipt, TypedTransaction},
 };
 use foundry_evm::{
     backend::DatabaseError,
+    core::{either_evm::EitherEvm, precompiles::EC_RECOVER},
     traces::{CallTraceDecoder, CallTraceNode},
 };
-use foundry_evm_core::either_evm::EitherEvm;
-use op_revm::{L1BlockInfo, OpContext, precompiles::OpPrecompiles};
+use foundry_evm_networks::NetworkConfigs;
+use op_revm::{L1BlockInfo, OpContext, OpTransaction, precompiles::OpPrecompiles};
 use revm::{
     Database, DatabaseRef, Inspector, Journal,
-    context::{Block as RevmBlock, BlockEnv, CfgEnv, Evm as RevmEvm, JournalTr, LocalContext},
+    context::{
+        Block as RevmBlock, BlockEnv, Cfg, CfgEnv, Evm as RevmEvm, JournalTr, LocalContext, TxEnv,
+    },
     context_interface::result::{EVMError, ExecutionResult, Output},
     database::WrapDatabaseRef,
     handler::{EthPrecompiles, instructions::EthInstructions},
     interpreter::InstructionResult,
-    precompile::{
-        PrecompileSpecId, Precompiles,
-        secp256r1::{P256VERIFY, P256VERIFY_BASE_GAS_FEE},
-    },
+    precompile::{PrecompileSpecId, Precompiles},
     primitives::hardfork::SpecId,
 };
 use std::{fmt::Debug, sync::Arc};
@@ -80,11 +89,16 @@ impl ExecutedTransaction {
             TypedTransaction::EIP1559(_) => TypedReceipt::EIP1559(receipt_with_bloom),
             TypedTransaction::EIP4844(_) => TypedReceipt::EIP4844(receipt_with_bloom),
             TypedTransaction::EIP7702(_) => TypedReceipt::EIP7702(receipt_with_bloom),
-            TypedTransaction::Deposit(_tx) => TypedReceipt::Deposit(DepositReceipt {
-                inner: receipt_with_bloom,
-                deposit_nonce: Some(0),
-                deposit_receipt_version: Some(1),
-            }),
+            TypedTransaction::Deposit(_tx) => {
+                TypedReceipt::Deposit(op_alloy_consensus::OpDepositReceiptWithBloom {
+                    receipt: op_alloy_consensus::OpDepositReceipt {
+                        inner: receipt_with_bloom.receipt,
+                        deposit_nonce: Some(0),
+                        deposit_receipt_version: Some(1),
+                    },
+                    logs_bloom: receipt_with_bloom.logs_bloom,
+                })
+            }
         }
     }
 }
@@ -118,8 +132,7 @@ pub struct TransactionExecutor<'a, Db: ?Sized, V: TransactionValidator> {
     /// Cumulative blob gas used by all executed transactions
     pub blob_gas_used: u64,
     pub enable_steps_tracing: bool,
-    pub odyssey: bool,
-    pub optimism: bool,
+    pub networks: NetworkConfigs,
     pub print_logs: bool,
     pub print_traces: bool,
     /// Recorder used for decoding traces, used together with print_traces
@@ -127,6 +140,7 @@ pub struct TransactionExecutor<'a, Db: ?Sized, V: TransactionValidator> {
     /// Precompiles to inject to the EVM.
     pub precompile_factory: Option<Arc<dyn PrecompileFactory>>,
     pub blob_params: BlobParams,
+    pub cheats: CheatsManager,
 }
 
 impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
@@ -164,12 +178,16 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
                     included.push(tx.transaction.clone());
                     tx
                 }
-                TransactionExecutionOutcome::Exhausted(tx) => {
+                TransactionExecutionOutcome::BlockGasExhausted(tx) => {
                     trace!(target: "backend",  tx_gas_limit = %tx.pending_transaction.transaction.gas_limit(), ?tx,  "block gas limit exhausting, skipping transaction");
                     continue;
                 }
                 TransactionExecutionOutcome::BlobGasExhausted(tx) => {
                     trace!(target: "backend",  blob_gas = %tx.pending_transaction.transaction.blob_gas().unwrap_or_default(), ?tx,  "block blob gas limit exhausting, skipping transaction");
+                    continue;
+                }
+                TransactionExecutionOutcome::TransactionGasExhausted(tx) => {
+                    trace!(target: "backend",  tx_gas_limit = %tx.pending_transaction.transaction.gas_limit(), ?tx,  "transaction gas limit exhausting, skipping transaction");
                     continue;
                 }
                 TransactionExecutionOutcome::Invalid(tx, _) => {
@@ -198,7 +216,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
             let receipt = tx.create_receipt(&mut cumulative_gas_used);
 
             let ExecutedTransaction { transaction, logs, out, traces, exit_reason: exit, .. } = tx;
-            build_logs_bloom(logs.clone(), &mut bloom);
+            build_logs_bloom(&logs, &mut bloom);
 
             let contract_address = out.as_ref().and_then(|out| {
                 if let Output::Create(_, contract_address) = out {
@@ -230,10 +248,12 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
 
         let receipts_root = calculate_receipt_root(&receipts);
 
-        let partial_header = PartialHeader {
+        let header = Header {
             parent_hash,
+            ommers_hash: Default::default(),
             beneficiary,
             state_root: self.db.maybe_state_root().unwrap_or_default(),
+            transactions_root: Default::default(), // Will be computed by create_block
             receipts_root,
             logs_bloom: bloom,
             difficulty,
@@ -244,7 +264,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
             extra_data: Default::default(),
             mix_hash: mix_hash.unwrap_or_default(),
             nonce: Default::default(),
-            base_fee,
+            base_fee_per_gas: base_fee,
             parent_beacon_block_root: is_cancun.then_some(Default::default()),
             blob_gas_used: cumulative_blob_gas_used,
             excess_blob_gas,
@@ -252,19 +272,49 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
             requests_hash: is_prague.then_some(EMPTY_REQUESTS_HASH),
         };
 
-        let block = Block::new(partial_header, transactions.clone());
+        let block = create_block(header, transactions);
         let block = BlockInfo { block, transactions: transaction_infos, receipts };
         ExecutedTransactions { block, included, invalid }
     }
 
     fn env_for(&self, tx: &PendingTransaction) -> Env {
-        let mut tx_env = tx.to_revm_tx_env();
+        let mut tx_env: OpTransaction<TxEnv> =
+            FromRecoveredTx::from_recovered_tx(&tx.transaction.transaction, *tx.sender());
 
-        if self.optimism {
+        if let TypedTransaction::EIP7702(tx_7702) = &tx.transaction.transaction
+            && self.cheats.has_recover_overrides()
+        {
+            // Override invalid recovered authorizations with signature overrides from cheat manager
+            let cheated_auths = tx_7702
+                .tx()
+                .authorization_list
+                .iter()
+                .zip(tx_env.base.authorization_list)
+                .map(|(signed_auth, either_auth)| {
+                    either_auth.right_and_then(|recovered_auth| {
+                        if recovered_auth.authority().is_none()
+                            && let Ok(signature) = signed_auth.signature()
+                            && let Some(override_addr) =
+                                self.cheats.get_recover_override(&signature.as_bytes().into())
+                        {
+                            Either::Right(RecoveredAuthorization::new_unchecked(
+                                recovered_auth.into_parts().0,
+                                RecoveredAuthority::Valid(override_addr),
+                            ))
+                        } else {
+                            Either::Right(recovered_auth)
+                        }
+                    })
+                })
+                .collect();
+            tx_env.base.authorization_list = cheated_auths;
+        }
+
+        if self.networks.is_optimism() {
             tx_env.enveloped_tx = Some(alloy_rlp::encode(&tx.transaction.transaction).into());
         }
 
-        Env::new(self.cfg_env.clone(), self.block_env.clone(), tx_env, self.optimism)
+        Env::new(self.cfg_env.clone(), self.block_env.clone(), tx_env, self.networks)
     }
 }
 
@@ -275,10 +325,12 @@ pub enum TransactionExecutionOutcome {
     Executed(ExecutedTransaction),
     /// Invalid transaction not executed
     Invalid(Arc<PoolTransaction>, InvalidTransactionError),
-    /// Execution skipped because could exceed gas limit
-    Exhausted(Arc<PoolTransaction>),
+    /// Execution skipped because could exceed block gas limit
+    BlockGasExhausted(Arc<PoolTransaction>),
     /// Execution skipped because it exceeded the blob gas limit
     BlobGasExhausted(Arc<PoolTransaction>),
+    /// Execution skipped because it exceeded the transaction gas limit
+    TransactionGasExhausted(Arc<PoolTransaction>),
     /// When an error occurred during execution
     DatabaseError(Arc<PoolTransaction>, DatabaseError),
 }
@@ -296,10 +348,19 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
         let env = self.env_for(&transaction.pending_transaction);
 
         // check that we comply with the block's gas limit, if not disabled
-        let max_gas = self.gas_used.saturating_add(env.tx.base.gas_limit);
-        if !env.evm_env.cfg_env.disable_block_gas_limit && max_gas > env.evm_env.block_env.gas_limit
+        let max_block_gas = self.gas_used.saturating_add(env.tx.base.gas_limit);
+        if !env.evm_env.cfg_env.disable_block_gas_limit
+            && max_block_gas > env.evm_env.block_env.gas_limit
         {
-            return Some(TransactionExecutionOutcome::Exhausted(transaction));
+            return Some(TransactionExecutionOutcome::BlockGasExhausted(transaction));
+        }
+
+        // check that we comply with the transaction's gas limit as imposed by Osaka (EIP-7825)
+        if env.evm_env.cfg_env.tx_gas_limit_cap.is_none()
+            && transaction.pending_transaction.transaction.gas_limit()
+                > env.evm_env.cfg_env().tx_gas_limit_cap()
+        {
+            return Some(TransactionExecutionOutcome::TransactionGasExhausted(transaction));
         }
 
         // check that we comply with the block's blob gas limit
@@ -335,13 +396,21 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
 
         let exec_result = {
             let mut evm = new_evm_with_inspector(&mut *self.db, &env, &mut inspector);
-
-            if self.odyssey {
-                inject_precompiles(&mut evm, vec![(P256VERIFY, P256VERIFY_BASE_GAS_FEE)]);
-            }
+            self.networks.inject_precompiles(evm.precompiles_mut());
 
             if let Some(factory) = &self.precompile_factory {
-                inject_precompiles(&mut evm, factory.precompiles());
+                evm.precompiles_mut().extend_precompiles(factory.precompiles());
+            }
+
+            let cheats = Arc::new(self.cheats.clone());
+            if cheats.has_recover_overrides() {
+                let cheat_ecrecover = CheatEcrecover::new(Arc::clone(&cheats));
+                evm.precompiles_mut().apply_precompile(&EC_RECOVER, move |_| {
+                    Some(DynPrecompile::new_stateful(
+                        cheat_ecrecover.precompile_id().clone(),
+                        move |input| cheat_ecrecover.call(input),
+                    ))
+                });
             }
 
             trace!(target: "backend", "[{:?}] executing", transaction.hash());
@@ -420,7 +489,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
 }
 
 /// Inserts all logs into the bloom
-fn build_logs_bloom(logs: Vec<Log>, bloom: &mut Bloom) {
+fn build_logs_bloom(logs: &[Log], bloom: &mut Bloom) {
     for log in logs {
         bloom.accrue(BloomInput::Raw(&log.address[..]));
         for topic in log.topics() {
@@ -429,7 +498,7 @@ fn build_logs_bloom(logs: Vec<Log>, bloom: &mut Bloom) {
     }
 }
 
-/// Creates a database with given database and inspector, optionally enabling odyssey features.
+/// Creates a database with given database and inspector.
 pub fn new_evm_with_inspector<DB, I>(
     db: DB,
     env: &Env,
@@ -439,7 +508,7 @@ where
     DB: Database<Error = DatabaseError> + Debug,
     I: Inspector<EthEvmContext<DB>> + Inspector<OpContext<DB>>,
 {
-    if env.is_optimism {
+    if env.networks.is_optimism() {
         let op_cfg = env.evm_env.cfg_env.clone().with_spec(op_revm::OpSpecId::ISTHMUS);
         let op_context = OpContext {
             journaled_state: {

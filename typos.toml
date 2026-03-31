@@ -6,6 +6,9 @@ extend-exclude = [
     "Cargo.toml",
     "Cargo.lock",
     "*.json",
+    "*.js",
+    "*.css",
+    "*.html",
     "**/tests/**",
     "**/test/**",
     "**/*_test.*",
@@ -13,7 +16,6 @@ extend-exclude = [
 ]
 
 [default.extend-words]
-crate = "crate"
 ser = "ser"
 ratatui = "ratatui"
 Caf = "Caf"

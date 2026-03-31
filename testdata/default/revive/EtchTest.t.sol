@@ -1,6 +1,6 @@
-import "ds-test/test.sol";
-import "cheats/Vm.sol";
-import "../../default/logs/console.sol";
+import "utils/DSTest.sol";
+import "utils/Vm.sol";
+import "utils/console.sol";
 
 contract Adder {
     function add(uint256 a, uint256 b) public pure returns (uint256) {

@@ -1,4 +1,4 @@
-FROM rust:1.89-slim-bookworm AS builder
+FROM rust:1.91-slim-bookworm AS builder
 
 WORKDIR /usr/src/foundry-polkadot
 
@@ -7,14 +7,14 @@ ARG RELEASE_REF
 # Install build dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        clang \
-        libclang-dev \
-        protobuf-compiler \
-        pkg-config \
-        libssl-dev \
-        ca-certificates \
-        git && \
+    build-essential \
+    clang \
+    libclang-dev \
+    protobuf-compiler \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    git && \
     rm -rf /var/lib/apt/lists/*
 
 RUN rustup target add wasm32-unknown-unknown && \
@@ -26,9 +26,9 @@ COPY . .
 # Optionally switch to a specific git ref (tag/branch/commit) before building.
 # If RELEASE_REF is not set, the current workspace state is used.
 RUN if [ -n "$RELEASE_REF" ]; then \
-      git remote set-url origin https://github.com/paritytech/foundry-polkadot.git && \
-      git fetch --tags --force origin && \
-      git checkout "$RELEASE_REF"; \
+    git remote set-url origin https://github.com/paritytech/foundry-polkadot.git && \
+    git fetch --tags --force origin && \
+    git checkout "$RELEASE_REF"; \
     fi
 
 # Build only the anvil-polkadot binary in release mode
@@ -40,8 +40,8 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates \
-        openssl && \
+    ca-certificates \
+    openssl && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder stage

@@ -135,10 +135,12 @@ def main():
                     s = f"{partition}/{case.n_partitions}"
                     name += f" ({s})"
                     flags += f" --partition count:{s}"
-                
+
                 if profile == "isolate":
                     flags += " --features=isolate-by-default"
                 name += os_str
+
+                flags += " --no-fail-fast"
 
                 obj = Expanded(
                     name=name,
