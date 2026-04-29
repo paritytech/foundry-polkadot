@@ -324,7 +324,7 @@ tracy-client = "0.18"
 auto_impl = "1"
 aws-config = { version = "1", default-features = true }
 aws-sdk-kms = { version = "1", default-features = false }
-bytes = "1.10"
+bytes = "1.11"
 walkdir = "2"
 prettyplease = "0.2"
 base64 = "0.22"
