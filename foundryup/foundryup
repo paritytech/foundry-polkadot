@@ -350,7 +350,7 @@ main() {
 
     # Force checkout, discarding any local changes
     cd "$REPO_PATH"
-    ensure git fetch origin "${FOUNDRYUP_BRANCH}:remotes/origin/${FOUNDRYUP_BRANCH}"
+    ensure git fetch origin "refs/heads/${FOUNDRYUP_BRANCH}:refs/remotes/origin/${FOUNDRYUP_BRANCH}"
     ensure git checkout "origin/${FOUNDRYUP_BRANCH}"
 
     # Create custom version based on the install method, e.g.:
