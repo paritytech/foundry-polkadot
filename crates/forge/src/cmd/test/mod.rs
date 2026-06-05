@@ -388,6 +388,7 @@ impl TestArgs {
     /// Executes all the tests in the project.
     ///
     /// See [`Self::compile_and_run`] for more details.
+    #[allow(clippy::too_many_arguments)]
     pub async fn run_tests(
         &mut self,
         project_root: &Path,

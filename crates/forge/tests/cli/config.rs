@@ -49,7 +49,7 @@ allow_paths = []
 include_paths = []
 skip = []
 force = false
-evm_version = "prague"
+evm_version = "cancun"
 gas_reports = ["*"]
 gas_reports_ignore = []
 gas_reports_include_tests = false
@@ -119,6 +119,9 @@ endpoints = "all"
 [[profile.default.fs_permissions]]
 access = "read"
 path = "out"
+
+[profile.default.polkadot]
+resolc_compile = false
 
 [fmt]
 line_length = 120
@@ -1388,7 +1391,8 @@ forgetest_init!(test_default_config, |prj, cmd| {
     "optimizer_mode": null,
     "heap_size": null,
     "stack_size": null,
-    "debug_information": null
+    "debug_information": null,
+    "revive_pallet_index": null
   }
 }
 

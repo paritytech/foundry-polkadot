@@ -13,7 +13,7 @@ extern crate tracing;
 // Macros useful for testing.
 #[macro_use]
 mod macros;
-
+pub mod etherscan;
 use tokio as _;
 
 pub mod rpc;

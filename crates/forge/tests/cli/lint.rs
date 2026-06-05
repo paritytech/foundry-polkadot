@@ -112,35 +112,6 @@ contract CounterTest {
 }
 "#;
 
-const ONLY_IMPORTS: &str = r#"
-    // SPDX-License-Identifier: MIT
-    pragma solidity ^0.8.0;
-
-    // forge-lint: disable-next-line
-    import { ContractWithLints } from "./ContractWithLints.sol";
-
-    import { _PascalCaseInfo } from "./ContractWithLints.sol";
-    import "./ContractWithLints.sol";
-        "#;
-
-const COUNTER_A: &str = r#"
-    // SPDX-License-Identifier: MIT
-    pragma solidity ^0.8.0;
-
-    contract CounterA {
-        uint256 public CounterA_Fail_Lint;
-    }
-        "#;
-
-const COUNTER_B: &str = r#"
-    // SPDX-License-Identifier: MIT
-    pragma solidity ^0.8.0;
-
-    contract CounterB {
-        uint256 public CounterB_Fail_Lint;
-    }
-        "#;
-
 forgetest!(can_use_config, |prj, cmd| {
     prj.add_source("ContractWithLints", CONTRACT);
     prj.add_source("OtherContractWithLints", OTHER_CONTRACT);

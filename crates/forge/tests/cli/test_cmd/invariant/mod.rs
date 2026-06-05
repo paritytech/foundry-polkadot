@@ -1,8 +1,6 @@
 use alloy_primitives::U256;
-use forge::fuzz::CounterExample;
 use foundry_compilers::artifacts::EvmVersion;
-use foundry_test_utils::{Filter, TestCommand, forgetest_init, snapbox::cmd::OutputAssert, str};
-use std::collections::BTreeMap;
+use foundry_test_utils::{TestCommand, forgetest_init, snapbox::cmd::OutputAssert, str};
 
 mod common;
 mod storage;

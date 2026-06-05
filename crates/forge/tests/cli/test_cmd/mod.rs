@@ -4,9 +4,7 @@ use alloy_primitives::U256;
 use anvil::{NodeConfig, spawn};
 use foundry_compilers::artifacts::EvmVersion;
 use foundry_test_utils::{
-    TestCommand,
-    rpc::{self, rpc_endpoints},
-    str,
+    TestCommand, rpc, str, test_debug,
     util::{OTHER_SOLC_VERSION, OutputExt, SOLC_VERSION},
 };
 use similar_asserts::assert_eq;
@@ -28,7 +26,7 @@ forgetest!(testdata, |_prj, cmd| {
     cmd.current_dir(&testdata);
 
     let mut dotenv = std::fs::File::create(testdata.join(".env")).unwrap();
-    for (name, endpoint) in rpc_endpoints().iter() {
+    for (name, endpoint) in rpc::rpc_endpoints().iter() {
         if let Some(url) = endpoint.endpoint.as_url() {
             let key = format!("RPC_{}", name.to_uppercase());
             // cmd.env(&key, url);
@@ -43,21 +41,23 @@ forgetest!(testdata, |_prj, cmd| {
             "--nmc=(LastCallGasDefaultTest|MockFunctionTest|WithSeed|StateDiff|GetStorageSlotsTest|RecordAccount)",
         );
     }
-    cmd.args(["--nmp=revive"])
+    args.push("--no-match-path");
+    args.push("./default/{revive/*.t.sol,cheats/*Revive.t.sol}");
+
     let orig_assert = cmd.args(args).assert();
     if orig_assert.get_output().status.success() {
         return;
     }
     let stdout = orig_assert.get_output().stdout_lossy();
     if let Some(i) = stdout.rfind("Suite result:") {
-        test_debug!("--- short stdout ---\n\n{}\n\n---", &stdout[i..]);
+        test_debug(format_args!("--- short stdout ---\n\n{}\n\n---", &stdout[i..]));
     }
 
     // Retry failed tests.
     cmd.args(["--rerun"]);
     let n = 3;
     for i in 1..=n {
-        test_debug!("retrying failed tests... ({i}/{n})");
+        test_debug(format_args!("retrying failed tests... ({i}/{n})"));
         let assert = cmd.assert();
         if assert.get_output().status.success() {
             return;
@@ -3674,13 +3674,11 @@ contract InterceptInitcodeTest is DSTest {
 // <https://github.com/foundry-rs/foundry/issues/10296>
 // <https://github.com/foundry-rs/foundry/issues/10552>
 forgetest_init!(should_preserve_fork_state_setup, |prj, cmd| {
-    prj.wipe_contracts();
-
-    let endpoint = rpc::next_http_archive_rpc_url();
-
     prj.add_test(
         "Counter.t.sol",
         &r#"
+import "forge-std/Test.sol";
+import {StdChains} from "forge-std/StdChains.sol";
 
 contract CounterTest is Test {
     struct Domain {
@@ -3741,7 +3739,7 @@ contract CounterTest is Test {
     }
 }
     "#
-        .replace("<url>", &endpoint),
+        .replace("<url>", &rpc::next_http_archive_rpc_url()),
     );
 
     cmd.args(["test", "--mc", "CounterTest"]).assert_success().stdout_eq(str![[r#"
@@ -3807,6 +3805,7 @@ Tip: Run `forge test --rerun` to retry only the 1 failed test
 
 // Test that --resolc flag enables pallet-revive compilation for tests
 forgetest_init!(test_resolc_flag_enables_resolc_compilation, |prj, cmd| {
+    prj.initialize_default_contracts();
     // Test that the --resolc flag is recognized by running help
     cmd.args(["test", "--resolc", "--help"]).assert_success();
 
@@ -3836,8 +3835,7 @@ contract CounterTest is Test {
     }
 }
     "#,
-    )
-    .unwrap();
+    );
 
     // Test that the --resolc flag works for actual compilation and testing
     cmd.forge_fuse().args(["test", "--resolc"]).assert_success().stdout_eq(str![[r#"

@@ -38,7 +38,7 @@ forgetest!(can_resolve_path, |prj, cmd| {
         ));
     });
 
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
 
     cmd.args(["compiler", "resolve", "--resolc", "--root", prj.root().to_str().unwrap()])
         .assert_success()
@@ -57,7 +57,7 @@ forgetest!(can_list_resolved_compiler_versions, |prj, cmd| {
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
 
     cmd.args(["compiler", "resolve"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -74,7 +74,7 @@ forgetest!(can_list_resolved_compiler_versions_json, |prj, cmd| {
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
 
     cmd.args(["compiler", "resolve", "--json"]).assert_success().stdout_eq(
         str![[r#"
@@ -102,8 +102,8 @@ forgetest!(can_list_resolved_compiler_versions_verbose, |prj, cmd| {
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve", "-v"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -123,8 +123,8 @@ forgetest!(can_list_resolved_compiler_versions_verbose_json, |prj, cmd| {
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve", "--json", "-v"]).assert_success().stdout_eq(
         str![[r#"
@@ -156,10 +156,10 @@ forgetest!(can_list_resolved_multiple_compiler_versions, |prj, cmd| {
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -178,10 +178,10 @@ forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd|
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve", "--skip", "Contract(A|B|C)", "--json", "-v"])
         .assert_success()
@@ -214,10 +214,10 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose, |prj, cmd| {
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve", "-vv"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -243,10 +243,10 @@ forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd|
         ));
         config.polkadot.resolc_compile = true;
     });
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve", "--json", "-vv"]).assert_success().stdout_eq(
         str![[r#"

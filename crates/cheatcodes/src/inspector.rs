@@ -768,7 +768,7 @@ impl Cheatcodes {
         self.apply_accesslist(ecx);
 
         // Apply our broadcast
-        if let Some(broadcast) = &self.broadcast
+        if let Some(broadcast) = &mut self.broadcast
             && curr_depth >= broadcast.depth
             && input.caller() == broadcast.original_caller
         {
@@ -785,7 +785,8 @@ impl Cheatcodes {
 
             ecx.tx.caller = broadcast.new_origin;
 
-            if curr_depth == broadcast.depth {
+            if curr_depth == broadcast.depth || broadcast.deploy_from_code {
+                broadcast.deploy_from_code = false;
                 input.set_caller(broadcast.new_origin);
                 ecx.journaled_state.touch(broadcast.new_origin);
 
@@ -848,7 +849,6 @@ impl Cheatcodes {
         call: Option<&CreateInputs>,
         outcome: &mut CreateOutcome,
     ) {
-        let call = Some(call);
         let curr_depth = ecx.journaled_state.depth();
 
         // Clean up pranks
@@ -969,10 +969,8 @@ impl Cheatcodes {
             let bytecode = created_acc.info.code.clone().unwrap_or_default().original_bytes();
             if let Some((index, _)) =
                 self.expected_creates.iter().find_position(|expected_create| {
-                    expected_create.deployer == call.map(|x| x.caller).unwrap_or_default()
-                        && expected_create
-                            .create_scheme
-                            .eq(call.map(|x| x.scheme).unwrap_or_default().into())
+                    expected_create.deployer == call.caller
+                        && expected_create.create_scheme.eq(call.scheme.into())
                         && expected_create.bytecode == bytecode
                 })
             {

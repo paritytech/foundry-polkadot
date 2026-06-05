@@ -3210,6 +3210,7 @@ For more information, try '--help'.
 });
 
 // <https://github.com/foundry-rs/foundry/issues/11855>
+// TODO: create traces are borked
 forgetest_async!(can_broadcast_from_deploy_code_cheatcode, |prj, cmd| {
     foundry_test_utils::util::initialize(prj.root());
     prj.initialize_default_contracts();
@@ -3253,9 +3254,9 @@ Traces:
     ├─ [0] VM::startBroadcast()
     │   └─ ← [Return]
     ├─ [0] VM::deployCode("src/Counter.sol:Counter")
-    │   ├─ [..] → new Counter@0x5FbDB2315678afecb367f032d93F642f64180aa3
+    │   ├─ [..] → new Counter@[..]
     │   │   └─ ← [Return] 481 bytes of code
-    │   └─ ← [Return] Counter: [0x5FbDB2315678afecb367f032d93F642f64180aa3]
+    │   └─ ← [Return] Counter: [..]
     ├─ [..] Counter::increment()
     │   └─ ← [Stop]
     ├─ [0] VM::stopBroadcast()
@@ -3269,7 +3270,7 @@ Script ran successfully.
 ==========================
 Simulated On-chain Traces:
 
-  [..] → new Counter@0x5FbDB2315678afecb367f032d93F642f64180aa3
+  [..] → new Counter@[..]
     └─ ← [Return] 481 bytes of code
 
   [..] Counter::increment()

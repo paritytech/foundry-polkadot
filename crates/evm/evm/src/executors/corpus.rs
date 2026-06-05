@@ -174,7 +174,6 @@ impl CorpusManager {
         let mut metrics = CorpusMetrics::default();
         let mut in_memory_corpus = vec![];
         let mut failed_replays = 0;
-        let max_fuzz_int = max_fuzz_int;
 
         // Early return if corpus dir / coverage guided fuzzing not configured.
         let Some(corpus_dir) = &config.corpus_dir else {

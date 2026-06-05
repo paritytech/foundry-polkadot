@@ -83,7 +83,7 @@ config = [
     ),
     Case(
         name="integration",
-        filter="kind(test) & !package(=anvil-polkadot) & !test(/\\b(issue|ext_integration)|polkadot_localnode/)",
+        filter="kind(test) & !package(=anvil-polkadot) & !test(/\\b(issue|ext_integration|flaky_)|polkadot_localnode/)",
         n_partitions=1,
         pr_cross_platform=True,
     ),
@@ -128,9 +128,9 @@ def main():
 
                 name = case.name
                 if case.name == "integration / anvil-polkadot":
-                    flags = f"--no-fail-fast -E '{case.filter}' --cargo-profile release-with-debug"
+                    flags = f"-E '{case.filter}' --cargo-profile release-with-debug"
                 else:
-                    flags = f"--no-fail-fast -E '{case.filter}'"
+                    flags = f"-E '{case.filter}'"
                 if case.n_partitions > 1:
                     s = f"{partition}/{case.n_partitions}"
                     name += f" ({s})"

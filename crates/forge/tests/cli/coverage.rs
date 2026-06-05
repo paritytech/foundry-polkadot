@@ -2144,6 +2144,8 @@ forgetest!(abstract_contract_and_interface, |prj, cmd| {
         "Counter.sol",
         r#"
 interface ContractIf {
+    function setNumber(uint256 newNumber) external;
+}
 
 abstract contract AbstractCounter {
     function _setNumber(uint256 newNumber) internal virtual;

@@ -183,7 +183,7 @@ impl StorageArgs {
         } else {
             SolcCompiler::Specific(Solc::find_or_install(&meta_version)?)
         };
-        project.compiler.solc = Some(desired);
+        project.compiler.solidity = foundry_compilers::multi::SolidityCompiler::Solc(desired);
 
         // Compile
         let mut out = ProjectCompiler::new().quiet(true).compile(&project)?;
@@ -200,7 +200,9 @@ impl StorageArgs {
                      for storage layouts is {MIN_SOLC} and as a result the output may be empty.",
                 )?;
                 let solc = Solc::find_or_install(&MIN_SOLC)?;
-                project.compiler.solc = Some(SolcCompiler::Specific(solc));
+                project.compiler.solidity = foundry_compilers::multi::SolidityCompiler::Solc(
+                    foundry_compilers::solc::SolcCompiler::Specific(solc),
+                );
                 if let Ok(output) = ProjectCompiler::new().quiet(true).compile(&project) {
                     out = output;
                     let (_, new_artifact) = out

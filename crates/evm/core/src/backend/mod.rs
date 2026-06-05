@@ -2037,12 +2037,14 @@ mod tests {
         fork::CreateFork,
         opts::EvmOpts,
     };
-    use alloy_primitives::{Address, U256, address};
+    use alloy_primitives::{U256, address};
     use alloy_provider::Provider;
     use foundry_common::provider::get_http_provider;
     use foundry_config::{Config, NamedChain};
     use foundry_fork_db::cache::{BlockchainDb, BlockchainDbMeta};
     use revm::database::DatabaseRef;
+
+    const ENDPOINT: Option<&str> = option_env!("ETH_RPC_URL");
 
     #[tokio::test(flavor = "multi_thread")]
     async fn can_read_write_cache() -> eyre::Result<()> {

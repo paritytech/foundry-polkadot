@@ -4,7 +4,7 @@
 use crate::utils::{self, EnvExternalities};
 use foundry_common::retry::Retry;
 use foundry_test_utils::{
-    forgetest,
+    forgetest, test_debug,
     util::{OutputExt, TestCommand, TestProject},
 };
 use std::time::Duration;
@@ -75,7 +75,7 @@ fn parse_verification_result(cmd: &mut TestCommand, retries: u32) -> eyre::Resul
     Retry::new(retries, Duration::from_secs(30)).run(|| -> eyre::Result<()> {
         let output = cmd.execute();
         let out = String::from_utf8_lossy(&output.stdout);
-        test_debug!("{out}");
+        test_debug(format_args!("{out}"));
         if out.contains("Contract successfully verified") {
             return Ok(());
         }
@@ -157,7 +157,7 @@ fn deploy_contract(
 fn verify_on_chain(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand) {
     // only execute if keys present
     if let Some(info) = info {
-        test_debug!("verifying on {}", info.chain);
+        test_debug(format_args!("verifying on {}", info.chain));
 
         let contract_path = "src/Verify.sol:Verify";
         let address = deploy_contract(&info, contract_path, prj, &mut cmd);
@@ -187,7 +187,7 @@ fn verify_on_chain(info: Option<EnvExternalities>, prj: TestProject, mut cmd: Te
 fn guess_constructor_args(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand) {
     // only execute if keys present
     if let Some(info) = info {
-        test_debug!("verifying on {}", info.chain);
+        test_debug(format_args!("verifying on {}", info.chain));
         add_unique(&prj);
         add_verify_target_with_constructor(&prj);
 
@@ -228,7 +228,7 @@ fn guess_constructor_args(info: Option<EnvExternalities>, prj: TestProject, mut 
 fn create_verify_on_chain(info: Option<EnvExternalities>, prj: TestProject, mut cmd: TestCommand) {
     // only execute if keys present
     if let Some(info) = info {
-        test_debug!("verifying on {}", info.chain);
+        test_debug(format_args!("verifying on {}", info.chain));
         add_single_verify_target_file(&prj);
 
         let contract_path = "src/Verify.sol:Verify";

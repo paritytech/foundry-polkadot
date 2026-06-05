@@ -1597,7 +1597,7 @@ fn assign_indexes(trace: &mut LogWithIndex, mut index: u32) -> (u32, Vec<(Log, u
             let (new_index, logs) =
                 assign_indexes(&mut trace.log.calls[sub_call_index as usize].clone().into(), index);
             index = new_index;
-            trace.index.extend(logs.into_iter());
+            trace.index.extend(logs);
             sub_call_index += 1;
         }
         let log = trace.log.logs[i].clone();
@@ -1615,7 +1615,7 @@ fn assign_indexes(trace: &mut LogWithIndex, mut index: u32) -> (u32, Vec<(Log, u
         let (new_index, logs) =
             assign_indexes(&mut trace.log.calls[sub_call_index as usize].clone().into(), index);
         index = new_index;
-        trace.index.extend(logs.into_iter());
+        trace.index.extend(logs);
         sub_call_index += 1;
     }
     (index, trace.index.clone())

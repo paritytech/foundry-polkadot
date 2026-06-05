@@ -222,14 +222,14 @@ fn print_abi(abi: &JsonAbi, should_wrap: bool) -> Result<()> {
         headers,
         |table| {
             // Print events
-            for ev in abi.events.iter().flat_map(|(_, events)| events) {
+            for ev in abi.events.values().flatten() {
                 let types = parse_event_params(&ev.inputs);
                 let selector = ev.selector().to_string();
                 table.add_row(["event", &format!("{}({})", ev.name, types), &selector]);
             }
 
             // Print errors
-            for er in abi.errors.iter().flat_map(|(_, errors)| errors) {
+            for er in abi.errors.values().flatten() {
                 let selector = er.selector().to_string();
                 table.add_row([
                     "error",
@@ -239,7 +239,7 @@ fn print_abi(abi: &JsonAbi, should_wrap: bool) -> Result<()> {
             }
 
             // Print functions
-            for func in abi.functions.iter().flat_map(|(_, f)| f) {
+            for func in abi.functions.values().flatten() {
                 let selector = func.selector().to_string();
                 let state_mut = func.state_mutability.as_json_str();
                 let func_sig = if !func.outputs.is_empty() {

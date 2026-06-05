@@ -12,8 +12,7 @@ forgetest!(can_use_resolc, |prj, cmd| {
 pragma solidity *;
 contract Foo {}
    ",
-    )
-    .unwrap();
+    );
 
     cmd.args(["build", "--use", OTHER_SOLC_VERSION, "--resolc"]).assert_success().stdout_eq(str![
         [r#"
@@ -86,8 +85,7 @@ forgetest!(enable_resolc_explicitly, |prj, cmd| {
 pragma solidity *;
 contract Greeter {}
    ",
-    )
-    .unwrap();
+    );
 
     prj.update_config(|config| {
         config.polkadot.resolc_compile = true;
@@ -109,8 +107,7 @@ forgetest_init!(debug_info_increases_bytecode_size, |prj, cmd| {
 pragma solidity *;
 contract Greeter {}
    ",
-    )
-    .unwrap();
+    );
 
     cmd.args(["build", "--resolc", "--use-resolc", "resolc:0.6.0", "--force"]).assert_success();
 

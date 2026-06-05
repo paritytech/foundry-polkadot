@@ -21,6 +21,8 @@ foundry-config.workspace = true
 
 alloy-primitives.workspace = true
 alloy-provider.workspace = true
+alloy-chains.workspace = true
+foundry-block-explorers.workspace = true
 
 eyre.workspace = true
 fd-lock = "4.0"

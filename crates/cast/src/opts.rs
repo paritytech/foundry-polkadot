@@ -1174,138 +1174,169 @@ mod tests {
 
     #[test]
     fn verify_cli() {
-        Cast::command().debug_assert();
+        with_test_stack(|| {
+            Cast::command().debug_assert();
+        })
     }
 
     #[test]
     fn parse_proof_slot() {
-        let args: Cast = Cast::parse_from([
-            "foundry-cli",
-            "proof",
-            "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-            "0",
-            "1",
-            "0x0000000000000000000000000000000000000000000000000000000000000000",
-            "0x1",
-            "0x01",
-        ]);
-        match args.cmd {
-            CastSubcommand::Proof { slots, .. } => {
-                assert_eq!(
-                    slots,
-                    vec![
-                        B256::ZERO,
-                        U256::from(1).into(),
-                        B256::ZERO,
-                        U256::from(1).into(),
-                        U256::from(1).into()
-                    ]
-                );
-            }
-            _ => unreachable!(),
-        };
+        with_test_stack(|| {
+            let args: Cast = Cast::parse_from([
+                "foundry-cli",
+                "proof",
+                "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+                "0",
+                "1",
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "0x1",
+                "0x01",
+            ]);
+            match args.cmd {
+                CastSubcommand::Proof { slots, .. } => {
+                    assert_eq!(
+                        slots,
+                        vec![
+                            B256::ZERO,
+                            U256::from(1).into(),
+                            B256::ZERO,
+                            U256::from(1).into(),
+                            U256::from(1).into()
+                        ]
+                    );
+                }
+                _ => unreachable!(),
+            };
+        })
     }
 
     #[test]
     fn parse_call_data() {
-        let args: Cast = Cast::parse_from([
-            "foundry-cli",
-            "calldata",
-            "f()",
-            "5c9d55b78febcc2061715ba4f57ecf8ea2711f2c",
-            "2",
-        ]);
-        match args.cmd {
-            CastSubcommand::CalldataEncode { args, .. } => {
-                assert_eq!(
-                    args,
-                    vec!["5c9d55b78febcc2061715ba4f57ecf8ea2711f2c".to_string(), "2".to_string()]
-                )
-            }
-            _ => unreachable!(),
-        };
+        with_test_stack(|| {
+            let args: Cast = Cast::parse_from([
+                "foundry-cli",
+                "calldata",
+                "f()",
+                "5c9d55b78febcc2061715ba4f57ecf8ea2711f2c",
+                "2",
+            ]);
+            match args.cmd {
+                CastSubcommand::CalldataEncode { args, .. } => {
+                    assert_eq!(
+                        args,
+                        vec![
+                            "5c9d55b78febcc2061715ba4f57ecf8ea2711f2c".to_string(),
+                            "2".to_string()
+                        ]
+                    )
+                }
+                _ => unreachable!(),
+            };
+        });
     }
 
     #[test]
     fn parse_call_data_with_file() {
-        let args: Cast = Cast::parse_from(["foundry-cli", "calldata", "f()", "--file", "test.txt"]);
-        match args.cmd {
-            CastSubcommand::CalldataEncode { sig, file, args } => {
-                assert_eq!(sig, "f()".to_string());
-                assert_eq!(file, Some(PathBuf::from("test.txt")));
-                assert!(args.is_empty());
-            }
-            _ => unreachable!(),
-        };
+        with_test_stack(|| {
+            let args: Cast =
+                Cast::parse_from(["foundry-cli", "calldata", "f()", "--file", "test.txt"]);
+            match args.cmd {
+                CastSubcommand::CalldataEncode { sig, file, args } => {
+                    assert_eq!(sig, "f()".to_string());
+                    assert_eq!(file, Some(PathBuf::from("test.txt")));
+                    assert!(args.is_empty());
+                }
+                _ => unreachable!(),
+            };
+        })
     }
 
     // <https://github.com/foundry-rs/book/issues/1019>
     #[test]
     fn parse_signature() {
-        let args: Cast = Cast::parse_from([
-            "foundry-cli",
-            "sig",
-            "__$_$__$$$$$__$$_$$$_$$__$$___$$(address,address,uint256)",
-        ]);
-        match args.cmd {
-            CastSubcommand::Sig { sig, .. } => {
-                let sig = sig.unwrap();
-                assert_eq!(
-                    sig,
-                    "__$_$__$$$$$__$$_$$$_$$__$$___$$(address,address,uint256)".to_string()
-                );
+        with_test_stack(|| {
+            let args: Cast = Cast::parse_from([
+                "foundry-cli",
+                "sig",
+                "__$_$__$$$$$__$$_$$$_$$__$$___$$(address,address,uint256)",
+            ]);
+            match args.cmd {
+                CastSubcommand::Sig { sig, .. } => {
+                    let sig = sig.unwrap();
+                    assert_eq!(
+                        sig,
+                        "__$_$__$$$$$__$$_$$$_$$__$$___$$(address,address,uint256)".to_string()
+                    );
 
-                let selector = SimpleCast::get_selector(&sig, 0).unwrap();
-                assert_eq!(selector.0, "0x23b872dd".to_string());
-            }
-            _ => unreachable!(),
-        };
+                    let selector = SimpleCast::get_selector(&sig, 0).unwrap();
+                    assert_eq!(selector.0, "0x23b872dd".to_string());
+                }
+                _ => unreachable!(),
+            };
+        })
     }
 
     #[test]
     fn parse_block_ids() {
-        struct TestCase {
-            input: String,
-            expect: BlockId,
-        }
+        with_test_stack(|| {
+            struct TestCase {
+                input: String,
+                expect: BlockId,
+            }
 
-        let test_cases = [
-            TestCase {
-                input: "0".to_string(),
-                expect: BlockId::Number(BlockNumberOrTag::Number(0u64)),
-            },
-            TestCase {
-                input: "0x56462c47c03df160f66819f0a79ea07def1569f8aac0fe91bb3a081159b61b4a"
-                    .to_string(),
-                expect: BlockId::Hash(RpcBlockHash::from_hash(
-                    "0x56462c47c03df160f66819f0a79ea07def1569f8aac0fe91bb3a081159b61b4a"
-                        .parse()
-                        .unwrap(),
-                    None,
-                )),
-            },
-            TestCase {
-                input: "latest".to_string(),
-                expect: BlockId::Number(BlockNumberOrTag::Latest),
-            },
-            TestCase {
-                input: "earliest".to_string(),
-                expect: BlockId::Number(BlockNumberOrTag::Earliest),
-            },
-            TestCase {
-                input: "pending".to_string(),
-                expect: BlockId::Number(BlockNumberOrTag::Pending),
-            },
-            TestCase { input: "safe".to_string(), expect: BlockId::Number(BlockNumberOrTag::Safe) },
-            TestCase {
-                input: "finalized".to_string(),
-                expect: BlockId::Number(BlockNumberOrTag::Finalized),
-            },
-        ];
+            let test_cases = [
+                TestCase {
+                    input: "0".to_string(),
+                    expect: BlockId::Number(BlockNumberOrTag::Number(0u64)),
+                },
+                TestCase {
+                    input: "0x56462c47c03df160f66819f0a79ea07def1569f8aac0fe91bb3a081159b61b4a"
+                        .to_string(),
+                    expect: BlockId::Hash(RpcBlockHash::from_hash(
+                        "0x56462c47c03df160f66819f0a79ea07def1569f8aac0fe91bb3a081159b61b4a"
+                            .parse()
+                            .unwrap(),
+                        None,
+                    )),
+                },
+                TestCase {
+                    input: "latest".to_string(),
+                    expect: BlockId::Number(BlockNumberOrTag::Latest),
+                },
+                TestCase {
+                    input: "earliest".to_string(),
+                    expect: BlockId::Number(BlockNumberOrTag::Earliest),
+                },
+                TestCase {
+                    input: "pending".to_string(),
+                    expect: BlockId::Number(BlockNumberOrTag::Pending),
+                },
+                TestCase {
+                    input: "safe".to_string(),
+                    expect: BlockId::Number(BlockNumberOrTag::Safe),
+                },
+                TestCase {
+                    input: "finalized".to_string(),
+                    expect: BlockId::Number(BlockNumberOrTag::Finalized),
+                },
+            ];
 
-        for test in test_cases {
-            let result: BlockId = test.input.parse().unwrap();
-            assert_eq!(result, test.expect);
-        }
+            for test in test_cases {
+                let result: BlockId = test.input.parse().unwrap();
+                assert_eq!(result, test.expect);
+            }
+        })
+    }
+
+    fn with_test_stack<F>(f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        std::thread::Builder::new()
+            .stack_size(4 * 1024 * 1024)
+            .spawn(f)
+            .expect("Failed to spawn thread")
+            .join()
+            .expect("Thread panicked");
     }
 }

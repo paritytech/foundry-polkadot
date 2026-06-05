@@ -1,7 +1,10 @@
 //! RPC API keys utilities.
 
-use foundry_config::NamedChain::{
-    self, Arbitrum, Base, BinanceSmartChainTestnet, Celo, Mainnet, Optimism, Polygon, Sepolia,
+use foundry_config::{
+    NamedChain::{
+        self, Arbitrum, Base, BinanceSmartChainTestnet, Celo, Mainnet, Optimism, Polygon, Sepolia,
+    },
+    RpcEndpointUrl, RpcEndpoints,
 };
 use rand::seq::SliceRandom;
 use std::{
@@ -55,14 +58,14 @@ shuffled_list!(
     HTTP_ARCHIVE_DOMAINS,
     vec![
         //
-        "ethereum.reth.rs",
+        "ethereum.reth.rs/rpc",
     ]
 );
 shuffled_list!(
     HTTP_DOMAINS,
     vec![
         //
-        "reth-ethereum.ithaca.xyz/rpc",
+        "ethereum.reth.rs/rpc",
         // "reth-ethereum-full.ithaca.xyz/rpc",
     ],
 );
@@ -70,14 +73,14 @@ shuffled_list!(
     WS_ARCHIVE_DOMAINS,
     vec![
         //
-        "reth-ethereum.ithaca.xyz/ws",
+        "ethereum.reth.rs/ws",
     ],
 );
 shuffled_list!(
     WS_DOMAINS,
     vec![
         //
-        "reth-ethereum.ithaca.xyz/ws",
+        "ethereum.reth.rs/ws",
         // "reth-ethereum-full.ithaca.xyz/ws",
     ],
 );
@@ -96,6 +99,26 @@ fn fallback_etherscan_keys() -> Vec<String> {
         "3IA6ASNQXN8WKN7PNFX7T72S9YG56X9FPG".to_string(),
         "ZUB97R31KSYX7NYVW6224Q6EYY6U56H591".to_string(),
     ]
+}
+
+/// the RPC endpoints used during tests
+pub fn rpc_endpoints() -> RpcEndpoints {
+    RpcEndpoints::new([
+        ("mainnet", RpcEndpointUrl::Url(next_http_archive_rpc_url())),
+        ("mainnet2", RpcEndpointUrl::Url(next_http_archive_rpc_url())),
+        ("sepolia", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Sepolia))),
+        ("optimism", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Optimism))),
+        ("base", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Base))),
+        ("arbitrum", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Arbitrum))),
+        ("polygon", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Polygon))),
+        ("bsc", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::BinanceSmartChain))),
+        ("avaxTestnet", RpcEndpointUrl::Url("https://api.avax-test.network/ext/bc/C/rpc".into())),
+        ("moonbeam", RpcEndpointUrl::Url("https://moonbeam-rpc.publicnode.com".into())),
+        ("polkadotTestnet", RpcEndpointUrl::Url("https://eth-rpc-testnet.polkadot.io".into())),
+        ("kusama", RpcEndpointUrl::Url("https://eth-rpc-kusama.polkadot.io".into())),
+        ("polkadot", RpcEndpointUrl::Url("https://eth-rpc.polkadot.io".into())),
+        ("rpcEnvAlias", RpcEndpointUrl::Env("${RPC_ENV_ALIAS}".into())),
+    ])
 }
 
 // List of etherscan keys.
