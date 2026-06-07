@@ -197,8 +197,8 @@ fn add_missing_dcc_entries(
 fn patch_library_guards(dcc: &mut DualCompiledContracts, libraries: &Libraries) {
     let lib_addresses: BTreeMap<String, Vec<u8>> = libraries
         .libs
-        .iter()
-        .flat_map(|(_, libs)| {
+        .values()
+        .flat_map(|libs| {
             libs.iter().filter_map(|(name, addr)| {
                 let addr = addr.strip_prefix("0x").unwrap_or(addr);
                 hex::decode(addr).ok().map(|bytes| (name.clone(), bytes))
@@ -210,15 +210,17 @@ fn patch_library_guards(dcc: &mut DualCompiledContracts, libraries: &Libraries) 
         .iter()
         .filter_map(|(info, contract)| {
             let bytes = contract.evm_deployed_bytecode.as_bytes()?;
-            if bytes.len() >= 21 && bytes[0] == 0x73 && bytes[1..21].iter().all(|&b| b == 0) {
-                if let Some(addr_bytes) = lib_addresses.get(&info.name) {
-                    if addr_bytes.len() == 20 {
-                        let mut patched = bytes.to_vec();
-                        patched[1..21].copy_from_slice(addr_bytes);
-                        return Some((info.clone(), patched));
-                    }
-                }
+            if bytes.len() >= 21
+                && bytes[0] == 0x73
+                && bytes[1..21].iter().all(|&b| b == 0)
+                && let Some(addr_bytes) = lib_addresses.get(&info.name)
+                && addr_bytes.len() == 20
+            {
+                let mut patched = bytes.to_vec();
+                patched[1..21].copy_from_slice(addr_bytes);
+                return Some((info.clone(), patched));
             }
+
             None
         })
         .collect();
@@ -404,13 +406,14 @@ fn update_factory_deps(dcc: &mut DualCompiledContracts, old_to_new: &BTreeMap<Ve
                 .resolc_factory_deps
                 .iter()
                 .map(|dep| {
-                    if let Some(dep_bytes) = dep.as_bytes() {
-                        if let Some(new_bytes) = old_to_new.get(dep_bytes.as_ref()) {
-                            changed = true;
-                            return BytecodeObject::Bytecode(new_bytes.clone().into());
-                        }
+                    if let Some(dep_bytes) = dep.as_bytes()
+                        && let Some(new_bytes) = old_to_new.get(dep_bytes.as_ref())
+                    {
+                        changed = true;
+                        BytecodeObject::Bytecode(new_bytes.clone().into())
+                    } else {
+                        dep.clone()
                     }
-                    dep.clone()
                 })
                 .collect();
 

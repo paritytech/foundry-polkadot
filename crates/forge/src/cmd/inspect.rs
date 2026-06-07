@@ -180,7 +180,7 @@ impl InspectArgs {
 
 fn parse_errors(abi: &JsonAbi) -> Map<String, Value> {
     let mut out = serde_json::Map::new();
-    for er in abi.errors.iter().flat_map(|(_, errors)| errors) {
+    for er in abi.errors.values().flatten() {
         let types = get_ty_sig(&er.inputs);
         let sig = format!("{:x}", er.selector());
         let sig_trimmed = &sig[0..8];
@@ -191,7 +191,7 @@ fn parse_errors(abi: &JsonAbi) -> Map<String, Value> {
 
 fn parse_events(abi: &JsonAbi) -> Map<String, Value> {
     let mut out = serde_json::Map::new();
-    for ev in abi.events.iter().flat_map(|(_, events)| events) {
+    for ev in abi.events.values().flatten() {
         let types = parse_event_params(&ev.inputs);
         let topic = hex::encode(keccak256(ev.signature()));
         out.insert(format!("{}({})", ev.name, types), format!("0x{topic}").into());

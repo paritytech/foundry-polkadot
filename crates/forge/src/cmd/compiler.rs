@@ -105,8 +105,8 @@ impl ResolveArgs {
                 .iter()
                 .map(|(version, sources, (_, settings))| {
                     let paths: Vec<String> = sources
-                        .iter()
-                        .filter_map(|(path_file, _)| {
+                        .keys()
+                        .filter_map(|path_file| {
                             let path_str = path_file
                                 .strip_prefix(&project.paths.root)
                                 .unwrap_or(path_file)

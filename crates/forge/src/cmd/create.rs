@@ -101,7 +101,7 @@ fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Op
             if !bytecode_bytes.is_empty() {
                 let calculated_hash = hex::encode(keccak256(&bytecode_bytes));
                 if calculated_hash.trim_start_matches("0x") == normalized_target
-                    || target_hash.split_once(":").is_some_and(|(_, name)| name == &_contract_name)
+                    || target_hash.split_once(":").is_some_and(|(_, name)| name == _contract_name)
                 {
                     return Some(bytecode_bytes);
                 }
@@ -311,10 +311,9 @@ impl CreateArgs {
                     // Also check object_format from resolc extras
                     if let foundry_compilers::artifacts::ArtifactExtras::Resolc(extras) =
                         &artifact.extensions
+                        && extras.object_format == Some(ObjectFormat::ELF)
                     {
-                        if extras.object_format == Some(ObjectFormat::ELF) {
-                            has_elf = true;
-                        }
+                        has_elf = true;
                     }
                     bytecodes.insert(key, bytes);
                 }
