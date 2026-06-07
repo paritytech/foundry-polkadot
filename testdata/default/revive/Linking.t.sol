@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
-import "ds-test/test.sol";
+import "utils/Test.sol";
 
 library MathLib {
     function add(uint256 a, uint256 b) public pure returns (uint256) {
