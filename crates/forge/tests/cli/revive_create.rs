@@ -192,9 +192,7 @@ library MathLib {
     }
 }
 "#,
-    )
-    .unwrap();
-
+    );
     prj.add_source(
         "LibConsumer.sol",
         r#"
@@ -209,8 +207,7 @@ contract LibConsumer {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.update_config(|config| {
         config.libraries = vec![format!("src/MathLib.sol:MathLib:{:?}", Address::random())];

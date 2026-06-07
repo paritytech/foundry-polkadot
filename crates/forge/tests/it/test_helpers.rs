@@ -21,7 +21,6 @@ use foundry_test_utils::{
 };
 use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 use revm::primitives::hardfork::SpecId;
-use semver::Version;
 use std::{
     collections::BTreeSet,
     env, fmt,
