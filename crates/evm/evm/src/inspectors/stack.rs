@@ -7,13 +7,16 @@ use alloy_primitives::{
     Address, Bytes, Log, TxKind, U256,
     map::{AddressHashMap, HashMap},
 };
-use foundry_cheatcodes::{CheatcodesExecutor, Wallets};
+use foundry_cheatcodes::{CheatcodeAnalysis, CheatcodesExecutor, Wallets};
+use foundry_common::compile::Analysis;
+use foundry_compilers::ProjectPathsConfig;
 use foundry_evm_core::{
     ContextExt, Ecx, Env, InspectorExt,
     backend::{DatabaseExt, JournaledState},
     evm::new_evm_with_inspector,
 };
 use foundry_evm_coverage::HitMaps;
+use foundry_evm_networks::NetworkConfigs;
 use foundry_evm_traces::{SparsedTraceArena, TraceMode};
 use revive_utils::TraceCollector;
 use revm::{
@@ -38,6 +41,8 @@ use std::{
 #[derive(Clone, Debug, Default)]
 #[must_use = "builders do nothing unless you call `build` on them"]
 pub struct InspectorStackBuilder {
+    /// Solar compiler instance, to grant syntactic and semantic analysis capabilities.
+    pub analysis: Option<Analysis>,
     /// The block environment.
     ///
     /// Used in the cheatcode handler to overwrite the block environment separately from the
@@ -66,8 +71,8 @@ pub struct InspectorStackBuilder {
     /// In isolation mode all top-level calls are executed as a separate transaction in a separate
     /// EVM context, enabling more precise gas accounting and transaction state changes.
     pub enable_isolation: bool,
-    /// Whether to enable Odyssey features.
-    pub odyssey: bool,
+    /// Networks with enabled features.
+    pub networks: NetworkConfigs,
     /// The wallets to set in the cheatcodes context.
     pub wallets: Option<Wallets>,
     /// The CREATE2 deployer address.
@@ -79,6 +84,13 @@ impl InspectorStackBuilder {
     #[inline]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set the solar compiler instance that grants syntactic and semantic analysis capabilities
+    #[inline]
+    pub fn set_analysis(mut self, analysis: Analysis) -> Self {
+        self.analysis = Some(analysis);
+        self
     }
 
     /// Set the block environment.
@@ -162,11 +174,10 @@ impl InspectorStackBuilder {
         self
     }
 
-    /// Set whether to enable Odyssey features.
-    /// For description of call isolation, see [`InspectorStack::enable_isolation`].
+    /// Set networks with enabled features.
     #[inline]
-    pub fn odyssey(mut self, yes: bool) -> Self {
-        self.odyssey = yes;
+    pub fn networks(mut self, networks: NetworkConfigs) -> Self {
+        self.networks = networks;
         self
     }
 
@@ -179,6 +190,7 @@ impl InspectorStackBuilder {
     /// Builds the stack of inspectors to use when transacting/committing on the EVM.
     pub fn build(self) -> InspectorStack {
         let Self {
+            analysis,
             block,
             gas_price,
             cheatcodes,
@@ -189,7 +201,7 @@ impl InspectorStackBuilder {
             print,
             chisel_state,
             enable_isolation,
-            odyssey,
+            networks,
             wallets,
             create2_deployer,
         } = self;
@@ -198,6 +210,11 @@ impl InspectorStackBuilder {
         // inspectors
         if let Some(config) = cheatcodes {
             let mut cheatcodes = Cheatcodes::new(config);
+            // Set analysis capabilities if they are provided
+            if let Some(analysis) = analysis {
+                stack.set_analysis(analysis.clone());
+                cheatcodes.set_analysis(CheatcodeAnalysis::new(analysis));
+            }
             // Set wallets if they are provided
             if let Some(wallets) = wallets {
                 cheatcodes.set_wallets(wallets);
@@ -217,7 +234,7 @@ impl InspectorStackBuilder {
         stack.tracing(trace_mode);
 
         stack.enable_isolation(enable_isolation);
-        stack.odyssey(odyssey);
+        stack.networks(networks);
         stack.set_create2_deployer(create2_deployer);
 
         // environment, must come after all of the inspectors
@@ -263,8 +280,8 @@ pub struct InspectorData {
     pub traces: Option<SparsedTraceArena>,
     pub line_coverage: Option<HitMaps>,
     pub edge_coverage: Option<Vec<u8>>,
-    pub cheatcodes: Option<Cheatcodes>,
-    pub chisel_state: Option<(Vec<U256>, Vec<u8>, Option<InstructionResult>)>,
+    pub cheatcodes: Option<Box<Cheatcodes>>,
+    pub chisel_state: Option<(Vec<U256>, Vec<u8>)>,
     pub reverter: Option<Address>,
 }
 
@@ -291,8 +308,14 @@ pub struct InnerContextData {
 /// collection, etc.
 #[derive(Clone, Debug, Default)]
 pub struct InspectorStack {
-    pub cheatcodes: Option<Cheatcodes>,
+    pub cheatcodes: Option<Box<Cheatcodes>>,
     pub inner: InspectorStackInner,
+}
+
+impl InspectorStack {
+    pub fn paths_config(&self) -> Option<&ProjectPathsConfig> {
+        self.cheatcodes.as_ref().map(|c| &c.config.paths)
+    }
 }
 
 /// All used inpectors besides [Cheatcodes].
@@ -300,20 +323,25 @@ pub struct InspectorStack {
 /// See [`InspectorStack`].
 #[derive(Default, Clone, Debug)]
 pub struct InspectorStackInner {
+    /// Solar compiler instance, to grant syntactic and semantic analysis capabilities.
+    pub analysis: Option<Analysis>,
+
     // Inspectors.
-    pub chisel_state: Option<ChiselState>,
-    pub edge_coverage: Option<EdgeCovInspector>,
-    pub fuzzer: Option<Fuzzer>,
-    pub line_coverage: Option<LineCoverageCollector>,
-    pub log_collector: Option<LogCollector>,
-    pub printer: Option<CustomPrintTracer>,
-    pub revert_diag: Option<RevertDiagnostic>,
-    pub script_execution_inspector: Option<ScriptExecutionInspector>,
+    // These are boxed to reduce the size of the struct and slightly improve performance of the
+    // `if let Some` checks.
+    pub chisel_state: Option<Box<ChiselState>>,
+    pub edge_coverage: Option<Box<EdgeCovInspector>>,
+    pub fuzzer: Option<Box<Fuzzer>>,
+    pub line_coverage: Option<Box<LineCoverageCollector>>,
+    pub log_collector: Option<Box<LogCollector>>,
+    pub printer: Option<Box<CustomPrintTracer>>,
+    pub revert_diag: Option<Box<RevertDiagnostic>>,
+    pub script_execution_inspector: Option<Box<ScriptExecutionInspector>>,
     pub tracer: Option<TraceCollector>,
 
     // InspectorExt and other internal data.
     pub enable_isolation: bool,
-    pub odyssey: bool,
+    pub networks: NetworkConfigs,
     pub create2_deployer: Address,
     /// Flag marking if we are in the inner EVM context.
     pub in_inner_context: bool,
@@ -373,6 +401,12 @@ impl InspectorStack {
         });
     }
 
+    /// Set the solar compiler instance.
+    #[inline]
+    pub fn set_analysis(&mut self, analysis: Analysis) {
+        self.analysis = Some(analysis);
+    }
+
     /// Set variables from an environment for the relevant inspectors.
     #[inline]
     pub fn set_env(&mut self, env: &Env) {
@@ -399,19 +433,19 @@ impl InspectorStack {
     /// Set the cheatcodes inspector.
     #[inline]
     pub fn set_cheatcodes(&mut self, cheatcodes: Cheatcodes) {
-        self.cheatcodes = Some(cheatcodes);
+        self.cheatcodes = Some(cheatcodes.into());
     }
 
     /// Set the fuzzer inspector.
     #[inline]
     pub fn set_fuzzer(&mut self, fuzzer: Fuzzer) {
-        self.fuzzer = Some(fuzzer);
+        self.fuzzer = Some(fuzzer.into());
     }
 
     /// Set the Chisel inspector.
     #[inline]
     pub fn set_chisel(&mut self, final_pc: usize) {
-        self.chisel_state = Some(ChiselState::new(final_pc));
+        self.chisel_state = Some(ChiselState::new(final_pc).into());
     }
 
     /// Set whether to enable the line coverage collector.
@@ -423,7 +457,8 @@ impl InspectorStack {
     /// Set whether to enable the edge coverage collector.
     #[inline]
     pub fn collect_edge_coverage(&mut self, yes: bool) {
-        self.edge_coverage = yes.then(EdgeCovInspector::new); // TODO configurable edge size?
+        // TODO: configurable edge size?
+        self.edge_coverage = yes.then(EdgeCovInspector::new).map(Into::into);
     }
 
     /// Set whether to enable call isolation.
@@ -432,10 +467,10 @@ impl InspectorStack {
         self.enable_isolation = yes;
     }
 
-    /// Set whether to enable call isolation.
+    /// Set networks with enabled features.
     #[inline]
-    pub fn odyssey(&mut self, yes: bool) {
-        self.odyssey = yes;
+    pub fn networks(&mut self, networks: NetworkConfigs) {
+        self.networks = networks;
     }
 
     /// Set the CREATE2 deployer address.
@@ -460,11 +495,7 @@ impl InspectorStack {
     /// Revert diagnostic inspector is activated when `mode != TraceMode::None`
     #[inline]
     pub fn tracing(&mut self, mode: TraceMode) {
-        if mode.is_none() {
-            self.revert_diag = None;
-        } else {
-            self.revert_diag = Some(RevertDiagnostic::default());
-        }
+        self.revert_diag = (!mode.is_none()).then(RevertDiagnostic::default).map(Into::into);
 
         if let Some(config) = mode.into_config() {
             *self.tracer.get_or_insert_with(Default::default).config_mut() = config;
@@ -480,8 +511,18 @@ impl InspectorStack {
             script_address;
     }
 
-    /// Collects all the data gathered during inspection into a single struct.
+    #[inline(always)]
+    fn as_mut(&mut self) -> InspectorStackRefMut<'_> {
+        InspectorStackRefMut { cheatcodes: self.cheatcodes.as_deref_mut(), inner: &mut self.inner }
+    }
+
+    /// Returns an [`InspectorExt`] using this stack's inspectors.
     #[inline]
+    pub fn as_inspector(&mut self) -> impl InspectorExt + '_ {
+        self
+    }
+
+    /// Collects all the data gathered during inspection into a single struct.
     pub fn collect(self) -> InspectorData {
         let Self {
             mut cheatcodes,
@@ -528,11 +569,6 @@ impl InspectorStack {
             chisel_state: chisel_state.and_then(|state| state.state),
             reverter,
         }
-    }
-
-    #[inline(always)]
-    fn as_mut(&mut self) -> InspectorStackRefMut<'_> {
-        InspectorStackRefMut { cheatcodes: self.cheatcodes.as_mut(), inner: &mut self.inner }
     }
 }
 
@@ -640,7 +676,7 @@ impl InspectorStackRefMut<'_> {
         self.inner_context_data = Some(InnerContextData { original_origin: cached_env.tx.caller });
         self.in_inner_context = true;
 
-        let res = self.with_stack(|inspector| {
+        let res = self.with_inspector(|inspector| {
             let (db, journal, env) = ecx.as_db_env_and_journal();
             let mut evm = new_evm_with_inspector(db, env.to_owned(), inspector);
 
@@ -649,7 +685,7 @@ impl InspectorStackRefMut<'_> {
 
                 for (addr, acc_mut) in &mut state {
                     // mark all accounts cold, besides preloaded addresses
-                    if !journal.warm_preloaded_addresses.contains(addr) {
+                    if journal.warm_addresses.is_cold(addr) {
                         acc_mut.mark_cold();
                     }
 
@@ -737,24 +773,22 @@ impl InspectorStackRefMut<'_> {
         (InterpreterResult { result, output, gas }, address)
     }
 
-    /// Moves out of references, constructs an [`InspectorStack`] and runs the given closure with
-    /// it.
-    fn with_stack<O>(&mut self, f: impl FnOnce(&mut InspectorStack) -> O) -> O {
-        let mut stack = InspectorStack {
-            cheatcodes: self
-                .cheatcodes
-                .as_deref_mut()
-                .map(|cheats| core::mem::replace(cheats, Cheatcodes::new(cheats.config.clone()))),
-            inner: std::mem::take(self.inner),
-        };
+    /// Moves out of references, constructs a new [`InspectorStackRefMut`] and runs the given
+    /// closure with it.
+    fn with_inspector<O>(&mut self, f: impl FnOnce(InspectorStackRefMut<'_>) -> O) -> O {
+        let mut cheatcodes = self
+            .cheatcodes
+            .as_deref_mut()
+            .map(|cheats| core::mem::replace(cheats, Cheatcodes::new(cheats.config.clone())));
+        let mut inner = std::mem::take(self.inner);
 
-        let out = f(&mut stack);
+        let out = f(InspectorStackRefMut { cheatcodes: cheatcodes.as_mut(), inner: &mut inner });
 
         if let Some(cheats) = self.cheatcodes.as_deref_mut() {
-            *cheats = stack.cheatcodes.take().unwrap();
+            *cheats = cheatcodes.unwrap();
         }
 
-        *self.inner = stack.inner;
+        *self.inner = inner;
 
         out
     }
@@ -792,6 +826,11 @@ impl InspectorStackRefMut<'_> {
         }
     }
 
+    // We take extra care in optimizing `step` and `step_end`, as they're are likely the most
+    // hot functions in all of Foundry.
+    // We want to `#[inline(always)]` these functions so that `InspectorStack` does not
+    // delegate to `InspectorStackRefMut` in this case.
+
     #[inline(always)]
     fn step_inlined(
         &mut self,
@@ -800,13 +839,14 @@ impl InspectorStackRefMut<'_> {
     ) {
         call_inspectors!(
             [
-                &mut self.fuzzer,
-                &mut self.tracer,
-                &mut self.line_coverage,
+                // These are sorted in definition order.
                 &mut self.edge_coverage,
-                &mut self.script_execution_inspector,
+                &mut self.fuzzer,
+                &mut self.line_coverage,
                 &mut self.printer,
                 &mut self.revert_diag,
+                &mut self.script_execution_inspector,
+                &mut self.tracer,
                 // Keep `cheatcodes` last to make use of the tail call.
                 &mut self.cheatcodes,
             ],
@@ -822,10 +862,11 @@ impl InspectorStackRefMut<'_> {
     ) {
         call_inspectors!(
             [
-                &mut self.tracer,
+                // These are sorted in definition order.
                 &mut self.chisel_state,
                 &mut self.printer,
                 &mut self.revert_diag,
+                &mut self.tracer,
                 // Keep `cheatcodes` last to make use of the tail call.
                 &mut self.cheatcodes,
             ],
@@ -869,7 +910,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
     }
 
     #[allow(clippy::redundant_clone)]
-    fn log(
+    fn log_full(
         &mut self,
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn DatabaseExt>,
@@ -877,7 +918,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
     ) {
         call_inspectors!(
             [&mut self.tracer, &mut self.log_collector, &mut self.cheatcodes, &mut self.printer],
-            |inspector| inspector.log(interpreter, ecx, log.clone()),
+            |inspector| inspector.log_full(interpreter, ecx, log.clone()),
         );
     }
 
@@ -933,6 +974,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
                     call.input.bytes(ecx).get(..4).and_then(|selector| mocks.get(selector))
                 }) {
                     call.bytecode_address = *target;
+                    call.known_bytecode = None;
                 }
             }
 
@@ -957,11 +999,13 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
                     return Some(CallOutcome {
                         result,
                         memory_offset: call.return_memory_offset.clone(),
+                        was_precompile_called: true,
+                        precompile_call_logs: vec![],
                     });
                 }
                 // Mark accounts and storage cold before STATICCALLs
                 CallScheme::StaticCall => {
-                    let JournaledState { state, warm_preloaded_addresses, .. } =
+                    let JournaledState { state, warm_addresses, .. } =
                         &mut ecx.journaled_state.inner;
                     for (addr, acc_mut) in state {
                         // Do not mark accounts and storage cold accounts with arbitrary storage.
@@ -971,7 +1015,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
                             continue;
                         }
 
-                        if !warm_preloaded_addresses.contains(addr) {
+                        if warm_addresses.is_cold(addr) {
                             acc_mut.mark_cold();
                         }
 
@@ -1074,6 +1118,14 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
             self.top_level_frame_end(ecx, outcome.result.result);
         }
     }
+
+    fn selfdestruct(&mut self, contract: Address, target: Address, value: U256) {
+        call_inspectors!([&mut self.printer], |inspector| Inspector::<
+            EthEvmContext<&mut dyn DatabaseExt>,
+        >::selfdestruct(
+            inspector, contract, target, value,
+        ));
+    }
 }
 
 impl InspectorExt for InspectorStackRefMut<'_> {
@@ -1097,8 +1149,8 @@ impl InspectorExt for InspectorStackRefMut<'_> {
         ));
     }
 
-    fn is_odyssey(&self) -> bool {
-        self.inner.odyssey
+    fn get_networks(&self) -> NetworkConfigs {
+        self.inner.networks
     }
 
     fn create2_deployer(&self) -> Address {
@@ -1179,13 +1231,13 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStack {
         self.as_mut().initialize_interp(interpreter, ecx)
     }
 
-    fn log(
+    fn log_full(
         &mut self,
         interpreter: &mut Interpreter,
         ecx: &mut EthEvmContext<&mut dyn DatabaseExt>,
         log: Log,
     ) {
-        self.as_mut().log(interpreter, ecx, log)
+        self.as_mut().log_full(interpreter, ecx, log)
     }
 
     fn selfdestruct(&mut self, contract: Address, target: Address, value: U256) {
@@ -1202,8 +1254,8 @@ impl InspectorExt for InspectorStack {
         self.as_mut().should_use_create2_factory(ecx, inputs)
     }
 
-    fn is_odyssey(&self) -> bool {
-        self.odyssey
+    fn get_networks(&self) -> NetworkConfigs {
+        self.networks
     }
 
     fn create2_deployer(&self) -> Address {

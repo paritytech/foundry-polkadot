@@ -49,8 +49,7 @@ contract LinkTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_lib(
         "remapping/MyLib",
@@ -61,8 +60,7 @@ library MyLib {
     }
 }
 ",
-    )
-    .unwrap();
+    );
 
     "src/LinkTest.sol:LinkTest".to_string()
 }
@@ -85,8 +83,7 @@ contract Contract {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "libraries/ChainlinkTWAP",
@@ -97,8 +94,7 @@ library ChainlinkTWAP {
    }
 }
 ",
-    )
-    .unwrap();
+    );
 
     "src/Contract.sol:Contract".to_string()
 }
@@ -116,8 +112,7 @@ contract TupleArrayConstructorContract {
 constructor(Point[] memory _points) {}
 }
 "#,
-    )
-    .unwrap();
+    );
 
     "src/TupleArrayConstructorContract.sol:TupleArrayConstructorContract".to_string()
 }
@@ -136,8 +131,7 @@ contract Child {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
     prj.add_source(
         "Factory.sol",
         r#"
@@ -151,8 +145,7 @@ contract Factory {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     "src/Factory.sol:Factory".to_string()
 }
@@ -178,8 +171,7 @@ contract TestAssert {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     "src/Library.sol:TestAssert".to_string()
 }

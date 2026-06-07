@@ -1,6 +1,6 @@
 # Foundry Benchmark Results
 
-**Date**: 2025-07-24 14:05:02
+**Date**: 2025-10-02 12:14:23
 
 ## Repositories Tested
 
@@ -11,60 +11,60 @@
 
 ## Foundry Versions
 
-- **v1.2.3**: forge Version: 1.2.3-v1.2.3 (a813a2c 2025-06-08)
-- **nightly-9c3feff90b6532126b4391dfb4570401c8a6174e**: forge Version: 1.3.0-nightly (9c3feff 2025-07-24)
+- **v1.3.6**: forge Version: 1.3.6-v1.3.6 (d241588 2025-09-16)
+- **v1.4.0-rc1**: forge Version: 1.4.0-v1.4.0-rc1 (bd0e4a7 2025-10-01)
 
 ## Forge Test
 
-| Repository           | v1.2.3  | nightly-9c3feff90b6532126b4391dfb4570401c8a6174e |
-| -------------------- | ------- | ------------------------------------------------ |
-| ithacaxyz-account    | 3.69 s  | 3.12 s                                           |
-| solady               | 2.95 s  | 2.32 s                                           |
-| Uniswap-v4-core      | 8.03 s  | 6.76 s                                           |
-| sparkdotfi-spark-psm | 57.02 s | 44.76 s                                          |
+| Repository           | v1.3.6  | v1.4.0-rc1 |
+| -------------------- | ------- | ---------- |
+| ithacaxyz-account    | 3.17 s  | 2.94 s     |
+| solady               | 2.28 s  | 2.10 s     |
+| Uniswap-v4-core      | 7.27 s  | 6.13 s     |
+| sparkdotfi-spark-psm | 43.04 s | 44.08 s    |
 
 ## Forge Fuzz Test
 
-| Repository           | v1.2.3 | nightly-9c3feff90b6532126b4391dfb4570401c8a6174e |
-| -------------------- | ------ | ------------------------------------------------ |
-| ithacaxyz-account    | 3.58 s | 3.39 s                                           |
-| solady               | 3.34 s | 2.54 s                                           |
-| Uniswap-v4-core      | 8.03 s | 7.46 s                                           |
-| sparkdotfi-spark-psm | 3.70 s | 3.06 s                                           |
+| Repository           | v1.3.6 | v1.4.0-rc1 |
+| -------------------- | ------ | ---------- |
+| ithacaxyz-account    | 3.18 s | 3.02 s     |
+| solady               | 2.39 s | 2.24 s     |
+| Uniswap-v4-core      | 6.84 s | 6.20 s     |
+| sparkdotfi-spark-psm | 3.07 s | 2.72 s     |
 
 ## Forge Test (Isolated)
 
-| Repository           | v1.2.3  | nightly-9c3feff90b6532126b4391dfb4570401c8a6174e |
-| -------------------- | ------- | ------------------------------------------------ |
-| solady               | 3.02 s  | 3.18 s                                           |
-| Uniswap-v4-core      | 8.98 s  | 8.34 s                                           |
-| sparkdotfi-spark-psm | 58.19 s | 54.06 s                                          |
+| Repository           | v1.3.6  | v1.4.0-rc1 |
+| -------------------- | ------- | ---------- |
+| solady               | 2.26 s  | 2.41 s     |
+| Uniswap-v4-core      | 7.22 s  | 7.71 s     |
+| sparkdotfi-spark-psm | 45.53 s | 50.49 s    |
 
 ## Forge Build (No Cache)
 
-| Repository           | v1.2.3  | nightly-9c3feff90b6532126b4391dfb4570401c8a6174e |
-| -------------------- | ------- | ------------------------------------------------ |
-| ithacaxyz-account    | 9.53 s  | 9.58 s                                           |
-| solady               | 15.29 s | 14.97 s                                          |
-| Uniswap-v4-core      | 2m 8.3s | 2m 9.0s                                          |
-| sparkdotfi-spark-psm | 13.33 s | 13.29 s                                          |
+| Repository           | v1.3.6  | v1.4.0-rc1 |
+| -------------------- | ------- | ---------- |
+| ithacaxyz-account    | 9.16 s  | 9.08 s     |
+| solady               | 14.62 s | 14.69 s    |
+| Uniswap-v4-core      | 2m 3.8s | 2m 5.3s    |
+| sparkdotfi-spark-psm | 13.17 s | 13.14 s    |
 
 ## Forge Build (With Cache)
 
-| Repository           | v1.2.3  | nightly-9c3feff90b6532126b4391dfb4570401c8a6174e |
-| -------------------- | ------- | ------------------------------------------------ |
-| ithacaxyz-account    | 0.199 s | 0.206 s                                          |
-| solady               | 0.092 s | 0.089 s                                          |
-| Uniswap-v4-core      | 0.190 s | 0.136 s                                          |
-| sparkdotfi-spark-psm | 0.239 s | 0.202 s                                          |
+| Repository           | v1.3.6  | v1.4.0-rc1 |
+| -------------------- | ------- | ---------- |
+| ithacaxyz-account    | 0.156 s | 0.113 s    |
+| solady               | 0.089 s | 0.094 s    |
+| Uniswap-v4-core      | 0.133 s | 0.127 s    |
+| sparkdotfi-spark-psm | 0.173 s | 0.131 s    |
 
 ## Forge Coverage
 
-| Repository           | v1.2.3   | nightly-9c3feff90b6532126b4391dfb4570401c8a6174e |
-| -------------------- | -------- | ------------------------------------------------ |
-| ithacaxyz-account    | 16.51 s  | 16.62 s                                          |
-| Uniswap-v4-core      | 1m 40.4s | 1m 40.9s                                         |
-| sparkdotfi-spark-psm | 3m 55.3s | 4m 0.4s                                          |
+| Repository           | v1.3.6   | v1.4.0-rc1 |
+| -------------------- | -------- | ---------- |
+| ithacaxyz-account    | 14.91 s  | 13.34 s    |
+| Uniswap-v4-core      | 1m 34.8s | 1m 30.3s   |
+| sparkdotfi-spark-psm | 3m 49.3s | 3m 40.2s   |
 
 ## System Information
 

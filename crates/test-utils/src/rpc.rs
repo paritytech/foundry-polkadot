@@ -1,35 +1,44 @@
 //! RPC API keys utilities.
 
 use foundry_config::{
-    NamedChain,
-    NamedChain::{Arbitrum, Base, BinanceSmartChainTestnet, Mainnet, Optimism, Polygon, Sepolia},
+    NamedChain::{
+        self, Arbitrum, Base, BinanceSmartChainTestnet, Celo, Mainnet, Optimism, Polygon, Sepolia,
+    },
+    RpcEndpointUrl, RpcEndpoints,
 };
 use rand::seq::SliceRandom;
-use std::sync::{
-    LazyLock,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    env,
+    sync::{
+        LazyLock,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
-fn shuffled<T>(mut vec: Vec<T>) -> Vec<T> {
-    vec.shuffle(&mut rand::rng());
-    vec
+macro_rules! shuffled_list {
+    ($name:ident, $e:expr $(,)?) => {
+        static $name: LazyLock<ShuffledList<&'static str>> =
+            LazyLock::new(|| ShuffledList::new($e));
+    };
 }
 
-// List of public archive reth nodes to use
-static RETH_ARCHIVE_HOSTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    shuffled(vec![
-        //
-        "ethereum.reth.rs",
-    ])
-});
+struct ShuffledList<T> {
+    list: Vec<T>,
+    index: AtomicUsize,
+}
 
-// List of public reth nodes to use (archive and non archive)
-static RETH_HOSTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    shuffled(vec![
-        //
-        "ethereum.reth.rs",
-    ])
-});
+impl<T> ShuffledList<T> {
+    fn new(mut list: Vec<T>) -> Self {
+        assert!(!list.is_empty());
+        list.shuffle(&mut rand::rng());
+        Self { list, index: AtomicUsize::new(0) }
+    }
+
+    fn next(&self) -> &T {
+        let index = self.index.fetch_add(1, Ordering::Relaxed);
+        &self.list[index % self.list.len()]
+    }
+}
 
 // List of general purpose DRPC keys to rotate through
 static DRPC_KEYS: LazyLock<Vec<String>> = LazyLock::new(|| {
@@ -44,6 +53,37 @@ static DRPC_KEYS: LazyLock<Vec<String>> = LazyLock::new(|| {
 
     keys
 });
+
+shuffled_list!(
+    HTTP_ARCHIVE_DOMAINS,
+    vec![
+        //
+        "ethereum.reth.rs/rpc",
+    ]
+);
+shuffled_list!(
+    HTTP_DOMAINS,
+    vec![
+        //
+        "ethereum.reth.rs/rpc",
+        // "reth-ethereum-full.ithaca.xyz/rpc",
+    ],
+);
+shuffled_list!(
+    WS_ARCHIVE_DOMAINS,
+    vec![
+        //
+        "ethereum.reth.rs/ws",
+    ],
+);
+shuffled_list!(
+    WS_DOMAINS,
+    vec![
+        //
+        "ethereum.reth.rs/ws",
+        // "reth-ethereum-full.ithaca.xyz/ws",
+    ],
+);
 
 /// Returns the fallback hardcoded Etherscan API keys.
 fn fallback_etherscan_keys() -> Vec<String> {
@@ -61,18 +101,32 @@ fn fallback_etherscan_keys() -> Vec<String> {
     ]
 }
 
+/// the RPC endpoints used during tests
+pub fn rpc_endpoints() -> RpcEndpoints {
+    RpcEndpoints::new([
+        ("mainnet", RpcEndpointUrl::Url(next_http_archive_rpc_url())),
+        ("mainnet2", RpcEndpointUrl::Url(next_http_archive_rpc_url())),
+        ("sepolia", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Sepolia))),
+        ("optimism", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Optimism))),
+        ("base", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Base))),
+        ("arbitrum", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Arbitrum))),
+        ("polygon", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::Polygon))),
+        ("bsc", RpcEndpointUrl::Url(next_rpc_endpoint(NamedChain::BinanceSmartChain))),
+        ("avaxTestnet", RpcEndpointUrl::Url("https://api.avax-test.network/ext/bc/C/rpc".into())),
+        ("moonbeam", RpcEndpointUrl::Url("https://moonbeam-rpc.publicnode.com".into())),
+        ("polkadotTestnet", RpcEndpointUrl::Url("https://eth-rpc-testnet.polkadot.io".into())),
+        ("kusama", RpcEndpointUrl::Url("https://eth-rpc-kusama.polkadot.io".into())),
+        ("polkadot", RpcEndpointUrl::Url("https://eth-rpc.polkadot.io".into())),
+        ("rpcEnvAlias", RpcEndpointUrl::Env("${RPC_ENV_ALIAS}".into())),
+    ])
+}
+
 // List of etherscan keys.
 static ETHERSCAN_KEYS: LazyLock<Vec<String>> = LazyLock::new(|| {
     // Fetch from GitHub Actions environment variable (comma-separated) or use fallback
     let mut keys = std::env::var("ETHERSCAN_API_KEYS")
         .ok()
-        .map(|env_keys| {
-            env_keys
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<String>>()
-        })
+        .map(|env_keys| env_keys.split(',').map(|s| s.trim().to_string()).collect::<Vec<String>>())
         .filter(|keys| !keys.is_empty())
         .unwrap_or_else(fallback_etherscan_keys);
 
@@ -127,31 +181,10 @@ pub fn next_ws_archive_rpc_url() -> String {
 
 /// Returns a URL that has access to archive state.
 fn next_archive_url(is_ws: bool) -> String {
-    let urls = archive_urls(is_ws);
-    let url = next(urls);
-    eprintln!("--- next_archive_url(is_ws={is_ws}) = {url} ---");
-    url.clone()
-}
-
-fn archive_urls(is_ws: bool) -> &'static [String] {
-    static WS: LazyLock<Vec<String>> = LazyLock::new(|| get(true));
-    static HTTP: LazyLock<Vec<String>> = LazyLock::new(|| get(false));
-
-    fn get(is_ws: bool) -> Vec<String> {
-        let mut urls = vec![];
-
-        for &host in RETH_ARCHIVE_HOSTS.iter() {
-            if is_ws {
-                urls.push(format!("wss://{host}/ws"));
-            } else {
-                urls.push(format!("https://{host}/rpc"));
-            }
-        }
-
-        urls
-    }
-
-    if is_ws { &WS } else { &HTTP }
+    let domain = if is_ws { &WS_ARCHIVE_DOMAINS } else { &HTTP_ARCHIVE_DOMAINS }.next();
+    let url = if is_ws { format!("wss://{domain}") } else { format!("https://{domain}") };
+    test_debug!("next_archive_url(is_ws={is_ws}) = {}", debug_url(&url));
+    url
 }
 
 /// Returns the next etherscan api key.
@@ -162,6 +195,12 @@ pub fn next_etherscan_api_key() -> String {
 }
 
 fn next_url(is_ws: bool, chain: NamedChain) -> String {
+    let url = next_url_inner(is_ws, chain);
+    test_debug!("next_url(is_ws={is_ws}, chain={chain:?}) = {}", debug_url(&url));
+    url
+}
+
+fn next_url_inner(is_ws: bool, chain: NamedChain) -> String {
     if matches!(chain, Base) {
         return "https://mainnet.base.org".to_string();
     }
@@ -174,29 +213,47 @@ fn next_url(is_ws: bool, chain: NamedChain) -> String {
         return "https://bsc-testnet-rpc.publicnode.com".to_string();
     }
 
-    let domain = if matches!(chain, Mainnet) {
-        // For Mainnet pick one of Reth nodes.
-        let idx = next_idx() % RETH_HOSTS.len();
-        let host = RETH_HOSTS[idx];
-        if is_ws { format!("{host}/ws") } else { format!("{host}/rpc") }
+    if matches!(chain, Celo) {
+        return "https://celo.drpc.org".to_string();
+    }
+
+    if matches!(chain, Arbitrum) {
+        let rpc_url = env::var("ARBITRUM_RPC").unwrap_or_default();
+        if !rpc_url.is_empty() {
+            return rpc_url;
+        }
+    }
+
+    let reth_works = true;
+    let domain = if reth_works && matches!(chain, Mainnet) {
+        *(if is_ws { &WS_DOMAINS } else { &HTTP_DOMAINS }).next()
     } else {
         // DRPC for other networks used in tests.
         let idx = next_idx() % DRPC_KEYS.len();
         let key = &DRPC_KEYS[idx];
 
         let network = match chain {
-            Arbitrum => "arbitrum",
+            Mainnet => "ethereum",
             Polygon => "polygon",
+            Arbitrum => "arbitrum",
             Sepolia => "sepolia",
             _ => "",
         };
-        format!("lb.drpc.org/ogrpc?network={network}&dkey={key}")
+        &format!("lb.drpc.org/ogrpc?network={network}&dkey={key}")
     };
 
-    let url = if is_ws { format!("wss://{domain}") } else { format!("https://{domain}") };
+    if is_ws { format!("wss://{domain}") } else { format!("https://{domain}") }
+}
 
-    eprintln!("--- next_url(is_ws={is_ws}, chain={chain:?}) = {url} ---");
-    url
+/// Basic redaction for debugging RPC URLs.
+fn debug_url(url: &str) -> impl std::fmt::Display + '_ {
+    let url = reqwest::Url::parse(url).unwrap();
+    format!(
+        "{scheme}://{host}{path}",
+        scheme = url.scheme(),
+        host = url.host_str().unwrap(),
+        path = url.path().get(..8).unwrap_or(url.path()),
+    )
 }
 
 #[cfg(test)]
@@ -204,7 +261,6 @@ fn next_url(is_ws: bool, chain: NamedChain) -> String {
 mod tests {
     use super::*;
     use alloy_primitives::address;
-    use foundry_block_explorers::EtherscanApiVersion;
     use foundry_config::Chain;
 
     #[tokio::test]
@@ -247,33 +303,5 @@ mod tests {
         if !failed.is_empty() {
             panic!("failed keys: {failed:#?}");
         }
-    }
-
-    #[tokio::test]
-    #[ignore = "run manually"]
-    async fn test_etherscan_keys_compatibility() {
-        let address = address!("0x111111125421cA6dc452d289314280a0f8842A65");
-        let etherscan_key = "JQNGFHINKS1W7Y5FRXU4SPBYF43J3NYK46";
-        let client = foundry_block_explorers::Client::builder()
-            .with_api_key(etherscan_key)
-            .chain(Chain::optimism_mainnet())
-            .unwrap()
-            .build()
-            .unwrap();
-        if client.contract_abi(address).await.is_ok() {
-            panic!("v1 Optimism key should not work with v2 version")
-        }
-
-        let client = foundry_block_explorers::Client::builder()
-            .with_api_key(etherscan_key)
-            .with_api_version(EtherscanApiVersion::V1)
-            .chain(Chain::optimism_mainnet())
-            .unwrap()
-            .build()
-            .unwrap();
-        match client.contract_abi(address).await {
-            Ok(_) => {}
-            Err(_) => panic!("v1 Optimism key should work with v1 version"),
-        };
     }
 }

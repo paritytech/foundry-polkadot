@@ -17,6 +17,7 @@ use crate::{
 };
 use alloy_chains::Chain;
 use alloy_consensus::BlockHeader;
+use alloy_eips::eip7840::BlobParams;
 use alloy_genesis::Genesis;
 use alloy_network::{AnyNetwork, TransactionResponse};
 use alloy_op_hardforks::OpHardfork;
@@ -39,9 +40,9 @@ use foundry_config::Config;
 use foundry_evm::{
     backend::{BlockchainDb, BlockchainDbMeta, SharedBackend},
     constants::DEFAULT_CREATE2_DEPLOYER,
+    core::AsEnvMut,
     utils::{apply_chain_and_block_specific_env_changes, get_blob_base_fee_update_fraction},
 };
-use foundry_evm_core::AsEnvMut;
 use itertools::Itertools;
 use op_revm::OpTransaction;
 use parking_lot::RwLock;
@@ -65,7 +66,11 @@ use tokio::sync::RwLock as TokioRwLock;
 use yansi::Paint;
 
 pub use foundry_common::version::SHORT_VERSION as VERSION_MESSAGE;
-use foundry_evm::traces::{CallTraceDecoderBuilder, identifier::SignaturesIdentifier};
+use foundry_evm::{
+    traces::{CallTraceDecoderBuilder, identifier::SignaturesIdentifier},
+    utils::get_blob_params,
+};
+use foundry_evm_networks::NetworkConfigs;
 
 /// Default port the rpc will open
 pub const NODE_PORT: u16 = 8545;
@@ -98,6 +103,8 @@ pub struct NodeConfig {
     pub gas_limit: Option<u64>,
     /// If set to `true`, disables the block gas limit
     pub disable_block_gas_limit: bool,
+    /// If set to `true`, enables the tx gas limit as imposed by Osaka (EIP-7825)
+    pub enable_tx_gas_limit: bool,
     /// Default gas price for all txs
     pub gas_price: Option<u128>,
     /// Default base fee
@@ -184,16 +191,16 @@ pub struct NodeConfig {
     pub transaction_block_keeper: Option<usize>,
     /// Disable the default CREATE2 deployer
     pub disable_default_create2_deployer: bool,
-    /// Enable Optimism deposit transaction
-    pub enable_optimism: bool,
+    /// Disable pool balance checks
+    pub disable_pool_balance_checks: bool,
     /// Slots in an epoch
     pub slots_in_an_epoch: u64,
     /// The memory limit per EVM execution in bytes.
     pub memory_limit: Option<u64>,
     /// Factory used by `anvil` to extend the EVM's precompiles.
     pub precompile_factory: Option<Arc<dyn PrecompileFactory>>,
-    /// Enable Odyssey features.
-    pub odyssey: bool,
+    /// Networks to enable features for.
+    pub networks: NetworkConfigs,
     /// Do not print log messages.
     pub silent: bool,
     /// The path where states are cached.
@@ -439,6 +446,7 @@ impl Default for NodeConfig {
             chain_id: None,
             gas_limit: None,
             disable_block_gas_limit: false,
+            enable_tx_gas_limit: false,
             gas_price: None,
             hardfork: None,
             signer_accounts: genesis_accounts.clone(),
@@ -451,7 +459,6 @@ impl Default for NodeConfig {
             no_mining: false,
             mixed_mining: false,
             port: NODE_PORT,
-            // TODO make this something dependent on block capacity
             max_transactions: 1_000,
             eth_rpc_url: None,
             fork_choice: None,
@@ -484,11 +491,11 @@ impl Default for NodeConfig {
             init_state: None,
             transaction_block_keeper: None,
             disable_default_create2_deployer: false,
-            enable_optimism: false,
+            disable_pool_balance_checks: false,
             slots_in_an_epoch: 32,
             memory_limit: None,
             precompile_factory: None,
-            odyssey: false,
+            networks: Default::default(),
             silent: false,
             cache_path: None,
         }
@@ -530,15 +537,20 @@ impl NodeConfig {
         }
     }
 
+    /// Returns the [`BlobParams`] that should be used.
+    pub fn get_blob_params(&self) -> BlobParams {
+        get_blob_params(
+            self.chain_id.unwrap_or(Chain::mainnet().id()),
+            self.get_genesis_timestamp(),
+        )
+    }
+
     /// Returns the hardfork to use
     pub fn get_hardfork(&self) -> ChainHardfork {
-        if self.odyssey {
-            return ChainHardfork::Ethereum(EthereumHardfork::default());
-        }
         if let Some(hardfork) = self.hardfork {
             return hardfork;
         }
-        if self.enable_optimism {
+        if self.networks.is_optimism() {
             return OpHardfork::default().into();
         }
         EthereumHardfork::default().into()
@@ -592,6 +604,7 @@ impl NodeConfig {
     pub fn set_chain_id(&mut self, chain_id: Option<impl Into<u64>>) {
         self.chain_id = chain_id.map(Into::into);
         let chain_id = self.get_chain_id();
+        self.networks.with_chain_id(chain_id);
         self.genesis_accounts.iter_mut().for_each(|wallet| {
             *wallet = wallet.clone().with_chain_id(Some(chain_id));
         });
@@ -613,6 +626,15 @@ impl NodeConfig {
     #[must_use]
     pub fn disable_block_gas_limit(mut self, disable_block_gas_limit: bool) -> Self {
         self.disable_block_gas_limit = disable_block_gas_limit;
+        self
+    }
+
+    /// Enable tx gas limit check
+    ///
+    /// If set to `true`, enables the tx gas limit as imposed by Osaka (EIP-7825)
+    #[must_use]
+    pub fn enable_tx_gas_limit(mut self, enable_tx_gas_limit: bool) -> Self {
+        self.enable_tx_gas_limit = enable_tx_gas_limit;
         self
     }
 
@@ -979,17 +1001,17 @@ impl NodeConfig {
         Config::foundry_block_cache_file(chain_id, block)
     }
 
-    /// Sets whether to enable optimism support
-    #[must_use]
-    pub fn with_optimism(mut self, enable_optimism: bool) -> Self {
-        self.enable_optimism = enable_optimism;
-        self
-    }
-
     /// Sets whether to disable the default create2 deployer
     #[must_use]
     pub fn with_disable_default_create2_deployer(mut self, yes: bool) -> Self {
         self.disable_default_create2_deployer = yes;
+        self
+    }
+
+    /// Sets whether to disable pool balance checks
+    #[must_use]
+    pub fn with_disable_pool_balance_checks(mut self, yes: bool) -> Self {
+        self.disable_pool_balance_checks = yes;
         self
     }
 
@@ -1000,10 +1022,10 @@ impl NodeConfig {
         self
     }
 
-    /// Sets whether to enable Odyssey support
+    /// Enable features for provided networks.
     #[must_use]
-    pub fn with_odyssey(mut self, odyssey: bool) -> Self {
-        self.odyssey = odyssey;
+    pub fn with_networks(mut self, networks: NetworkConfigs) -> Self {
+        self.networks = networks;
         self
     }
 
@@ -1044,6 +1066,10 @@ impl NodeConfig {
         cfg.disable_eip3607 = true;
         cfg.disable_block_gas_limit = self.disable_block_gas_limit;
 
+        if !self.enable_tx_gas_limit {
+            cfg.tx_gas_limit_cap = Some(u64::MAX);
+        }
+
         if let Some(value) = self.memory_limit {
             cfg.memory_limit = value;
         }
@@ -1060,7 +1086,7 @@ impl NodeConfig {
                 base: TxEnv { chain_id: Some(self.get_chain_id()), ..Default::default() },
                 ..Default::default()
             },
-            self.enable_optimism,
+            self.networks,
         );
 
         let fees = FeeManager::new(
@@ -1069,6 +1095,7 @@ impl NodeConfig {
             !self.disable_min_priority_fee,
             self.get_gas_price(),
             self.get_blob_excess_gas_and_price(),
+            self.get_blob_params(),
         );
 
         let (db, fork): (Arc<TokioRwLock<Box<dyn Db>>>, Option<ClientFork>) =
@@ -1123,7 +1150,6 @@ impl NodeConfig {
             self.print_logs,
             self.print_traces,
             Arc::new(decoder_builder.build()),
-            self.odyssey,
             self.prune_history,
             self.max_persisted_states,
             self.transaction_block_keeper,
@@ -1185,7 +1211,6 @@ impl NodeConfig {
                 .initial_backoff(self.fork_retry_backoff.as_millis() as u64)
                 .compute_units_per_second(self.compute_units_per_second)
                 .max_retry(self.fork_request_retries)
-                .initial_backoff(1000)
                 .headers(self.fork_headers.clone())
                 .build()
                 .wrap_err("failed to establish provider to fork url")?,
@@ -1284,7 +1309,8 @@ latest block number: {latest_block}"
             if let (Some(blob_excess_gas), Some(blob_gas_used)) =
                 (block.header.excess_blob_gas, block.header.blob_gas_used)
             {
-                let blob_base_fee_update_fraction = get_blob_base_fee_update_fraction(
+                // derive the blobparams that are active at this timestamp
+                let blob_params = get_blob_params(
                     fork_chain_id
                         .unwrap_or_else(|| U256::from(Chain::mainnet().id()))
                         .saturating_to(),
@@ -1293,15 +1319,16 @@ latest block number: {latest_block}"
 
                 env.evm_env.block_env.blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(
                     blob_excess_gas,
-                    blob_base_fee_update_fraction,
+                    blob_params.update_fraction as u64,
                 ));
+
+                fees.set_blob_params(blob_params);
 
                 let next_block_blob_excess_gas =
                     fees.get_next_block_blob_excess_gas(blob_excess_gas, blob_gas_used);
-
                 fees.set_blob_excess_gas_and_price(BlobExcessGasAndPrice::new(
                     next_block_blob_excess_gas,
-                    blob_base_fee_update_fraction,
+                    blob_params.update_fraction as u64,
                 ));
             }
         }
@@ -1333,7 +1360,11 @@ latest block number: {latest_block}"
         };
         let override_chain_id = self.chain_id;
         // apply changes such as difficulty -> prevrandao and chain specifics for current chain id
-        apply_chain_and_block_specific_env_changes::<AnyNetwork>(env.as_env_mut(), &block);
+        apply_chain_and_block_specific_env_changes::<AnyNetwork>(
+            env.as_env_mut(),
+            &block,
+            self.networks,
+        );
 
         let meta = BlockchainDbMeta::new(env.evm_env.block_env.clone(), eth_rpc_url.clone());
         let block_chain_db = if self.fork_chain_id.is_some() {
@@ -1436,7 +1467,9 @@ async fn derive_block_and_transactions(
                 .get_transaction_by_hash(transaction_hash.0.into())
                 .await?
                 .ok_or_else(|| eyre::eyre!("failed to get fork transaction by hash"))?;
-            let transaction_block_number = transaction.block_number.unwrap();
+            let transaction_block_number = transaction.block_number.ok_or_else(|| {
+                eyre::eyre!("fork transaction is not mined yet (no block number)")
+            })?;
 
             // Get the block pertaining to the fork transaction
             let transaction_block = provider

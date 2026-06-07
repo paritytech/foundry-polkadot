@@ -17,7 +17,7 @@ pub const CHEATCODE_CONTRACT_HASH: B256 =
 
 /// The Hardhat console address.
 ///
-/// See: <https://github.com/nomiclabs/hardhat/blob/master/packages/hardhat-core/console.sol>
+/// See: <https://github.com/NomicFoundation/hardhat/blob/main/v-next/hardhat/console.sol>
 pub const HARDHAT_CONSOLE_ADDRESS: Address = address!("0x000000000000000000636F6e736F6c652e6c6f67");
 
 /// Stores the caller address to be used as *sender* account for:
@@ -29,16 +29,15 @@ pub const HARDHAT_CONSOLE_ADDRESS: Address = address!("0x000000000000000000636F6
 pub const CALLER: Address = address!("0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38");
 
 /// The default test contract address.
-pub const TEST_CONTRACT_ADDRESS: Address = address!("0xb4c79daB8f259C7Aee6E5b2Aa729821864227e84");
+///
+/// Derived from `CALLER.create(1)`.
+pub const TEST_CONTRACT_ADDRESS: Address = address!("0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496");
 
 /// Magic return value returned by the `assume` cheatcode.
 pub const MAGIC_ASSUME: &[u8] = b"FOUNDRY::ASSUME";
 
 /// Magic return value returned by the `skip` cheatcode. Optionally appended with a reason.
 pub const MAGIC_SKIP: &[u8] = b"FOUNDRY::SKIP";
-
-/// Test timeout return value.
-pub const TEST_TIMEOUT: &str = "FOUNDRY::TEST_TIMEOUT";
 
 /// The address that deploys the default CREATE2 deployer contract.
 pub const DEFAULT_CREATE2_DEPLOYER_DEPLOYER: Address =

@@ -11,13 +11,13 @@ use crate::{
 };
 use alloy_chains::NamedChain;
 use alloy_network::TransactionBuilder;
-use alloy_primitives::{Address, Bytes, TxKind, U256, map::HashMap, utils::format_units};
+use alloy_primitives::{Address, TxKind, U256, map::HashMap, utils::format_units};
 use dialoguer::Confirm;
 use eyre::{Context, Result};
 use forge_script_sequence::{ScriptSequence, TransactionWithMetadata};
 use foundry_cheatcodes::Wallets;
 use foundry_cli::utils::{has_different_gas_calc, now};
-use foundry_common::{ContractData, shell};
+use foundry_common::{ContractData, sh_println, sh_warn, shell};
 use foundry_evm::traces::{decode_trace_arena, render_trace_arena};
 use futures::future::{join_all, try_join_all};
 use parking_lot::RwLock;
@@ -25,6 +25,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     sync::Arc,
 };
+use tracing::trace;
 
 /// Same as [ExecutedState](crate::execute::ExecutedState), but also contains [ExecutionArtifacts]
 /// which are obtained from [ScriptResult].
@@ -127,7 +128,7 @@ impl PreSimulationState {
                         tx.from()
                             .expect("transaction doesn't have a `from` address at execution time"),
                         to,
-                        tx.input().map(Bytes::copy_from_slice),
+                        tx.input().cloned(),
                         tx.value(),
                         tx.authorization_list(),
                     )
@@ -149,7 +150,11 @@ impl PreSimulationState {
                 };
 
                 let transaction = ScriptTransactionBuilder::from(transaction)
-                    .with_execution_result(&result, self.args.gas_estimate_multiplier)
+                    .with_execution_result(
+                        &result,
+                        self.args.gas_estimate_multiplier,
+                        &self.build_data,
+                    )
                     .build();
 
                 eyre::Ok((Some(transaction), is_noop_tx, result.traces))
@@ -235,7 +240,7 @@ impl PreSimulationState {
             let mut script_config = self.script_config.clone();
             script_config.evm_opts.fork_url = Some(rpc.clone());
             let runner = script_config.get_runner().await?;
-            Ok((rpc.clone(), runner))
+            Ok((rpc, runner))
         });
         try_join_all(futs).await
     }

@@ -267,7 +267,8 @@ impl CreateArgs {
     pub async fn run(mut self) -> Result<()> {
         let mut config = self.load_config()?;
         // Install missing dependencies.
-        if install::install_missing_dependencies(&mut config) && config.auto_detect_remappings {
+        if install::install_missing_dependencies(&mut config).await && config.auto_detect_remappings
+        {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }
@@ -421,10 +422,11 @@ impl CreateArgs {
             compiler_version: Some(id.version.to_string()),
             constructor_args,
             constructor_args_path: None,
+            no_auto_detect: false,
+            use_solc: None,
             num_of_optimizations: None,
             etherscan: EtherscanOpts {
                 key: self.eth.etherscan.key.clone(),
-                api_version: self.eth.etherscan.api_version,
                 chain: Some(chain.into()),
             },
             rpc: Default::default(),
@@ -442,6 +444,7 @@ impl CreateArgs {
             guess_constructor_args: false,
             compilation_profile: Some(id.profile.to_string()),
             language: None,
+            creation_transaction_hash: None,
         };
 
         // Check config for Etherscan API Keys to avoid preflight check failing if no
@@ -611,12 +614,10 @@ impl CreateArgs {
             compiler_version: Some(id.version.to_string()),
             constructor_args,
             constructor_args_path: None,
+            no_auto_detect: false,
+            use_solc: None,
             num_of_optimizations,
-            etherscan: EtherscanOpts {
-                key: self.eth.etherscan.key(),
-                api_version: self.eth.etherscan.api_version,
-                chain: Some(chain.into()),
-            },
+            etherscan: EtherscanOpts { key: self.eth.etherscan.key(), chain: Some(chain.into()) },
             rpc: Default::default(),
             flatten: false,
             force: false,
@@ -632,6 +633,7 @@ impl CreateArgs {
             guess_constructor_args: false,
             compilation_profile: Some(id.profile.to_string()),
             language: None,
+            creation_transaction_hash: Some(receipt.transaction_hash),
         };
         sh_println!("Waiting for {} to detect contract deployment...", verify.verifier.verifier)?;
         verify.run().await

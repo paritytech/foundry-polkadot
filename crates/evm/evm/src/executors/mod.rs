@@ -20,7 +20,7 @@ use alloy_primitives::{
 };
 use alloy_sol_types::{SolCall, sol};
 use foundry_evm_core::{
-    EvmEnv, InspectorExt,
+    EvmEnv,
     backend::{Backend, BackendError, BackendResult, CowBackend, DatabaseExt, GLOBAL_FAIL_SLOT},
     constants::{
         CALLER, CHEATCODE_ADDRESS, CHEATCODE_CONTRACT_HASH, DEFAULT_CREATE2_DEPLOYER,
@@ -44,6 +44,10 @@ use revm::{
 };
 use std::{
     borrow::Cow,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -56,7 +60,9 @@ pub use fuzz::FuzzedExecutor;
 pub mod invariant;
 pub use invariant::InvariantExecutor;
 
+mod corpus;
 mod trace;
+
 pub use trace::TracingExecutor;
 
 pub mod strategy;
@@ -64,6 +70,7 @@ pub use strategy::{
     EvmExecutorStrategyRunner, ExecutorStrategy, ExecutorStrategyContext, ExecutorStrategyExt,
     ExecutorStrategyRunner,
 };
+const DURATION_BETWEEN_METRICS_REPORT: Duration = Duration::from_secs(5);
 
 sol! {
     interface ITest {
@@ -321,7 +328,7 @@ impl Executor {
 
     #[inline]
     pub fn create2_deployer(&self) -> Address {
-        self.inspector().create2_deployer()
+        self.inspector().create2_deployer
     }
 
     /// Deploys a contract and commits the new state to the underlying database.
@@ -368,7 +375,7 @@ impl Executor {
         // persistent across fork swaps in forking mode
         self.backend_mut().add_persistent_account(address);
 
-        debug!(%address, "deployed contract");
+        trace!(%address, "deployed contract");
 
         Ok(DeployResult { raw: result, address })
     }
@@ -493,37 +500,53 @@ impl Executor {
         self.transact_with_env(env)
     }
 
+    /// Performs a raw call to an account on the current state of the VM with an EIP-7702
+    /// authorization last.
+    pub fn transact_raw_with_authorization(
+        &mut self,
+        from: Address,
+        to: Address,
+        calldata: Bytes,
+        value: U256,
+        authorization_list: Vec<SignedAuthorization>,
+    ) -> eyre::Result<RawCallResult> {
+        let mut env = self.build_test_env(from, TxKind::Call(to), calldata, value);
+        env.tx.set_signed_authorization(authorization_list);
+        env.tx.tx_type = 4;
+        self.transact_with_env(env)
+    }
+
     /// Execute the transaction configured in `env.tx`.
     ///
     /// The state after the call is **not** persisted.
     #[instrument(name = "call", level = "debug", skip_all)]
     pub fn call_with_env(&self, mut env: Env) -> eyre::Result<RawCallResult> {
-        let mut inspector = self.inspector().clone();
+        let mut stack = self.inspector().clone();
         let mut backend = CowBackend::new_borrowed(self.backend());
         let result = self.strategy.runner.call(
             self.strategy.context.as_ref(),
             &mut backend,
             &mut env,
             &self.env,
-            &mut inspector,
+            &mut stack,
         )?;
-        convert_executed_result(env, inspector, result, backend.has_state_snapshot_failure())
+        convert_executed_result(env, stack, result, backend.has_state_snapshot_failure())
     }
 
     /// Execute the transaction configured in `env.tx`.
     #[instrument(name = "transact", level = "debug", skip_all)]
     pub fn transact_with_env(&mut self, mut env: Env) -> eyre::Result<RawCallResult> {
-        let mut inspector = self.inspector().clone();
+        let mut stack = self.inspector().clone();
         let backend = &mut self.backend;
         let result = self.strategy.runner.transact(
             self.strategy.context.as_mut(),
             backend,
             &mut env,
             &self.env,
-            &mut inspector,
+            &mut stack,
         )?;
         let mut result =
-            convert_executed_result(env, inspector, result, backend.has_state_snapshot_failure())?;
+            convert_executed_result(env, stack, result, backend.has_state_snapshot_failure())?;
         self.commit(&mut result);
         Ok(result)
     }
@@ -863,11 +886,11 @@ pub struct RawCallResult {
     /// The `revm::Env` after the call
     pub env: Env,
     /// The cheatcode states after execution
-    pub cheatcodes: Option<Cheatcodes>,
+    pub cheatcodes: Option<Box<Cheatcodes>>,
     /// The raw output of the execution
     pub out: Option<Output>,
     /// The chisel state
-    pub chisel_state: Option<(Vec<U256>, Vec<u8>, Option<InstructionResult>)>,
+    pub chisel_state: Option<(Vec<U256>, Vec<u8>)>,
     pub reverter: Option<Address>,
 }
 
@@ -1116,8 +1139,45 @@ impl FuzzTestTimer {
         Self { inner: timeout.map(|timeout| (Instant::now(), Duration::from_secs(timeout.into()))) }
     }
 
+    /// Whether the fuzz test timer is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.inner.is_some()
+    }
+
     /// Whether the current fuzz test timed out and should be stopped.
     pub fn is_timed_out(&self) -> bool {
         self.inner.is_some_and(|(start, duration)| start.elapsed() > duration)
+    }
+}
+
+/// Helper struct to enable early exit behavior: when one test fails or run is interrupted,
+/// all other tests stop early.
+#[derive(Clone, Debug)]
+pub struct EarlyExit {
+    /// Shared atomic flag set to `true` when a failure occurs or ctrl-c received.
+    /// None if running without fail-fast or show-progress.
+    inner: Option<Arc<AtomicBool>>,
+}
+
+impl EarlyExit {
+    pub fn new(early_exit: bool) -> Self {
+        Self { inner: early_exit.then_some(Arc::new(AtomicBool::new(false))) }
+    }
+
+    /// Returns `true` if fail-fast is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    /// Sets the exit flag. Used by other tests to stop early.
+    pub fn record_exit(&self) {
+        if let Some(early_exit) = &self.inner {
+            early_exit.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Whether tests should stop and exit early.
+    pub fn should_stop(&self) -> bool {
+        self.inner.as_ref().map(|flag| flag.load(Ordering::Relaxed)).unwrap_or(false)
     }
 }

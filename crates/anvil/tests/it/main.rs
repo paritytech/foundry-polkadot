@@ -2,6 +2,7 @@ mod abi;
 mod anvil;
 mod anvil_api;
 mod api;
+mod beacon_api;
 mod eip4844;
 mod eip7702;
 mod fork;
@@ -23,10 +24,4 @@ mod txpool;
 pub mod utils;
 mod wsapi;
 
-pub(crate) fn init_tracing() {
-    let _ = tracing_subscriber::FmtSubscriber::builder()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init();
-}
-
-fn main() {}
+pub use foundry_test_utils::init_tracing;

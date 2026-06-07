@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8.18;
 
-import "ds-test/test.sol";
-import "cheats/Vm.sol";
+import "utils/DSTest.sol";
+import "utils/Vm.sol";
 
 // NOTE: The vm.prevrandao() cheatcode appears to not work correctly in revive mode
 // It returns a fixed value (2500000000000000) instead of the set value

@@ -15,9 +15,9 @@ CARGO_TARGET_DIR ?= target
 # List of features to use when building. Can be overridden via the environment.
 # No jemalloc on Windows
 ifeq ($(OS),Windows_NT)
-    FEATURES ?= aws-kms gcp-kms cli asm-keccak
+    FEATURES ?= aws-kms gcp-kms turnkey cli asm-keccak
 else
-    FEATURES ?= jemalloc aws-kms gcp-kms cli asm-keccak
+    FEATURES ?= jemalloc aws-kms gcp-kms turnkey cli asm-keccak
 endif
 
 ##@ Help
@@ -32,50 +32,24 @@ help: ## Display this help.
 build: ## Build the project.
 	cargo build --features "$(FEATURES)" --profile "$(PROFILE)"
 
-# The following commands use `cross` to build a cross-compile.
-#
-# These commands require that:
-#
-# - `cross` is installed (`cargo install cross`).
-# - Docker is running.
-# - The current user is in the `docker` group.
-#
-# The resulting binaries will be created in the `target/` directory.
-build-%:
-	cross build --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
-
-.PHONY: docker-build-push
-docker-build-push: docker-build-prepare ## Build and push a cross-arch Docker image tagged with DOCKER_IMAGE_NAME.
-	FEATURES="jemalloc aws-kms gcp-kms cli asm-keccak" $(MAKE) build-x86_64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/amd64
-	for bin in anvil cast chisel forge; do \
-		cp $(CARGO_TARGET_DIR)/x86_64-unknown-linux-gnu/$(PROFILE)/$$bin $(BIN_DIR)/amd64/; \
-	done
-
-	FEATURES="aws-kms gcp-kms cli asm-keccak" $(MAKE) build-aarch64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/arm64
-	for bin in anvil cast chisel forge; do \
-		cp $(CARGO_TARGET_DIR)/aarch64-unknown-linux-gnu/$(PROFILE)/$$bin $(BIN_DIR)/arm64/; \
-	done
-
-	docker buildx build --file ./Dockerfile.cross . \
-		--platform linux/amd64,linux/arm64 \
-		$(foreach tag,$(shell echo $(DOCKER_IMAGE_NAME) | tr ',' ' '),--tag $(tag)) \
-		--provenance=false \
-		--push
-
-.PHONY: docker-build-prepare
-docker-build-prepare: ## Prepare the Docker build environment.
-	docker run --privileged --rm tonistiigi/binfmt:qemu-v7.0.0-28 --install amd64,arm64
-	@if ! docker buildx inspect cross-builder &> /dev/null; then \
-		echo "Creating a new buildx builder instance"; \
-		docker buildx create --use --driver docker-container --name cross-builder; \
-	else \
-		echo "Using existing buildx builder instance"; \
-		docker buildx use cross-builder; \
-	fi
+.PHONY: build-docker
+build-docker: ## Build the docker image.
+	docker build . -t "$(DOCKER_IMAGE_NAME)" \
+	--build-arg "RUST_PROFILE=$(PROFILE)" \
+	--build-arg "RUST_FEATURES=$(FEATURES)" \
+	--build-arg "TAG_NAME=dev" \
+	--build-arg "VERGEN_GIT_SHA=$(shell git rev-parse HEAD)"
 
 ##@ Test
+
+## Run unit/doc tests and generate html coverage report in `target/llvm-cov/html` folder.
+## Notice that `llvm-cov` supports doc tests only in nightly builds because the `--doc` flag
+## is unstable (https://github.com/taiki-e/cargo-llvm-cov/issues/2).
+.PHONY: test-coverage
+test-coverage:
+	cargo +nightly llvm-cov --no-report nextest -E 'kind(test) & !test(/\b(issue|ext_integration)/)' && \
+	cargo +nightly llvm-cov --no-report --doc && \
+	cargo +nightly llvm-cov report --doctests --open
 
 .PHONY: test-unit
 test-unit: ## Run unit tests.
@@ -108,7 +82,7 @@ lint-clippy: ## Run clippy on the codebase.
 .PHONY: lint-typos
 lint-typos: ## Run typos on the codebase.
 	@command -v typos >/dev/null || { \
-		echo "typos not found. Please install it by running the command `cargo install typos-cli` or refer to the following link for more information: https://github.com/crate-ci/typos" \
+		echo "typos not found. Please install it by running the command `cargo install typos-cli` or refer to the following link for more information: https://github.com/crate-ci/typos"; \
 		exit 1; \
 	}
 	typos

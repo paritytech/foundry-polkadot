@@ -101,10 +101,8 @@ impl CloneArgs {
         // step 0. get the chain and api key from the config
         let config = etherscan.load_config()?;
         let chain = config.chain.unwrap_or_default();
-        let etherscan_api_version = config.get_etherscan_api_version(Some(chain));
         let etherscan_api_key = config.get_etherscan_api_key(Some(chain)).unwrap_or_default();
-        let client =
-            Client::new_with_api_version(chain, etherscan_api_key.clone(), etherscan_api_version)?;
+        let client = Client::new(chain, etherscan_api_key.clone())?;
 
         // step 1. get the metadata from client
         sh_println!("Downloading the source code of {address} from Etherscan...")?;
@@ -112,7 +110,7 @@ impl CloneArgs {
         let meta = Self::collect_metadata_from_client(address, &client).await?;
 
         // step 2. initialize an empty project
-        Self::init_an_empty_project(&root, install)?;
+        Self::init_an_empty_project(&root, install).await?;
         // canonicalize the root path
         // note that at this point, the root directory must have been created
         let root = dunce::canonicalize(&root)?;
@@ -162,17 +160,14 @@ impl CloneArgs {
     /// * `root` - the root directory of the project.
     /// * `enable_git` - whether to enable git for the project.
     /// * `quiet` - whether to print messages.
-    pub(crate) fn init_an_empty_project(root: &Path, install: DependencyInstallOpts) -> Result<()> {
-        // let's try to init the project with default init args
-        let init_args = InitArgs { root: root.to_path_buf(), install, ..Default::default() };
-        init_args.run().map_err(|e| eyre::eyre!("Project init error: {:?}", e))?;
-
-        // remove the unnecessary example contracts
-        // XXX (ZZ): this is a temporary solution until we have a proper way to remove contracts,
-        // e.g., add a field in the InitArgs to control the example contract generation
-        fs::remove_file(root.join("src/Counter.sol"))?;
-        fs::remove_file(root.join("test/Counter.t.sol"))?;
-        fs::remove_file(root.join("script/Counter.s.sol"))?;
+    pub(crate) async fn init_an_empty_project(
+        root: &Path,
+        install: DependencyInstallOpts,
+    ) -> Result<()> {
+        // Initialize the project with empty set to true to avoid creating example contracts
+        let init_args =
+            InitArgs { root: root.to_path_buf(), install, empty: true, ..Default::default() };
+        init_args.run().await.map_err(|e| eyre::eyre!("Project init error: {:?}", e))?;
 
         Ok(())
     }
@@ -608,7 +603,6 @@ pub(crate) trait EtherscanClient {
 }
 
 impl EtherscanClient for Client {
-    #[inline]
     async fn contract_source_code(
         &self,
         address: Address,
@@ -616,7 +610,6 @@ impl EtherscanClient for Client {
         self.contract_source_code(address).await
     }
 
-    #[inline]
     async fn contract_creation_data(
         &self,
         address: Address,
@@ -727,7 +720,9 @@ mod tests {
         let mut project_root = tempfile::tempdir().unwrap().path().to_path_buf();
         let client = mock_etherscan(address);
         let meta = CloneArgs::collect_metadata_from_client(address, &client).await.unwrap();
-        CloneArgs::init_an_empty_project(&project_root, DependencyInstallOpts::default()).unwrap();
+        CloneArgs::init_an_empty_project(&project_root, DependencyInstallOpts::default())
+            .await
+            .unwrap();
         project_root = dunce::canonicalize(&project_root).unwrap();
         CloneArgs::parse_metadata(&meta, Chain::mainnet(), &project_root, false, false)
             .await

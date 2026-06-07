@@ -19,6 +19,7 @@ use foundry_common::{
     ContractsByArtifact,
     fmt::{format_token, format_token_raw},
     provider::get_http_provider,
+    sh_err, sh_println, sh_warn,
 };
 use foundry_config::NamedChain;
 use foundry_debugger::Debugger;
@@ -34,6 +35,7 @@ use foundry_evm::{
 use futures::future::join_all;
 use itertools::Itertools;
 use std::path::Path;
+use tracing::warn;
 use yansi::Paint;
 
 /// State after linking, contains the linked build data along with library addresses and optional
@@ -332,9 +334,10 @@ impl ExecutedState {
             .with_signature_identifier(SignaturesIdentifier::from_config(
                 &self.script_config.config,
             )?)
+            .with_label_disabled(self.args.disable_labels)
             .build();
 
-        let mut identifier = TraceIdentifiers::new().with_local(known_contracts).with_etherscan(
+        let mut identifier = TraceIdentifiers::new().with_local(known_contracts).with_external(
             &self.script_config.config,
             self.script_config.evm_opts.get_remote_chain_id().await,
         )?;

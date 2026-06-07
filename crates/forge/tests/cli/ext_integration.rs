@@ -6,9 +6,10 @@ use foundry_test_utils::util::ExtTester;
 // <https://github.com/foundry-rs/forge-std>
 #[test]
 fn forge_std() {
-    ExtTester::new("foundry-rs", "forge-std", "60acb7aaadcce2d68e52986a0a66fe79f07d138f")
+    ExtTester::new("foundry-rs", "forge-std", "620536fa5277db4e3fd46772d5cbc1ea0696fb43")
         // Skip fork tests.
         .args(["--nmc", "Fork"])
+        .verbosity(2)
         .run();
 }
 
@@ -43,12 +44,13 @@ fn sablier_v2_core() {
             // Skip fork tests.
             .args(["--nmc", "Fork"])
             // Increase the gas limit: https://github.com/sablier-labs/v2-core/issues/956
-            .args(["--gas-limit", u64::MAX.to_string().as_str()])
+            .args(["--gas-limit", &u64::MAX.to_string()])
             // Run tests without optimizations.
             .env("FOUNDRY_PROFILE", "lite")
             .install_command(&["bun", "install", "--prefer-offline"])
             // Try npm if bun fails / is not installed.
-            .install_command(&["npm", "install", "--prefer-offline"]);
+            .install_command(&["npm", "install", "--prefer-offline"])
+            .verbosity(2);
 
     // This test reverts due to memory limit without isolation. This revert is not reached with
     // isolation because memory is divided between separate EVMs created by inner calls.
@@ -62,7 +64,7 @@ fn sablier_v2_core() {
 // <https://github.com/Vectorized/solady>
 #[test]
 fn solady() {
-    ExtTester::new("Vectorized", "solady", "701406e8126cfed931645727b274df303fbcd94d").run();
+    ExtTester::new("Vectorized", "solady", "fda607f2b8084112cbc0b261c8f6239687b8a15c").run();
 }
 
 // <https://github.com/pcaversaccio/snekmate>
