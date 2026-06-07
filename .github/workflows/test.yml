@@ -50,6 +50,7 @@ jobs:
         run: cargo +nightly doc --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: --cfg docsrs -D warnings --show-type-layout --generate-link-to-definition --enable-index-page -Zunstable-options
+          SKIP_WASM_BUILD: true
       - name: Deploy documentation
         uses: peaceiris/actions-gh-pages@v3
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
