@@ -4,7 +4,8 @@ use alloy_primitives::{Address, U256};
 use eyre::Result;
 use foundry_cheatcodes::CheatcodesStrategy;
 use foundry_compilers::{
-    ProjectCompileOutput, compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
+    ProjectCompileOutput, artifacts::CompactContractBytecodeCow,
+    compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
 };
 use foundry_evm_core::{
     Env,
@@ -129,7 +130,9 @@ pub trait ExecutorStrategyExt {
         _ctx: &mut dyn ExecutorStrategyContext,
         _config: &foundry_config::Config,
         _root: &std::path::Path,
-        _linked_contracts: &foundry_compilers::contracts::ArtifactContracts,
+        _linked_contracts: &foundry_compilers::contracts::ArtifactContracts<
+            CompactContractBytecodeCow<'_>,
+        >,
         _libraries: &foundry_compilers::artifacts::Libraries,
     ) -> eyre::Result<()> {
         Ok(())

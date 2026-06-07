@@ -5,7 +5,8 @@ use crate::{
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
 use foundry_compilers::{
-    ProjectCompileOutput, compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
+    ProjectCompileOutput, artifacts::CompactContractBytecodeCow,
+    compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
 };
 use foundry_evm::{
     Env,
@@ -144,7 +145,9 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         ctx: &mut dyn ExecutorStrategyContext,
         config: &foundry_config::Config,
         root: &std::path::Path,
-        linked_contracts: &foundry_compilers::contracts::ArtifactContracts,
+        linked_contracts: &foundry_compilers::contracts::ArtifactContracts<
+            CompactContractBytecodeCow<'_>,
+        >,
         libraries: &foundry_compilers::artifacts::Libraries,
     ) -> eyre::Result<()> {
         super::libraries::link_libraries(

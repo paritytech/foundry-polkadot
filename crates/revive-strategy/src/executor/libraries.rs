@@ -1,9 +1,8 @@
 use alloy_primitives::{hex, keccak256};
 use foundry_compilers::{
     Artifact,
-    artifacts::{BytecodeObject, Libraries, ObjectFormat},
+    artifacts::{BytecodeObject, CompactContractBytecodeCow, Libraries, ObjectFormat},
     compilers::resolc::dual_compiled_contracts::{DualCompiledContract, DualCompiledContracts},
-    contracts::ArtifactContracts,
     info::ContractInfo,
 };
 use std::{
@@ -28,7 +27,9 @@ pub fn link_libraries(
     ctx: &mut ReviveExecutorStrategyContext,
     config: &foundry_config::Config,
     root: &Path,
-    linked_contracts: &ArtifactContracts,
+    linked_contracts: &foundry_compilers::contracts::ArtifactContracts<
+        CompactContractBytecodeCow<'_>,
+    >,
     libraries: &Libraries,
 ) -> eyre::Result<()> {
     if ctx.dual_compiled_contracts.is_empty() || libraries.libs.is_empty() {
@@ -237,7 +238,9 @@ fn patch_library_guards(dcc: &mut DualCompiledContracts, libraries: &Libraries) 
 
 fn update_evm_bytecodes(
     dcc: &mut DualCompiledContracts,
-    linked_contracts: &ArtifactContracts,
+    linked_contracts: &foundry_compilers::contracts::ArtifactContracts<
+        CompactContractBytecodeCow<'_>,
+    >,
     contracts_needing_linking: &BTreeSet<String>,
 ) {
     let updates: Vec<_> = linked_contracts
