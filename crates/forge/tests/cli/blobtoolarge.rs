@@ -38,8 +38,7 @@ contract CallbackContract {
     }
 }
         "#,
-    )
-    .unwrap();
+    );
 
     // Generate a bloated test contract with many dummy functions to exceed 24KB limit
     let mut bloat_functions = String::new();
@@ -74,7 +73,7 @@ contract BloatTest is DSTest, ICallback {{
         "#
     );
 
-    prj.add_source("BloatTest.t.sol", &test_contract).unwrap();
+    prj.add_source("BloatTest.t.sol", &test_contract);
 
     // Without --polkadot, test runs in pure EVM and passes
     cmd.forge_fuse().args(["test", "--match-test", "testCallback"]).assert_success();

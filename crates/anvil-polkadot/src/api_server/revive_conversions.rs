@@ -1,3 +1,4 @@
+use alloy_consensus::BlobTransactionSidecar;
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types::{
@@ -217,9 +218,13 @@ pub(crate) fn convert_to_generic_transaction(
             .collect(),
         blobs: transaction_request
             .sidecar
-            .unwrap_or_default()
-            .blobs
-            .into_iter()
+            .unwrap_or_else(|| {
+                alloy_consensus::BlobTransactionSidecarVariant::Eip4844(
+                    BlobTransactionSidecar::default(),
+                )
+            })
+            .blobs()
+            .iter()
             .map(|blob| Bytes::from(blob.0.to_vec()))
             .collect(),
         chain_id: transaction_request.chain_id.map(sp_core::U256::from),

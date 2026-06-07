@@ -22,8 +22,7 @@ forgetest!(counter_test, |prj, cmd| {
         }
     }
     "#,
-    )
-    .unwrap();
+    );
     prj.add_source(
         "CounterTest.t.sol",
         r#"
@@ -69,8 +68,7 @@ contract CounterTest is DSTest {
   }
 }
 "#,
-    )
-    .unwrap();
+    );
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
@@ -117,8 +115,7 @@ contract SetNonce is DSTest {
   }
 }
 "#,
-    )
-    .unwrap();
+    );
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
@@ -162,8 +159,7 @@ contract Roll is DSTest {
   }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
@@ -213,8 +209,7 @@ contract Warp is DSTest {
   }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
@@ -258,8 +253,7 @@ function test_Balance() public {
 }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
@@ -312,8 +306,7 @@ contract ChainIdTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let res = cmd.args(["test", "-vvvv", "--polkadot=pvm"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
@@ -363,8 +356,7 @@ forgetest!(vm_load, |prj, cmd| {
       }
   }
   "#,
-    )
-    .unwrap();
+    );
     prj.add_source(
         "Load.t.sol",
         r#"
@@ -383,8 +375,7 @@ function testFuzz_Load(uint256 x) public {
 }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
     res.stderr_eq(str![""]).stdout_eq(str![[r#"
@@ -426,8 +417,7 @@ contract Counter {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "CounterTest.t.sol",
@@ -446,8 +436,7 @@ contract CounterTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     // Test with --polkadot flag (EVM backend on pallet-revive)
     cmd.args(["test", "--polkadot", "-vvv"]).assert_success();
@@ -508,7 +497,7 @@ contract Emitterv2 {
 }
 "#,
     )
-    .unwrap();
+    ;
     prj.add_source(
         "Test.t.sol",
         r#"
@@ -699,8 +688,7 @@ contract Emitterv2 {
         }
     }
   "#,
-    )
-    .unwrap();
+    );
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
     let res = cmd.args(["test", "--resolc", "--polkadot", "-vvv"]).assert_success();
@@ -749,8 +737,7 @@ forgetest!(before_test_setup, |prj, cmd| {
         }
     }
     "#,
-    )
-    .unwrap();
+    );
     prj.add_source(
         "CounterTest.t.sol",
         r#"
@@ -844,8 +831,7 @@ function testC() public {
   }
 }
 "#,
-    )
-    .unwrap();
+    );
     prj.update_config(|config| config.evm_version = EvmVersion::Cancun);
 
     let res = cmd.args(["test", "--resolc", "-vvv", "--polkadot"]).assert();
@@ -886,8 +872,7 @@ contract Simple {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "SimpleTest.t.sol",
@@ -901,8 +886,7 @@ contract SimpleTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     // Should compile with solc only (no resolc compilation)
     let res = cmd.args(["test", "--polkadot=evm", "-vvv"]).assert_success();
@@ -930,8 +914,7 @@ contract Simple {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "SimpleTest.t.sol",
@@ -945,8 +928,7 @@ contract SimpleTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     // Should dual compile (solc + resolc)
     let res = cmd.args(["test", "--polkadot=pvm", "-vvv"]).assert_success();
@@ -982,8 +964,7 @@ contract Simple {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "SimpleTest.t.sol",
@@ -997,8 +978,7 @@ contract SimpleTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     // --resolc alone should dual compile and use PVM runtime
     let res = cmd.args(["test", "--resolc", "-vvv"]).assert_success();
@@ -1034,8 +1014,7 @@ contract Simple {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "SimpleTest.t.sol",
@@ -1062,8 +1041,7 @@ contract SimpleTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     // Should dual compile and allow mode switching
     let res = cmd.args(["test", "--polkadot=evm", "--resolc", "-vvv"]).assert_success();
@@ -1101,8 +1079,7 @@ contract Simple {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "ModeSwitch.t.sol",
@@ -1135,8 +1112,7 @@ contract ModeSwitchTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     // Requires dual compilation for mode switching
     let res = cmd.args(["test", "--polkadot=pvm", "-vvv"]).assert_success();
@@ -1172,8 +1148,7 @@ contract Simple {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "PvmSwitchTest.t.sol",
@@ -1194,8 +1169,7 @@ contract PvmSwitchTest is DSTest {
     }
 }
 "#,
-    )
-    .unwrap();
+    );
 
     // Running with --polkadot alone (defaults to evm) and trying to switch to pvm should fail
     cmd.args(["test", "--polkadot"]).assert_failure().stdout_eq(str![[r#"
@@ -1214,6 +1188,8 @@ Encountered 1 failing test in src/PvmSwitchTest.t.sol:PvmSwitchTest
 [FAIL: vm.polkadot: Backend switching to PVM requires running tests with --polkadot and --resolc flags] test_PvmRequiresDualCompilation() ([GAS])
 
 Encountered a total of 1 failing tests, 0 tests succeeded
+
+Tip: Run `forge test --rerun` to retry only the 1 failed test
 
 "#]]);
 });

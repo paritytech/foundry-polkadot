@@ -225,7 +225,7 @@ impl Cheatcode for eth_getLogsCall {
         let Self { fromBlock, toBlock, target, topics } = self;
         let (Ok(from_block), Ok(to_block)) = (u64::try_from(fromBlock), u64::try_from(toBlock))
         else {
-            bail!("blocks in block range must be less than 2^64 - 1")
+            bail!("blocks in block range must be less than 2^64")
         };
 
         if topics.len() > 4 {
@@ -403,7 +403,8 @@ fn rpc_call(url: &str, method: &str, params: &str) -> Result {
         foundry_common::block_on(provider.raw_request(method.to_string().into(), params_json))
             .map_err(|err| fmt_err!("{method:?}: {err}"))?;
     let result_as_tokens = convert_to_bytes(
-        &json_value_to_token(&result).map_err(|err| fmt_err!("failed to parse result: {err}"))?,
+        &json_value_to_token(&result, None)
+            .map_err(|err| fmt_err!("failed to parse result: {err}"))?,
     );
 
     Ok(result_as_tokens.abi_encode())

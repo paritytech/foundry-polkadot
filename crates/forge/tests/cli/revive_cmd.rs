@@ -1,7 +1,7 @@
 use std::{fs, path::Path, str::FromStr};
 
 use foundry_compilers::artifacts::{ConfigurableContractArtifact, Metadata, Remapping};
-use foundry_config::SolidityErrorCode;
+use foundry_config::{DenyLevel, SolidityErrorCode};
 use foundry_test_utils::{TestProject, snapbox::IntoData};
 
 use crate::constants::*;
@@ -15,12 +15,13 @@ fn init_prj(prj: &TestProject) {
 pragma solidity *;
 contract Foo {}
    ",
-    )
-    .unwrap();
+    );
 }
 
 // checks that `clean` works
 forgetest_init!(can_clean_config, |prj, cmd| {
+    prj.initialize_default_contracts();
+    prj.clear();
     // Resolc does not respect the `out` settings, example:
     // prj.update_config(|config| config.out = "custom-out".into());
     cmd.args(["build", "--resolc"]).assert_success();
@@ -33,17 +34,17 @@ forgetest_init!(can_clean_config, |prj, cmd| {
 });
 
 forgetest!(must_rebuild_when_used_the_same_out, |prj, cmd| {
+    prj.wipe_contracts();
     prj.add_raw_source(
         "Foo",
         r"
 pragma solidity *;
 contract Foo {}
    ",
-    )
-    .unwrap();
+    );
 
     // compile with solc
-    cmd.args(["build"]).assert_success().stdout_eq(str![[r#"
+    cmd.args(["build", "--skip", "test", "script"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
@@ -62,7 +63,7 @@ Compiler run successful!
 "#]]);
 
     // compile again with solc to the same output dir
-    cmd.forge_fuse().args(["build"]).assert_success().stdout_eq(str![[r#"
+    cmd.forge_fuse().args(["build", "--force"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [SOLC_VERSION]
 [SOLC_VERSION] [ELAPSED]
 Compiler run successful!
@@ -116,6 +117,7 @@ Compiler run successful!
 // checks that extra output works
 // TODO: Failing with resolc 0.4.0. Works with resolc 0.6.0.
 forgetest!(can_emit_multiple_extra_output_for_resolc, |prj, cmd| {
+    prj.clear();
     init_prj(&prj);
     cmd.args([
         "build",
@@ -175,6 +177,7 @@ Compiler run successful!
 });
 
 forgetest!(can_print_warnings_for_resolc, |prj, cmd| {
+    prj.clear();
     prj.add_source(
         "Foo",
         r"
@@ -184,8 +187,7 @@ contract Greeter {
     }
 }
    ",
-    )
-    .unwrap();
+    );
 
     cmd.args(["build", "--resolc"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
@@ -215,11 +217,12 @@ Warning (2018): Function state mutability can be restricted to pure
 
 // tests that the `inspect` command works correctly
 forgetest!(can_execute_inspect_command_for_resolc, |prj, cmd| {
+    prj.initialize_default_contracts();
+    prj.clear();
     let contract_name = "Foo";
-    let path = prj
-        .add_source(
-            contract_name,
-            r#"
+    let path = prj.add_source(
+        contract_name,
+        r#"
 contract Foo {
     event log_string(string);
     function run() external {
@@ -227,8 +230,7 @@ contract Foo {
     }
 }
     "#,
-        )
-        .unwrap();
+    );
 
     cmd.args(["inspect", "--resolc"])
         .arg(contract_name)
@@ -253,6 +255,7 @@ contract Foo {
 
 // test that `forge build` does not print `(with warnings)` if file path is ignored
 forgetest!(can_compile_without_warnings_ignored_file_paths_for_resolc, |prj, cmd| {
+    prj.wipe();
     // Ignoring path and setting empty error_codes as default would set would set some error codes
     prj.update_config(|config| {
         config.ignored_file_paths = vec![Path::new("src").to_path_buf()];
@@ -267,8 +270,7 @@ contract A {
     function testExample() public {}
 }
 ",
-    )
-    .unwrap();
+    );
 
     cmd.args(["build", "--resolc", "--force"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
@@ -294,6 +296,7 @@ Warning: SPDX license identifier not provided in source file. Before publishing,
 
 // test that `forge build` does not print `(with warnings)` if there aren't any
 forgetest!(can_compile_without_warnings_for_resolc, |prj, cmd| {
+    prj.clear();
     prj.update_config(|config| {
         config.ignored_error_codes = vec![SolidityErrorCode::SpdxLicenseNotProvided];
     });
@@ -305,8 +308,7 @@ contract A {
     function testExample() public {}
 }
    ",
-    )
-    .unwrap();
+    );
 
     cmd.args(["build", "--resolc", "--force"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
@@ -335,9 +337,10 @@ Warning: SPDX license identifier not provided in source file. Before publishing,
 // test that `forge build` compiles when severity set to error, fails when set to warning, and
 // handles ignored error codes as an exception
 forgetest!(can_fail_compile_with_warnings_for_resolc, |prj, cmd| {
+    prj.clear();
     prj.update_config(|config| {
         config.ignored_error_codes = vec![];
-        config.deny_warnings = false;
+        config.deny = DenyLevel::Never;
     });
     prj.add_raw_source(
         "A",
@@ -347,8 +350,7 @@ contract A {
     function testExample() public {}
 }
    ",
-    )
-    .unwrap();
+    );
 
     // there are no errors
     cmd.args(["build", "--resolc", "--force"]).assert_success().stdout_eq(str![[r#"
@@ -365,21 +367,23 @@ Warning: SPDX license identifier not provided in source file. Before publishing,
     // warning fails to compile
     prj.update_config(|config| {
         config.ignored_error_codes = vec![];
-        config.deny_warnings = true;
+        config.deny = DenyLevel::Warnings;
     });
-
-    cmd.forge_fuse().args(["build", "--resolc", "--force"]).assert_failure().stderr_eq(str![[r#"
+    prj.clear();
+    cmd.forge_fuse().args(["build", "--resolc",
+    "--force"]).assert_failure().stderr_eq(str![[r#"
 Error: Compiler run failed:
 Warning (1878): SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
 Warning: SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
 [FILE]
 
 "#]]);
+    prj.clear();
 
     // ignores error code and compiles
     prj.update_config(|config| {
         config.ignored_error_codes = vec![SolidityErrorCode::SpdxLicenseNotProvided];
-        config.deny_warnings = true;
+        config.deny = DenyLevel::Warnings;
     });
 
     cmd.forge_fuse().args(["build", "--resolc", "--force"]).assert_success().stdout_eq(str![[r#"
@@ -392,6 +396,7 @@ Compiler run successful!
 
 // test that a failing `forge build` does not impact followup builds
 forgetest!(can_build_after_failure_for_resolc, |prj, cmd| {
+    prj.clear();
     init_prj(&prj);
 
     cmd.args(["build", "--resolc"]).assert_success().stdout_eq(str![[r#"
@@ -416,7 +421,7 @@ contract Foo {
    "#;
 
     // introduce contract with syntax error
-    prj.add_source("Foo.sol", syntax_err).unwrap();
+    prj.add_source("Foo.sol", syntax_err);
 
     // `forge build --force` which should fail
     cmd.forge_fuse().args(["build", "--resolc", "--force"]).assert_failure().stderr_eq(str![[r#"
@@ -454,8 +459,7 @@ contract Foo {
     }
 }
    "#,
-    )
-    .unwrap();
+    );
 
     cmd.forge_fuse().args(["build", "--resolc", "--force"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
@@ -471,7 +475,7 @@ Compiler run successful!
     let cache_before = fs::read_to_string(&cache).unwrap();
 
     // introduce the error again but building without force
-    prj.add_source("Foo.sol", syntax_err).unwrap();
+    prj.add_source("Foo.sol", syntax_err);
     cmd.forge_fuse().args(["build", "--resolc"]).assert_failure().stderr_eq(str![[r#"
 Error: Compiler run failed:
 Error (2314): Expected ';' but got identifier
@@ -489,6 +493,7 @@ Error (2314): Expected ';' but got identifier
 
 // checks that extra output works
 forgetest_init!(can_build_skip_contracts_for_resolc, |prj, cmd| {
+    prj.initialize_default_contracts();
     prj.clear();
 
     // Only builds the single template contract `src/*`
@@ -509,14 +514,17 @@ No files changed, compilation skipped
 });
 
 forgetest_init!(can_build_skip_glob_for_resolc, |prj, cmd| {
+    prj.initialize_default_contracts();
+
+    prj.clear();
+
     prj.add_test(
         "Foo",
         r"
 contract TestDemo {
 function test_run() external {}
 }",
-    )
-    .unwrap();
+    );
 
     // only builds the single template contract `src/*` even if `*.t.sol` or `.s.sol` is absent
     prj.clear();
@@ -548,24 +556,21 @@ forgetest_init!(can_build_specific_paths_for_resolc, |prj, cmd| {
 contract Counter {
 function count() external {}
 }",
-    )
-    .unwrap();
+    );
     prj.add_test(
         "Foo.sol",
         r"
 contract Foo {
 function test_foo() external {}
 }",
-    )
-    .unwrap();
+    );
     prj.add_test(
         "Bar.sol",
         r"
 contract Bar {
 function test_bar() external {}
 }",
-    )
-    .unwrap();
+    );
 
     // Build 2 files within test dir
     prj.clear();
@@ -677,6 +682,8 @@ Compiler run successful!
 });
 
 forgetest_init!(can_inspect_counter_pretty_for_resolc, |prj, cmd| {
+    prj.initialize_default_contracts();
+    prj.clear();
     cmd.args(["inspect", "--resolc", "src/Counter.sol:Counter", "abi"]).assert_success().stdout_eq(
         str![[r#"
 
@@ -756,7 +763,7 @@ const ANOTHER_COUNTER: &str = r#"
     }
 "#;
 forgetest!(inspect_custom_counter_abi_for_resolc, |prj, cmd| {
-    prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
+    prj.add_source("Counter.sol", CUSTOM_COUNTER);
 
     cmd.args(["inspect", "--resolc", "Counter", "abi"]).assert_success().stdout_eq(str![[r#"
 
@@ -797,7 +804,7 @@ forgetest!(inspect_custom_counter_abi_for_resolc, |prj, cmd| {
 });
 
 forgetest!(inspect_custom_counter_events_for_resolc, |prj, cmd| {
-    prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
+    prj.add_source("Counter.sol", CUSTOM_COUNTER);
 
     cmd.args(["inspect", "--resolc", "Counter", "events"]).assert_success().stdout_eq(str![[r#"
 
@@ -814,7 +821,7 @@ forgetest!(inspect_custom_counter_events_for_resolc, |prj, cmd| {
 });
 
 forgetest!(inspect_custom_counter_errors_for_resolc, |prj, cmd| {
-    prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
+    prj.add_source("Counter.sol", CUSTOM_COUNTER);
 
     cmd.args(["inspect", "--resolc", "Counter", "errors"]).assert_success().stdout_eq(str![[r#"
 
@@ -831,7 +838,7 @@ forgetest!(inspect_custom_counter_errors_for_resolc, |prj, cmd| {
 });
 
 forgetest!(inspect_path_only_identifier_for_resolc, |prj, cmd| {
-    prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
+    prj.add_source("Counter.sol", CUSTOM_COUNTER);
 
     cmd.args(["inspect", "--resolc", "src/Counter.sol", "errors"]).assert_success().stdout_eq(
         str![[r#"
@@ -851,7 +858,7 @@ forgetest!(inspect_path_only_identifier_for_resolc, |prj, cmd| {
 
 forgetest!(test_inspect_contract_with_same_name_for_resolc, |prj, cmd| {
     let source = format!("{CUSTOM_COUNTER}\n{ANOTHER_COUNTER}");
-    prj.add_source("Counter.sol", &source).unwrap();
+    prj.add_source("Counter.sol", &source);
 
     cmd.args(["inspect", "--resolc", "src/Counter.sol", "errors"]).assert_failure().stderr_eq(str![[r#"
 Error: Multiple contracts found in the same file, please specify the target <path>:<contract> or <contract>
@@ -875,7 +882,7 @@ Error: Multiple contracts found in the same file, please specify the target <pat
 });
 
 forgetest!(inspect_custom_counter_method_identifiers_for_resolc, |prj, cmd| {
-    prj.add_source("Counter.sol", CUSTOM_COUNTER).unwrap();
+    prj.add_source("Counter.sol", CUSTOM_COUNTER);
 
     cmd.args(["inspect", "--resolc", "--use-resolc", "0.6.0", "Counter", "method-identifiers"])
         .assert_success()
@@ -927,8 +934,7 @@ forgetest!(can_bind_enum_modules_for_resolc, |prj, cmd| {
         enum MyEnum { A, B, C }
     }
     "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "UseEnum.sol",
@@ -937,8 +943,7 @@ forgetest!(can_bind_enum_modules_for_resolc, |prj, cmd| {
     contract UseEnum {
         Enum.MyEnum public myEnum;
     }"#,
-    )
-    .unwrap();
+    );
 
     //TODO: bind command is looking for artifacts in wrong directory
     cmd.args(["bind", "--resolc", "--select", "^Enum$"]).assert_success().stdout_eq(str![[
@@ -970,8 +975,7 @@ contract Foo {
     }
 }
    "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "FooLib",
@@ -982,8 +986,7 @@ library FooLib {
     function check2(Foo f) internal {}
 }
    "#,
-    )
-    .unwrap();
+    );
 
     cmd.args(["build", "--resolc"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
@@ -994,6 +997,8 @@ Compiler run successful!
 });
 
 forgetest!(can_use_absolute_imports_for_resolc, |prj, cmd| {
+    prj.clear();
+
     prj.update_config(|config| {
         let remapping = prj.paths().libraries[0].join("myDependency");
         config.remappings = vec![
@@ -1004,28 +1009,30 @@ forgetest!(can_use_absolute_imports_for_resolc, |prj, cmd| {
     prj.add_lib(
         "myDependency/src/interfaces/IConfig.sol",
         r"
+
     interface IConfig {}
    ",
-    )
-    .unwrap();
+    );
 
     prj.add_lib(
         "myDependency/src/Config.sol",
         r#"
-        import "src/interfaces/IConfig.sol";
-    contract Config {}
+        import {IConfig} from "myDependency/src/interfaces/IConfig.sol";
+
+    contract Config is IConfig {}
    "#,
-    )
-    .unwrap();
+    );
 
     prj.add_source(
         "Greeter",
         r#"
-        import "myDependency/src/Config.sol";
-    contract Greeter {}
+        import {Config} from "myDependency/src/Config.sol";
+
+    contract Greeter {
+        Config config;
+    }
    "#,
-    )
-    .unwrap();
+    );
 
     cmd.args(["build", "--resolc"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]

@@ -2,13 +2,14 @@ use crate::multi_sequence::MultiChainSequence;
 use eyre::Result;
 use forge_script_sequence::{ScriptSequence, TransactionWithMetadata};
 use foundry_cli::utils::Git;
-use foundry_common::fmt::UIfmt;
+use foundry_common::{fmt::UIfmt, sh_print, sh_println};
 use foundry_compilers::ArtifactId;
 use foundry_config::Config;
 use std::{
     fmt::{Error, Write},
     path::Path,
 };
+use tracing::error;
 
 /// Format transaction details for display
 fn format_transaction(index: usize, tx: &TransactionWithMetadata) -> Result<String, Error> {

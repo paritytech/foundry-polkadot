@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "ds-test/test.sol";
-import "cheats/Vm.sol";
-import "../../default/logs/console.sol";
+import "utils/DSTest.sol";
+import "utils/Vm.sol";
+import "utils/console.sol";
 
 /**
  * @title Minimal reproducer for foundry-polkadot transient storage bug

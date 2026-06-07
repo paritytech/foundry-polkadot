@@ -63,11 +63,11 @@ impl fmt::Display for DetailedRevertReason {
 #[derive(Clone, Debug, Default)]
 pub struct RevertDiagnostic {
     /// Tracks calls with calldata that target an address without executable code.
-    pub non_contract_call: Option<(Address, CallScheme, usize)>,
+    non_contract_call: Option<(Address, CallScheme, usize)>,
     /// Tracks EXTCODESIZE checks that target an address without executable code.
-    pub non_contract_size_check: Option<(Address, usize)>,
+    non_contract_size_check: Option<(Address, usize)>,
     /// Whether the step opcode is EXTCODESIZE or not.
-    pub is_extcodesize_step: bool,
+    is_extcodesize_step: bool,
 }
 
 impl RevertDiagnostic {
@@ -208,11 +208,6 @@ where
 
     /// Handles `REVERT` and `EXTCODESIZE` opcodes for diagnostics.
     fn step(&mut self, interp: &mut Interpreter, ctx: &mut CTX) {
-        // Check if an action has already been set (which would null the instruction pointer)
-        if interp.bytecode.action.is_some() {
-            return;
-        }
-
         match interp.bytecode.opcode() {
             opcode::REVERT => self.handle_revert(interp, ctx),
             opcode::EXTCODESIZE => self.handle_extcodesize(interp, ctx),

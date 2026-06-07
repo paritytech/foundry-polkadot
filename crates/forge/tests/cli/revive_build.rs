@@ -8,6 +8,9 @@ pub const OTHER_RESOLC_VERSION: &str = "0.6.0";
 pub const NEWEST_RESOLC_VERSION: &str = "0.6.0";
 
 forgetest_init!(can_build_with_resolc, |prj, cmd| {
+    prj.initialize_default_contracts();
+    prj.clear();
+
     cmd.args(["build", "--resolc-compile"]).assert_success().stdout_eq(str![[r#"
 [COMPILING_FILES] with [RESOLC_VERSION]
 [RESOLC_VERSION] [ELAPSED]
@@ -25,14 +28,12 @@ forgetest!(code_size_exceeds_limit_with_resolc, |prj, cmd| {
     prj.update_config(|config| {
         config.solc = Some(foundry_config::SolcReq::Version(Version::from_str("0.8.28").unwrap()))
     });
-    let path = prj
-        .add_source("LargeContract.sol", generate_large_init_contract(100_000).as_str())
-        .unwrap();
+    let path = prj.add_source("LargeContract.sol", generate_large_init_contract(100_000).as_str());
 
     let contents = fs::read_to_string(path).unwrap();
     let new = contents.replace("=0.8.30", "=0.8.28");
     prj.wipe_contracts();
-    prj.add_raw_source("LargeContract.sol", new.as_str()).unwrap();
+    prj.add_raw_source("LargeContract.sol", new.as_str());
     cmd.args([
         "build",
         "--resolc-compile",
@@ -54,6 +55,7 @@ Compiler run successful!
 
 
 "#]]);
+    prj.clear();
 
     cmd.forge_fuse()
         .args([
@@ -81,9 +83,11 @@ Compiler run successful!
 });
 
 forgetest_init!(build_contracts_with_optimization, |prj, cmd| {
+    prj.initialize_default_contracts();
+    prj.clear();
     cmd.args([
         "build",
-        "--resolc-compile",
+        "--resolc",
         "--use-resolc",
         &format!("resolc:{NEWEST_RESOLC_VERSION}"),
         "--resolc-optimization",

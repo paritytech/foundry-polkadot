@@ -100,11 +100,14 @@ jobs:
       - name: Install Vyper
         run: pip --version && pip install vyper==0.4.3
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.91.0
           target: ${{ matrix.target }}, wasm32-unknown-unknown
           components: rust-src
-
+      - name: add bin to path(parity-large)
+        if: contains(matrix.runner_label, 'parity-large-new')
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Install clang (macOS)
         if: contains(matrix.runner_label, 'macos')
         run: |
@@ -114,7 +117,7 @@ jobs:
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
       - name: Install Resolc
         run: |
-          cargo install rvm-rs
+          cargo +1.91.0 install rvm-rs --locked
           rvm install ${{ env.RESOLC_VERSION }}
           rvm use ${{ env.RESOLC_VERSION }}
 
@@ -152,4 +155,4 @@ jobs:
           SVM_TARGET_PLATFORM: ${{ matrix.svm_target_platform }}
           HTTP_ARCHIVE_URLS: ${{ secrets.HTTP_ARCHIVE_URLS }}
           WS_ARCHIVE_URLS: ${{ secrets.WS_ARCHIVE_URLS }}
-        run: cargo nextest run ${{ matrix.flags }}
+        run: cargo +1.91.0 nextest run --locked ${{ matrix.flags }}

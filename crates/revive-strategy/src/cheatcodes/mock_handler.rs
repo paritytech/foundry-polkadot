@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use alloy_primitives::{Address, Bytes, map::foldhash::HashMap, ruint::aliases::U256};
+use alloy_primitives::{Address, Bytes, map::HashMap, ruint::aliases::U256};
 use foundry_cheatcodes::{DealRecord, Ecx, MockCallDataContext, MockCallReturnData};
 use foundry_evm::constants::CHEATCODE_ADDRESS;
 use polkadot_sdk::{

@@ -32,6 +32,8 @@ pub struct AccountAccess {
     pub accessor: H160,
     /// Call data.
     pub data: Bytes,
+    // old nonce
+    pub old_nonce: u32,
     /// Call value.
     pub value: U256,
     /// Previous balance of the accessed account.
@@ -129,6 +131,7 @@ impl Tracing for StorageTracer {
             data: Bytes::from(input.to_vec()),
             value,
             reverted: false,
+            old_nonce: pallet_revive::Pallet::<Runtime>::evm_nonce(&to),
             old_balance: pallet_revive::Pallet::<Runtime>::evm_balance(&to),
             new_balance: U256::zero(),
             storage_accesses: Default::default(),
@@ -167,6 +170,7 @@ impl Tracing for StorageTracer {
             account: beneficiary_address,
             accessor: contract_address,
             data: Bytes::new(),
+            old_nonce: pallet_revive::Pallet::<Runtime>::evm_nonce(&beneficiary_address),
             value,
             reverted: false,
             old_balance: pallet_revive::Pallet::<Runtime>::evm_balance(&beneficiary_address),

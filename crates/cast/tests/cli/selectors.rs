@@ -140,7 +140,7 @@ casttest!(event_decode_with_sig, |_prj, cmd| {
 
     cmd.args(["--json"]).assert_success().stdout_eq(str![[r#"
 [
-  "78",
+  78,
   "0x0000000000000000000000000000000000D0004F"
 ]
 
@@ -168,7 +168,7 @@ casttest!(error_decode_with_sig, |_prj, cmd| {
 
     cmd.args(["--json"]).assert_success().stdout_eq(str![[r#"
 [
-  "101",
+  101,
   "0x0000000000000000000000000000000000D0004F"
 ]
 
@@ -185,9 +185,9 @@ contract ContractWithCustomError {
     event MyUniqueEventWithinLocalProject(uint256 a, address b);
 }
    "#,
-    )
-    .unwrap();
-    // Store selectors in local cache.
+    );
+    // Build and cache project selectors.
+    cmd.forge_fuse().args(["build"]).assert_success();
     cmd.forge_fuse().args(["selectors", "cache"]).assert_success();
 
     // Assert cast can decode custom error with local cache.

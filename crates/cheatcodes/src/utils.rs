@@ -3,11 +3,13 @@
 use crate::{Cheatcode, Cheatcodes, CheatcodesExecutor, CheatsCtxt, Result, Vm::*};
 use alloy_dyn_abi::{DynSolType, DynSolValue, Resolver, TypedData, eip712_parser::EncodeType};
 use alloy_ens::namehash;
-use alloy_primitives::{B64, Bytes, U256, aliases::B32, keccak256, map::HashMap};
+use alloy_primitives::{B64, Bytes, I256, U256, aliases::B32, keccak256, map::HashMap};
+use alloy_rlp::{Decodable, Encodable};
 use alloy_sol_types::SolValue;
 use foundry_common::{TYPE_BINDING_PREFIX, fs};
 use foundry_config::fs_permissions::FsAccessKind;
 use foundry_evm_core::constants::DEFAULT_CREATE2_DEPLOYER;
+use foundry_evm_fuzz::strategies::BoundMutator;
 use proptest::prelude::Strategy;
 use rand::{Rng, RngCore, seq::SliceRandom};
 use revm::context::JournalTr;
@@ -48,7 +50,7 @@ impl Cheatcode for getLabelCall {
 impl Cheatcode for computeCreateAddressCall {
     fn apply(&self, _state: &mut Cheatcodes) -> Result {
         let Self { nonce, deployer } = self;
-        ensure!(*nonce <= U256::from(u64::MAX), "nonce must be less than 2^64 - 1");
+        ensure!(*nonce <= U256::from(u64::MAX), "nonce must be less than 2^64");
         Ok(deployer.create(nonce.to()).abi_encode())
     }
 }
@@ -71,6 +73,26 @@ impl Cheatcode for ensNamehashCall {
     fn apply(&self, _state: &mut Cheatcodes) -> Result {
         let Self { name } = self;
         Ok(namehash(name).abi_encode())
+    }
+}
+
+impl Cheatcode for bound_0Call {
+    fn apply(&self, state: &mut Cheatcodes) -> Result {
+        let Self { current, min, max } = *self;
+        let Some(mutated) = U256::bound(current, min, max, state.test_runner()) else {
+            bail!("cannot bound {current} in [{min}, {max}] range")
+        };
+        Ok(mutated.abi_encode())
+    }
+}
+
+impl Cheatcode for bound_1Call {
+    fn apply(&self, state: &mut Cheatcodes) -> Result {
+        let Self { current, min, max } = *self;
+        let Some(mutated) = I256::bound(current, min, max, state.test_runner()) else {
+            bail!("cannot bound {current} in [{min}, {max}] range")
+        };
+        Ok(mutated.abi_encode())
     }
 }
 
@@ -157,7 +179,7 @@ impl Cheatcode for pauseTracingCall {
         ccx: &mut crate::CheatsCtxt,
         executor: &mut dyn CheatcodesExecutor,
     ) -> Result {
-        let Some(tracer) = executor.tracing_inspector().and_then(|t| t.as_ref()) else {
+        let Some(tracer) = executor.tracing_inspector() else {
             // No tracer -> nothing to pause
             return Ok(Default::default());
         };
@@ -167,7 +189,10 @@ impl Cheatcode for pauseTracingCall {
             return Ok(Default::default());
         }
 
-        let cur_node = &tracer.traces().nodes().last().expect("no trace nodes");
+        let cur_node = &tracer
+            .clone()
+            .map(|tracer| tracer.traces().nodes().last().expect("no trace nodes").to_owned())
+            .expect("no trace nodes");
         ccx.state.ignored_traces.last_pause_call = Some((cur_node.idx, cur_node.ordering.len()));
 
         Ok(Default::default())
@@ -180,7 +205,7 @@ impl Cheatcode for resumeTracingCall {
         ccx: &mut crate::CheatsCtxt,
         executor: &mut dyn CheatcodesExecutor,
     ) -> Result {
-        let Some(tracer) = executor.tracing_inspector().and_then(|t| t.as_ref()) else {
+        let Some(tracer) = executor.tracing_inspector() else {
             // No tracer -> nothing to unpause
             return Ok(Default::default());
         };
@@ -190,7 +215,10 @@ impl Cheatcode for resumeTracingCall {
             return Ok(Default::default());
         };
 
-        let node = &tracer.traces().nodes().last().expect("no trace nodes");
+        let node = &tracer
+            .clone()
+            .map(|tracer| tracer.traces().nodes().last().expect("no trace nodes").to_owned())
+            .expect("no trace nodes");
         ccx.state.ignored_traces.ignored.insert(start, (node.idx, node.ordering.len()));
 
         Ok(Default::default())
@@ -238,8 +266,9 @@ impl Cheatcode for copyStorageCall {
 
         if let Ok(from_account) = ccx.ecx.journaled_state.load_account(*from) {
             let from_storage = from_account.storage.clone();
-            if let Ok(mut to_account) = ccx.ecx.journaled_state.load_account(*to) {
-                to_account.storage = from_storage;
+            if ccx.ecx.journaled_state.load_account(*to).is_ok() {
+                // SAFETY: We ensured the account was already loaded.
+                ccx.ecx.journaled_state.state.get_mut(to).unwrap().storage = from_storage;
                 if let Some(arbitrary_storage) = &mut ccx.state.arbitrary_storage {
                     arbitrary_storage.mark_copy(from, to);
                 }
@@ -469,4 +498,26 @@ fn get_struct_hash(primary: &str, type_def: &String, abi_encoded_data: &Bytes) -
     bytes_to_hash.extend_from_slice(&encoded_data);
 
     Ok(keccak256(&bytes_to_hash).to_vec())
+}
+
+impl Cheatcode for toRlpCall {
+    fn apply(&self, _state: &mut Cheatcodes) -> Result {
+        let Self { data } = self;
+
+        let mut buf = Vec::new();
+        data.encode(&mut buf);
+
+        Ok(Bytes::from(buf).abi_encode())
+    }
+}
+
+impl Cheatcode for fromRlpCall {
+    fn apply(&self, _state: &mut Cheatcodes) -> Result {
+        let Self { rlp } = self;
+
+        let decoded: Vec<Bytes> = Vec::<Bytes>::decode(&mut rlp.as_ref())
+            .map_err(|e| fmt_err!("Failed to decode RLP: {e}"))?;
+
+        Ok(decoded.abi_encode())
+    }
 }

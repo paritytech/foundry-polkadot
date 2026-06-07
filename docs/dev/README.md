@@ -51,6 +51,7 @@ $ make pr
 - [Cheatcodes](./cheatcodes.md)
 - [Debugging](./debugging.md)
 - [Scripting](./scripting.md)
+- [Custom Network Features](./networks.md)
 
 _Note: This is incomplete and possibly outdated_
 
@@ -79,5 +80,10 @@ We use [cargo-nextest][nextest] as the test runner.
 If `make test` passes locally, that's a good sign that CI will be green as well.
 
 [foundry-book]: https://paritytech.github.io/foundry-book-polkadot
+## Release Features
+
+Nightly/stable release builds derive their enabled functionality from the shared `RUST_FEATURES` environment variable in `.github/workflows/release.yml` and `.github/workflows/docker-publish.yml`. Keep that list aligned with the default `FEATURES` value in the root `Makefile` so published artifacts expose the same CLI surface area (wallet backends, allocators, tracers, etc.) as local builds.
+
+[foundry-book]: https://book.getfoundry.sh
 [cargo-workspace]: https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html
 [nextest]: https://nexte.st/

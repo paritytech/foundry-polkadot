@@ -166,7 +166,6 @@ where
     }
 }
 
-#[instrument(target = "cheatcodes", level = "debug", skip(ty), fields(%ty), ret)]
 pub(super) fn parse_value(s: &str, ty: &DynSolType) -> Result<DynSolValue> {
     match ty.coerce_str(s) {
         Ok(value) => Ok(value),
@@ -194,10 +193,10 @@ fn parse_value_fallback(s: &str, ty: &DynSolType) -> Option<Result<DynSolValue, 
         DynSolType::Int(_)
         | DynSolType::Uint(_)
         | DynSolType::FixedBytes(_)
-        | DynSolType::Bytes => {
-            if !s.starts_with("0x") && hex::check_raw(s) {
-                return Some(Err("missing hex prefix (\"0x\") for hex string"));
-            }
+        | DynSolType::Bytes
+            if !s.starts_with("0x") && hex::check_raw(s) =>
+        {
+            return Some(Err("missing hex prefix (\"0x\") for hex string"));
         }
         _ => {}
     }

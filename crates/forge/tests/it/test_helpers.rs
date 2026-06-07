@@ -11,8 +11,8 @@ use foundry_compilers::{
     utils::RuntimeOrHandle,
 };
 use foundry_config::{
-    Config, FsPermissions, FuzzConfig, FuzzDictionaryConfig, InvariantConfig, RpcEndpointUrl,
-    RpcEndpoints, fs_permissions::PathPermission, revive,
+    Config, FsPermissions, FuzzConfig, FuzzCorpusConfig, FuzzDictionaryConfig, InvariantConfig,
+    RpcEndpointUrl, RpcEndpoints, fs_permissions::PathPermission, revive,
 };
 use foundry_evm::{constants::CALLER, opts::EvmOpts};
 use foundry_test_utils::{
@@ -127,13 +127,20 @@ impl ForgeTestProfile {
                 dictionary_weight: 40,
                 max_fuzz_dictionary_addresses: 10_000,
                 max_fuzz_dictionary_values: 10_000,
+                max_fuzz_dictionary_literals: 10_000,
             },
             gas_report_samples: 256,
             failure_persist_dir: Some(tempfile::tempdir().unwrap().keep()),
-            failure_persist_file: Some("testfailure".to_string()),
             show_logs: false,
             timeout: None,
             max_fuzz_int: None,
+            corpus: FuzzCorpusConfig {
+                corpus_dir: None,
+                corpus_gzip: true,
+                corpus_min_mutations: 5,
+                corpus_min_size: 0,
+                show_edge_coverage: false,
+            },
         };
         config.invariant = InvariantConfig {
             runs: 256,
@@ -146,14 +153,12 @@ impl ForgeTestProfile {
                 include_push_bytes: true,
                 max_fuzz_dictionary_addresses: 10_000,
                 max_fuzz_dictionary_values: 10_000,
+                max_fuzz_dictionary_literals: 10_000,
             },
             shrink_run_limit: 5000,
             max_assume_rejects: 65536,
             gas_report_samples: 256,
-            corpus_dir: None,
-            corpus_gzip: true,
-            corpus_min_mutations: 5,
-            corpus_min_size: 0,
+
             failure_persist_dir: Some(
                 tempfile::Builder::new()
                     .prefix(&format!("foundry-{self}"))
@@ -164,8 +169,14 @@ impl ForgeTestProfile {
             show_metrics: true,
             timeout: None,
             show_solidity: false,
-            show_edge_coverage: false,
             max_fuzz_int: None,
+            corpus: FuzzCorpusConfig {
+                corpus_dir: None,
+                corpus_gzip: true,
+                corpus_min_mutations: 5,
+                corpus_min_size: 0,
+                show_edge_coverage: false,
+            },
         };
 
         config.sanitized()
@@ -351,14 +362,12 @@ impl ForgeTestData {
 
         let mut builder = self.base_runner();
         let config = Arc::new(config);
-        let root = self.project.root();
         builder.config = config.clone();
         builder
             .enable_isolation(opts.isolate)
             .sender(config.sender)
             .build::<MultiCompiler>(
                 ExecutorStrategy::new_evm(),
-                root,
                 &self.output,
                 None,
                 opts.local_evm_env(),
@@ -374,7 +383,6 @@ impl ForgeTestData {
         self.base_runner()
             .build::<MultiCompiler>(
                 ExecutorStrategy::new_evm(),
-                self.project.root(),
                 &self.output,
                 None,
                 opts.local_evm_env(),
@@ -395,14 +403,7 @@ impl ForgeTestData {
 
         self.base_runner()
             .with_fork(fork)
-            .build::<MultiCompiler>(
-                ExecutorStrategy::new_evm(),
-                self.project.root(),
-                &self.output,
-                None,
-                env,
-                opts,
-            )
+            .build::<MultiCompiler>(ExecutorStrategy::new_evm(), &self.output, None, env, opts)
             .unwrap()
     }
 
@@ -432,7 +433,6 @@ impl ForgeTestData {
 
         let mut builder = self.base_runner();
         let config = Arc::new(config);
-        let root = self.project.root();
         builder.config = config.clone();
 
         let mut strategy = ExecutorStrategy::new_revive(runtime_mode);
@@ -446,7 +446,6 @@ impl ForgeTestData {
             .sender(config.sender)
             .build::<MultiCompiler>(
                 strategy,
-                root,
                 &output,
                 self.resolc_output.clone(),
                 opts.local_evm_env(),

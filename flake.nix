@@ -19,7 +19,8 @@
 
           lib = pkgs.lib;
           toolchain = fenix.packages.${system}.stable.toolchain;
-        in {
+        in
+        {
           default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
               pkg-config
@@ -31,10 +32,12 @@
               dprint
               nodejs
             ];
-            buildInputs = lib.optionals pkgs.stdenv.isDarwin
-              [ pkgs.darwin.apple_sdk.frameworks.AppKit ];
 
             packages = with pkgs; [ rust-analyzer-unwrapped ];
+
+            # Remove the hardening added by nix to fix jmalloc compilation error.
+            # More info: https://github.com/tikv/jemallocator/issues/108
+            hardeningDisable = [ "fortify" ];
 
             # Environment variables
             RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";

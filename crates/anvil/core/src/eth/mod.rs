@@ -43,6 +43,10 @@ pub enum EthRequest {
     #[serde(rename = "web3_sha3", with = "sequence")]
     Web3Sha3(Bytes),
 
+    /// Returns the current Ethereum protocol version.
+    #[serde(rename = "eth_protocolVersion", with = "empty_params")]
+    EthProtocolVersion(()),
+
     #[serde(rename = "eth_chainId", with = "empty_params")]
     EthChainId(()),
 
@@ -51,6 +55,10 @@ pub enum EthRequest {
 
     #[serde(rename = "net_listening", with = "empty_params")]
     NetListening(()),
+
+    /// Returns the number of hashes per second with which the node is mining.
+    #[serde(rename = "eth_hashrate", with = "empty_params")]
+    EthHashrate(()),
 
     #[serde(rename = "eth_gasPrice", with = "empty_params")]
     EthGasPrice(()),
@@ -66,6 +74,10 @@ pub enum EthRequest {
 
     #[serde(rename = "eth_blockNumber", with = "empty_params")]
     EthBlockNumber(()),
+
+    /// Returns the client coinbase address.
+    #[serde(rename = "eth_coinbase", with = "empty_params")]
+    EthCoinbase(()),
 
     #[serde(rename = "eth_getBalance")]
     EthGetBalance(Address, Option<BlockId>),
@@ -186,6 +198,14 @@ pub enum EthRequest {
     #[serde(rename = "anvil_getBlobsByTransactionHash", with = "sequence")]
     GetBlobByTransactionHash(TxHash),
 
+    /// Returns the blobs for a given transaction hash.
+    #[serde(rename = "anvil_getBlobSidecarsByBlockId", with = "sequence")]
+    GetBlobSidecarsByBlockId(BlockId),
+
+    /// Returns the genesis time for the chain
+    #[serde(rename = "anvil_getGenesisTime", with = "empty_params")]
+    GetGenesisTime(()),
+
     #[serde(rename = "eth_getTransactionByBlockHashAndIndex")]
     EthGetTransactionByBlockHashAndIndex(TxHash, Index),
 
@@ -264,6 +284,9 @@ pub enum EthRequest {
     #[serde(rename = "eth_syncing", with = "empty_params")]
     EthSyncing(()),
 
+    #[serde(rename = "eth_config", with = "empty_params")]
+    EthConfig(()),
+
     /// geth's `debug_getRawTransaction`  endpoint
     #[serde(rename = "debug_getRawTransaction", with = "sequence")]
     DebugGetRawTransaction(TxHash),
@@ -290,6 +313,10 @@ pub enum EthRequest {
     /// reth's `debug_codeByHash` endpoint
     #[serde(rename = "debug_codeByHash")]
     DebugCodeByHash(B256, #[serde(default)] Option<BlockId>),
+
+    /// reth's `debug_dbGet` endpoint
+    #[serde(rename = "debug_dbGet")]
+    DebugDbGet(String),
 
     /// Trace transaction endpoint for parity's `trace_transaction`
     #[serde(rename = "trace_transaction", with = "sequence")]
@@ -328,6 +355,11 @@ pub enum EthRequest {
         with = "sequence"
     )]
     AutoImpersonateAccount(bool),
+
+    /// Registers a signature/address pair for faking `ecrecover` results
+    #[serde(rename = "anvil_impersonateSignature", with = "sequence")]
+    ImpersonateSignature(Bytes, Address),
+
     /// Returns true if automatic mining is enabled, and false.
     #[serde(rename = "anvil_getAutomine", alias = "hardhat_getAutomine", with = "empty_params")]
     GetAutoMine(()),
@@ -439,10 +471,6 @@ pub enum EthRequest {
     /// Sets the coinbase address
     #[serde(rename = "anvil_setCoinbase", alias = "hardhat_setCoinbase", with = "sequence")]
     SetCoinbase(Address),
-
-    /// Returns the client coinbase address.
-    #[serde(rename = "eth_coinbase", with = "empty_params")]
-    EthCoinbase(()),
 
     /// Sets the chain id
     #[serde(rename = "anvil_setChainId", with = "sequence")]
@@ -669,6 +697,14 @@ pub enum EthRequest {
         #[serde(deserialize_with = "deserialize_number")] U256,
     ),
 
+    /// Returns the transaction by sender and nonce
+    /// Returns the full transaction data.
+    #[serde(rename = "eth_getTransactionBySenderAndNonce")]
+    EthGetTransactionBySenderAndNonce(
+        Address,
+        #[serde(deserialize_with = "deserialize_number")] U256,
+    ),
+
     /// Otterscan's `ots_getTransactionBySenderAndNonce` endpoint
     /// Given an ETH contract address, returns the tx hash and the direct address who created the
     /// contract.
@@ -691,17 +727,7 @@ pub enum EthRequest {
     #[serde(rename = "wallet_getCapabilities", with = "empty_params")]
     WalletGetCapabilities(()),
 
-    /// Wallet send_tx
-    #[serde(
-        rename = "wallet_sendTransaction",
-        alias = "odyssey_sendTransaction",
-        with = "sequence"
-    )]
-    WalletSendTransaction(Box<WithOtherFields<TransactionRequest>>),
-
-    /// Add an address to the [`DelegationCapability`] of the wallet
-    ///
-    /// [`DelegationCapability`]: wallet::DelegationCapability
+    /// Add an address to the delegation capability of the wallet
     #[serde(rename = "anvil_addCapability", with = "sequence")]
     AnvilAddCapability(Address),
 

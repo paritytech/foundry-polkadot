@@ -64,7 +64,7 @@ def increment() -> uint256:
 "#;
 
 forgetest!(can_resolve_path, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
 
     cmd.args(["compiler", "resolve", "--root", prj.root().to_str().unwrap()])
         .assert_success()
@@ -77,7 +77,7 @@ Solidity:
 });
 
 forgetest!(can_list_resolved_compiler_versions, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
 
     cmd.args(["compiler", "resolve"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -88,7 +88,7 @@ Solidity:
 });
 
 forgetest!(can_list_resolved_compiler_versions_json, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
 
     cmd.args(["compiler", "resolve", "--json"]).assert_success().stdout_eq(
         str![[r#"
@@ -106,8 +106,8 @@ forgetest!(can_list_resolved_compiler_versions_json, |prj, cmd| {
 });
 
 forgetest!(can_list_resolved_compiler_versions_verbose, |prj, cmd| {
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve", "-v"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -121,8 +121,8 @@ Solc v0.8.30:
 });
 
 forgetest!(can_list_resolved_compiler_versions_verbose_json, |prj, cmd| {
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
 
     cmd.args(["compiler", "resolve", "--json", "-v"]).assert_success().stdout_eq(
         str![[r#"
@@ -144,12 +144,12 @@ forgetest!(can_list_resolved_compiler_versions_verbose_json, |prj, cmd| {
 });
 
 forgetest!(can_list_resolved_multiple_compiler_versions, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
-    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
-    prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
+    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE);
+    prj.add_raw_source("Counter.vy", VYPER_CONTRACT);
 
     cmd.args(["compiler", "resolve"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -165,12 +165,12 @@ Vyper:
 });
 
 forgetest!(can_list_resolved_multiple_compiler_versions_skipped, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
-    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
-    prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
+    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE);
+    prj.add_raw_source("Counter.vy", VYPER_CONTRACT);
 
     cmd.args(["compiler", "resolve", "--skip", ".sol", "-v"]).assert_success().stdout_eq(str![[
         r#"
@@ -186,12 +186,12 @@ Vyper v0.4.3:
 });
 
 forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
-    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
-    prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
+    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE);
+    prj.add_raw_source("Counter.vy", VYPER_CONTRACT);
 
     cmd.args(["compiler", "resolve", "--skip", "Contract(A|B|C)", "--json", "-v"])
         .assert_success()
@@ -224,12 +224,12 @@ forgetest!(can_list_resolved_multiple_compiler_versions_skipped_json, |prj, cmd|
 });
 
 forgetest!(can_list_resolved_multiple_compiler_versions_verbose, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
-    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
-    prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
+    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE);
+    prj.add_raw_source("Counter.vy", VYPER_CONTRACT);
 
     cmd.args(["compiler", "resolve", "-vv"]).assert_success().stdout_eq(str![[r#"
 Solidity:
@@ -255,12 +255,12 @@ Vyper v0.4.3 (<= cancun):
 });
 
 forgetest!(can_list_resolved_multiple_compiler_versions_verbose_json, |prj, cmd| {
-    prj.add_source("ContractA", CONTRACT_A).unwrap();
-    prj.add_source("ContractB", CONTRACT_B).unwrap();
-    prj.add_source("ContractC", CONTRACT_C).unwrap();
-    prj.add_source("ContractD", CONTRACT_D).unwrap();
-    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE).unwrap();
-    prj.add_raw_source("Counter.vy", VYPER_CONTRACT).unwrap();
+    prj.add_source("ContractA", CONTRACT_A);
+    prj.add_source("ContractB", CONTRACT_B);
+    prj.add_source("ContractC", CONTRACT_C);
+    prj.add_source("ContractD", CONTRACT_D);
+    prj.add_raw_source("ICounter.vyi", VYPER_INTERFACE);
+    prj.add_raw_source("Counter.vy", VYPER_CONTRACT);
 
     cmd.args(["compiler", "resolve", "--json", "-vv"]).assert_success().stdout_eq(
         str![[r#"
