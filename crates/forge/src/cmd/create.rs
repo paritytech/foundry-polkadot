@@ -100,7 +100,9 @@ fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Op
             let bytecode_bytes = bytecode.into_owned();
             if !bytecode_bytes.is_empty() {
                 let calculated_hash = hex::encode(keccak256(&bytecode_bytes));
-                if calculated_hash.trim_start_matches("0x") == normalized_target {
+                if calculated_hash.trim_start_matches("0x") == normalized_target
+                    || target_hash.split_once(":").is_some_and(|(_, name)| name == &_contract_name)
+                {
                     return Some(bytecode_bytes);
                 }
             }
@@ -197,14 +199,16 @@ impl CreateArgs {
                         all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
                     }
                 }
+
                 if let Some(unlinked_deps) = &extras.factory_dependencies_unlinked {
                     for dep_id in unlinked_deps {
-                        all_dependencies.insert(dep_id.clone(), dep_id.clone());
+                        if linked_bytecodes.get(dep_id).is_some() {
+                            all_dependencies.insert(dep_id.clone(), dep_id.clone());
+                        }
                     }
                 }
             }
         }
-
         if all_dependencies.is_empty() {
             return Ok(());
         }
@@ -333,7 +337,6 @@ impl CreateArgs {
                 }
             })
             .collect();
-
         if lib_args.is_empty() {
             return Ok(std::collections::BTreeMap::new());
         }
@@ -390,7 +393,6 @@ impl CreateArgs {
 
         let output: foundry_compilers::ProjectCompileOutput =
             compile::compile_target(&target_path, &project, shell::is_json())?;
-
         // Link PVM bytecodes if resolc compilation produced unlinked ELF binaries
         let linked_bytecodes = if config.polkadot.resolc_compile {
             self.link_resolc_bytecodes(&config, &output, project.root())?
