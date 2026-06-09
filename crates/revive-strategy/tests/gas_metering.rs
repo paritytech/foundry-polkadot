@@ -36,7 +36,7 @@ fn pvm_cheatcodes_state_initializes() {
 
     let mut state = Cheatcodes::default();
     state.strategy = CheatcodeInspectorStrategy::new_pvm(
-        DualCompiledContracts::default(),
+        std::sync::Arc::new(std::sync::Mutex::new(DualCompiledContracts::default())),
         ReviveRuntimeMode::Pvm,
         Default::default(),
     );
@@ -50,7 +50,7 @@ fn pvm_gas_metering_state_structure() {
 
     let mut state = Cheatcodes::default();
     state.strategy = CheatcodeInspectorStrategy::new_pvm(
-        DualCompiledContracts::default(),
+        std::sync::Arc::new(std::sync::Mutex::new(DualCompiledContracts::default())),
         ReviveRuntimeMode::Pvm,
         Default::default(),
     );
