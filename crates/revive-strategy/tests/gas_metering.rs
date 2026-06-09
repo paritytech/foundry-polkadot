@@ -69,7 +69,7 @@ fn gas_metering_is_independent_of_mode() {
 
     let mut pvm_state = Cheatcodes::default();
     pvm_state.strategy = CheatcodeInspectorStrategy::new_pvm(
-        DualCompiledContracts::default(),
+        std::sync::Arc::new(std::sync::Mutex::new(DualCompiledContracts::default())),
         ReviveRuntimeMode::Pvm,
         Default::default(),
     );
