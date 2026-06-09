@@ -357,7 +357,7 @@ impl TestArgs {
                 &resolc_project.paths,
             );
 
-            (solc_output, Some(dual_compiled_contracts), Some(resolc_output))
+            (solc_output, Some(dual_compiled_contracts), Some(std::sync::Arc::new(resolc_output)))
         } else {
             // Single compilation mode: compile only with solc
 
@@ -375,7 +375,7 @@ impl TestArgs {
             &project.paths.root,
             config,
             evm_opts,
-            &output,
+            std::sync::Arc::new(output),
             resolc_output,
             &filter,
             false,
@@ -393,8 +393,8 @@ impl TestArgs {
         project_root: &Path,
         mut config: Config,
         mut evm_opts: EvmOpts,
-        output: &ProjectCompileOutput,
-        resolc_output: Option<ProjectCompileOutput>,
+        output: std::sync::Arc<ProjectCompileOutput>,
+        resolc_output: Option<std::sync::Arc<ProjectCompileOutput>>,
         filter: &ProjectPathsAwareFilter,
         coverage: bool,
         dual_compiled_contracts: Option<DualCompiledContracts>,
@@ -456,10 +456,10 @@ impl TestArgs {
             .networks(evm_opts.networks)
             .fail_fast(self.fail_fast)
             .set_coverage(coverage)
-            .build::<MultiCompiler>(strategy, output, resolc_output, env, evm_opts)?;
+            .build::<MultiCompiler>(strategy, output.clone(), resolc_output, env, evm_opts)?;
 
         let libraries = runner.libraries.clone();
-        let mut outcome = self.run_tests_inner(runner, config, verbosity, filter, output).await?;
+        let mut outcome = self.run_tests_inner(runner, config, verbosity, filter, &output).await?;
 
         if should_draw {
             let (suite_name, test_name, mut test_result) =
@@ -508,7 +508,7 @@ impl TestArgs {
                 outcome.remove_first().ok_or_eyre("no tests were executed")?;
 
             let sources =
-                ContractSources::from_project_output(output, project_root, Some(&libraries))?;
+                ContractSources::from_project_output(&output, project_root, Some(&libraries))?;
 
             // Run the debugger.
             let mut builder = Debugger::builder()

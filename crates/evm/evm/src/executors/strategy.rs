@@ -114,14 +114,14 @@ pub trait ExecutorStrategyExt {
     fn revive_set_compilation_output(
         &self,
         _ctx: &mut dyn ExecutorStrategyContext,
-        _output: ProjectCompileOutput,
+        _output: std::sync::Arc<ProjectCompileOutput>,
     ) {
     }
 
     fn revive_set_resolc_output(
         &self,
         _ctx: &mut dyn ExecutorStrategyContext,
-        _output: ProjectCompileOutput,
+        _output: std::sync::Arc<ProjectCompileOutput>,
     ) {
     }
 

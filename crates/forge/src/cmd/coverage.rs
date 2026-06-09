@@ -103,7 +103,7 @@ impl CoverageArgs {
         let report = self.prepare(&paths, &mut output)?;
 
         sh_println!("Running tests...")?;
-        self.collect(&paths.root, &output, report, config, evm_opts, None).await
+        self.collect(&paths.root, std::sync::Arc::new(output), report, config, evm_opts, None).await
     }
 
     fn populate_reporters(&mut self, root: &Path) {
@@ -243,7 +243,7 @@ impl CoverageArgs {
     async fn collect(
         mut self,
         project_root: &Path,
-        output: &ProjectCompileOutput,
+        output: std::sync::Arc<ProjectCompileOutput>,
         mut report: CoverageReport,
         config: Config,
         evm_opts: EvmOpts,

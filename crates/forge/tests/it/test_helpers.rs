@@ -185,11 +185,11 @@ impl ForgeTestProfile {
 /// Container for test data for a specific test profile.
 pub struct ForgeTestData {
     pub project: Project,
-    pub output: ProjectCompileOutput,
+    pub output: std::sync::Arc<ProjectCompileOutput>,
     pub config: Arc<Config>,
     pub profile: ForgeTestProfile,
     pub dual_compiled_contracts: Option<DualCompiledContracts>,
-    pub resolc_output: Option<ProjectCompileOutput>,
+    pub resolc_output: Option<std::sync::Arc<ProjectCompileOutput>>,
 }
 
 impl ForgeTestData {
@@ -201,7 +201,7 @@ impl ForgeTestData {
         init_tracing();
         let config = Arc::new(profile.config());
         let mut project = config.project().unwrap();
-        let output = get_compiled(&mut project);
+        let output = std::sync::Arc::new(get_compiled(&mut project));
         Self {
             project,
             output,
@@ -317,11 +317,11 @@ impl ForgeTestData {
 
         Self {
             project: solc_project,
-            output,
+            output: std::sync::Arc::new(output),
             config: Arc::new(solc_config),
             profile,
             dual_compiled_contracts: Some(dual_compiled_contracts),
-            resolc_output: Some(resolc_output),
+            resolc_output: Some(std::sync::Arc::new(resolc_output)),
         }
     }
 
@@ -367,7 +367,7 @@ impl ForgeTestData {
             .sender(config.sender)
             .build::<MultiCompiler>(
                 ExecutorStrategy::new_evm(),
-                &self.output,
+                self.output.clone(),
                 None,
                 opts.local_evm_env(),
                 opts,
@@ -382,7 +382,7 @@ impl ForgeTestData {
         self.base_runner()
             .build::<MultiCompiler>(
                 ExecutorStrategy::new_evm(),
-                &self.output,
+                self.output.clone(),
                 None,
                 opts.local_evm_env(),
                 opts,
@@ -402,7 +402,13 @@ impl ForgeTestData {
 
         self.base_runner()
             .with_fork(fork)
-            .build::<MultiCompiler>(ExecutorStrategy::new_evm(), &self.output, None, env, opts)
+            .build::<MultiCompiler>(
+                ExecutorStrategy::new_evm(),
+                self.output.clone(),
+                None,
+                env,
+                opts,
+            )
             .unwrap()
     }
 
@@ -445,7 +451,7 @@ impl ForgeTestData {
             .sender(config.sender)
             .build::<MultiCompiler>(
                 strategy,
-                &output,
+                output.clone(),
                 self.resolc_output.clone(),
                 opts.local_evm_env(),
                 opts,

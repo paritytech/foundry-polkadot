@@ -32,7 +32,9 @@ pub fn link_libraries(
     >,
     libraries: &Libraries,
 ) -> eyre::Result<()> {
-    if ctx.dual_compiled_contracts.is_empty() || libraries.libs.is_empty() {
+    let mut dcc = ctx.dual_compiled_contracts.lock().unwrap();
+
+    if dcc.is_empty() || libraries.libs.is_empty() {
         return Ok(());
     }
 
@@ -40,29 +42,19 @@ pub fn link_libraries(
     if contracts_needing_linking.is_empty() {
         return Ok(());
     }
+    add_missing_dcc_entries(&ctx, root, &mut dcc, &contracts_needing_linking);
+    patch_library_guards(&mut dcc, libraries);
+    update_evm_bytecodes(&mut dcc, linked_contracts, &contracts_needing_linking);
 
-    add_missing_dcc_entries(ctx, root, &contracts_needing_linking);
-    patch_library_guards(&mut ctx.dual_compiled_contracts, libraries);
-    update_evm_bytecodes(
-        &mut ctx.dual_compiled_contracts,
-        linked_contracts,
-        &contracts_needing_linking,
-    );
-
-    link_pvm_bytecodes(
-        &mut ctx.dual_compiled_contracts,
-        config,
-        root,
-        libraries,
-        &contracts_needing_linking,
-    )
+    link_pvm_bytecodes(&mut dcc, config, root, libraries, &contracts_needing_linking)
 }
 
 /// Adds DCC entries for contracts present in resolc output but missing from DCC
 /// (e.g. libraries without factory_dependencies that DualCompiledContracts::new() skips).
 fn add_missing_dcc_entries(
-    ctx: &mut ReviveExecutorStrategyContext,
+    ctx: &ReviveExecutorStrategyContext,
     root: &Path,
+    dcc: &mut DualCompiledContracts,
     contracts_needing_linking: &BTreeSet<String>,
 ) {
     let Some(resolc_output) = ctx.resolc_output.as_ref() else { return };
@@ -75,10 +67,7 @@ fn add_missing_dcc_entries(
             if !contracts_needing_linking.contains(&key) {
                 return None;
             }
-            if ctx
-                .dual_compiled_contracts
-                .iter()
-                .any(|(info, _)| matches_by_name(info, &resolc_id.name, &resolc_id.source))
+            if dcc.iter().any(|(info, _)| matches_by_name(info, &resolc_id.name, &resolc_id.source))
             {
                 return None;
             }
@@ -185,9 +174,8 @@ fn add_missing_dcc_entries(
             ))
         })
         .collect();
-
     for (info, contract) in entries {
-        ctx.dual_compiled_contracts.insert(info, contract);
+        dcc.insert(info, contract);
     }
 }
 

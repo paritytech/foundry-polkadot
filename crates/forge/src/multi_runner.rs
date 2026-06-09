@@ -507,8 +507,8 @@ impl MultiContractRunnerBuilder {
     pub fn build<C: Compiler<CompilerContract = Contract>>(
         self,
         mut strategy: ExecutorStrategy,
-        output: &ProjectCompileOutput,
-        resolc_output: Option<ProjectCompileOutput>,
+        output: std::sync::Arc<ProjectCompileOutput>,
+        resolc_output: Option<std::sync::Arc<ProjectCompileOutput>>,
         env: Env,
         evm_opts: EvmOpts,
     ) -> Result<MultiContractRunner> {
@@ -573,7 +573,7 @@ impl MultiContractRunnerBuilder {
 
         // Create known contracts from linked contracts and storage layout information (if any).
         let known_contracts =
-            ContractsByArtifactBuilder::new(linked_contracts).with_output(output, root).build();
+            ContractsByArtifactBuilder::new(linked_contracts).with_output(&output, root).build();
 
         // Initialize and configure the solar compiler.
         let mut analysis = solar::sema::Compiler::new(
@@ -595,7 +595,7 @@ impl MultiContractRunnerBuilder {
             configure_pcx_from_compile_output(
                 &mut pcx,
                 &self.config,
-                output,
+                &output,
                 if files.is_empty() { None } else { Some(&files) },
             )?;
             pcx.parse();
@@ -619,7 +619,7 @@ impl MultiContractRunnerBuilder {
                 line_coverage: self.line_coverage,
                 debug: self.debug,
                 decode_internal: self.decode_internal,
-                inline_config: Arc::new(InlineConfig::new_parsed(output, &self.config)?),
+                inline_config: Arc::new(InlineConfig::new_parsed(&output, &self.config)?),
                 isolation: self.isolation,
                 networks: self.networks,
                 early_exit: EarlyExit::new(self.fail_fast || self.config.show_progress),

@@ -9,9 +9,9 @@ use crate::{ReviveRuntimeMode, state::TestEnv};
 #[derive(Debug, Default, Clone)]
 pub struct ReviveExecutorStrategyContext {
     pub(crate) runtime_mode: ReviveRuntimeMode,
-    pub(crate) dual_compiled_contracts: DualCompiledContracts,
-    pub(crate) compilation_output: Option<ProjectCompileOutput>,
-    pub(crate) resolc_output: Option<ProjectCompileOutput>,
+    pub(crate) dual_compiled_contracts: std::sync::Arc<std::sync::Mutex<DualCompiledContracts>>,
+    pub(crate) compilation_output: Option<std::sync::Arc<ProjectCompileOutput>>,
+    pub(crate) resolc_output: Option<std::sync::Arc<ProjectCompileOutput>>,
     pub(crate) externalties: TestEnv,
 }
 

@@ -165,13 +165,13 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         dual_compiled_contracts: DualCompiledContracts,
     ) {
         let ctx = get_context_ref_mut(ctx);
-        ctx.dual_compiled_contracts = dual_compiled_contracts;
+        *ctx.dual_compiled_contracts.lock().unwrap() = dual_compiled_contracts;
     }
 
     fn revive_set_compilation_output(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
-        output: ProjectCompileOutput,
+        output: std::sync::Arc<ProjectCompileOutput>,
     ) {
         let ctx = get_context_ref_mut(ctx);
         ctx.compilation_output.replace(output);
@@ -180,7 +180,7 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
     fn revive_set_resolc_output(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
-        output: ProjectCompileOutput,
+        output: std::sync::Arc<ProjectCompileOutput>,
     ) {
         let ctx = get_context_ref_mut(ctx);
         ctx.resolc_output.replace(output);
