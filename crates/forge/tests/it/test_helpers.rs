@@ -451,7 +451,7 @@ impl ForgeTestData {
             .sender(config.sender)
             .build::<MultiCompiler>(
                 strategy,
-                output.clone(),
+                output,
                 self.resolc_output.clone(),
                 opts.local_evm_env(),
                 opts,
