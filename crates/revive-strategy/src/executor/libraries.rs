@@ -42,7 +42,7 @@ pub fn link_libraries(
     if contracts_needing_linking.is_empty() {
         return Ok(());
     }
-    add_missing_dcc_entries(&ctx, root, &mut dcc, &contracts_needing_linking);
+    add_missing_dcc_entries(ctx, root, &mut dcc, &contracts_needing_linking);
     patch_library_guards(&mut dcc, libraries);
     update_evm_bytecodes(&mut dcc, linked_contracts, &contracts_needing_linking);
 
