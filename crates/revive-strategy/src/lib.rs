@@ -14,7 +14,8 @@ use crate::executor::{
 
 mod backend;
 mod cheatcodes;
-mod executor;
+pub(crate) mod executor;
+pub mod link;
 mod state;
 mod tracing;
 

@@ -507,11 +507,15 @@ impl MultiContractRunnerBuilder {
     pub fn build<C: Compiler<CompilerContract = Contract>>(
         self,
         mut strategy: ExecutorStrategy,
-        output: &ProjectCompileOutput,
+        output: std::sync::Arc<ProjectCompileOutput>,
+        resolc_output: Option<std::sync::Arc<ProjectCompileOutput>>,
         env: Env,
         evm_opts: EvmOpts,
     ) -> Result<MultiContractRunner> {
         strategy.runner.revive_set_compilation_output(strategy.context.as_mut(), output.clone());
+        if let Some(resolc_output) = resolc_output {
+            strategy.runner.revive_set_resolc_output(strategy.context.as_mut(), resolc_output);
+        }
 
         let root = &self.config.root;
         let contracts = output
@@ -523,8 +527,8 @@ impl MultiContractRunnerBuilder {
         // Build revert decoder from ABIs of all artifacts.
         let abis = linker
             .contracts
-            .iter()
-            .filter_map(|(_, contract)| contract.abi.as_ref().map(|abi| abi.borrow()));
+            .values()
+            .filter_map(|contract| contract.abi.as_ref().map(|abi| abi.borrow()));
         let revert_decoder = RevertDecoder::new().with_abis(abis);
 
         let LinkOutput { libraries, libs_to_deploy } = linker.link_with_nonce_or_address(
@@ -535,6 +539,14 @@ impl MultiContractRunnerBuilder {
         )?;
 
         let linked_contracts = linker.get_linked_artifacts_cow(&libraries)?;
+
+        strategy.runner.revive_link_libraries(
+            strategy.context.as_mut(),
+            &self.config,
+            root,
+            &linked_contracts,
+            &libraries,
+        )?;
 
         // Create a mapping of name => (abi, deployment code, Vec<library deployment code>)
         let mut deployable_contracts = DeployableContracts::default();
@@ -561,7 +573,7 @@ impl MultiContractRunnerBuilder {
 
         // Create known contracts from linked contracts and storage layout information (if any).
         let known_contracts =
-            ContractsByArtifactBuilder::new(linked_contracts).with_output(output, root).build();
+            ContractsByArtifactBuilder::new(linked_contracts).with_output(&output, root).build();
 
         // Initialize and configure the solar compiler.
         let mut analysis = solar::sema::Compiler::new(
@@ -583,7 +595,7 @@ impl MultiContractRunnerBuilder {
             configure_pcx_from_compile_output(
                 &mut pcx,
                 &self.config,
-                output,
+                &output,
                 if files.is_empty() { None } else { Some(&files) },
             )?;
             pcx.parse();
@@ -607,7 +619,7 @@ impl MultiContractRunnerBuilder {
                 line_coverage: self.line_coverage,
                 debug: self.debug,
                 decode_internal: self.decode_internal,
-                inline_config: Arc::new(InlineConfig::new_parsed(output, &self.config)?),
+                inline_config: Arc::new(InlineConfig::new_parsed(&output, &self.config)?),
                 isolation: self.isolation,
                 networks: self.networks,
                 early_exit: EarlyExit::new(self.fail_fast || self.config.show_progress),

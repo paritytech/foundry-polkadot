@@ -251,6 +251,17 @@ impl CompiledState {
 
         let build_data = build_data.link(&script_config).await?;
 
+        if script_config.config.polkadot.polkadot.is_some()
+            && build_data.predeploy_libraries.libraries_count() > 0
+        {
+            eyre::bail!(
+                "Library linking in `forge script` is not yet supported in Polkadot mode. \
+                 {} libraries require deployment. Consider using `forge test` instead, \
+                 which supports library linking with `--polkadot`.",
+                build_data.predeploy_libraries.libraries_count()
+            );
+        }
+
         Ok(LinkedState { args, script_config, script_wallets, build_data })
     }
 

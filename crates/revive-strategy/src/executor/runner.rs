@@ -5,7 +5,8 @@ use crate::{
 use alloy_primitives::{Address, U256};
 use foundry_cheatcodes::CheatcodeInspectorStrategy;
 use foundry_compilers::{
-    ProjectCompileOutput, compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
+    ProjectCompileOutput, artifacts::CompactContractBytecodeCow,
+    compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
 };
 use foundry_evm::{
     Env,
@@ -139,23 +140,52 @@ impl ExecutorStrategyExt for ReviveExecutorStrategyRunner {
         U256::from(u128::MAX)
     }
 
+    fn revive_link_libraries(
+        &self,
+        ctx: &mut dyn ExecutorStrategyContext,
+        config: &foundry_config::Config,
+        root: &std::path::Path,
+        linked_contracts: &foundry_compilers::contracts::ArtifactContracts<
+            CompactContractBytecodeCow<'_>,
+        >,
+        libraries: &foundry_compilers::artifacts::Libraries,
+    ) -> eyre::Result<()> {
+        super::libraries::link_libraries(
+            get_context_ref_mut(ctx),
+            config,
+            root,
+            linked_contracts,
+            libraries,
+        )
+    }
+
     fn revive_set_dual_compiled_contracts(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
         dual_compiled_contracts: DualCompiledContracts,
     ) {
         let ctx = get_context_ref_mut(ctx);
-        ctx.dual_compiled_contracts = dual_compiled_contracts;
+        *ctx.dual_compiled_contracts.lock().unwrap() = dual_compiled_contracts;
     }
 
     fn revive_set_compilation_output(
         &self,
         ctx: &mut dyn ExecutorStrategyContext,
-        output: ProjectCompileOutput,
+        output: std::sync::Arc<ProjectCompileOutput>,
     ) {
         let ctx = get_context_ref_mut(ctx);
         ctx.compilation_output.replace(output);
     }
+
+    fn revive_set_resolc_output(
+        &self,
+        ctx: &mut dyn ExecutorStrategyContext,
+        output: std::sync::Arc<ProjectCompileOutput>,
+    ) {
+        let ctx = get_context_ref_mut(ctx);
+        ctx.resolc_output.replace(output);
+    }
+
     fn start_transaction(&self, ctx: &dyn ExecutorStrategyContext) {
         let ctx = get_context_ref(ctx);
         let mut state = ctx.externalties.0.lock().unwrap();

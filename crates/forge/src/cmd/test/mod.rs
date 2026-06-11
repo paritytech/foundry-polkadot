@@ -325,7 +325,7 @@ impl TestArgs {
         let sources_to_compile = self.get_sources_to_compile(&config, &filter)?;
 
         // Handle compilation based on whether dual compilation is enabled
-        let (output, dual_compiled_contracts) = if config.polkadot.resolc_compile {
+        let (output, dual_compiled_contracts, resolc_output) = if config.polkadot.resolc_compile {
             // Dual compilation mode: compile both solc and resolc
 
             // Compile with solc to a subdirectory
@@ -341,8 +341,7 @@ impl TestArgs {
 
             let solc_output = compiler.compile(&solc_project)?;
 
-            // Compile with resolc to the main output directory
-            let resolc_project = config.clone().project()?;
+            let resolc_project = config.project()?;
 
             let resolc_compiler = ProjectCompiler::new()
                 .quiet(shell::is_json() || self.junit)
@@ -351,7 +350,6 @@ impl TestArgs {
 
             let resolc_output = resolc_compiler.compile(&resolc_project)?;
 
-            // Create dual compiled contracts
             let dual_compiled_contracts = DualCompiledContracts::new(
                 &solc_output,
                 &resolc_output,
@@ -359,7 +357,7 @@ impl TestArgs {
                 &resolc_project.paths,
             );
 
-            (solc_output, Some(dual_compiled_contracts))
+            (solc_output, Some(dual_compiled_contracts), Some(std::sync::Arc::new(resolc_output)))
         } else {
             // Single compilation mode: compile only with solc
 
@@ -370,14 +368,15 @@ impl TestArgs {
 
             let solc_output = compiler.compile(&project)?;
 
-            (solc_output, None)
+            (solc_output, None, None)
         };
 
         self.run_tests(
             &project.paths.root,
             config,
             evm_opts,
-            &output,
+            std::sync::Arc::new(output),
+            resolc_output,
             &filter,
             false,
             dual_compiled_contracts,
@@ -394,7 +393,8 @@ impl TestArgs {
         project_root: &Path,
         mut config: Config,
         mut evm_opts: EvmOpts,
-        output: &ProjectCompileOutput,
+        output: std::sync::Arc<ProjectCompileOutput>,
+        resolc_output: Option<std::sync::Arc<ProjectCompileOutput>>,
         filter: &ProjectPathsAwareFilter,
         coverage: bool,
         dual_compiled_contracts: Option<DualCompiledContracts>,
@@ -456,10 +456,10 @@ impl TestArgs {
             .networks(evm_opts.networks)
             .fail_fast(self.fail_fast)
             .set_coverage(coverage)
-            .build::<MultiCompiler>(strategy, output, env, evm_opts)?;
+            .build::<MultiCompiler>(strategy, output.clone(), resolc_output, env, evm_opts)?;
 
         let libraries = runner.libraries.clone();
-        let mut outcome = self.run_tests_inner(runner, config, verbosity, filter, output).await?;
+        let mut outcome = self.run_tests_inner(runner, config, verbosity, filter, &output).await?;
 
         if should_draw {
             let (suite_name, test_name, mut test_result) =
@@ -508,7 +508,7 @@ impl TestArgs {
                 outcome.remove_first().ok_or_eyre("no tests were executed")?;
 
             let sources =
-                ContractSources::from_project_output(output, project_root, Some(&libraries))?;
+                ContractSources::from_project_output(&output, project_root, Some(&libraries))?;
 
             // Run the debugger.
             let mut builder = Debugger::builder()

@@ -25,7 +25,7 @@ use foundry_evm::constants::CHEATCODE_ADDRESS;
 use revive_env::{Runtime, System, Timestamp};
 use std::{
     any::{Any, TypeId},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use tracing::warn;
 
@@ -59,7 +59,7 @@ use revm::{
 };
 pub trait PvmCheatcodeInspectorStrategyBuilder {
     fn new_pvm(
-        dual_compiled_contracts: DualCompiledContracts,
+        dual_compiled_contracts: Arc<Mutex<DualCompiledContracts>>,
         runtime_mode: crate::ReviveRuntimeMode,
         externalities: TestEnv,
     ) -> Self;
@@ -67,7 +67,7 @@ pub trait PvmCheatcodeInspectorStrategyBuilder {
 impl PvmCheatcodeInspectorStrategyBuilder for CheatcodeInspectorStrategy {
     // Creates a new PVM strategy
     fn new_pvm(
-        dual_compiled_contracts: DualCompiledContracts,
+        dual_compiled_contracts: Arc<Mutex<DualCompiledContracts>>,
         runtime_mode: crate::ReviveRuntimeMode,
         externalities: TestEnv,
     ) -> Self {
@@ -129,7 +129,7 @@ pub struct PvmCheatcodeInspectorStrategyContext {
     pub record_next_create_address: bool,
     /// Controls automatic migration to pallet-revive
     pub revive_startup_migration: ReviveStartupMigration,
-    pub dual_compiled_contracts: DualCompiledContracts,
+    pub dual_compiled_contracts: Arc<Mutex<DualCompiledContracts>>,
     /// Runtime backend mode when using pallet-revive (PVM or EVM)
     pub runtime_mode: crate::ReviveRuntimeMode,
     pub remove_recorded_access_at: Option<usize>,
@@ -138,7 +138,7 @@ pub struct PvmCheatcodeInspectorStrategyContext {
 
 impl PvmCheatcodeInspectorStrategyContext {
     pub fn new(
-        dual_compiled_contracts: DualCompiledContracts,
+        dual_compiled_contracts: Arc<Mutex<DualCompiledContracts>>,
         runtime_mode: crate::ReviveRuntimeMode,
         externalities: TestEnv,
     ) -> Self {
@@ -662,7 +662,7 @@ fn handle_polkadot_call(
         // Validate we're running with --polkadot and --resolc flags if switching to PVM
         // If dual_compiled_contracts is empty, return error
         if is_backend_switch
-            && ctx.dual_compiled_contracts.is_empty()
+            && ctx.dual_compiled_contracts.lock().unwrap().is_empty()
             && target_mode == crate::ReviveRuntimeMode::Pvm
         {
             return Err(
@@ -764,7 +764,7 @@ fn select_revive(
                     // Skip if contract already exists in pallet-revive
                     if AccountInfo::<Runtime>::load_contract(&account_h160).is_none() {
                         // Find the matching dual-compiled contract by EVM bytecode
-                        if let Some((_, contract)) = ctx.dual_compiled_contracts
+                        if let Some((_, contract)) = ctx.dual_compiled_contracts.lock().unwrap()
                             .find_by_evm_deployed_bytecode_with_immutables(bytecode.original_byte_slice())
                         {
                             // Test contract should always use EVM bytecode, even in PVM mode
@@ -989,12 +989,11 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                 && let Some(info) = AccountInfo::<Runtime>::load_contract(&account_evm)
             {
                 let hash = hex::encode(info.code_hash);
-
+                let dcc = ctx.dual_compiled_contracts.lock().unwrap();
                 // Try both PVM and EVM bytecode lookups since runtime_mode may not reflect
                 // the actual bytecode type stored (especially after backend switches)
                 // TODO: make PristineCode public to avoid this double lookup
-                let bytecode_result = ctx
-                    .dual_compiled_contracts
+                let bytecode_result = dcc
                     .find_by_resolc_bytecode_hash(hash.clone())
                     .and_then(|(_, contract)| {
                         contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
@@ -1002,16 +1001,14 @@ fn select_evm(ctx: &mut PvmCheatcodeInspectorStrategyContext, data: Ecx<'_, '_, 
                         })
                     })
                     .or_else(|| {
-                        ctx.dual_compiled_contracts.find_by_evm_bytecode_hash(hash).and_then(
-                            |(_, contract)| {
-                                contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
-                                    (
-                                        contract.evm_bytecode_hash,
-                                        Bytecode::new_raw(evm_bytecode.clone()),
-                                    )
-                                })
-                            },
-                        )
+                        dcc.find_by_evm_bytecode_hash(hash).and_then(|(_, contract)| {
+                            contract.evm_deployed_bytecode.as_bytes().map(|evm_bytecode| {
+                                (
+                                    contract.evm_bytecode_hash,
+                                    Bytecode::new_raw(evm_bytecode.clone()),
+                                )
+                            })
+                        })
                     });
 
                 if let Some((code_hash, bytecode)) = bytecode_result {
@@ -1092,10 +1089,10 @@ impl foundry_cheatcodes::CheatcodeInspectorStrategyExt for PvmCheatcodeInspector
         // Determine which bytecode to use based on runtime mode
         let (code_bytes, constructor_args, factory_deps) = match ctx.runtime_mode {
             crate::ReviveRuntimeMode::Pvm => {
+                let dcc = ctx.dual_compiled_contracts.lock().unwrap();
                 // PVM mode: use resolc (PVM) bytecode
                 tracing::info!("running create in PVM mode with PVM bytecode");
-                let find_contract = ctx
-                    .dual_compiled_contracts
+                let find_contract = dcc
                     .find_bytecode(&init_code.0)
                     .unwrap_or_else(|| panic!("failed finding contract for {init_code:?}"));
                 let constructor_args = find_contract.constructor_args();
@@ -1540,11 +1537,14 @@ fn post_exec(
     let ctx = &mut get_context_ref_mut(state.strategy.context.as_mut());
 
     let externalities = &mut ctx.externalities;
-    let dual_compiled_contracts = &ctx.dual_compiled_contracts;
-    let (call_traces, create_traces) = externalities.execute_with(|| {
-        tracer.apply_prestate_trace(ecx, &ctx.dual_compiled_contracts);
-        (tracer.collect_call_traces(), tracer.create_tracer.finalize(dual_compiled_contracts))
-    });
+    let (call_traces, create_traces) = {
+        let dcc = ctx.dual_compiled_contracts.lock().unwrap();
+        let (call_traces, create_traces) = externalities.execute_with(|| {
+            tracer.apply_prestate_trace(ecx, &dcc);
+            (tracer.collect_call_traces(), tracer.create_tracer.finalize(&dcc))
+        });
+        (call_traces, create_traces)
+    };
     if let Some(traces) = call_traces
         && !is_static_call
     {

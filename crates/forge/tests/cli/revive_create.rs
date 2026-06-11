@@ -176,6 +176,46 @@ contract TestAssert {
     "src/Library.sol:TestAssert".to_string()
 }
 
+fn setup_with_external_library(prj: &TestProject) -> String {
+    prj.add_source(
+        "MathLib.sol",
+        r#"
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.7.0 <0.9.0;
+
+library MathLib {
+    function add(uint256 a, uint256 b) public pure returns (uint256) {
+        return a + b;
+    }
+    function mul(uint256 a, uint256 b) public pure returns (uint256) {
+        return a * b;
+    }
+}
+"#,
+    );
+    prj.add_source(
+        "LibConsumer.sol",
+        r#"
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.7.0 <0.9.0;
+
+import "./MathLib.sol";
+
+contract LibConsumer {
+    function compute(uint256 a, uint256 b) public pure returns (uint256) {
+        return MathLib.add(a, MathLib.mul(a, b));
+    }
+}
+"#,
+    );
+
+    prj.update_config(|config| {
+        config.libraries = vec![format!("src/MathLib.sol:MathLib:{:?}", Address::random())];
+    });
+
+    "src/LibConsumer.sol:LibConsumer".to_string()
+}
+
 /// configures the `TestProject` with the given closure and calls the `forge create` command
 fn create_on_chain<F>(
     network_args: Option<Vec<String>>,
@@ -278,6 +318,19 @@ forgetest_async!(can_create_with_library_deps_on_polkadot_localnode, |prj, cmd| 
             prj,
             cmd,
             setup_with_library,
+            CREATE_RESPONSE_PATTERN,
+        );
+    }
+});
+
+forgetest_async!(can_create_with_external_library_on_polkadot_localnode, |prj, cmd| {
+    if let Ok(node) = AnvilPolkadotNode::start().await {
+        create_on_chain(
+            localnode_args(&node),
+            None,
+            prj,
+            cmd,
+            setup_with_external_library,
             CREATE_RESPONSE_PATTERN,
         );
     }

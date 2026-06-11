@@ -4,7 +4,8 @@ use alloy_primitives::{Address, U256};
 use eyre::Result;
 use foundry_cheatcodes::CheatcodesStrategy;
 use foundry_compilers::{
-    ProjectCompileOutput, compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
+    ProjectCompileOutput, artifacts::CompactContractBytecodeCow,
+    compilers::resolc::dual_compiled_contracts::DualCompiledContracts,
 };
 use foundry_evm_core::{
     Env,
@@ -113,8 +114,28 @@ pub trait ExecutorStrategyExt {
     fn revive_set_compilation_output(
         &self,
         _ctx: &mut dyn ExecutorStrategyContext,
-        _output: ProjectCompileOutput,
+        _output: std::sync::Arc<ProjectCompileOutput>,
     ) {
+    }
+
+    fn revive_set_resolc_output(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _output: std::sync::Arc<ProjectCompileOutput>,
+    ) {
+    }
+
+    fn revive_link_libraries(
+        &self,
+        _ctx: &mut dyn ExecutorStrategyContext,
+        _config: &foundry_config::Config,
+        _root: &std::path::Path,
+        _linked_contracts: &foundry_compilers::contracts::ArtifactContracts<
+            CompactContractBytecodeCow<'_>,
+        >,
+        _libraries: &foundry_compilers::artifacts::Libraries,
+    ) -> eyre::Result<()> {
+        Ok(())
     }
 
     fn start_transaction(&self, _ctx: &dyn ExecutorStrategyContext) {}

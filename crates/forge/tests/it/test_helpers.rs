@@ -21,7 +21,6 @@ use foundry_test_utils::{
 };
 use revive_strategy::{ReviveExecutorStrategyBuilder, ReviveRuntimeMode};
 use revm::primitives::hardfork::SpecId;
-use semver::Version;
 use std::{
     collections::BTreeSet,
     env, fmt,
@@ -186,10 +185,11 @@ impl ForgeTestProfile {
 /// Container for test data for a specific test profile.
 pub struct ForgeTestData {
     pub project: Project,
-    pub output: ProjectCompileOutput,
+    pub output: std::sync::Arc<ProjectCompileOutput>,
     pub config: Arc<Config>,
     pub profile: ForgeTestProfile,
     pub dual_compiled_contracts: Option<DualCompiledContracts>,
+    pub resolc_output: Option<std::sync::Arc<ProjectCompileOutput>>,
 }
 
 impl ForgeTestData {
@@ -201,8 +201,15 @@ impl ForgeTestData {
         init_tracing();
         let config = Arc::new(profile.config());
         let mut project = config.project().unwrap();
-        let output = get_compiled(&mut project);
-        Self { project, output, config, profile, dual_compiled_contracts: None }
+        let output = std::sync::Arc::new(get_compiled(&mut project));
+        Self {
+            project,
+            output,
+            config,
+            profile,
+            dual_compiled_contracts: None,
+            resolc_output: None,
+        }
     }
 
     /// Builds [ForgeTestData] for the given [ForgeTestProfile] with Revive compilation.
@@ -222,13 +229,6 @@ impl ForgeTestData {
         let mut solc_project = solc_config.project().unwrap();
 
         let output = get_compiled(&mut solc_project);
-
-        // Create resolc config with resolc compilation enabled
-        let mut resolc_config = (*config).clone();
-        resolc_config.polkadot.resolc_compile = true;
-        resolc_config.polkadot.resolc =
-            Some(foundry_config::SolcReq::Version(Version::new(0, 6, 0)));
-        let mut resolc_project = resolc_config.project().unwrap();
 
         // Filter files compatible with resolc
         let all_files: Vec<_> = solc_project.paths.input_files();
@@ -294,7 +294,6 @@ impl ForgeTestData {
         let files_to_compile: Vec<_> = all_files
             .into_iter()
             .filter(|path| {
-                // We skip all the other sources to avoid deploy-time linking issues
                 path.components().any(|c| {
                     let c = PathBuf::from(&c);
                     let c = c.file_stem().unwrap_or_default();
@@ -302,6 +301,11 @@ impl ForgeTestData {
                 })
             })
             .collect();
+
+        let mut resolc_config = (*config).clone();
+        resolc_config.polkadot.resolc_compile = true;
+        resolc_config.polkadot.resolc = None;
+        let mut resolc_project = resolc_config.project().unwrap();
         let resolc_output = get_resolc_compiled(&mut resolc_project, files_to_compile);
 
         let dual_compiled_contracts = DualCompiledContracts::new(
@@ -313,10 +317,11 @@ impl ForgeTestData {
 
         Self {
             project: solc_project,
-            output,
+            output: std::sync::Arc::new(output),
             config: Arc::new(solc_config),
             profile,
             dual_compiled_contracts: Some(dual_compiled_contracts),
+            resolc_output: Some(std::sync::Arc::new(resolc_output)),
         }
     }
 
@@ -362,7 +367,8 @@ impl ForgeTestData {
             .sender(config.sender)
             .build::<MultiCompiler>(
                 ExecutorStrategy::new_evm(),
-                &self.output,
+                self.output.clone(),
+                None,
                 opts.local_evm_env(),
                 opts,
             )
@@ -376,7 +382,8 @@ impl ForgeTestData {
         self.base_runner()
             .build::<MultiCompiler>(
                 ExecutorStrategy::new_evm(),
-                &self.output,
+                self.output.clone(),
+                None,
                 opts.local_evm_env(),
                 opts,
             )
@@ -395,7 +402,13 @@ impl ForgeTestData {
 
         self.base_runner()
             .with_fork(fork)
-            .build::<MultiCompiler>(ExecutorStrategy::new_evm(), &self.output, env, opts)
+            .build::<MultiCompiler>(
+                ExecutorStrategy::new_evm(),
+                self.output.clone(),
+                None,
+                env,
+                opts,
+            )
             .unwrap()
     }
 
@@ -436,7 +449,13 @@ impl ForgeTestData {
         builder
             .enable_isolation(opts.isolate)
             .sender(config.sender)
-            .build::<MultiCompiler>(strategy, &output, opts.local_evm_env(), opts)
+            .build::<MultiCompiler>(
+                strategy,
+                output,
+                self.resolc_output.clone(),
+                opts.local_evm_env(),
+                opts,
+            )
             .unwrap()
     }
 }

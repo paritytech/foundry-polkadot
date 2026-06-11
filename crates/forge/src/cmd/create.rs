@@ -100,7 +100,9 @@ fn find_contract_by_hash(output: &ProjectCompileOutput, target_hash: &str) -> Op
             let bytecode_bytes = bytecode.into_owned();
             if !bytecode_bytes.is_empty() {
                 let calculated_hash = hex::encode(keccak256(&bytecode_bytes));
-                if calculated_hash.trim_start_matches("0x") == normalized_target {
+                if calculated_hash.trim_start_matches("0x") == normalized_target
+                    || target_hash.split_once(":").is_some_and(|(_, name)| name == _contract_name)
+                {
                     return Some(bytecode_bytes);
                 }
             }
@@ -181,6 +183,7 @@ impl CreateArgs {
     async fn upload_factory_dependencies<P: Provider<AnyNetwork> + Clone>(
         &self,
         output: &ProjectCompileOutput,
+        linked_bytecodes: &std::collections::BTreeMap<String, Vec<u8>>,
         provider: P,
         pallet_index: u8,
         deployer_address: Address,
@@ -190,23 +193,44 @@ impl CreateArgs {
         let provider = Arc::new(provider);
 
         for (_id, contract) in output.artifact_ids() {
-            if let ArtifactExtras::Resolc(extras) = &contract.extensions
-                && let Some(factory_dependencies) = &extras.factory_dependencies
-            {
-                for (bytecode_hash, contract_name) in factory_dependencies {
-                    all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
+            if let ArtifactExtras::Resolc(extras) = &contract.extensions {
+                if let Some(factory_dependencies) = &extras.factory_dependencies {
+                    for (bytecode_hash, contract_name) in factory_dependencies {
+                        all_dependencies.insert(bytecode_hash.clone(), contract_name.clone());
+                    }
+                }
+
+                if let Some(unlinked_deps) = &extras.factory_dependencies_unlinked {
+                    for dep_id in unlinked_deps {
+                        if linked_bytecodes.get(dep_id).is_some() {
+                            all_dependencies.insert(dep_id.clone(), dep_id.clone());
+                        }
+                    }
                 }
             }
         }
-
         if all_dependencies.is_empty() {
             return Ok(());
         }
 
-        for (hash, name) in &all_dependencies {
-            let bytecode = find_contract_by_hash(output, hash).ok_or_else(|| {
-                eyre::eyre!("Could not find contract '{}' (hash: {}) in artifacts", name, hash)
-            })?;
+        for (hash_or_id, name) in &all_dependencies {
+            // Try linked bytecodes first (for unlinked deps resolved via resolc --link)
+            let bytecode = if let Some(linked) = linked_bytecodes.values().find(|b| {
+                let h = hex::encode(keccak256(b));
+                &h == hash_or_id || hash_or_id.starts_with(&h)
+            }) {
+                Bytes::from(linked.clone())
+            } else if let Some(linked) = linked_bytecodes.get(hash_or_id) {
+                Bytes::from(linked.clone())
+            } else {
+                find_contract_by_hash(output, hash_or_id).ok_or_else(|| {
+                    eyre::eyre!(
+                        "Could not find contract '{}' (hash/id: {}) in artifacts",
+                        name,
+                        hash_or_id
+                    )
+                })?
+            };
 
             if bytecode.len() > MAX_UPLOAD_BYTECODE_SIZE {
                 eyre::bail!(
@@ -263,6 +287,82 @@ impl CreateArgs {
         Ok(())
     }
 
+    /// Links PVM bytecodes using `resolc --link` for contracts that need library linking.
+    fn link_resolc_bytecodes(
+        &self,
+        config: &Config,
+        output: &ProjectCompileOutput,
+        root: &std::path::Path,
+    ) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
+        use foundry_compilers::artifacts::ObjectFormat;
+
+        let mut bytecodes = std::collections::BTreeMap::new();
+        let mut has_elf = false;
+
+        for (id, artifact) in output.artifact_ids() {
+            if let Some(bytecode) = artifact.get_bytecode_bytes() {
+                let bytes = bytecode.into_owned().to_vec();
+                if !bytes.is_empty() {
+                    let source = id.source.strip_prefix(root).unwrap_or(&id.source);
+                    let key = format!("{}:{}", source.display(), id.name);
+                    if bytes.len() >= 4 && bytes[..4] == [0x7f, b'E', b'L', b'F'] {
+                        has_elf = true;
+                    }
+                    // Also check object_format from resolc extras
+                    if let foundry_compilers::artifacts::ArtifactExtras::Resolc(extras) =
+                        &artifact.extensions
+                        && extras.object_format == Some(ObjectFormat::ELF)
+                    {
+                        has_elf = true;
+                    }
+                    bytecodes.insert(key, bytes);
+                }
+            }
+        }
+
+        if !has_elf {
+            return Ok(std::collections::BTreeMap::new());
+        }
+
+        let lib_args: Vec<String> = config
+            .libraries
+            .iter()
+            .map(|lib| {
+                // Config libraries format: "file:Name:0xaddr" → "file:Name=0xaddr"
+                if let Some(pos) = lib.rfind(':') {
+                    format!("{}={}", &lib[..pos], &lib[pos + 1..])
+                } else {
+                    lib.clone()
+                }
+            })
+            .collect();
+        if lib_args.is_empty() {
+            return Ok(std::collections::BTreeMap::new());
+        }
+
+        let resolc =
+            config.resolc_compiler().map_err(|e| eyre::eyre!("resolc compiler not found: {e}"))?;
+
+        let solc_path = match &resolc.solc {
+            foundry_compilers::compilers::solc::SolcCompiler::Specific(s) => Some(s.solc.clone()),
+            foundry_compilers::compilers::solc::SolcCompiler::AutoDetect => {
+                use foundry_compilers::compilers::solc::Solc;
+                let mut versions = Solc::installed_versions();
+                versions.sort();
+                versions.last().and_then(|v| {
+                    Solc::find_svm_installed_version(v).ok().flatten().map(|s| s.solc)
+                })
+            }
+        };
+
+        revive_strategy::link::resolc_link(
+            &resolc.resolc,
+            solc_path.as_deref(),
+            &bytecodes,
+            &lib_args,
+        )
+    }
+
     /// Executes the command to create a contract
     pub async fn run(mut self) -> Result<()> {
         let mut config = self.load_config()?;
@@ -274,7 +374,15 @@ impl CreateArgs {
         }
 
         // Find Project & Compile
-        let project = config.project()?;
+        // For resolc, compile without libraries — linking is done post-compilation
+        // via `resolc --link` (deploy-time linking).
+        let project = if config.polkadot.resolc_compile && !config.libraries.is_empty() {
+            let mut compile_config = config.clone();
+            compile_config.libraries = vec![];
+            compile_config.project()?
+        } else {
+            config.project()?
+        };
 
         let target_path = if let Some(ref mut path) = self.contract.path {
             canonicalize(project.root().join(path))?
@@ -284,24 +392,38 @@ impl CreateArgs {
 
         let output: foundry_compilers::ProjectCompileOutput =
             compile::compile_target(&target_path, &project, shell::is_json())?;
+        // Link PVM bytecodes if resolc compilation produced unlinked ELF binaries
+        let linked_bytecodes = if config.polkadot.resolc_compile {
+            self.link_resolc_bytecodes(&config, &output, project.root())?
+        } else {
+            std::collections::BTreeMap::new()
+        };
 
         let (abi, bin, id) = remove_contract(output.clone(), &target_path, &self.contract.name)?;
 
-        let bin = match bin.object {
-            BytecodeObject::Bytecode(_) => bin.object,
-            _ => {
-                let link_refs = bin
-                    .link_references
-                    .iter()
-                    .flat_map(|(path, names)| {
-                        names.keys().map(move |name| format!("\t{name}: {path}"))
-                    })
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                eyre::bail!(
-                    "Dynamic linking not supported in `create` command - deploy the following library contracts first, then provide the address to link at compile time\n{}",
-                    link_refs
-                )
+        let bin = if let Some(linked) = linked_bytecodes.get(&format!(
+            "{}:{}",
+            target_path.strip_prefix(project.root()).unwrap_or(&target_path).display(),
+            self.contract.name
+        )) {
+            BytecodeObject::Bytecode(linked.clone().into())
+        } else {
+            match bin.object {
+                BytecodeObject::Bytecode(_) => bin.object,
+                _ => {
+                    let link_refs = bin
+                        .link_references
+                        .iter()
+                        .flat_map(|(path, names)| {
+                            names.keys().map(move |name| format!("\t{name}: {path}"))
+                        })
+                        .collect::<Vec<String>>()
+                        .join("\n");
+                    eyre::bail!(
+                        "Dynamic linking not supported in `create` command - deploy the following library contracts first, then provide the address to link at compile time\n{}",
+                        link_refs
+                    )
+                }
             }
         };
 
@@ -341,6 +463,7 @@ impl CreateArgs {
                     resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
                 self.upload_factory_dependencies(
                     &output,
+                    &linked_bytecodes,
                     &provider,
                     pallet_index,
                     sender,
@@ -374,6 +497,7 @@ impl CreateArgs {
                     resolve_revive_pallet_index(config.polkadot.revive_pallet_index, chain_id)?;
                 self.upload_factory_dependencies(
                     &output,
+                    &linked_bytecodes,
                     &provider,
                     pallet_index,
                     deployer,
