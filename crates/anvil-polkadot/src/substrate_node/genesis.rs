@@ -22,7 +22,10 @@ use polkadot_sdk::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
-use substrate_runtime::{WASM_BINARY, constants::NATIVE_TO_ETH_RATIO};
+use substrate_runtime::{
+    WASM_BINARY,
+    constants::{GAS_SCALE, NATIVE_TO_ETH_RATIO},
+};
 use subxt_signer::eth::Keypair;
 
 /// Genesis settings
@@ -65,7 +68,9 @@ impl<'a> From<&'a AnvilNodeConfig> for GenesisConfig {
                 .expect("Genesis block number overflow"),
             base_fee_per_gas: FixedU128::from_rational(
                 anvil_config.get_base_fee(),
-                NATIVE_TO_ETH_RATIO.into(),
+                // evm_base_fee = multiplier × NATIVE_TO_ETH_RATIO × GAS_SCALE
+                // so multiplier = base_fee / (NATIVE_TO_ETH_RATIO × GAS_SCALE)
+                NATIVE_TO_ETH_RATIO as u128 * GAS_SCALE as u128,
             ),
             genesis_accounts: anvil_config.genesis_accounts.clone(),
             genesis_balance: anvil_config.genesis_balance,
@@ -280,7 +285,8 @@ mod tests {
         let timestamp: u64 = 10;
         let chain_id: u64 = 42;
         let authority_id: [u8; 32] = [0xEE; 32];
-        let base_fee_per_gas = FixedU128::from_rational(6_000_000, NATIVE_TO_ETH_RATIO.into());
+        let base_fee_per_gas =
+            FixedU128::from_rational(6_000_000, NATIVE_TO_ETH_RATIO as u128 * GAS_SCALE as u128);
         let genesis_config = GenesisConfig {
             number: block_number,
             timestamp,

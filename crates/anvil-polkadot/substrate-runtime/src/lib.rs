@@ -7,7 +7,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 extern crate alloc;
 
-use crate::sp_runtime::ConsensusEngineId;
+use crate::sp_runtime::{ConsensusEngineId, FixedU128};
 use alloc::{vec, vec::Vec};
 use currency::*;
 use frame_support::weights::{
@@ -43,8 +43,13 @@ pub use polkadot_sdk::parachains_common::Balance;
 use sp_weights::ConstantMultiplier;
 
 pub mod constants {
-    /// DOT precision (1e12) to ETH precision (1e18) ratio.
+    /// KSM precision (1e12) to ETH precision (1e18) ratio.
+    /// 1 KSM = 10^12 planck, 1 ETH = 10^18 wei → ratio = 10^(18-12) = 10^6.
     pub const NATIVE_TO_ETH_RATIO: u32 = 1_000_000;
+    /// Gas scale used by pallet-revive. Must match `type GasScale` in the runtime config.
+    /// Matches asset-hub-kusama. Formula: weight = gas × GAS_SCALE.
+    /// With MaxEthExtrinsicWeight=50%: max_gas = 50% × 1.5T / 100_000 = 7_500_000.
+    pub const GAS_SCALE: u32 = 100_000;
 }
 
 pub mod currency {
@@ -289,6 +294,9 @@ impl pallet_transaction_payment::Config for Runtime {
 parameter_types! {
     pub CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(30);
     pub storage ChainId: u64 = 420_420_420;
+    // Allow ETH extrinsics to consume up to 50% of the max normal extrinsic weight.
+    // This gives ~15M max gas/tx, matching asset-hub-polkadot and asset-hub-kusama.
+    pub MaxEthExtrinsicWeight: FixedU128 = FixedU128::from_rational(5, 10);
 }
 
 pub struct BlockAuthor;
@@ -318,7 +326,10 @@ impl pallet_revive::Config for Runtime {
     type UploadOrigin = EnsureSigned<Self::AccountId>;
     type InstantiateOrigin = EnsureSigned<Self::AccountId>;
     type Time = Timestamp;
-    type GasScale = ConstU32<1>;
+    // GasScale=100_000 with MaxEthExtrinsicWeight=50% gives ~7.5M max gas/tx,
+    // exactly matching asset-hub-kusama production configuration.
+    type GasScale = ConstU32<100_000>;
+    type MaxEthExtrinsicWeight = MaxEthExtrinsicWeight;
     type FeeInfo = FeeInfo<Address, Signature, EthExtraImpl>;
     type DebugEnabled = ConstBool<true>;
 }

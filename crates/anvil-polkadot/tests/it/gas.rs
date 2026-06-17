@@ -12,8 +12,9 @@ use std::ops::Not;
 #[case(false)]
 #[case(true)]
 async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
-    // 1e18 denomination.
-    let new_base_fee = U256::from(6_000_000);
+    // 1e18 denomination. Must be above the SlowAdjustingFeeUpdate minimum (10_000_000_000).
+    // Minimum = 0.1 × NATIVE_TO_ETH_RATIO × GAS_SCALE = 0.1 × 1e6 × 100_000 = 10_000_000_000.
+    let new_base_fee = U256::from(300_000_000_000_u128);
     let anvil_node_config = AnvilNodeConfig::test_config()
         .with_base_fee(rpc_driven.not().then_some(new_base_fee.to::<u64>()));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
@@ -89,13 +90,15 @@ async fn test_set_next_fee_multiplier(#[case] rpc_driven: bool) {
     let block2_hash = node.block_hash_by_number(2).await.unwrap();
     let block2 = node.get_block_by_hash(block2_hash).await;
 
-    assert_eq!(U256::from_be_bytes(block2.base_fee_per_gas.to_big_endian()), 5999775);
+    // Fee decreases slightly for an under-full block (one simple transfer vs 7.5M gas capacity).
+    assert_eq!(U256::from_be_bytes(block2.base_fee_per_gas.to_big_endian()), 299_988_700_000_u128);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_next_fee_multiplier_minimum() {
-    // 1e18 denomination.
-    let new_base_fee = U256::from(50_123);
+    // 1e18 denomination. Must be a multiple of GAS_SCALE (100_000) for precise representation.
+    // This value is intentionally below the SlowAdjustingFeeUpdate minimum (10_000_000_000).
+    let new_base_fee = U256::from(100_000_u64);
     let anvil_node_config =
         AnvilNodeConfig::test_config().with_base_fee(Some(new_base_fee.to::<u64>()));
     let substrate_node_config = SubstrateNodeConfig::new(&anvil_node_config);
@@ -152,5 +155,9 @@ async fn test_next_fee_multiplier_minimum() {
     unwrap_response::<()>(node.eth_rpc(EthRequest::Mine(None, None)).await.unwrap()).unwrap();
     let block2_hash = node.block_hash_by_number(2).await.unwrap();
     let block2 = node.get_block_by_hash(block2_hash).await;
-    assert_eq!(U256::from_be_bytes(block2.base_fee_per_gas.to_big_endian()), U256::from(100_000));
+    // SlowAdjustingFeeUpdate minimum = 0.1 × NATIVE_TO_ETH_RATIO × GAS_SCALE = 0.1 × 1e6 × 100_000
+    assert_eq!(
+        U256::from_be_bytes(block2.base_fee_per_gas.to_big_endian()),
+        U256::from(10_000_000_000_u128)
+    );
 }
