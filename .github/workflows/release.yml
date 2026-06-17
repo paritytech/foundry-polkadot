@@ -116,7 +116,7 @@ jobs:
             svm_target_platform: macosx-aarch64
             platform: darwin
             arch: arm64
-          - runner: windows-2025-vs2026
+          - runner: windows-2022
             target: x86_64-pc-windows-msvc
             svm_target_platform: windows-amd64
             platform: win32
