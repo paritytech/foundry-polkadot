@@ -93,6 +93,7 @@ impl pallet_balances::Config for Runtime {
     type AccountStore = System;
     type Balance = Balance;
     type ExistentialDeposit = ConstU128<1_000>;
+    type MaxFreezes = ConstU32<1>;
 }
 
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
