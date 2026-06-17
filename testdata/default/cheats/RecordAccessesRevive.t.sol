@@ -486,11 +486,11 @@ contract RecordAccountAccessesTest is Test {
         vm.startStateDiffRecording();
         try this.revertingCall{value: 1 ether}(address(1234), "") {} catch {}
         assertEq(
-            "0x00000000000000000000000000000000000004d2\n- balance diff: 0 \xE2\x86\x92 100000000000000000\n\n0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496\ncontract: default/cheats/RecordAccessesRevive.t.sol:RecordAccountAccessesTest\n- balance diff: 340282366920938463463374607417826211455 \xE2\x86\x92 340282366920938463463274607416826211455\n- nonce diff: 7 \xE2\x86\x92 8\n\n",
+            "0x00000000000000000000000000000000000004d2\n- balance diff: 0 \xE2\x86\x92 100000000000000000\n\n0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496\ncontract: default/cheats/RecordAccessesRevive.t.sol:RecordAccountAccessesTest\n- balance diff: 340282366920938463463374607426826211455 \xE2\x86\x92 340282366920938463463274607425826211455\n- nonce diff: 7 \xE2\x86\x92 8\n\n",
             vm.getStateDiff()
         );
         assertEq(
-            '{"0x00000000000000000000000000000000000004d2":{"label":null,"contract":null,"balanceDiff":{"previousValue":"0x0","newValue":"0x16345785d8a0000"},"nonceDiff":null,"stateDiff":{}},\"0x7fa9385be102ac3eac297483dd6233d62b3e1496\":{\"label\":null,\"contract\":\"default/cheats/RecordAccessesRevive.t.sol:RecordAccountAccessesTest\",\"balanceDiff\":{\"previousValue\":\"0xfffffffffffffffffffffffcc0fdf67f\",\"newValue\":\"0xfffffffffffffffffe9cba8427d92c7f\"},\"nonceDiff\":{\"previousValue\":7,\"newValue\":8},\"stateDiff\":{}}}',
+            '{"0x00000000000000000000000000000000000004d2":{"label":null,"contract":null,"balanceDiff":{"previousValue":"0x0","newValue":"0x16345785d8a0000"},"nonceDiff":null,"stateDiff":{}},\"0x7fa9385be102ac3eac297483dd6233d62b3e1496\":{\"label\":null,\"contract\":\"default/cheats/RecordAccessesRevive.t.sol:RecordAccountAccessesTest\",\"balanceDiff\":{\"previousValue\":\"0xfffffffffffffffffffffffed96f107f\",\"newValue\":\"0xfffffffffffffffffe9cba86404a467f\"},\"nonceDiff\":{\"previousValue\":7,\"newValue\":8},\"stateDiff\":{}}}',
             vm.getStateDiffJson()
         );
         Vm.AccountAccess[] memory called = filterExtcodesizeForLegacyTests(vm.stopAndReturnStateDiff());
@@ -504,7 +504,7 @@ contract RecordAccountAccessesTest is Test {
                 kind: Vm.AccountAccessKind.Call,
                 initialized: true,
                 oldBalance: initBalance,
-                newBalance: 340282366920938463463274607416826211455,
+                newBalance: 340282366920938463463274607425826211455,
                 oldNonce: 0,
                 newNonce: 0,
                 deployedCode: hex"",
@@ -567,7 +567,7 @@ contract RecordAccountAccessesTest is Test {
                     account: address(1234),
                     kind: Vm.AccountAccessKind.Call,
                     oldBalance: 0,
-                    newBalance: 340282366920938463463374607417826211455,
+                    newBalance: 340282366920938463463374607426826211455,
                     oldNonce: 0,
                     newNonce: 0,
                     deployedCode: "",
@@ -1133,8 +1133,8 @@ contract RecordAccountAccessesTest is Test {
                 accessor: address(a),
                 account: address(this),
                 kind: Vm.AccountAccessKind.SelfDestruct,
-                oldBalance: 340282366920938463462374607416826211455,
-                newBalance: 340282366920938463463374607416699211455,
+                oldBalance: 340282366920938463462374607426826211455,
+                newBalance: 340282366920938463463374607426699211455,
                 oldNonce: 0,
                 newNonce: 0,
                 deployedCode: "",
