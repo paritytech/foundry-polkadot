@@ -63,17 +63,20 @@ mod runtime {
     )]
     pub struct Runtime;
 
+    /// Mandatory system pallet that should always be included in a FRAME runtime.
     #[runtime::pallet_index(0)]
-    pub type System = frame_system;
+    pub type System = frame_system::Pallet<Runtime>;
 
+    /// Provides a way for consensus systems to set and check the onchain time.
     #[runtime::pallet_index(1)]
-    pub type Timestamp = pallet_timestamp;
+    pub type Timestamp = pallet_timestamp::Pallet<Runtime>;
 
     #[runtime::pallet_index(2)]
-    pub type Balances = pallet_balances;
+    pub type Balances = pallet_balances::Pallet<Runtime>;
 
     #[runtime::pallet_index(3)]
-    pub type Contracts = pallet_revive;
+    pub type Contracts = pallet_revive::Pallet<Runtime>;
+
     /// Provides the ability to charge for extrinsic execution.
     #[runtime::pallet_index(4)]
     pub type TransactionPayment = pallet_transaction_payment::Pallet<Runtime>;
@@ -93,6 +96,9 @@ impl pallet_balances::Config for Runtime {
     type AccountStore = System;
     type Balance = Balance;
     type ExistentialDeposit = ConstU128<1_000>;
+    type RuntimeFreezeReason = RuntimeFreezeReason;
+    type FreezeIdentifier = RuntimeFreezeReason;
+    type MaxFreezes = frame_support::traits::VariantCountOf<RuntimeFreezeReason>;
 }
 
 #[derive_impl(pallet_timestamp::config_preludes::TestDefaultConfig)]
@@ -196,9 +202,10 @@ pub struct EthExtraImpl;
 
 impl EthExtra for EthExtraImpl {
     type Config = Runtime;
-    type Extension = TxExtension;
+    type ExtensionV0 = TxExtension;
+    type ExtensionOtherVersions = sp_runtime::traits::InvalidVersion;
 
-    fn get_eth_extension(nonce: u32, tip: Balance) -> Self::Extension {
+    fn get_eth_extension(nonce: u32, tip: Balance) -> Self::ExtensionV0 {
         (
             frame_system::CheckNonZeroSender::<Runtime>::new(),
             frame_system::CheckSpecVersion::<Runtime>::new(),
