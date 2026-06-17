@@ -75,7 +75,8 @@ mod runtime {
     pub type Balances = pallet_balances::Pallet<Runtime>;
 
     #[runtime::pallet_index(3)]
-    pub type Revive = pallet_revive::Pallet<Runtime>;
+    pub type Contracts = pallet_revive::Pallet<Runtime>;
+
     /// Provides the ability to charge for extrinsic execution.
     #[runtime::pallet_index(4)]
     pub type TransactionPayment = pallet_transaction_payment::Pallet<Runtime>;
