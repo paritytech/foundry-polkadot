@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":[["impl_visitable",1]],"trait":["Visitable","Visitor"]};

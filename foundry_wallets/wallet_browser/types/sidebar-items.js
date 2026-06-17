@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BrowserApiResponse","SignType"],"struct":["BrowserSignRequest","BrowserSignResponse","BrowserSignTypedDataRequest","BrowserTransactionRequest","BrowserTransactionResponse","Connection","SignRequest"]};

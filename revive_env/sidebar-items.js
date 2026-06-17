@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["RuntimeHoldReason"],"mod":["runtime"],"struct":["BlockAuthor","ExtBuilder","GasScale","NativeToEthRatio","Runtime"],"type":["AccountId","Balance","Balances","System","Timestamp"]};

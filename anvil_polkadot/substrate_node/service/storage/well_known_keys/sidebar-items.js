@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AURA_AUTHORITIES","BLOCK_NUMBER_KEY","CHAIN_ID","NEXT_FEE_MULTIPLIER","TIMESTAMP","TOTAL_ISSUANCE"],"fn":["code_info","immutable_data_of","pristine_code","revive_account_info","system_account_info"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ACTIVE_FILTER_TIMEOUT_SECS","LOG_TARGET"],"enum":["EthFilter"],"fn":["eviction_task","new_id"],"struct":["BlockFilter","Filters","LogsFilter","PendingTransactionsFilter"],"type":["BlockNotifications","FilterMap"]};

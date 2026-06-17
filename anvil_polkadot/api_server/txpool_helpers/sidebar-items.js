@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_EXTRINSIC_DEPTH"],"fn":["decode_eth_transaction","extract_sender","extract_tx_fields","extract_tx_info","extract_tx_summary","get_pool_nonce","transaction_matches_eth_hash"],"struct":["TransactionFields","TxpoolTransactionInfo"]};

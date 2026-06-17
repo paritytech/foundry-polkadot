@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ENCODING_BYTES","ENCODING_DYN_ARRAY","ENCODING_INPLACE","ENCODING_MAPPING"],"fn":["get_array_base_indices","is_struct","serialize_mapping_keys","serialize_slot_type"],"struct":["DecodedSlotValues","SlotIdentifier","SlotInfo","StorageTypeInfo"]};

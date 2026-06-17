@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Erc20Subcommand"],"mod":["IERC20"]};

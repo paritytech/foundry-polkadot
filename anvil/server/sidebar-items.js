@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["beacon_router","router","serve","serve_on","spawn_ipc","try_spawn_ipc"],"mod":["beacon_handler","error","handler"]};

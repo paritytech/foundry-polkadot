@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["can_fit_int","can_fit_uint"],"struct":["LiteralMaps","LiteralsCollector","LiteralsDictionary"]};

@@ -1,0 +1,81 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="API documentation for the Rust `BackendStrategyRunner` trait in crate `foundry_evm_core`."><title>BackendStrategyRunner in foundry_evm_core::backend::strategy - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="foundry_evm_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.0-nightly (9e2abe0c6 2026-06-16)" data-channel="nightly" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc trait"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">BackendStrategyRunner</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../foundry_evm_core/index.html">foundry_<wbr>evm_<wbr>core</a><span class="version">1.5.1</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Backend<wbr>Strategy<wbr>Runner</a></h2><h3><a href="#required-methods">Required Methods</a></h3><ul class="block"><li><a href="#tymethod.inspect" title="inspect">inspect</a></li><li><a href="#tymethod.merge_db_account_data" title="merge_db_account_data">merge_db_account_data</a></li><li><a href="#tymethod.merge_journaled_state_data" title="merge_journaled_state_data">merge_journaled_state_data</a></li><li><a href="#tymethod.transact_from_tx" title="transact_from_tx">transact_from_tx</a></li><li><a href="#tymethod.update_fork_db" title="update_fork_db">update_fork_db</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><div id="rustdoc-modnav"><h2><a href="index.html">In foundry_<wbr>evm_<wbr>core::<wbr>backend::<wbr>strategy</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">foundry_evm_core</a>::<wbr><a href="../index.html">backend</a>::<wbr><a href="index.html">strategy</a></div><h1>Trait <span class="trait">Backend<wbr>Strategy<wbr>Runner</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/foundry_evm_core/backend/strategy.rs.html#67-113">Source</a> </span></div><pre class="rust item-decl"><code>pub trait BackendStrategyRunner:
+    <a class="trait" href="https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html" title="trait core::fmt::Debug">Debug</a>
+    + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a>
+    + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html" title="trait core::marker::Sync">Sync</a> {
+    // Required methods
+    fn <a href="#tymethod.inspect" class="fn">inspect</a>(
+        &amp;self,
+        backend: &amp;mut <a class="struct" href="../struct.Backend.html" title="struct foundry_evm_core::backend::Backend">Backend</a>,
+        env: &amp;mut <a class="struct" href="../../env/struct.Env.html" title="struct foundry_evm_core::env::Env">Env</a>,
+        inspector: &amp;mut dyn <a class="trait" href="../../trait.InspectorExt.html" title="trait foundry_evm_core::InspectorExt">InspectorExt</a>,
+        inspect_ctx: <a class="struct" href="https://doc.rust-lang.org/nightly/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/nightly/core/any/trait.Any.html" title="trait core::any::Any">Any</a>&gt;,
+    ) -&gt; <a class="type" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html" title="type eyre::Result">Result</a>&lt;ResultAndState&gt;;
+<span class="item-spacer"></span>    fn <a href="#tymethod.update_fork_db" class="fn">update_fork_db</a>(
+        &amp;self,
+        ctx: &amp;mut dyn <a class="trait" href="../trait.BackendStrategyContext.html" title="trait foundry_evm_core::backend::BackendStrategyContext">BackendStrategyContext</a>,
+        active_fork: <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;&amp;<a class="struct" href="../struct.Fork.html" title="struct foundry_evm_core::backend::Fork">Fork</a>&gt;,
+        mem_db: &amp;<a class="type" href="../type.FoundryEvmInMemoryDB.html" title="type foundry_evm_core::backend::FoundryEvmInMemoryDB">FoundryEvmInMemoryDB</a>,
+        backend_inner: &amp;<a class="struct" href="../struct.BackendInner.html" title="struct foundry_evm_core::backend::BackendInner">BackendInner</a>,
+        active_journaled_state: &amp;mut <a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+        target_fork: &amp;mut <a class="struct" href="../struct.Fork.html" title="struct foundry_evm_core::backend::Fork">Fork</a>,
+    );
+<span class="item-spacer"></span>    fn <a href="#tymethod.merge_journaled_state_data" class="fn">merge_journaled_state_data</a>(
+        &amp;self,
+        ctx: &amp;mut dyn <a class="trait" href="../trait.BackendStrategyContext.html" title="trait foundry_evm_core::backend::BackendStrategyContext">BackendStrategyContext</a>,
+        addr: Address,
+        active_journaled_state: &amp;<a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+        fork_journaled_state: &amp;mut <a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+    );
+<span class="item-spacer"></span>    fn <a href="#tymethod.merge_db_account_data" class="fn">merge_db_account_data</a>(
+        &amp;self,
+        ctx: &amp;mut dyn <a class="trait" href="../trait.BackendStrategyContext.html" title="trait foundry_evm_core::backend::BackendStrategyContext">BackendStrategyContext</a>,
+        addr: Address,
+        active: &amp;<a class="type" href="../type.ForkDB.html" title="type foundry_evm_core::backend::ForkDB">ForkDB</a>,
+        fork_db: &amp;mut <a class="type" href="../type.ForkDB.html" title="type foundry_evm_core::backend::ForkDB">ForkDB</a>,
+    );
+<span class="item-spacer"></span>    fn <a href="#tymethod.transact_from_tx" class="fn">transact_from_tx</a>(
+        &amp;self,
+        backend: &amp;mut <a class="struct" href="../struct.Backend.html" title="struct foundry_evm_core::backend::Backend">Backend</a>,
+        tx: &amp;TransactionRequest,
+        env: <a class="struct" href="../../env/struct.Env.html" title="struct foundry_evm_core::env::Env">Env</a>,
+        journaled_state: &amp;mut <a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+        inspector: &amp;mut dyn <a class="trait" href="../../trait.InspectorExt.html" title="trait foundry_evm_core::InspectorExt">InspectorExt</a>,
+        inspect_ctx: <a class="struct" href="https://doc.rust-lang.org/nightly/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/nightly/core/any/trait.Any.html" title="trait core::any::Any">Any</a>&gt;,
+    ) -&gt; <a class="type" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html" title="type eyre::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.unit.html">()</a>&gt;;
+}</code></pre><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><section id="tymethod.inspect" class="method"><a class="src rightside" href="../../../src/foundry_evm_core/backend/strategy.rs.html#68-74">Source</a><h4 class="code-header">fn <a href="#tymethod.inspect" class="fn">inspect</a>(
+    &amp;self,
+    backend: &amp;mut <a class="struct" href="../struct.Backend.html" title="struct foundry_evm_core::backend::Backend">Backend</a>,
+    env: &amp;mut <a class="struct" href="../../env/struct.Env.html" title="struct foundry_evm_core::env::Env">Env</a>,
+    inspector: &amp;mut dyn <a class="trait" href="../../trait.InspectorExt.html" title="trait foundry_evm_core::InspectorExt">InspectorExt</a>,
+    inspect_ctx: <a class="struct" href="https://doc.rust-lang.org/nightly/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/nightly/core/any/trait.Any.html" title="trait core::any::Any">Any</a>&gt;,
+) -&gt; <a class="type" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html" title="type eyre::Result">Result</a>&lt;ResultAndState&gt;</h4></section><details class="toggle method-toggle" open><summary><section id="tymethod.update_fork_db" class="method"><a class="src rightside" href="../../../src/foundry_evm_core/backend/strategy.rs.html#77-85">Source</a><h4 class="code-header">fn <a href="#tymethod.update_fork_db" class="fn">update_fork_db</a>(
+    &amp;self,
+    ctx: &amp;mut dyn <a class="trait" href="../trait.BackendStrategyContext.html" title="trait foundry_evm_core::backend::BackendStrategyContext">BackendStrategyContext</a>,
+    active_fork: <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;&amp;<a class="struct" href="../struct.Fork.html" title="struct foundry_evm_core::backend::Fork">Fork</a>&gt;,
+    mem_db: &amp;<a class="type" href="../type.FoundryEvmInMemoryDB.html" title="type foundry_evm_core::backend::FoundryEvmInMemoryDB">FoundryEvmInMemoryDB</a>,
+    backend_inner: &amp;<a class="struct" href="../struct.BackendInner.html" title="struct foundry_evm_core::backend::BackendInner">BackendInner</a>,
+    active_journaled_state: &amp;mut <a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+    target_fork: &amp;mut <a class="struct" href="../struct.Fork.html" title="struct foundry_evm_core::backend::Fork">Fork</a>,
+)</h4></section></summary><div class="docblock"><p>When creating or switching forks, we update the AccountInfo of the contract</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.merge_journaled_state_data" class="method"><a class="src rightside" href="../../../src/foundry_evm_core/backend/strategy.rs.html#88-94">Source</a><h4 class="code-header">fn <a href="#tymethod.merge_journaled_state_data" class="fn">merge_journaled_state_data</a>(
+    &amp;self,
+    ctx: &amp;mut dyn <a class="trait" href="../trait.BackendStrategyContext.html" title="trait foundry_evm_core::backend::BackendStrategyContext">BackendStrategyContext</a>,
+    addr: Address,
+    active_journaled_state: &amp;<a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+    fork_journaled_state: &amp;mut <a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+)</h4></section></summary><div class="docblock"><p>Clones the account data from the <code>active_journaled_state</code> into the <code>fork_journaled_state</code></p>
+</div></details><section id="tymethod.merge_db_account_data" class="method"><a class="src rightside" href="../../../src/foundry_evm_core/backend/strategy.rs.html#96-102">Source</a><h4 class="code-header">fn <a href="#tymethod.merge_db_account_data" class="fn">merge_db_account_data</a>(
+    &amp;self,
+    ctx: &amp;mut dyn <a class="trait" href="../trait.BackendStrategyContext.html" title="trait foundry_evm_core::backend::BackendStrategyContext">BackendStrategyContext</a>,
+    addr: Address,
+    active: &amp;<a class="type" href="../type.ForkDB.html" title="type foundry_evm_core::backend::ForkDB">ForkDB</a>,
+    fork_db: &amp;mut <a class="type" href="../type.ForkDB.html" title="type foundry_evm_core::backend::ForkDB">ForkDB</a>,
+)</h4></section><section id="tymethod.transact_from_tx" class="method"><a class="src rightside" href="../../../src/foundry_evm_core/backend/strategy.rs.html#104-112">Source</a><h4 class="code-header">fn <a href="#tymethod.transact_from_tx" class="fn">transact_from_tx</a>(
+    &amp;self,
+    backend: &amp;mut <a class="struct" href="../struct.Backend.html" title="struct foundry_evm_core::backend::Backend">Backend</a>,
+    tx: &amp;TransactionRequest,
+    env: <a class="struct" href="../../env/struct.Env.html" title="struct foundry_evm_core::env::Env">Env</a>,
+    journaled_state: &amp;mut <a class="type" href="../type.JournaledState.html" title="type foundry_evm_core::backend::JournaledState">JournaledState</a>,
+    inspector: &amp;mut dyn <a class="trait" href="../../trait.InspectorExt.html" title="trait foundry_evm_core::InspectorExt">InspectorExt</a>,
+    inspect_ctx: <a class="struct" href="https://doc.rust-lang.org/nightly/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/nightly/core/any/trait.Any.html" title="trait core::any::Any">Any</a>&gt;,
+) -&gt; <a class="type" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html" title="type eyre::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.unit.html">()</a>&gt;</h4></section></div><h2 id="dyn-compatibility" class="section-header">Dyn Compatibility<a href="#dyn-compatibility" class="anchor">§</a></h2><div class="dyn-compatibility-info"><p>This trait <b>is</b> <a href="https://doc.rust-lang.org/nightly/reference/items/traits.html#dyn-compatibility">dyn compatible</a>.</p><p><i>In older versions of Rust, dyn compatibility was called "object safety".</i></p></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"><div class="negative-marker"></div><section id="impl-BackendStrategyRunner-for-EvmBackendStrategyRunner" class="impl"><a class="src rightside" href="../../../src/foundry_evm_core/backend/strategy.rs.html#118-202">Source</a><a href="#impl-BackendStrategyRunner-for-EvmBackendStrategyRunner" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="../trait.BackendStrategyRunner.html" title="trait foundry_evm_core::backend::BackendStrategyRunner">BackendStrategyRunner</a> for <a class="struct" href="../struct.EvmBackendStrategyRunner.html" title="struct foundry_evm_core::backend::EvmBackendStrategyRunner">EvmBackendStrategyRunner</a></h3></section></div><script src="../../../trait.impl/foundry_evm_core/backend/strategy/trait.BackendStrategyRunner.js" async></script></section></div></main></body></html>

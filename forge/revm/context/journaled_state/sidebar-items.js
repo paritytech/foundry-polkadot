@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["JournalLoadError","TransferError"],"mod":["account","entry"],"struct":["AccountInfoLoad","AccountLoad","JournalCheckpoint","StateLoad"],"trait":["JournalTr"]};

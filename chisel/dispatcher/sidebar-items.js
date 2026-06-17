@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CHISEL_CHAR","COMMAND_LEADER","DEFAULT_PROMPT","PROMPT_ARROW","PROMPT_ARROW_STR"],"fn":["format_source","preprocess"],"struct":["ChiselDispatcher"]};

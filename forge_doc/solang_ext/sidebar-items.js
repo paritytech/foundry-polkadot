@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["ast_eq","loc","pt","safe_unwrap","visit"],"trait":["AstEq","CodeLocationExt","SafeUnwrap","Visitable","Visitor"]};

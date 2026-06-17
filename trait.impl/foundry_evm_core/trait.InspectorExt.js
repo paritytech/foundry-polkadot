@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["cast",[]],["forge",[]],["foundry_cheatcodes",[["impl <a class=\"trait\" href=\"foundry_evm_core/trait.InspectorExt.html\" title=\"trait foundry_evm_core::InspectorExt\">InspectorExt</a> for <a class=\"struct\" href=\"foundry_cheatcodes/struct.Cheatcodes.html\" title=\"struct foundry_cheatcodes::Cheatcodes\">Cheatcodes</a>",0]]],["foundry_evm",[["impl <a class=\"trait\" href=\"foundry_evm/trait.InspectorExt.html\" title=\"trait foundry_evm::InspectorExt\">InspectorExt</a> for <a class=\"struct\" href=\"foundry_evm/inspectors/struct.InspectorStack.html\" title=\"struct foundry_evm::inspectors::InspectorStack\">InspectorStack</a>",0],["impl <a class=\"trait\" href=\"foundry_evm/trait.InspectorExt.html\" title=\"trait foundry_evm::InspectorExt\">InspectorExt</a> for <a class=\"struct\" href=\"foundry_evm/inspectors/stack/struct.InspectorStackRefMut.html\" title=\"struct foundry_evm::inspectors::stack::InspectorStackRefMut\">InspectorStackRefMut</a>&lt;'_&gt;",0],["impl <a class=\"trait\" href=\"foundry_evm/trait.InspectorExt.html\" title=\"trait foundry_evm::InspectorExt\">InspectorExt</a> for <a class=\"struct\" href=\"foundry_evm/inspectors/struct.LogCollector.html\" title=\"struct foundry_evm::inspectors::LogCollector\">LogCollector</a>",0]]],["foundry_evm_core",[]],["revive_utils",[["impl <a class=\"trait\" href=\"foundry_evm_core/trait.InspectorExt.html\" title=\"trait foundry_evm_core::InspectorExt\">InspectorExt</a> for <a class=\"struct\" href=\"revive_utils/struct.TraceCollector.html\" title=\"struct revive_utils::TraceCollector\">TraceCollector</a>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[11,13,307,932,24,301]}

@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["anvil",[["impl DatabaseRef for <a class=\"struct\" href=\"anvil/eth/backend/db/struct.StateDb.html\" title=\"struct anvil::eth::backend::db::StateDb\">StateDb</a>",0]]],["cast",[]],["forge",[]],["foundry_evm_core",[["impl DatabaseRef for <a class=\"struct\" href=\"foundry_evm_core/backend/struct.Backend.html\" title=\"struct foundry_evm_core::backend::Backend\">Backend</a>",0],["impl DatabaseRef for <a class=\"struct\" href=\"foundry_evm_core/backend/struct.CowBackend.html\" title=\"struct foundry_evm_core::backend::CowBackend\">CowBackend</a>&lt;'_&gt;",0],["impl DatabaseRef for <a class=\"struct\" href=\"foundry_evm_core/backend/struct.EmptyDBWrapper.html\" title=\"struct foundry_evm_core::backend::EmptyDBWrapper\">EmptyDBWrapper</a>",0],["impl DatabaseRef for <a class=\"struct\" href=\"foundry_evm_core/fork/database/struct.ForkDbStateSnapshot.html\" title=\"struct foundry_evm_core::fork::database::ForkDbStateSnapshot\">ForkDbStateSnapshot</a>",0],["impl DatabaseRef for <a class=\"struct\" href=\"foundry_evm_core/fork/database/struct.ForkedDatabase.html\" title=\"struct foundry_evm_core::fork::database::ForkedDatabase\">ForkedDatabase</a>",0],["impl DatabaseRef for <a class=\"struct\" href=\"foundry_evm_core/backend/struct.MemDb.html\" title=\"struct foundry_evm_core::backend::MemDb\">MemDb</a>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[170,12,13,1130]}

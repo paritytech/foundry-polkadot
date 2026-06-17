@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["check_pascal_case"],"static":["PASCAL_CASE_STRUCT"]};

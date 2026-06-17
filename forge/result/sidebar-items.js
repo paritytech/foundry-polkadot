@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["TestKind","TestKindReport","TestStatus"],"macro":[["extend",1]],"struct":["SuiteResult","SuiteTestResult","TestOutcome","TestResult","TestSetup"]};

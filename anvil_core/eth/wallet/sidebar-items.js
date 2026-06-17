@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["WalletError"],"struct":["CallParams","Capabilities","DelegationCapability","SendCallsRequest","WalletCapabilities"]};

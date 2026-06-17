@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["chisel_history_file","evaluate_prelude","handle_cli_command","load_prelude_file","run","run_command","setup"],"macro":[["try_cf",1]]};

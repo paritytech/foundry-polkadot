@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["development_chain_spec","props"],"struct":["DevelopmentChainSpec","GenesisBuilderRuntimeCaller"]};

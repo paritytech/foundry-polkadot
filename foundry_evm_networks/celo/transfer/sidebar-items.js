@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CELO_TRANSFER_ADDRESS","CELO_TRANSFER_GAS_COST","CELO_TRANSFER_LABEL"],"fn":["celo_transfer_precompile","precompile"],"static":["PRECOMPILE_ID_CELO_TRANSFER"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["check_mixed_case","is_constant_getter"],"static":["MIXED_CASE_FUNCTION","MIXED_CASE_VARIABLE"]};

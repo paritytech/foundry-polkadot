@@ -1,0 +1,220 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Formatter (`fmt`)"><title>forge_fmt - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="forge_fmt" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.0-nightly (9e2abe0c6 2026-06-16)" data-channel="nightly" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate forge_fmt</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../forge_fmt/index.html">forge_<wbr>fmt</a><span class="version">1.5.1</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#formatter-fmt" title="Formatter (`fmt`)">Formatter (<code>fmt</code>)</a><ul><li><a href="#architecture" title="Architecture">Architecture</a></li><li><a href="#contributing" title="Contributing">Contributing</a></li></ul></li></ul><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#constants" title="Constants">Constants</a></li><li><a href="#functions" title="Functions">Functions</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>forge_<wbr>fmt</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/forge_fmt/lib.rs.html#1-288">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="formatter-fmt"><a class="doc-anchor" href="#formatter-fmt">§</a>Formatter (<code>fmt</code>)</h2>
+<p>Solidity formatter that respects (some parts of)
+the <a href="https://docs.soliditylang.org/en/latest/style-guide.html">Style Guide</a> and
+is tested on the <a href="https://github.com/prettier-solidity/prettier-plugin-solidity">Prettier Solidity Plugin</a> cases.</p>
+<h3 id="architecture"><a class="doc-anchor" href="#architecture">§</a>Architecture</h3>
+<p>The formatter is built on top of <a href="https://github.com/paradigmxyz/solar">Solar</a>, and the architecture is based on a Wadler-style pretty-printing engine. The formatting process consists of two main steps:</p>
+<ol>
+<li><strong>Parsing</strong>: The Solidity source code is parsed using <strong><code>solar</code></strong> into an <strong>Abstract Syntax Tree (AST)</strong>. The AST is a tree representation of the code’s syntactic structure.</li>
+<li><strong>Printing</strong>: The AST is traversed by a visitor, which generates a stream of abstract tokens that are then processed by a pretty-printing engine to produce the final formatted code.</li>
+</ol>
+<h4 id="the-pretty-printer-pp"><a class="doc-anchor" href="#the-pretty-printer-pp">§</a>The Pretty Printer (<code>pp</code>)</h4>
+<p>The core of the formatter is a pretty-printing engine inspired by Philip Wadler’s algorithm, and adapted from the implementations in <code>rustc_ast_pretty</code> and <code>prettyplease</code>. Its goal is to produce an optimal and readable layout by making intelligent decisions about line breaks.</p>
+<p>The process works like this:</p>
+<ol>
+<li>
+<p><strong>AST to Abstract Tokens</strong>: The formatter’s <code>State</code> object walks the <code>solar</code> AST. Instead of directly writing strings, it translates the AST nodes into a stream of abstract formatting “commands” called <code>Token</code>s. This decouples the code’s structure from the final text output. The primary tokens are:</p>
+<ul>
+<li><strong><code>String</code></strong>: An atomic, unbreakable piece of text, like a keyword (<code>function</code>), an identifier (<code>myVar</code>), or a literal (<code>42</code>).</li>
+<li><strong><code>Break</code></strong>: A potential line break. This is the core of the engine’s flexibility. The <code>Printer</code> later decides whether to render a <code>Break</code> as a single space or as a newline with appropriate indentation.</li>
+<li><strong><code>Begin</code>/<code>End</code></strong>: These tokens define a logical group of tokens that should be formatted as a single unit. This allows the printer to decide how to format the entire group at once.</li>
+</ul>
+</li>
+<li>
+<p><strong>Grouping and Breaking Strategy</strong>: The <code>Begin</code> and <code>End</code> tokens create formatting “boxes” that guide the breaking strategy. There are two main types of boxes:</p>
+<ul>
+<li><strong>Consistent Box (<code>cbox</code>)</strong>: If <em>any</em> <code>Break</code> inside this box becomes a newline, then <em>all</em> <code>Break</code>s inside it must also become newlines. This is ideal for lists like function parameters or struct fields, ensuring they are either all on one line or neatly arranged with one item per line.</li>
+<li><strong>Inconsistent Box (<code>ibox</code>)</strong>: <code>Break</code>s within this box are independent. The printer can wrap a long line at any <code>Break</code> point without forcing other breaks in the same box to become newlines. This is useful for formatting long expressions or comments.</li>
+</ul>
+</li>
+<li>
+<p><strong>The <code>Printer</code> Engine</strong>: The <code>Printer</code> consumes this stream of tokens and makes the final decisions:</p>
+<ul>
+<li>It maintains a buffer of tokens and tracks the remaining space on the current line based on the configured <code>line_length</code>.</li>
+<li>When it encounters a <code>Begin</code> token for a group, it calculates whether the entire group could fit on the current line if all its <code>Break</code>s were spaces.</li>
+<li><strong>If it fits</strong>, all <code>Break</code>s in that group are rendered as spaces.</li>
+<li><strong>If it doesn’t fit</strong>, <code>Break</code>s are rendered as newlines, and the indentation level is adjusted accordingly based on the box’s rules (consistent or inconsistent).</li>
+</ul>
+</li>
+</ol>
+<p>Crucially, this entire process is deterministic. Because the formatter completely rebuilds the code from the AST, it discards all original whitespace, line breaks, and other stylistic variations. This means that for a given AST and configuration, the output will always be identical. No matter how inconsistently the input code is formatted, the result is a single, canonical representation, ensuring predictability and consistency across any codebase.</p>
+<blockquote>
+<p><strong>Debug Mode</strong>: To visualize the debug output, and understand how the pretty-printer makes its decisions about boxes and breaks, see the <a href="#debug">Debug</a> section in Testing.</p>
+</blockquote>
+<h4 id="comments"><a class="doc-anchor" href="#comments">§</a>Comments</h4>
+<p>Comment handling is a critical aspect of the formatter, designed to preserve developer intent while restructuring the code.</p>
+<ol>
+<li>
+<p><strong>Categorization</strong>: Comments are parsed and categorized by their position and style: <code>Isolated</code> (on its own line), <code>Mixed</code> (on a line with code), and <code>Trailing</code> (at the end of a line).</p>
+</li>
+<li>
+<p><strong>Blank Line Handling</strong>: Blank lines in the source code are treated as a special <code>BlankLine</code> comment type, allowing the formatter to preserve vertical spacing that separates logical blocks of code. However, to maintain a clean and consistent vertical rhythm, any sequence of multiple blank lines is collapsed into a single blank line. This prevents excessive empty space in the formatted output.</p>
+</li>
+<li>
+<p><strong>Integration with Printing</strong>: During the AST traversal, the formatter queries for comments that appear before the current code element. These comments, including blank lines, are then strategically inserted into the <code>Printer</code>’s token stream. The formatter inserts <code>Break</code> tokens around comments to ensure they are correctly spaced from the surrounding code, and emits one or two <code>hardbreak</code>s for blank lines to maintain the original vertical rhythm.</p>
+</li>
+</ol>
+<p>This approach allows the formatter to respect both the syntactic structure of the code and the developer’s textual annotations and spacing, producing a clean, readable, and intentional layout.</p>
+<h4 id="example"><a class="doc-anchor" href="#example">§</a>Example</h4>
+<p><strong>Source Code</strong></p>
+<div class="example-wrap"><pre class="language-solidity"><code>pragma   solidity ^0.8.10 ;
+contract  HelloWorld {
+    string   public message;
+    constructor(  string memory initMessage) { message = initMessage;}
+}
+
+
+
+event    Greet( string  indexed  name) ;</code></pre></div>
+<p><strong>Abstract Syntax Tree (AST) (simplified)</strong></p>
+<div class="example-wrap"><pre class="language-text"><code>SourceUnit
+ ├─ PragmaDirective(&quot;solidity&quot;, &quot;^0.8.10&quot;)
+ ├─ ItemContract(&quot;HelloWorld&quot;)
+ │   ├─ VariableDefinition { name: &quot;message&quot;, ty: &quot;string&quot;, visibility: &quot;public&quot; }
+ │   └─ ItemFunction {
+ │         kind: Constructor,
+ │         header: FunctionHeader {
+ │            parameters: [
+ │               VariableDefinition { name: &quot;initMessage&quot;, ty: &quot;string&quot;, data_location: &quot;memory&quot; }
+ │            ]
+ │         },
+ │         body: Block {
+ │            stmts: [
+ │               Stmt { kind: Expr(Assign {lhs: Ident(&quot;message&quot;), rhs: Ident(&quot;initMessage&quot;)}) }
+ │            ]
+ │         }
+ │      }
+ └─ ItemEvent { name: &quot;Greet&quot;, parameters: [
+       VariableDefinition { name: &quot;name&quot;, ty: &quot;string&quot;, indexed: true }
+    ] }</code></pre></div>
+<p><strong>Formatted Source Code</strong>
+The code is reconstructed from the AST using the pretty-printer.</p>
+<div class="example-wrap"><pre class="language-solidity"><code>pragma solidity ^0.8.10;
+
+contract HelloWorld {
+    string public message;
+
+    constructor(string memory initMessage) {
+        message = initMessage;
+    }
+}
+
+event Greet(string indexed name);</code></pre></div><h4 id="configuration"><a class="doc-anchor" href="#configuration">§</a>Configuration</h4>
+<p>The formatter supports multiple configuration options defined in <code>foundry.toml</code>.</p>
+<div><table><thead><tr><th style="text-align: left">Option</th><th style="text-align: left">Default</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>line_length</code></td><td style="text-align: left"><code>120</code></td><td style="text-align: left">Maximum line length where the formatter will try to wrap the line.</td></tr>
+<tr><td style="text-align: left"><code>tab_width</code></td><td style="text-align: left"><code>4</code></td><td style="text-align: left">Number of spaces per indentation level. Ignored if <code>style</code> is <code>tab</code>.</td></tr>
+<tr><td style="text-align: left"><code>style</code></td><td style="text-align: left"><code>space</code></td><td style="text-align: left">The style of indentation. Options: <code>space</code>, <code>tab</code>.</td></tr>
+<tr><td style="text-align: left"><code>bracket_spacing</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Print spaces between brackets.</td></tr>
+<tr><td style="text-align: left"><code>int_types</code></td><td style="text-align: left"><code>long</code></td><td style="text-align: left">Style for <code>uint256</code>/<code>int256</code> types. Options: <code>long</code>, <code>short</code>, <code>preserve</code>.</td></tr>
+<tr><td style="text-align: left"><code>multiline_func_header</code></td><td style="text-align: left"><code>attributes_first</code></td><td style="text-align: left">The style of multiline function headers. Options: <code>attributes_first</code>, <code>params_always</code>, <code>params_first_multi</code>, <code>all</code>, <code>all_params</code>.</td></tr>
+<tr><td style="text-align: left"><code>prefer_compact</code></td><td style="text-align: left"><code>all</code></td><td style="text-align: left">Style that determines if a broken list, should keep its elements together on their own line, before breaking individually. Options: <code>none</code>, <code>calls</code>, <code>events</code>, <code>errors</code>, <code>events_errors</code>, <code>all</code>.</td></tr>
+<tr><td style="text-align: left"><code>quote_style</code></td><td style="text-align: left"><code>double</code></td><td style="text-align: left">The style of quotation marks. Options: <code>double</code>, <code>single</code>, <code>preserve</code>.</td></tr>
+<tr><td style="text-align: left"><code>number_underscore</code></td><td style="text-align: left"><code>preserve</code></td><td style="text-align: left">The style of underscores in number literals. Options: <code>preserve</code>, <code>remove</code>, <code>thousands</code>.</td></tr>
+<tr><td style="text-align: left"><code>hex_underscore</code></td><td style="text-align: left"><code>remove</code></td><td style="text-align: left">The style of underscores in hex literals. Options: <code>preserve</code>, <code>remove</code>, <code>bytes</code>.</td></tr>
+<tr><td style="text-align: left"><code>single_line_statement_blocks</code></td><td style="text-align: left"><code>preserve</code></td><td style="text-align: left">The style of single-line blocks in statements. Options: <code>preserve</code>, <code>single</code>, <code>multi</code>.</td></tr>
+<tr><td style="text-align: left"><code>override_spacing</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Print a space in the <code>override</code> attribute.</td></tr>
+<tr><td style="text-align: left"><code>wrap_comments</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Wrap comments when <code>line_length</code> is reached.</td></tr>
+<tr><td style="text-align: left"><code>docs_style</code></td><td style="text-align: left"><code>preserve</code></td><td style="text-align: left">Enforces the style of doc (natspec) comments. Options: <code>preserve</code>, <code>line</code>, <code>block</code>.</td></tr>
+<tr><td style="text-align: left"><code>ignore</code></td><td style="text-align: left"><code>[]</code></td><td style="text-align: left">Globs to ignore.</td></tr>
+<tr><td style="text-align: left"><code>contract_new_lines</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Add a new line at the start and end of contract declarations.</td></tr>
+<tr><td style="text-align: left"><code>sort_imports</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Sort import statements alphabetically in groups. A group is a set of imports separated by a newline.</td></tr>
+<tr><td style="text-align: left"><code>pow_no_space</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Suppress spaces around the power operator (<code>**</code>).</td></tr>
+<tr><td style="text-align: left"><code>single_line_imports</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Keep single imports on a single line, even if they exceed the line length limit.</td></tr>
+</tbody></table>
+</div>
+<blockquote>
+<p>Check <a href="../config/src/fmt.rs"><code>FormatterConfig</code></a> for a more detailed explanation.</p>
+</blockquote>
+<h4 id="inline-configuration"><a class="doc-anchor" href="#inline-configuration">§</a>Inline Configuration</h4>
+<p>The formatter can be instructed to skip specific sections of code using inline comments. While the tool supports fine-grained control, it is generally more robust and efficient to disable formatting for entire AST items or statements.</p>
+<p>This approach is preferred because it allows the formatter to treat the entire disabled item as a single, opaque unit. It can simply copy the original source text for that item’s span instead of partially formatting a line, switching to copy mode, and then resuming formatting. This leads to more predictable output and avoids potential edge cases with complex, partially-disabled statements.</p>
+<h5 id="disable-line"><a class="doc-anchor" href="#disable-line">§</a>Disable Line</h5>
+<p>These directives are best used when they apply to a complete, self-contained AST statement, as shown below. In this case, <code>uint x = 100;</code> is a full statement, making it a good candidate for a line-based disable.</p>
+<p>To disable the next line:</p>
+<div class="example-wrap"><pre class="language-solidity"><code>// forgefmt: disable-next-line
+uint x = 100;</code></pre></div>
+<p>To disable the current line:</p>
+<div class="example-wrap"><pre class="language-solidity"><code>uint x = 100; // forgefmt: disable-line</code></pre></div><h5 id="disable-block"><a class="doc-anchor" href="#disable-block">§</a>Disable Block</h5>
+<p>This is the recommended approach for complex, multi-line constructs where you want to preserve specific formatting. In the example below, the entire <code>function</code> definition is disabled. This is preferable to trying to disable individual lines within the signature, because lines like <code>uint256 b /* a comment that goes inside the comma */,</code> do not correspond to a complete AST item or statement on their own. Disabling the whole item is cleaner and more aligned with the code’s structure.</p>
+<div class="example-wrap"><pre class="language-solidity"><code>// forgefmt: disable-start
+function fnWithManyArguments(
+    uint a,
+    uint256 b /* a comment that goes inside the comma */,
+    uint256      c
+) external returns (bool) {
+// forgefmt: disable-end</code></pre></div><h3 id="contributing"><a class="doc-anchor" href="#contributing">§</a>Contributing</h3>
+<p>Check out the <a href="https://github.com/foundry-rs/foundry/blob/master/CONTRIBUTING.md">foundry contribution guide</a>.</p>
+<p>Guidelines for contributing to <code>forge fmt</code>:</p>
+<h4 id="opening-an-issue"><a class="doc-anchor" href="#opening-an-issue">§</a>Opening an issue</h4>
+<ol>
+<li>Create a short, concise title describing the issue.
+<ul>
+<li><strong>Bad</strong>: <code>Forge fmt does not work</code></li>
+<li><strong>Good</strong>: <code>bug(forge-fmt): misplaces postfix comment on if-statement</code></li>
+</ul>
+</li>
+<li>Fill in the issue template fields, including Foundry version, platform, and component info.</li>
+<li>Provide code snippets showing the current and expected behaviors.</li>
+<li>If it’s a feature request, explain why the feature is needed.</li>
+<li>Add the <code>C-forge</code> and <code>Cmd-forge-fmt</code> labels.</li>
+</ol>
+<h4 id="fixing-a-bug-or-developing-a-feature"><a class="doc-anchor" href="#fixing-a-bug-or-developing-a-feature">§</a>Fixing a Bug or Developing a Feature</h4>
+<ol>
+<li>Specify the issue being addressed in the PR description.</li>
+<li>Add a note on your solution in the PR description.</li>
+<li>Ensure the PR includes comprehensive acceptance tests under <code>fmt/testdata/</code>, covering:
+<ul>
+<li>The specific case being fixed/added.</li>
+<li>Behavior with different kinds of comments (isolated, mixed, trailing).</li>
+<li>If it’s a new config value, tests covering all available options.</li>
+</ul>
+</li>
+</ol>
+<h4 id="testing"><a class="doc-anchor" href="#testing">§</a>Testing</h4>
+<p>Tests are located in the <code>fmt/testdata</code> folder. Each test consists of an <code>original.sol</code> file and one or more expected output files, named <code>*.fmt.sol</code>.</p>
+<p>The default configuration can be overridden from within an expected output file by adding a comment in the format <code>// config: {config_key} = {config_value}</code>. For example:</p>
+<div class="example-wrap"><pre class="language-solidity"><code>// config: line_length = 160</code></pre></div>
+<p>The testing process for each test suite is as follows:</p>
+<ol>
+<li>Read <code>original.sol</code> and the corresponding <code>*.fmt.sol</code> expected output.</li>
+<li>Parse any <code>// config:</code> comments from the expected file to create a test-specific configuration.</li>
+<li>Format <code>original.sol</code> and assert that the output matches the content of <code>*.fmt.sol</code>.</li>
+<li>To ensure <strong>idempotency</strong>, format the content of <code>*.fmt.sol</code> again and assert that the output does not change.</li>
+</ol>
+<h4 id="debug"><a class="doc-anchor" href="#debug">§</a>Debug</h4>
+<p>The formatter includes a debug mode that provides visual insight into the pretty-printer’s decision-making process. This is invaluable for troubleshooting complex formatting issues and understanding how the boxes and breaks described in <a href="#the-pretty-printer-pp">The Pretty Printer</a> section work.</p>
+<p>To enable it, run the formatter with the <code>FMT_DEBUG</code> environment variable set:</p>
+<div class="example-wrap"><pre class="language-sh"><code>FMT_DEBUG=1 cargo test -p forge-fmt --test formatter Repros</code></pre></div>
+<p>When enabled, the output will be annotated with special characters representing the printer’s internal state:</p>
+<ul>
+<li>
+<p><strong>Boxes</strong>:</p>
+<ul>
+<li><code>«</code> and <code>»</code>: Mark the start and end of a <strong>consistent</strong> box (<code>cbox</code>).</li>
+<li><code>‹</code> and <code>›</code>: Mark the start and end of an <strong>inconsistent</strong> box (<code>ibox</code>).</li>
+</ul>
+</li>
+<li>
+<p><strong>Breaks</strong>:</p>
+<ul>
+<li><code>·</code>: Represents a <code>Break</code> token, which could be a space or a newline.</li>
+</ul>
+</li>
+</ul>
+<p>For example, running debug mode on the <code>HelloWorld</code> contract from earlier would produce an output like this:</p>
+<div class="example-wrap"><pre class="language-text"><code>pragma solidity ^0.8.10;·
+·
+«‹«contract HelloWorld »{›·
+‹‹    string· public· message››;·
+·
+«    constructor«(«‹‹string memory initMessage››»)» {»·
+«‹        message = ·initMessage›·;·
+»    }·
+»}·
+·
+event Greet(««‹‹string indexed name››»»);·</code></pre></div>
+<p>This annotated output allows you to see exactly how the printer is grouping tokens and where it considers inserting a space or a newline. This makes it much easier to diagnose why a certain layout is being produced.</p>
+</div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="pp/index.html" title="mod forge_fmt::pp">pp</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>Adapted from <a href="https://github.com/rust-lang/rust/blob/07d3fd1d9b9c1f07475b96a9d168564bf528db68/compiler/rustc_ast_pretty/src/pp.rs"><code>rustc_ast_pretty</code></a>
+and <a href="https://github.com/dtolnay/prettyplease/blob/8eb8c14649aea32e810732bd4d64fe519e6b752a/src/algorithm.rs"><code>prettyplease</code></a>.</dd><dt><a class="mod" href="state/index.html" title="mod forge_fmt::state">state</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt></dl><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.FormatterConfig.html" title="struct forge_fmt::FormatterConfig">Formatter<wbr>Config</a></dt><dd>Contains the config and rule set</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.DiagnosticsResult.html" title="enum forge_fmt::DiagnosticsResult">Diagnostics<wbr>Result</a></dt><dd>The result of the formatter.</dd><dt><a class="enum" href="enum.DocCommentStyle.html" title="enum forge_fmt::DocCommentStyle">DocComment<wbr>Style</a></dt><dd>Style of doc comments</dd><dt><a class="enum" href="enum.HexUnderscore.html" title="enum forge_fmt::HexUnderscore">HexUnderscore</a></dt><dd>Style of underscores in hex literals</dd><dt><a class="enum" href="enum.IndentStyle.html" title="enum forge_fmt::IndentStyle">Indent<wbr>Style</a></dt><dd>Style of indent</dd><dt><a class="enum" href="enum.IntTypes.html" title="enum forge_fmt::IntTypes">IntTypes</a></dt><dd>Style of integer types.</dd><dt><a class="enum" href="enum.MultilineFuncHeaderStyle.html" title="enum forge_fmt::MultilineFuncHeaderStyle">Multiline<wbr>Func<wbr>Header<wbr>Style</a></dt><dd>Style of function header in case it doesn’t fit</dd><dt><a class="enum" href="enum.NumberUnderscore.html" title="enum forge_fmt::NumberUnderscore">Number<wbr>Underscore</a></dt><dd>Style of underscores in number literals</dd><dt><a class="enum" href="enum.PreferCompact.html" title="enum forge_fmt::PreferCompact">Prefer<wbr>Compact</a></dt><dd>Style that determines if a broken list, should keep its elements together on their own line,
+before breaking individually.</dd><dt><a class="enum" href="enum.QuoteStyle.html" title="enum forge_fmt::QuoteStyle">Quote<wbr>Style</a></dt><dd>Style of string quotes</dd><dt><a class="enum" href="enum.SingleLineBlockStyle.html" title="enum forge_fmt::SingleLineBlockStyle">Single<wbr>Line<wbr>Block<wbr>Style</a></dt><dd>Style of single line blocks in statements</dd></dl><h2 id="constants" class="section-header">Constants<a href="#constants" class="anchor">§</a></h2><dl class="item-table"><dt><a class="constant" href="constant.DEBUG.html" title="constant forge_fmt::DEBUG">DEBUG</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dt><a class="constant" href="constant.DEBUG_INDENT.html" title="constant forge_fmt::DEBUG_INDENT">DEBUG_<wbr>INDENT</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.diff.html" title="fn forge_fmt::diff">diff</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dt><a class="fn" href="fn.format.html" title="fn forge_fmt::format">format</a></dt><dd>Format a string input with the default compiler.</dd><dt><a class="fn" href="fn.format_ast.html" title="fn forge_fmt::format_ast">format_<wbr>ast</a></dt><dt><a class="fn" href="fn.format_file.html" title="fn forge_fmt::format_file">format_<wbr>file</a></dt><dt><a class="fn" href="fn.format_inner.html" title="fn forge_fmt::format_inner">format_<wbr>inner</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dt><a class="fn" href="fn.format_once.html" title="fn forge_fmt::format_once">format_<wbr>once</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dt><a class="fn" href="fn.format_source.html" title="fn forge_fmt::format_source">format_<wbr>source</a></dt><dt><a class="fn" href="fn.parse_inline_config.html" title="fn forge_fmt::parse_inline_config">parse_<wbr>inline_<wbr>config</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt></dl><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><dl class="item-table"><dt><a class="type" href="type.FormatterResult.html" title="type forge_fmt::FormatterResult">Formatter<wbr>Result</a></dt><dd>The result of the formatter.</dd></dl></section></div></main></body></html>

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["TypedReceipt","TypedReceiptRpc","TypedTransaction","TypedTransactionRequest"],"fn":["convert_receipt_to_rpc","convert_to_anvil_receipt","has_optimism_fields","transaction_request_to_typed"],"struct":["MaybeImpersonatedTransaction","PendingTransaction","TransactionEssentials","TransactionInfo"],"type":["ReceiptResponse"]};

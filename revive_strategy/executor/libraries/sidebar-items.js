@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["add_missing_dcc_entries","collect_contracts_needing_linking","link_libraries","link_pvm_bytecodes","matches_by_name","patch_library_guards","update_evm_bytecodes","update_factory_deps"]};

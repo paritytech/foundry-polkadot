@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["TimePrecision"],"fn":["duration_since_unix_epoch","to_milliseconds","utc_from_secs"],"struct":["TimeManager"]};

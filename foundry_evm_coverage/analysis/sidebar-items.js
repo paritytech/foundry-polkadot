@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["has_statements","is_regular_call","stmt_has_statements"],"struct":["SourceAnalysis","SourceFiles","SourceVisitor","SourceVisitorCheckpoint"]};

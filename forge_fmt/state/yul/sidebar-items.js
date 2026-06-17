@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":[["get_span",1]]};

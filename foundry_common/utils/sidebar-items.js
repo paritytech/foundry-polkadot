@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["block_on","block_on_handle","duration_since_unix_epoch","erc7201","find_metadata_start","flatten","ignore_metadata_hash","strip_bytecode_placeholders"],"static":["BYTECODE_PLACEHOLDER_RE"]};

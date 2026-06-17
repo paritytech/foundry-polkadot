@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BackendError"],"fn":["new"],"mod":["backend","client","consensus","executor","storage"],"struct":["BackendWithOverlay","Service","StorageOverrides"],"type":["Backend","Client","SelectChain","TransactionPoolHandle"]};

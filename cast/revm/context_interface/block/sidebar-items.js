@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["calc_blob_gasprice"],"mod":["blob"],"struct":["BlobExcessGasAndPrice"],"trait":["Block"]};

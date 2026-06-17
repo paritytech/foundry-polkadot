@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":[["impl_delegate",1]],"trait":["CodeLocationExt"]};

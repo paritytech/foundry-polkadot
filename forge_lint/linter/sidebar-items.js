@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SuggestionKind"],"fn":["hyperlink"],"mod":["early","late"],"struct":["EarlyLintVisitor","LateLintVisitor","LintContext","LinterConfig","Suggestion"],"trait":["EarlyLintPass","LateLintPass","Lint","Linter"]};

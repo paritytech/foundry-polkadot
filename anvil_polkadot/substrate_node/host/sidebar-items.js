@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["IMPERSONATION_MARKER"],"fn":["is_impersonated","recover_maybe_impersonated_address"],"mod":["crypto","hashing"],"type":["PublicKeyToHashOverride","SenderAddressRecoveryOverride"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["TestFunctionKind"],"struct":["EmptyTestFilter"],"trait":["ErrorExt","TestFilter","TestFunctionExt"]};

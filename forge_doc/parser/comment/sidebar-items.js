@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CommentTag"],"macro":[["ref_fn",1]],"struct":["Comment","Comments","CommentsRef"]};

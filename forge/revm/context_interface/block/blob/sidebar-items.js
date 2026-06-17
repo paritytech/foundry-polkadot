@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["calc_blob_gasprice","fake_exponential","get_base_fee_per_blob_gas"],"struct":["BlobExcessGasAndPrice"]};

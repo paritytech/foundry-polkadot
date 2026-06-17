@@ -1,0 +1,156 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/config/src/providers/warnings.rs`."><title>warnings.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="foundry_config" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.0-nightly (9e2abe0c6 2026-06-16)" data-channel="nightly" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">foundry_config/providers/</div>warnings.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use crate</span>::{<a href="../lib.rs.html#170-573">Config</a>, <a href="../lib.rs.html#676-677">DEPRECATIONS</a>, <a href="../warning.rs.html#8-58">Warning</a>};
+<a href=#2 id=2 data-nosnippet>2</a><span class="kw">use </span>figment::{
+<a href=#3 id=3 data-nosnippet>3</a>    Error, Figment, Metadata, Profile, Provider,
+<a href=#4 id=4 data-nosnippet>4</a>    value::{Dict, Map, Value},
+<a href=#5 id=5 data-nosnippet>5</a>};
+<a href=#6 id=6 data-nosnippet>6</a><span class="kw">use </span>heck::ToSnakeCase;
+<a href=#7 id=7 data-nosnippet>7</a><span class="kw">use </span><a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html">std::collections::BTreeMap</a>;
+<a href=#8 id=8 data-nosnippet>8</a>
+<a href=#9 id=9 data-nosnippet>9</a><span class="doccomment">/// Generate warnings for unknown sections and deprecated keys
+<a href=#10 id=10 data-nosnippet>10</a></span><span class="kw">pub struct </span><a href="../../../foundry_config/providers/struct.WarningsProvider.html">WarningsProvider</a>&lt;P&gt; {
+<a href=#11 id=11 data-nosnippet>11</a>    provider: P,
+<a href=#12 id=12 data-nosnippet>12</a>    profile: Profile,
+<a href=#13 id=13 data-nosnippet>13</a>    old_warnings: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<a href="../warning.rs.html#8-58">Warning</a>&gt;, Error&gt;,
+<a href=#14 id=14 data-nosnippet>14</a>}
+<a href=#15 id=15 data-nosnippet>15</a>
+<a href=#16 id=16 data-nosnippet>16</a><span class="kw">impl</span>&lt;P: Provider&gt; <a href="#10-14">WarningsProvider</a>&lt;P&gt; {
+<a href=#17 id=17 data-nosnippet>17</a>    <span class="kw">const </span>WARNINGS_KEY: <span class="kw-2">&amp;</span><span class="lifetime">'static </span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a> = <span class="string">"__warnings"</span>;
+<a href=#18 id=18 data-nosnippet>18</a>
+<a href=#19 id=19 data-nosnippet>19</a>    <span class="doccomment">/// Creates a new warnings provider.
+<a href=#20 id=20 data-nosnippet>20</a>    </span><span class="kw">pub fn </span>new(
+<a href=#21 id=21 data-nosnippet>21</a>        provider: P,
+<a href=#22 id=22 data-nosnippet>22</a>        profile: <span class="kw">impl </span><a href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html">Into</a>&lt;Profile&gt;,
+<a href=#23 id=23 data-nosnippet>23</a>        old_warnings: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<a href="../warning.rs.html#8-58">Warning</a>&gt;, Error&gt;,
+<a href=#24 id=24 data-nosnippet>24</a>    ) -&gt; <span class="self">Self </span>{
+<a href=#25 id=25 data-nosnippet>25</a>        <span class="self">Self </span>{ <a href="#21">provider</a>, profile: <a href="#22">profile</a>.<a href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html#tymethod.into">into</a>(), <a href="#23">old_warnings</a> }
+<a href=#26 id=26 data-nosnippet>26</a>    }
+<a href=#27 id=27 data-nosnippet>27</a>
+<a href=#28 id=28 data-nosnippet>28</a>    <span class="doccomment">/// Creates a new figment warnings provider.
+<a href=#29 id=29 data-nosnippet>29</a>    </span><span class="kw">pub fn </span>for_figment(provider: P, figment: <span class="kw-2">&amp;</span>Figment) -&gt; <span class="self">Self </span>{
+<a href=#30 id=30 data-nosnippet>30</a>        <span class="kw">let </span>old_warnings = {
+<a href=#31 id=31 data-nosnippet>31</a>            <span class="kw">let </span>warnings_res = <a href="#29">figment</a>.extract_inner(<span class="self">Self</span>::<a href="#17">WARNINGS_KEY</a>);
+<a href=#32 id=32 data-nosnippet>32</a>            <span class="kw">if </span><a href="#31">warnings_res</a>.<a href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#method.as_ref">as_ref</a>().<a href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#method.err">err</a>().<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.map">map</a>(|err| <a href="#32">err</a>.missing()).<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.unwrap_or">unwrap_or</a>(<span class="bool-val">false</span>) {
+<a href=#33 id=33 data-nosnippet>33</a>                <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a href="https://doc.rust-lang.org/nightly/alloc/macro.vec.html">vec!</a>[])
+<a href=#34 id=34 data-nosnippet>34</a>            } <span class="kw">else </span>{
+<a href=#35 id=35 data-nosnippet>35</a>                <a href="#31">warnings_res</a>
+<a href=#36 id=36 data-nosnippet>36</a>            }
+<a href=#37 id=37 data-nosnippet>37</a>        };
+<a href=#38 id=38 data-nosnippet>38</a>        <span class="self">Self</span>::<a href="#20-26">new</a>(<a href="#29">provider</a>, <a href="#29">figment</a>.profile().<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>(), <a href="#30">old_warnings</a>)
+<a href=#39 id=39 data-nosnippet>39</a>    }
+<a href=#40 id=40 data-nosnippet>40</a>
+<a href=#41 id=41 data-nosnippet>41</a>    <span class="doccomment">/// Collects all warnings.
+<a href=#42 id=42 data-nosnippet>42</a>    </span><span class="kw">pub fn </span>collect_warnings(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<a href="../warning.rs.html#8-58">Warning</a>&gt;, Error&gt; {
+<a href=#43 id=43 data-nosnippet>43</a>        <span class="kw">let </span>data = <a class="self" href="#42">self</a>.provider.data().<a href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#method.unwrap_or_default">unwrap_or_default</a>();
+<a href=#44 id=44 data-nosnippet>44</a>
+<a href=#45 id=45 data-nosnippet>45</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = <span class="self">self</span>.old_warnings.clone()<span class="question-mark">?</span>;
+<a href=#46 id=46 data-nosnippet>46</a>
+<a href=#47 id=47 data-nosnippet>47</a>        <span class="comment">// Add warning for unknown sections.
+<a href=#48 id=48 data-nosnippet>48</a>        </span><a href="#45">out</a>.<a href="https://doc.rust-lang.org/nightly/core/iter/traits/collect/trait.Extend.html#tymethod.extend">extend</a>(
+<a href=#49 id=49 data-nosnippet>49</a>            <a href="#43">data</a>.<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html#method.keys">keys</a>()
+<a href=#50 id=50 data-nosnippet>50</a>                .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.filter">filter</a>(|k| {
+<a href=#51 id=51 data-nosnippet>51</a>                    <span class="kw-2">**</span><a href="#50">k</a> != <a href="../lib.rs.html#170-573">Config</a>::<a href="../lib.rs.html#687">PROFILE_SECTION</a>
+<a href=#52 id=52 data-nosnippet>52</a>                        &amp;&amp; <span class="kw-2">**</span><a href="#50">k</a> != <a href="../lib.rs.html#170-573">Config</a>::<a href="../lib.rs.html#690">EXTERNAL_SECTION</a>
+<a href=#53 id=53 data-nosnippet>53</a>                        &amp;&amp; !<a href="../lib.rs.html#170-573">Config</a>::<a href="../lib.rs.html#693-706">STANDALONE_SECTIONS</a>.<a href="https://doc.rust-lang.org/nightly/core/primitive.slice.html#method.iter">iter</a>().<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.any">any</a>(|s| <a href="#53">s</a> == <a href="#50">k</a>)
+<a href=#54 id=54 data-nosnippet>54</a>                })
+<a href=#55 id=55 data-nosnippet>55</a>                .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.map">map</a>(|unknown_section| {
+<a href=#56 id=56 data-nosnippet>56</a>                    <span class="kw">let </span>source = <a class="self" href="#42">self</a>.provider.metadata().source.<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.map">map</a>(|s| <a href="#56">s</a>.<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>());
+<a href=#57 id=57 data-nosnippet>57</a>                    Warning::<a href="../warning.rs.html#10-15">UnknownSection</a> { unknown_section: <a href="#55">unknown_section</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>(), <a href="#56">source</a> }
+<a href=#58 id=58 data-nosnippet>58</a>                }),
+<a href=#59 id=59 data-nosnippet>59</a>        );
+<a href=#60 id=60 data-nosnippet>60</a>
+<a href=#61 id=61 data-nosnippet>61</a>        <span class="comment">// Add warning for deprecated keys.
+<a href=#62 id=62 data-nosnippet>62</a>        </span><span class="kw">let </span>deprecated_key_warning = |key| {
+<a href=#63 id=63 data-nosnippet>63</a>            <a href="../lib.rs.html#676-677">DEPRECATIONS</a>.<a href="https://doc.rust-lang.org/nightly/core/primitive.slice.html#method.iter">iter</a>().<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.find_map">find_map</a>(|(deprecated_key, new_value)| {
+<a href=#64 id=64 data-nosnippet>64</a>                <span class="kw">if </span><a href="#62">key</a> == <span class="kw-2">*</span><a href="#63">deprecated_key</a> {
+<a href=#65 id=65 data-nosnippet>65</a>                    <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(Warning::<a href="../warning.rs.html#42-48">DeprecatedKey</a> {
+<a href=#66 id=66 data-nosnippet>66</a>                        old: <a href="#63">deprecated_key</a>.<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>(),
+<a href=#67 id=67 data-nosnippet>67</a>                        new: <a href="#63">new_value</a>.<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>(),
+<a href=#68 id=68 data-nosnippet>68</a>                    })
+<a href=#69 id=69 data-nosnippet>69</a>                } <span class="kw">else </span>{
+<a href=#70 id=70 data-nosnippet>70</a>                    <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a>
+<a href=#71 id=71 data-nosnippet>71</a>                }
+<a href=#72 id=72 data-nosnippet>72</a>            })
+<a href=#73 id=73 data-nosnippet>73</a>        };
+<a href=#74 id=74 data-nosnippet>74</a>        <span class="kw">let </span>profiles = <a href="#43">data</a>
+<a href=#75 id=75 data-nosnippet>75</a>            .<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html#method.iter">iter</a>()
+<a href=#76 id=76 data-nosnippet>76</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.filter">filter</a>(|(profile, <span class="kw">_</span>)| <span class="kw-2">**</span><a href="#76">profile</a> == <a href="../lib.rs.html#170-573">Config</a>::<a href="../lib.rs.html#687">PROFILE_SECTION</a>)
+<a href=#77 id=77 data-nosnippet>77</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.map">map</a>(|(<span class="kw">_</span>, dict)| <a href="#77">dict</a>);
+<a href=#78 id=78 data-nosnippet>78</a>
+<a href=#79 id=79 data-nosnippet>79</a>        <a href="#45">out</a>.<a href="https://doc.rust-lang.org/nightly/core/iter/traits/collect/trait.Extend.html#tymethod.extend">extend</a>(<a href="#74">profiles</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>().<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.flat_map">flat_map</a>(<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html">BTreeMap</a>::<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html#method.keys">keys</a>).<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.filter_map">filter_map</a>(<a href="#62">deprecated_key_warning</a>));
+<a href=#80 id=80 data-nosnippet>80</a>        <a href="#45">out</a>.<a href="https://doc.rust-lang.org/nightly/core/iter/traits/collect/trait.Extend.html#tymethod.extend">extend</a>(
+<a href=#81 id=81 data-nosnippet>81</a>            <a href="#74">profiles</a>
+<a href=#82 id=82 data-nosnippet>82</a>                .<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()
+<a href=#83 id=83 data-nosnippet>83</a>                .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.filter_map">filter_map</a>(|dict| <a href="#83">dict</a>.<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html#method.get">get</a>(<a class="self" href="#42">self</a>.profile.as_str().as_str()))
+<a href=#84 id=84 data-nosnippet>84</a>                .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.filter_map">filter_map</a>(Value::as_dict)
+<a href=#85 id=85 data-nosnippet>85</a>                .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.flat_map">flat_map</a>(<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html">BTreeMap</a>::<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html#method.keys">keys</a>)
+<a href=#86 id=86 data-nosnippet>86</a>                .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.filter_map">filter_map</a>(<a href="#62">deprecated_key_warning</a>),
+<a href=#87 id=87 data-nosnippet>87</a>        );
+<a href=#88 id=88 data-nosnippet>88</a>
+<a href=#89 id=89 data-nosnippet>89</a>        <span class="comment">// Add warning for unknown keys within profiles (root keys only here).
+<a href=#90 id=90 data-nosnippet>90</a>        </span><span class="kw">if let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(default_map) = figment::providers::Serialized::defaults(<span class="kw-2">&amp;</span><a href="../lib.rs.html#170-573">Config</a>::<a href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default">default</a>()).data()
+<a href=#91 id=91 data-nosnippet>91</a>            &amp;&amp; <span class="kw">let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(default_dict) = <a href="#90">default_map</a>.<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html#method.get">get</a>(<span class="kw-2">&amp;</span><a href="../lib.rs.html#170-573">Config</a>::<a href="../lib.rs.html#681">DEFAULT_PROFILE</a>)
+<a href=#92 id=92 data-nosnippet>92</a>        {
+<a href=#93 id=93 data-nosnippet>93</a>            <span class="kw">let </span>allowed_keys: std::collections::<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/set/struct.BTreeSet.html">BTreeSet</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt; =
+<a href=#94 id=94 data-nosnippet>94</a>                <a href="#91">default_dict</a>.<a href="https://doc.rust-lang.org/nightly/alloc/collections/btree/map/struct.BTreeMap.html#method.keys">keys</a>().<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.cloned">cloned</a>().<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.collect">collect</a>();
+<a href=#95 id=95 data-nosnippet>95</a>            <span class="kw">for </span>profile_map <span class="kw">in </span>profiles {
+<a href=#96 id=96 data-nosnippet>96</a>                <span class="kw">for </span>(profile, value) <span class="kw">in </span>profile_map {
+<a href=#97 id=97 data-nosnippet>97</a>                    <span class="kw">let </span><span class="prelude-val">Some</span>(profile_dict) = value.as_dict() <span class="kw">else </span>{
+<a href=#98 id=98 data-nosnippet>98</a>                        <span class="kw">continue</span>;
+<a href=#99 id=99 data-nosnippet>99</a>                    };
+<a href=#100 id=100 data-nosnippet>100</a>
+<a href=#101 id=101 data-nosnippet>101</a>                    <span class="kw">let </span>source = <span class="self">self
+<a href=#102 id=102 data-nosnippet>102</a>                        </span>.provider
+<a href=#103 id=103 data-nosnippet>103</a>                        .metadata()
+<a href=#104 id=104 data-nosnippet>104</a>                        .source
+<a href=#105 id=105 data-nosnippet>105</a>                        .map(|s| s.to_string())
+<a href=#106 id=106 data-nosnippet>106</a>                        .unwrap_or(Config::FILE_NAME.to_string());
+<a href=#107 id=107 data-nosnippet>107</a>                    <span class="kw">for </span>key <span class="kw">in </span>profile_dict.keys() {
+<a href=#108 id=108 data-nosnippet>108</a>                        <span class="kw">let </span>is_not_deprecated =
+<a href=#109 id=109 data-nosnippet>109</a>                            !DEPRECATIONS.iter().any(|(deprecated_key, <span class="kw">_</span>)| <span class="kw-2">*</span>deprecated_key == key);
+<a href=#110 id=110 data-nosnippet>110</a>                        <span class="kw">let </span>is_not_allowed = !allowed_keys.contains(key)
+<a href=#111 id=111 data-nosnippet>111</a>                            &amp;&amp; !allowed_keys.contains(<span class="kw-2">&amp;</span>key.to_snake_case());
+<a href=#112 id=112 data-nosnippet>112</a>                        <span class="kw">let </span>is_not_reserved = key != <span class="string">"extends" </span>&amp;&amp; key != <span class="self">Self</span>::WARNINGS_KEY;
+<a href=#113 id=113 data-nosnippet>113</a>                        <span class="kw">let </span>is_not_backward_compatible = key != <span class="string">"solc_version"</span>;
+<a href=#114 id=114 data-nosnippet>114</a>
+<a href=#115 id=115 data-nosnippet>115</a>                        <span class="kw">if </span>is_not_deprecated
+<a href=#116 id=116 data-nosnippet>116</a>                            &amp;&amp; is_not_allowed
+<a href=#117 id=117 data-nosnippet>117</a>                            &amp;&amp; is_not_reserved
+<a href=#118 id=118 data-nosnippet>118</a>                            &amp;&amp; is_not_backward_compatible
+<a href=#119 id=119 data-nosnippet>119</a>                        {
+<a href=#120 id=120 data-nosnippet>120</a>                            out.push(Warning::UnknownKey {
+<a href=#121 id=121 data-nosnippet>121</a>                                key: key.clone(),
+<a href=#122 id=122 data-nosnippet>122</a>                                profile: profile.clone(),
+<a href=#123 id=123 data-nosnippet>123</a>                                source: source.clone(),
+<a href=#124 id=124 data-nosnippet>124</a>                            });
+<a href=#125 id=125 data-nosnippet>125</a>                        }
+<a href=#126 id=126 data-nosnippet>126</a>                    }
+<a href=#127 id=127 data-nosnippet>127</a>                }
+<a href=#128 id=128 data-nosnippet>128</a>            }
+<a href=#129 id=129 data-nosnippet>129</a>        }
+<a href=#130 id=130 data-nosnippet>130</a>
+<a href=#131 id=131 data-nosnippet>131</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a href="#45">out</a>)
+<a href=#132 id=132 data-nosnippet>132</a>    }
+<a href=#133 id=133 data-nosnippet>133</a>}
+<a href=#134 id=134 data-nosnippet>134</a>
+<a href=#135 id=135 data-nosnippet>135</a><span class="kw">impl</span>&lt;P: Provider&gt; Provider <span class="kw">for </span><a href="#10-14">WarningsProvider</a>&lt;P&gt; {
+<a href=#136 id=136 data-nosnippet>136</a>    <span class="kw">fn </span>metadata(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Metadata {
+<a href=#137 id=137 data-nosnippet>137</a>        <span class="kw">if let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(source) = <a class="self" href="#136">self</a>.provider.metadata().source {
+<a href=#138 id=138 data-nosnippet>138</a>            Metadata::from(<span class="string">"Warnings"</span>, <a href="#137">source</a>)
+<a href=#139 id=139 data-nosnippet>139</a>        } <span class="kw">else </span>{
+<a href=#140 id=140 data-nosnippet>140</a>            Metadata::named(<span class="string">"Warnings"</span>)
+<a href=#141 id=141 data-nosnippet>141</a>        }
+<a href=#142 id=142 data-nosnippet>142</a>    }
+<a href=#143 id=143 data-nosnippet>143</a>
+<a href=#144 id=144 data-nosnippet>144</a>    <span class="kw">fn </span>data(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;Map&lt;Profile, Dict&gt;, Error&gt; {
+<a href=#145 id=145 data-nosnippet>145</a>        <span class="kw">let </span>warnings = <span class="self">self</span>.collect_warnings()<span class="question-mark">?</span>;
+<a href=#146 id=146 data-nosnippet>146</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(Map::<a href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html#tymethod.from">from</a>([(
+<a href=#147 id=147 data-nosnippet>147</a>            <a class="self" href="#144">self</a>.profile.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>(),
+<a href=#148 id=148 data-nosnippet>148</a>            Dict::<a href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html#tymethod.from">from</a>([(<span class="self">Self</span>::<a href="#17">WARNINGS_KEY</a>.<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>(), Value::serialize(warnings)<span class="question-mark">?</span>)]),
+<a href=#149 id=149 data-nosnippet>149</a>        )]))
+<a href=#150 id=150 data-nosnippet>150</a>    }
+<a href=#151 id=151 data-nosnippet>151</a>
+<a href=#152 id=152 data-nosnippet>152</a>    <span class="kw">fn </span>profile(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;Profile&gt; {
+<a href=#153 id=153 data-nosnippet>153</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(<a class="self" href="#152">self</a>.profile.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>())
+<a href=#154 id=154 data-nosnippet>154</a>    }
+<a href=#155 id=155 data-nosnippet>155</a>}
+</code></pre></div></section></main></body></html>

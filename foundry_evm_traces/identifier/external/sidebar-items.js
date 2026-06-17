@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["FetcherKind","SourcifyResponse"],"struct":["Compilation","EtherscanFetcher","ExternalFetcher","ExternalIdentifier","SourcifyError","SourcifyFetcher","SourcifyMetadata"],"trait":["ExternalFetcherT"],"type":["FetchFuture"]};

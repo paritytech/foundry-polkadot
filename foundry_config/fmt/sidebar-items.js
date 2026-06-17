@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DocCommentStyle","HexUnderscore","IndentStyle","IntTypes","MultilineFuncHeaderStyle","NumberUnderscore","PreferCompact","QuoteStyle","SingleLineBlockStyle"],"struct":["FormatterConfig"]};

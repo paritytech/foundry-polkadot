@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DISABLE_END","DISABLE_START"],"enum":["CommentStyle","Consolidation"],"fn":["all_whitespace","estimate_line_width","first_non_whitespace","format_doc_block_comment","line_begin_pos","line_with_tabs","normalize_block_comment_ws"],"mod":["comment","inline_config"],"struct":["Comment","CommentGatherer","Comments"]};

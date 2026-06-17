@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["LoadError"],"struct":["DummyHost"],"trait":["Host"]};

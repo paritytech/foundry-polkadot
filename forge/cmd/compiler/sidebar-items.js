@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CompilerSubcommands"],"struct":["CompilerArgs","Dependency","ResolveArgs","ResolvedCompiler"]};

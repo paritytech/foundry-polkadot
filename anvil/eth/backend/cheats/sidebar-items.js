@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"static":["PRECOMPILE_ID_CHEAT_ECRECOVER"],"struct":["CheatEcrecover","CheatsManager","CheatsState"]};

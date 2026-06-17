@@ -1,0 +1,9 @@
+(function() {
+    var type_impls = Object.fromEntries([["substrate_runtime",[["<details class=\"toggle implementors-toggle\" open><summary><section id=\"impl-WeightToFee-for-BlockRatioFee%3CP,+Q,+T,+B%3E\" class=\"impl\"><a href=\"#impl-WeightToFee-for-BlockRatioFee%3CP,+Q,+T,+B%3E\" class=\"anchor\">§</a><h3 class=\"code-header\">impl&lt;const P: <a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/std/primitive.u128.html\">u128</a>, const Q: <a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/std/primitive.u128.html\">u128</a>, T, B&gt; WeightToFee for BlockRatioFee&lt;P, Q, T, B&gt;<div class=\"where\">where\n    T: Config,\n    B: Balance,</div></h3></section></summary><div class=\"impl-items\"><details class=\"toggle\" open><summary><section id=\"associatedtype.Balance\" class=\"associatedtype trait-impl\"><a href=\"#associatedtype.Balance\" class=\"anchor\">§</a><h4 class=\"code-header\">type <a class=\"associatedtype\">Balance</a> = B</h4></section></summary><div class='docblock'>The type that is returned as result from calculation.</div></details><details class=\"toggle method-toggle\" open><summary><section id=\"method.weight_to_fee\" class=\"method trait-impl\"><a href=\"#method.weight_to_fee\" class=\"anchor\">§</a><h4 class=\"code-header\">fn <a class=\"fn\">weight_to_fee</a>(\n    weight: &amp;Weight,\n) -&gt; &lt;BlockRatioFee&lt;P, Q, T, B&gt; as WeightToFee&gt;::Balance</h4></section></summary><div class='docblock'>Calculates the fee from the passed <code>weight</code>.</div></details></div></details>","WeightToFee","substrate_runtime::WeightToFee"]]]]);
+    if (window.register_type_impls) {
+        window.register_type_impls(type_impls);
+    } else {
+        window.pending_type_impls = type_impls;
+    }
+})()
+//{"start":55,"fragment_lengths":[1564]}

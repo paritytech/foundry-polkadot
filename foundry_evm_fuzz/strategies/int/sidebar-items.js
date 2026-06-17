@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["clamp"],"struct":["IntStrategy","IntValueTree"]};
